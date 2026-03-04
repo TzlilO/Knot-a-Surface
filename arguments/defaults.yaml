@@ -1,0 +1,72 @@
+# Base Optimization Parameters (inherited from OptimizationParams)
+optimization:
+  iterations: 30000
+  position_lr_init: 0.00016
+  position_lr_final: 0.0000016
+  # ... (add other base params as needed)
+
+# General Settings
+general:
+  batch_size: 1
+  device: cuda
+  grid_densification_factor: 20
+  patch_density: 8
+  pe_levels: 16
+  pe_levels_max: 16
+  scaling_init_factor: 0.005  # 5e-3
+  scaling_reset_factor: 0.5
+  spline_degree: [3, 3]
+  texture_scaling_factor: 1
+  use_pos_enc: true
+
+# Learning Rates
+learning_rates:
+  nurbs_weight_lr: 0.0005
+
+# Loss Weights and Regularization
+loss_weights:
+  discrepancy_from_iter: 7000
+  deviation_reg_from: 1550000
+  eikonal_from_iter: 1
+  lambda_eikonal: 0.001  # 1e-3
+  lambda_opacity_entropy: 0.001
+  lambda_uv_normal_consistency: 0.0
+  quat_deviation_lambda: 0.01  # 1e-2
+  scale_deviation_lambda: 0.001  # 1e-3
+
+# Refinement and Activation Stages
+refinement_stages:
+  grid_consistency_from: 1
+  grid_consistency_patch_size: 3
+  refine_opacity_from: 1
+  refine_rotations_from: 1
+  refine_scaling_from: 1
+  refine_weights_from: 1
+
+# Opacity and Entropy Settings
+opacity_entropy:
+  entropy_patch_size: 3
+  opacity_base_level: 0
+  opacity_curvature_offset: 3.0
+  opacity_curvature_sensitivity: 5.0
+  opacity_set_value: 0.01
+
+# Coarse-to-Fine Sampling Parameters
+sampling:
+  curvature_weight: 0.005
+  min_partition_weight: 0.05
+  min_samples_per_partition: 1
+  num_resampling: 3
+  partition_ema_alpha: 0.9
+  partition_weight_ema_alpha: 1
+  resample_every: 300
+  samples_per_partition: 4
+  start_resampling_at: 70200
+  stop_resampling_after: 1  # High value to effectively disable stopping
+
+# Refinement Flags
+refinement_flags:
+  refine_opacities: true
+  refine_rotations: true
+  refine_scales: true
+  refine_weights: true
