@@ -18,8 +18,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from model.modules.ModelState import ModelState
-    from model.modules.basis import BasisFunction
+    from modules.ModelState import ModelState
+    from modules.basis import BasisFunction
 
 
 class ControlFeature(nn.Module):

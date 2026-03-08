@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from model.modules.KnotSurface import SplineModel
+    from modules.KnotSurface import SplineModel
 
 
 # =========================================================================

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from modules.ModelState import ModelState
     from modules.basis import BasisFunction
 
+
 class RotationControl(ControlFeature):
     """
     Learnable rotation control grid (unit quaternions w, x, y, z).

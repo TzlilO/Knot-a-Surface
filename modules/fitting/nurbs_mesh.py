@@ -21,8 +21,8 @@ from tqdm import tqdm
 # Avoid circular imports - these are used for type hints only
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from model.modules.fitting.multisurf import MultiSurfaceSplineModel
-    from model.modules import SplineModel
+    from modules.multisurf import MultiSurfaceSplineModel
+    from modules import SplineModel
 
 
 @dataclass
@@ -338,7 +338,6 @@ class NURBSMeshGenerator:
 
         # Compute basis functions for this chunk
         # Using the surface's basis computation
-        from model.modules.basis import compute_1d_basis
 
         u_vals = surface.uv_sampler.interval_u # = uv_chunk[: , 0].reshape(chunk_Us, Vs)[:, 0]  # [chunk_Us]
         v_vals = surface.uv_sampler.interval_v # = uv_chunk[:, 1].reshape(chunk_Us, Vs)[0, :]  # [Vs]
@@ -404,7 +403,7 @@ class NURBSMeshGenerator:
 
         # Compute basis functions for this chunk
         # Using the surface's basis computation
-        from model.modules.basis import compute_1d_basis
+        # from model.modules.basis import compute_1d_basis
 
         u_vals = surface.uv_sampler.interval_u # = uv_chunk[: , 0].reshape(chunk_Us, Vs)[:, 0]  # [chunk_Us]
         v_vals = surface.uv_sampler.interval_v # = uv_chunk[:, 1].reshape(chunk_Us, Vs)[0, :]  # [Vs]

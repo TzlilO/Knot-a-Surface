@@ -8,8 +8,8 @@ import torch
 from .base import ControlFeature
 
 if TYPE_CHECKING:
-    from model.modules.ModelState import ModelState
-    from model.modules.basis import BasisFunction
+    from modules.ModelState import ModelState
+    from modules.basis import BasisFunction
 
 
 class PositionControl(ControlFeature):
