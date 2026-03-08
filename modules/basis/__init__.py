@@ -1102,8 +1102,8 @@ class BasisFunction(nn.Module):
         self.knot_v = knot_v
     def forward(self, samples_uv, knot_u, knot_v, **kwargs):
         self.clear()
-        compute = compute_bases_uv_diff if self.state.opt.optimize_intervals else compute_bases_uv
-        # compute = compute_bases_uv_diff
+        use_sparse = self.state.use_sparse_basis or self.state.opt.optimize_intervals
+        compute = compute_bases_uv_diff if use_sparse else compute_bases_uv
         buv = compute(
             *samples_uv,
             knot_u,
@@ -1188,7 +1188,8 @@ class BasisFunction(nn.Module):
         return self._Buv
 
     def recompute(self):
-        compute = compute_bases_uv_diff if self.state.opt.optimize_intervals else compute_bases_uv
+        use_sparse = self.state.use_sparse_basis or self.state.opt.optimize_intervals
+        compute = compute_bases_uv_diff if use_sparse else compute_bases_uv
         self.clear()
         basis_data = compute(
             self.uv_sampler.interval_u,

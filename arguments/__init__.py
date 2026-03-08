@@ -219,6 +219,7 @@ class NurbsOptimizationParams(OptimizationParams):
         self.refine_weights = True
         self.optimize_intervals = False
         self.optimize_knots = False
+        self.use_sparse_basis = True  # Use gather-based sparse B-spline interpolation
 
         self.residual_scaling = False and self.refine_scales
         self.residual_rots = False and self.refine_rotations

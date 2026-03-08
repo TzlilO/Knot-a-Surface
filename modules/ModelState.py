@@ -313,6 +313,12 @@ class ModelState:
     @property
     def use_bmm(self):
         return False
+
+    @property
+    def use_sparse_basis(self) -> bool:
+        """Use gather-based sparse B-spline interpolation instead of dense matmul."""
+        return getattr(self.opt, 'use_sparse_basis', True)
+
     @property
     def full_basis(self):
         return self._use_full_grid
