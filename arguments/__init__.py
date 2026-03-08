@@ -224,8 +224,8 @@ class NurbsOptimizationParams(OptimizationParams):
         self.residual_rots = False and self.refine_rotations
         self.residual_opacity = False and self.refine_opacities
 
-        self.use_spatial_partitioning = True  # For subdivision
-        self.use_spatial_partitioning_prune = True  # For pruning
+        self.use_spatial_partitioning = False  # For subdivision
+        self.use_spatial_partitioning_prune = False  # For pruning
         self.num_partitions = 8  # Auto-adjust based on grid size
         self.num_partitions_prune = 4  # Different for pruning
         super().__init__(parser)

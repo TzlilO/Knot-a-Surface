@@ -7,13 +7,12 @@ import torch.nn.functional as F
 
 from .base import ControlFeature
 from .quaternion_utils import quaternion_mean, slerp
-from model.spline_formulas.operations import uv_tangent
+from modules.spline_formulas import uv_tangent
 
 if TYPE_CHECKING:
     from .position import PositionControl
-    from model.modules.ModelState import ModelState
-    from model.modules.basis import BasisFunction
-
+    from modules.ModelState import ModelState
+    from modules.basis import BasisFunction
 
 class RotationControl(ControlFeature):
     """

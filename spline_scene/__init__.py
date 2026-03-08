@@ -289,7 +289,7 @@ class SplineScene:
             decomposition_mode=decomposition_mode,
             k_neighbors=8,
             std_ratio=2.0,
-            min_cluster_size=8,
+            min_cluster_size=64,
         )
 
         # decomposition_mode = DECOMPOSITIONS[config.decomposition_mode]

@@ -408,7 +408,7 @@ class SplineModel(nn.Module):
                         self.state.H * self.state.W, scaling_ch)
 
         # scaling_init = self.scaling_inverse_activation((torch.ones((H * W, scaling_ch), device=self.device) / (self.spatial_lr_scale * (self.H * self.W))).sqrt()).requires_grad_(True).contiguous()
-        scaling_init = self.scaling_inverse_activation(scaling_init).requires_grad_(True).contiguous()
+        scaling_init = self.scaling_inverse_activation(scaling_init.clamp_min(1e-10)).requires_grad_(True).contiguous()
         self.scaling = ScalingControl(self.state, scaling_init, self.basis, name=scaling_name)
 
     def _init_rots(self, dSu, dSv, H, W, rotation_name=None, **kwargs):
@@ -1219,7 +1219,7 @@ class SplineModel(nn.Module):
 
         # Eikonal loss:  penalize deviation from unit length
         # Using (||n|| - 1)^2 for smooth gradients
-        eikonal_error = (norms - 1.0).pow(2)
+        eikonal_error = (norms - 1.0).abs()
         eikonal_error = eikonal_error if weight is None else eikonal_error.reshape(-1) * weight.reshape(-1)
 
         if reduction == 'mean':
@@ -1780,28 +1780,28 @@ class SplineModel(nn.Module):
         # U Candidates
         for i in range(len(scores_u)):
             score = scores_u[i].item() * weight_u
-            # if score > self.state.opt.densify_grad_threshold:
-            val = (unique_u[i] + unique_u[i + 1]) / 2.0
-            candidates.append({
-                'score': score,
-                'val': val.item(),
-                'type': 'u',
-                'index': i,
-                'partition': None  # No partition info
-            })
+            if score > self.state.opt.densify_grad_threshold and score > self.state.opt.densify_abs_grad_threshold:
+                val = (unique_u[i] + unique_u[i + 1]) / 2.0
+                candidates.append({
+                    'score': score,
+                    'val': val.item(),
+                    'type': 'u',
+                    'index': i,
+                    'partition': None  # No partition info
+                })
 
         # V Candidates
         for i in range(len(scores_v)):
             score = scores_v[i].item() * weight_v
-            # if score > self.state.opt.densify_grad_threshold:
-            val = (unique_v[i] + unique_v[i + 1]) / 2.0
-            candidates.append({
-                'score': score,
-                'val': val.item(),
-                'type': 'v',
-                'index': i,
-                'partition': None
-            })
+            if score > self.state.opt.densify_grad_threshold and score > self.state.opt.densify_abs_grad_threshold:
+                val = (unique_v[i] + unique_v[i + 1]) / 2.0
+                candidates.append({
+                    'score': score,
+                    'val': val.item(),
+                    'type': 'v',
+                    'index': i,
+                    'partition': None
+                })
 
         return candidates
 
