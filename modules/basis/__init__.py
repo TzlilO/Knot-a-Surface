@@ -7,7 +7,7 @@ from typing import Tuple, Optional, Dict
 
 from torch import nn as nn
 
-from modules.basis.basis_matrix import DifferentiableBSplineBasis
+from modules.basis.basis_matrix import DifferentiableBSplineBasis, SparseBasis
 from modules.basis.cox_de_boor import compute_all_derivatives
 from modules.spline_utils import BasisFuncs
 
@@ -71,24 +71,27 @@ def grid_bspline_basis_matrices(samples, knots=None, num_control_points=4, degre
     # d_weights_scaled = d_weights * dt_local_du.unsqueeze(-1)
     # d2_weights_scaled = d2_weights * (dt_local_du.unsqueeze(-1) ** 2)
 
-    # --- 4. Construct the final sparse basis matrices ---
-    N = torch.zeros(u.shape[0], num_control_points, device=device)
-    dN = torch.zeros(u.shape[0], num_control_points, device=device)
-    d2N = torch.zeros(u.shape[0], num_control_points, device=device)
-
+    # --- 4. Construct the final sparse basis representations ---
     # The 4 influencing control points for each sample start at segment_idx - degree
     indices = (segment_idx - degree).unsqueeze(-1) + torch.arange(4, device=device).unsqueeze(0)
 
-    # Scatter the weights and their derivatives into the correct locations
-    # N.scatter(-1, indices, weights)
-    N = torch.scatter(N, -1, indices, weights)
-    dN = torch.scatter(dN, -1, indices, d_weights)
-    d2N = torch.scatter(d2N, -1, indices, d2_weights)
+    # Reshape back to original dimensions + local-support dim
+    # E.g. [Us, Vs, 4]
+    output_shape = original_shape + (4,)
+    indices_out = indices.reshape(output_shape)
+    weights_out = weights.reshape(output_shape)
+    d_weights_out = d_weights.reshape(output_shape)
+    d2_weights_out = d2_weights.reshape(output_shape)
 
-    # Reshape back to original dimensions + control points dim
-    # E.g. [Us, Vs, num_control_points]
-    output_shape = original_shape + (num_control_points,)
-    return N.reshape(output_shape), dN.reshape(output_shape), d2N.reshape(output_shape)
+    # Flatten spatial dims for SparseBasis (requires 2-D [N, p+1])
+    N_flat = 1
+    for s in original_shape:
+        N_flat *= s
+    return (
+        SparseBasis(weights_out.reshape(N_flat, 4), indices_out.reshape(N_flat, 4), num_control_points),
+        SparseBasis(d_weights_out.reshape(N_flat, 4), indices_out.reshape(N_flat, 4), num_control_points),
+        SparseBasis(d2_weights_out.reshape(N_flat, 4), indices_out.reshape(N_flat, 4), num_control_points),
+    )
 
 
 def generate_bspline_basis_matrices_d(
@@ -469,20 +472,16 @@ def generate_bspline_basis_matrices(samples, knots=None, num_control_points=4, d
     # d_weights_scaled = d_weights * dt_local_du.unsqueeze(-1)
     # d2_weights_scaled = d2_weights * (dt_local_du.unsqueeze(-1) ** 2)
 
-    # --- 4. Construct the final sparse basis matrices ---
-    N = torch.zeros(u.shape[0], num_control_points, device=device)
-    dN = torch.zeros(u.shape[0], num_control_points, device=device)
-    d2N = torch.zeros(u.shape[0], num_control_points, device=device)
-
+    # --- 4. Construct the final sparse basis representations ---
     # The 4 influencing control points for each sample start at segment_idx - degree
     indices = ((segment_idx - degree).unsqueeze(-1) + torch.arange(4, device=device).unsqueeze(0))#.clamp(min=degree, max=num_control_points - 1)
 
-    # Scatter the weights and their derivatives into the correct locations
-    # N.scatter(-1, indices, weights)
-    N = torch.scatter(N, -1, indices, weights)
-    dN = torch.scatter(dN, -1, indices, d_weights)
-    d2N = torch.scatter(d2N, -1, indices, d2_weights)
-    return N, dN, d2N
+    # Return SparseBasis objects instead of scattering to dense
+    return (
+        SparseBasis(weights, indices, num_control_points),
+        SparseBasis(d_weights, indices, num_control_points),
+        SparseBasis(d2_weights, indices, num_control_points),
+    )
 
 
 def find_span_vectorized(
@@ -1050,7 +1049,10 @@ class BasisFunction(nn.Module):
     @property
     def contract_path(self):
         if self.state.full_basis:
-            contract_path = 'fh,hwc,fw -> fc' if self.bu.ndim == 2 else 'uvh,hwc,uvw->uvc'# 'uvh,uvw,hwc->uvc'
+            bu = self._basis_funcs.bu
+            # SparseBasis is always logically 2-D; use the flat separable path.
+            bu_ndim = bu.ndim if not isinstance(bu, SparseBasis) else 2
+            contract_path = 'fh,hwc,fw -> fc' if bu_ndim == 2 else 'uvh,hwc,uvw->uvc'
             return contract_path
         else:
             return 'uh,hwc,vw->uvc'
@@ -1118,6 +1120,11 @@ class BasisFunction(nn.Module):
     def set_optimal_path(self):
         if not hasattr(self, '_optimal_path'):
             try:
+                # Skip einsum path optimisation when using sparse basis —
+                # the gather path is used instead and does not rely on oe.contract.
+                if isinstance(self._basis_funcs.bu, SparseBasis) or isinstance(self._basis_funcs.bv, SparseBasis):
+                    self._optimal_path = self.contract_path
+                    return
                 self._optimal_path, _ = oe.contract_path(self.contract_path,
                                                          self.bu.shape,
                                                          self.bv.shape,
@@ -1198,7 +1205,12 @@ class BasisFunction(nn.Module):
     def buv(self):
         if self._basis_funcs.bu is None:
             self.recompute()
-        return oe.contract('...h,...w->...hw', self.bu.T, self.bv.T)
+        bu = self._basis_funcs.bu
+        bv = self._basis_funcs.bv
+        # Convert to dense if sparse (oe.contract requires plain tensors)
+        bu_t = bu.to_dense().T if isinstance(bu, SparseBasis) else bu.T
+        bv_t = bv.to_dense().T if isinstance(bv, SparseBasis) else bv.T
+        return oe.contract('...h,...w->...hw', bu_t, bv_t)
     @property
     def bu(self):
         if self._basis_funcs.bu is None:

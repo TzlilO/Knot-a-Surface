@@ -198,8 +198,12 @@ class UnifiedInterpolator:
 
         # === 2. Single batched interpolation ===
         # Use einsum with pre-computed basis
+        from modules.basis.basis_matrix import SparseBasis
         bu = surface.basis.bu  # (Us, H) or (Us, Vs, H)
         bv = surface.basis.bv  # (Vs, W) or (Us, Vs, W)
+        # Convert to dense if sparse (oe.contract requires plain tensors)
+        bu = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+        bv = bv.to_dense() if isinstance(bv, SparseBasis) else bv
 
         # Determine einsum path based on basis shape
         # if bu.dim() == 2:
@@ -831,17 +835,21 @@ class MultiSurfaceSplineModel(nn.Module):
 
     @property
     def all_basis_u(self) -> torch.Tensor:
+        from modules.basis.basis_matrix import SparseBasis
         basis_u_list = []
         for surface, active in zip(self.surfaces, self._active_surfaces):
             if active:
-                basis_u_list.append(surface.basis.bu)
+                bu = surface.basis.bu
+                basis_u_list.append(bu.to_dense() if isinstance(bu, SparseBasis) else bu)
         return torch.stack(basis_u_list, dim=0) if basis_u_list else torch.empty(0, surface.basis.bu.shape[1])
     @property
     def all_basis_v(self) -> torch.Tensor:
+        from modules.basis.basis_matrix import SparseBasis
         basis_v_list = []
         for surface, active in zip(self.surfaces, self._active_surfaces):
             if active:
-                basis_v_list.append(surface.basis.bv)
+                bv = surface.basis.bv
+                basis_v_list.append(bv.to_dense() if isinstance(bv, SparseBasis) else bv)
         return torch.stack(basis_v_list, dim=0) if basis_v_list else torch.empty(0, surface.basis.bv.shape[1])
 
     @property

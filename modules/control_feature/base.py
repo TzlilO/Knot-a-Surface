@@ -17,6 +17,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from modules.basis.basis_matrix import SparseBasis
+
 if TYPE_CHECKING:
     from modules.ModelState import ModelState
     from modules.basis import BasisFunction
@@ -154,16 +156,21 @@ class ControlFeature(nn.Module):
         if self.cache_valid:
             return self._cache.reshape(-1, self.feature_channels)
 
-        if self.state.use_bmm:
-            prod = self._interpolate_bmm(
-                self.basis.bu, self.basis.bv, self.features
-            ).contiguous()
+        bu, bv = self.basis.bu, self.basis.bv
+
+        if isinstance(bu, SparseBasis) and isinstance(bv, SparseBasis):
+            prod = self._interpolate_gather(bu, bv, self.features).contiguous()
+        elif self.state.use_bmm:
+            prod = self._interpolate_bmm(bu, bv, self.features).contiguous()
         else:
+            # oe.contract requires dense tensors
+            bu_dense = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+            bv_dense = bv.to_dense() if isinstance(bv, SparseBasis) else bv
             prod = oe.contract(
                 self.basis.contract_path,
-                self.basis.bu,
+                bu_dense,
                 self.features,
-                self.basis.bv,
+                bv_dense,
                 optimize=self.basis.optimal_path,
             ).contiguous()
 
@@ -188,6 +195,41 @@ class ControlFeature(nn.Module):
         step1 = step1.reshape(Us, W, C).permute(0, 2, 1).reshape(Us * C, W)
         step2 = torch.mm(step1, Bv.T)                       # [Us*C, Vs]
         return step2.reshape(Us, C, -1).permute(0, 2, 1).contiguous()
+
+    def _interpolate_gather(
+        self,
+        sbu: 'SparseBasis',
+        sbv: 'SparseBasis',
+        ctrl_points: torch.Tensor,
+    ) -> torch.Tensor:
+        """Gather-based separable interpolation exploiting B-spline local support.
+
+        Avoids dense [N, num_control] matrix allocation by gathering only the
+        p+1 non-zero control points for each sample.
+
+        Args:
+            sbu: SparseBasis for U — values/indices shape [Us, p+1].
+            sbv: SparseBasis for V — values/indices shape [Vs, p+1].
+            ctrl_points: Control-point grid [H, W, C].
+
+        Returns:
+            Interpolated surface [Us, Vs, C].
+        """
+        # Step 1: Gather along u — for each u sample gather p+1 rows from P.
+        # ctrl_points[sbu.indices]: [Us, p+1, W, C]
+        P_gathered_u = ctrl_points[sbu.indices]
+
+        # Weighted sum along local u support: [Us, W, C]
+        step1 = (sbu.values[:, :, None, None] * P_gathered_u).sum(dim=1)
+
+        # Step 2: Gather along v — for each v sample gather p+1 columns.
+        # step1[:, sbv.indices]: [Us, Vs, p+1, C]
+        step1_gathered = step1[:, sbv.indices]
+
+        # Weighted sum along local v support: [Us, Vs, C]
+        result = (sbv.values[None, :, :, None] * step1_gathered).sum(dim=2)
+
+        return result
 
     # ------------------------------------------------------------------
     # Blending (alpha for temporal smoothing after subdivision)

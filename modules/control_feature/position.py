@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 import opt_einsum as oe
 import torch
 
+from modules.basis.basis_matrix import SparseBasis
 from .base import ControlFeature
 
 if TYPE_CHECKING:
@@ -46,14 +47,18 @@ class PositionControl(ControlFeature):
             cpts = cpts * self.weights.features
             denom = self.weights.interpolate_samples()
 
-        if self.state.use_bmm:
-            prod = self._interpolate_bmm(
-                self.basis.bu, self.basis.bv, cpts
-            ).contiguous()
+        bu, bv = self.basis.bu, self.basis.bv
+
+        if isinstance(bu, SparseBasis) and isinstance(bv, SparseBasis):
+            prod = self._interpolate_gather(bu, bv, cpts).contiguous()
+        elif self.state.use_bmm:
+            prod = self._interpolate_bmm(bu, bv, cpts).contiguous()
         else:
+            bu_dense = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+            bv_dense = bv.to_dense() if isinstance(bv, SparseBasis) else bv
             prod = oe.contract(
                 self.basis.contract_path,
-                self.basis.bu, cpts, self.basis.bv,
+                bu_dense, cpts, bv_dense,
                 optimize=self.basis.optimal_path,
             ).contiguous()
 
@@ -140,12 +145,16 @@ class PositionControl(ControlFeature):
             cpts = cpts * self.weights.features
             denom = self.weights.interpolate_samples()
 
-        if self.state.use_bmm:
+        if isinstance(bu, SparseBasis) and isinstance(bv, SparseBasis):
+            prod = self._interpolate_gather(bu, bv, cpts).contiguous()
+        elif self.state.use_bmm:
             prod = self._interpolate_bmm(bu, bv, cpts).contiguous()
         else:
+            bu_dense = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+            bv_dense = bv.to_dense() if isinstance(bv, SparseBasis) else bv
             prod = oe.contract(
                 self.basis.contract_path,
-                bu, cpts, bv,
+                bu_dense, cpts, bv_dense,
                 optimize=self.basis.optimal_path,
             ).contiguous()
 

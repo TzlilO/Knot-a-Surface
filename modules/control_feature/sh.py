@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import opt_einsum as oe
 
+from modules.basis.basis_matrix import SparseBasis
 from .base import ControlFeature
 
 
@@ -46,11 +47,18 @@ class SHControl(ControlFeature):
 
         cpts = self.features
 
-        interpolated = oe.contract(
-            self.basis.contract_path,
-            self.basis.bu, cpts, self.basis.bv,
-            optimize=self.basis.optimal_path,
-        ).contiguous()
+        bu, bv = self.basis.bu, self.basis.bv
+
+        if isinstance(bu, SparseBasis) and isinstance(bv, SparseBasis):
+            interpolated = self._interpolate_gather(bu, bv, cpts).contiguous()
+        else:
+            bu_dense = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+            bv_dense = bv.to_dense() if isinstance(bv, SparseBasis) else bv
+            interpolated = oe.contract(
+                self.basis.contract_path,
+                bu_dense, cpts, bv_dense,
+                optimize=self.basis.optimal_path,
+            ).contiguous()
 
         if self.sh_component == 'dc':
             reshaped = interpolated.view(-1, 1, 3)

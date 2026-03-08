@@ -362,6 +362,7 @@ def _classify_patches(
         backface_v: [coarse_v] fraction of backfacing samples per V-col
     """
     from model.modules.basis import generate_bspline_basis_matrices
+    from modules.basis.basis_matrix import SparseBasis
     import opt_einsum as oe
 
     device = camera.camera_center.device
@@ -382,12 +383,18 @@ def _classify_patches(
         v_coarse, knots=knot_v, num_control_points=W, degree=3, device=device
     )
 
+    # Convert SparseBasis to dense for oe.contract
+    bu_dense = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+    bv_dense = bv.to_dense() if isinstance(bv, SparseBasis) else bv
+    dbu_dense = dbu.to_dense() if isinstance(dbu, SparseBasis) else dbu
+    dbv_dense = dbv.to_dense() if isinstance(dbv, SparseBasis) else dbv
+
     ctrl_xyz = surface.position.control_features.detach().view(H, W, -1)[..., :3]
     path = 'uh,hwc,vw->uvc'
 
-    S = oe.contract(path, bu, ctrl_xyz, bv)     # [Nu, Nv, 3]
-    dSu = oe.contract(path, dbu, ctrl_xyz, bv)  # [Nu, Nv, 3]
-    dSv = oe.contract(path, bu, ctrl_xyz, dbv)  # [Nu, Nv, 3]
+    S = oe.contract(path, bu_dense, ctrl_xyz, bv_dense)     # [Nu, Nv, 3]
+    dSu = oe.contract(path, dbu_dense, ctrl_xyz, bv_dense)  # [Nu, Nv, 3]
+    dSv = oe.contract(path, bu_dense, ctrl_xyz, dbv_dense)  # [Nu, Nv, 3]
 
     # Compute normals
     normals = torch.cross(dSu, dSv, dim=-1)  # [Nu, Nv, 3]

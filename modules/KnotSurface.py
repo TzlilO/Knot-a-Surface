@@ -294,9 +294,18 @@ class SplineModel(nn.Module):
 
             self.basis.recompute()
             contract_path = self.basis.contract_path
-            dSu = oe.contract(contract_path, self.basis.dbu, ctrl_pts, self.basis.bv).reshape(H, W, -1)# / self.Us
+            from modules.basis.basis_matrix import SparseBasis
+            dbu = self.basis.dbu
+            bv = self.basis.bv
+            bu = self.basis.bu
+            dbv = self.basis.dbv
+            dbu_dense = dbu.to_dense() if isinstance(dbu, SparseBasis) else dbu
+            bv_dense = bv.to_dense() if isinstance(bv, SparseBasis) else bv
+            bu_dense = bu.to_dense() if isinstance(bu, SparseBasis) else bu
+            dbv_dense = dbv.to_dense() if isinstance(dbv, SparseBasis) else dbv
+            dSu = oe.contract(contract_path, dbu_dense, ctrl_pts, bv_dense).reshape(H, W, -1)# / self.Us
 
-            dSv = oe.contract(contract_path, self.basis.bu, ctrl_pts, self.basis.dbv).reshape(H, W, -1)#  / self.Vs
+            dSv = oe.contract(contract_path, bu_dense, ctrl_pts, dbv_dense).reshape(H, W, -1)#  / self.Vs
 
             self._init_position(pos_init, weights_init)
             self._init_opacity(H, W)

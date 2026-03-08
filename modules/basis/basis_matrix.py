@@ -5,6 +5,75 @@ import torch.nn as nn
 from typing import Tuple, Optional
 
 
+class SparseBasis:
+    """
+    Sparse local representation of B-spline basis functions.
+
+    Stores only the p+1 non-zero values per sample point rather than
+    scattering to a dense [N, num_control] matrix.  For cubic B-splines
+    (p=3) this reduces basis storage by ~96 % when num_control is large.
+
+    Attributes:
+        values:      [N, p+1]  local non-zero basis values (carries gradients).
+        indices:     [N, p+1]  corresponding control-point indices (int64, no grad).
+        num_control: Total number of control points (needed for to_dense()).
+    """
+
+    def __init__(self, values: torch.Tensor, indices: torch.Tensor, num_control: int):
+        self.values = values
+        self.indices = indices
+        self.num_control = num_control
+
+    # ------------------------------------------------------------------
+    # Dense conversion (backward-compatibility fallback)
+    # ------------------------------------------------------------------
+
+    def to_dense(self, num_control: int = None) -> torch.Tensor:
+        """Scatter to dense [N, num_control] matrix.
+
+        Args:
+            num_control: Override the stored num_control when provided.
+
+        Returns:
+            Dense [N, num_control] basis matrix with gradient flow preserved.
+        """
+        nc = num_control if num_control is not None else self.num_control
+        N = self.values.shape[0]
+        device = self.values.device
+        dtype = self.values.dtype
+        basis = torch.zeros(N, nc, device=device, dtype=dtype)
+        return basis.scatter_add(1, self.indices, self.values)
+
+    # ------------------------------------------------------------------
+    # Duck-typing helpers so existing code that checks .shape / .ndim
+    # / .isnan() continues to work without dense conversion.
+    # ------------------------------------------------------------------
+
+    @property
+    def shape(self) -> Tuple[int, int]:
+        """Logical dense shape (N, num_control)."""
+        return (self.values.shape[0], self.num_control)
+
+    @property
+    def ndim(self) -> int:
+        return 2
+
+    def isnan(self) -> torch.Tensor:
+        """Return a boolean tensor indicating NaN entries in the values."""
+        return self.values.isnan()
+
+    @property
+    def T(self) -> torch.Tensor:
+        """Transpose — converts to dense first (needed for legacy oe.contract paths)."""
+        return self.to_dense().T
+
+    def __repr__(self) -> str:
+        return (
+            f"SparseBasis(N={self.values.shape[0]}, p+1={self.values.shape[1]}, "
+            f"num_control={self.num_control}, device={self.values.device})"
+        )
+
+
 class DifferentiableBSplineBasis(nn.Module):
     """
     Matrix-form B-spline basis evaluation with full gradient support.
@@ -129,13 +198,13 @@ class DifferentiableBSplineBasis(nn.Module):
             knots_v: torch.Tensor,  # [M_v] knot vector
             num_control_u: int,  # H
             num_control_v: int  # W
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple['SparseBasis', 'SparseBasis']:
         """
         Compute separable basis matrices for grid control points using matrix form.
 
         Returns:
-            bu: Basis matrix in U [Us, H]
-            bv: Basis matrix in V [Vs, W]
+            bu: SparseBasis in U — values [Us, p+1], indices [Us, p+1]
+            bv: SparseBasis in V — values [Vs, p+1], indices [Vs, p+1]
         """
         bu = self._compute_basis_matrix_form(u, knots_u, num_control_u, self.degree)
         bv = self._compute_basis_matrix_form(v, knots_v, num_control_v, self.degree)
@@ -298,8 +367,8 @@ class DifferentiableBSplineBasis(nn.Module):
             knots: torch.Tensor,  # [M]
             num_control: int,
             degree: int
-    ) -> torch.Tensor:
-        """Fully vectorized B-spline basis evaluation with Oslo-based non-uniform adjustment."""
+    ) -> 'SparseBasis':
+        """Fully vectorized B-spline basis evaluation — returns SparseBasis."""
         N = t.shape[0]
         device = t.device
         dtype = t.dtype
@@ -328,27 +397,12 @@ class DifferentiableBSplineBasis(nn.Module):
             # Uniform case: single matrix for all samples
             N_local = U @ M  # [N, degree+1]
 
-        # Scatter to global basis matrix [N, num_control]
-        basis = torch.zeros(N, num_control, device=device, dtype=dtype)
+        # Compute local control-point indices [N, degree+1]
+        control_indices = (
+            spans.unsqueeze(1) - degree + torch.arange(degree + 1, device=device)
+        ).clamp(0, num_control - 1)
 
-        # Vectorized scatter using advanced indexing
-        sample_indices = torch.arange(N, device=device).unsqueeze(1).expand(-1, degree + 1)
-        control_indices = (spans.unsqueeze(1) - degree + torch.arange(degree + 1, device=device)).clamp(
-            0, num_control - 1
-        )
-
-        # Use index_add_ for efficient accumulation
-        flat_sample_idx = sample_indices.reshape(-1)
-        flat_control_idx = control_indices.reshape(-1)
-        flat_values = N_local.reshape(-1)
-
-        # Convert 2D indices to 1D
-        flat_indices = flat_sample_idx * num_control + flat_control_idx
-
-        # Accumulate
-        basis_flat = basis.view(-1)
-        basis_flat.index_add_(0, flat_indices, flat_values)
-        return basis_flat.view(N, num_control)
+        return SparseBasis(N_local, control_indices, num_control)
 
 
     def _compute_basis_matrix_formm(
@@ -400,8 +454,8 @@ class DifferentiableBSplineBasis(nn.Module):
             knots: torch.Tensor,  # [M]
             num_control: int,
             degree: int
-    ) -> torch.Tensor:
-        """Fully vectorized B-spline basis evaluation."""
+    ) -> 'SparseBasis':
+        """Fully vectorized first-derivative B-spline basis evaluation — returns SparseBasis."""
         N = t.shape[0]
         device = t.device
         dtype = t.dtype
@@ -423,17 +477,12 @@ class DifferentiableBSplineBasis(nn.Module):
         # Compute ALL local basis values [N, degree+1]
         N_local = U @ M_prime
 
-        # Scatter to global basis matrix [N, num_control]
-        basis = torch.zeros(N, num_control, device=device, dtype=dtype)
+        # Compute local control-point indices [N, degree+1]
+        control_indices = (
+            spans.unsqueeze(1) - degree + torch.arange(degree + 1, device=device)
+        ).clamp(0, num_control - 1)
 
-        # Vectorized scatter using advanced indexing
-        sample_indices = torch.arange(N, device=device).unsqueeze(1).expand(-1, degree + 1)
-        control_indices = (spans.unsqueeze(1) - degree + torch.arange(degree + 1, device=device)).clamp(0,
-                                                                                                        num_control - 1)
-
-        basis = basis.scatter_add(1, control_indices, N_local)
-
-        return basis
+        return SparseBasis(N_local, control_indices, num_control)
 
 
     def _compute_d2basis_matrix_form(
@@ -442,8 +491,8 @@ class DifferentiableBSplineBasis(nn.Module):
             knots: torch.Tensor,  # [M]
             num_control: int,
             degree: int
-    ) -> torch.Tensor:
-        """Fully vectorized B-spline basis evaluation."""
+    ) -> 'SparseBasis':
+        """Fully vectorized second-derivative B-spline basis evaluation — returns SparseBasis."""
         N = t.shape[0]
         device = t.device
         dtype = t.dtype
@@ -465,17 +514,12 @@ class DifferentiableBSplineBasis(nn.Module):
         # Compute ALL local basis values [N, degree+1]
         N_local = U @ M_prime
 
-        # Scatter to global basis matrix [N, num_control]
-        basis = torch.zeros(N, num_control, device=device, dtype=dtype)
+        # Compute local control-point indices [N, degree+1]
+        control_indices = (
+            spans.unsqueeze(1) - degree + torch.arange(degree + 1, device=device)
+        ).clamp(0, num_control - 1)
 
-        # Vectorized scatter using advanced indexing
-        sample_indices = torch.arange(N, device=device).unsqueeze(1).expand(-1, degree + 1)
-        control_indices = (spans.unsqueeze(1) - degree + torch.arange(degree + 1, device=device)).clamp(0,
-                                                                                                        num_control - 1)
-
-        basis = basis.scatter_add(1, control_indices, N_local)
-
-        return basis
+        return SparseBasis(N_local, control_indices, num_control)
     def _power_basis(self, u: torch.Tensor, degree: int) -> torch.Tensor:
         """
         Compute power basis vectors [1, u, u², u³, ...].
