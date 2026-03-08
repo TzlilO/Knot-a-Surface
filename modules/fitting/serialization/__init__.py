@@ -1,11 +1,11 @@
 import torch
 from typing import Dict, Any, Optional
-from model.modules.KnotSurface import ModelState, SplineModel, BasisFunction, PositionControl, RotationControl, ScalingControl, \
+from modules.KnotSurface import ModelState, SplineModel, BasisFunction, PositionControl, RotationControl, ScalingControl, \
     OpacityControl, SHControl, SHControlWrapper, SamplingMode
-from model.modules.sampling.SamplerUV import SamplerUV#, SoftmaxIntervalSampler
-from model.modules.knotvector import KnotVector
-from model.modules.fitting.multisurf import MultiSurfaceSplineModel
-from model.modules.fitting.nurbs_from_pointcloud import DecompositionMode
+from modules.sampling.SamplerUV import SamplerUV#, SoftmaxIntervalSampler
+from modules.knotvector import KnotVector
+from modules.fitting.multisurf import MultiSurfaceSplineModel
+from modules.fitting.nurbs_from_pointcloud import DecompositionMode
 from utils.general_utils import inverse_sigmoid
 
 
