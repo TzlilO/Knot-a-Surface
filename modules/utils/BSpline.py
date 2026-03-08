@@ -22,8 +22,8 @@ from geomdl import BSpline, fitting
 from geomdl import knotvector
 import torch.nn.functional as F
 from arguments import ModelParams, NurbsOptimizationParams
-from model.Spline import SplineMLP
-from model.spline_utils import Gaussians, stitch_control_features, grid_to_patches, grid_upscale, \
+from Spline import SplineMLP
+from spline_utils import Gaussians, stitch_control_features, grid_to_patches, grid_upscale, \
     get_basis_functions, generate_bspline_surface_grid, process_feature_grid, get_parameter_vectors, \
     normals_to_quaternions, subdivide_uv_params, subdivision, make_clamped_uniform_knots2, \
     subdivide_patch_batch, compare_split_unsplit, refine_mask_morphology, bernstein_basis_4, bernstein_derivative_4, \

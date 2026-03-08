@@ -4,7 +4,7 @@ from modules.KnotSurface import ModelState, SplineModel, BasisFunction, Position
     OpacityControl, SHControl, SHControlWrapper, SamplingMode
 from modules.sampling.SamplerUV import SamplerUV#, SoftmaxIntervalSampler
 from modules.knotvector import KnotVector
-from modules.fitting.multisurf import MultiSurfaceSplineModel
+from modules.multisurf import MultiSurfaceSplineModel
 from modules.fitting.nurbs_from_pointcloud import DecompositionMode
 from utils.general_utils import inverse_sigmoid
 

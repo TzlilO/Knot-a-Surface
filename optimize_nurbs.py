@@ -1612,6 +1612,7 @@ def main():
     test_iterations = list(range(0, 30000, 1000))
     save_iterations = list(range(first_iter, 30000//cycle, eval_interval))
     evals = [15_000, 21_000, 25_000, 30_000]
+    evals.append(1)
     evals.append(9_000)
     evals.append(13_000)
     evaluation_iterations = checkpoint_iterations = save_iterations = evals

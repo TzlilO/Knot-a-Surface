@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple, Dict
 from enum import Enum
 
-from model.modules.decompose import DecompPhase
-from model.modules.fitting.nurbs_from_pointcloud import DecompositionMode
+from modules.decompose import DecompPhase
+from modules.fitting.nurbs_from_pointcloud import DecompositionMode
 
 # ======================================================================
 # Step 1: Extend the SegmentationMode enum
