@@ -1757,42 +1757,52 @@ class NURBSSurfaceFitter:
             res_v: int,
             is_spherical: bool = False,
     ) -> NURBSSurfaceData:
-        """Create B-spline surface from grid with robust despiking and smoothing."""
-        from scipy.ndimage import median_filter, gaussian_filter  # Ensure median_filter is imported
+        """Create B-spline surface from grid via proper least-squares fitting.
+
+        A 3×3 median filter is applied first to remove salt-and-pepper
+        geometric outliers.  Smoothing is then handled implicitly by the
+        regularisation term λ in the normal equations solved by
+        BSplineSurfaceFitter, so the previous Gaussian pre-filter (which
+        caused double-smoothing when the filtered samples were used directly
+        as control points) is no longer applied.
+        """
+        from scipy.ndimage import median_filter
+        from modules.fitting.bspline_fitting import BSplineSurfaceFitter
 
         degree_u = min(self.config.degree_u, res_u - 1)
         degree_v = min(self.config.degree_v, res_v - 1)
 
-        if self.config.smoothing > 0:
-            # --- CRITICAL FIX: Eradicate spikes BEFORE Gaussian blurring ---
-            # A 3x3 median filter destroys salt-and-pepper geometric outliers
-            for c in range(3):
-                grid_xyz[..., c] = median_filter(grid_xyz[..., c], size=3)
-                grid_rgb[..., c] = median_filter(grid_rgb[..., c], size=3)
+        # Outlier removal: median filter destroys salt-and-pepper spikes.
+        # This is pre-processing, not smoothing — keep it regardless of
+        # self.config.smoothing.
+        for c in range(3):
+            grid_xyz[..., c] = median_filter(grid_xyz[..., c], size=3)
+            grid_rgb[..., c] = median_filter(grid_rgb[..., c], size=3)
 
-            sigma = self.config.smoothing * min(res_u, res_v) / 10.0
-            # Use 'wrap' for U direction in spherical parameterization (theta wraps)
-            mode_u = "wrap" if is_spherical else "nearest"
-            mode_v = "nearest"
-
-            for c in range(3):
-                grid_xyz[..., c] = gaussian_filter(
-                    grid_xyz[..., c], sigma=sigma, mode=(mode_v, mode_u)
-                )
-                grid_rgb[..., c] = gaussian_filter(
-                    grid_rgb[..., c], sigma=sigma, mode=(mode_v, mode_u)
-                )
-
-        knots_u = self._create_knot_vector(res_u, degree_u)
-        knots_v = self._create_knot_vector(res_v, degree_v)
-
-        return NURBSSurfaceData(
-            control_points=grid_xyz.astype(np.float32),
-            control_colors=np.clip(grid_rgb, 0, 1).astype(np.float32),
-            knots_u=knots_u.astype(np.float32),
-            knots_v=knots_v.astype(np.float32),
+        # Solve the regularised normal equations to obtain proper control
+        # points.  The smoothing parameter λ absorbs the role previously
+        # played by the Gaussian filter.
+        fitter = BSplineSurfaceFitter(
+            n_ctrl_u=res_u,
+            n_ctrl_v=res_v,
             degree_u=degree_u,
             degree_v=degree_v,
+            smoothing=max(self.config.smoothing, 1e-6),
+            data_dependent_knots=True,
+        )
+        fit = fitter.fit_from_grid(grid_xyz, grid_rgb)
+        print(
+            f"[BSpline fit] {label}: RMS residual = {fit.residual_rms:.6f}  "
+            f"ctrl = {fit.control_points.shape[:2]}"
+        )
+
+        return NURBSSurfaceData(
+            control_points=fit.control_points,
+            control_colors=fit.control_colors,
+            knots_u=fit.knots_u,
+            knots_v=fit.knots_v,
+            degree_u=fit.degree_u,
+            degree_v=fit.degree_v,
             label=label,
         )
 

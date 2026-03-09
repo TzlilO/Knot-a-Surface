@@ -225,6 +225,7 @@ def seed_control_grid(
     degree=(3, 3),
     k: int = 16,
     reduce_factor: float = 0.01,
+    use_lsq_fitting: bool = True,
 ):
     """
     Density‑aware bootstrap that converts a (possibly huge) point cloud
@@ -247,6 +248,12 @@ def seed_control_grid(
         Unused for now – kept for future k‑NN variants.
     reduce_factor : float in (0, 1]
         Target fraction of points to *keep* (≈ memory guard).
+    use_lsq_fitting : bool, default True
+        When True (default) solve the regularised normal equations via
+        ``BSplineSurfaceFitter.fit()`` so the returned control points are
+        proper least-squares B-spline control points rather than a
+        scatter-gather weighted average.  Set to False to use the legacy
+        scatter-gather accumulation path as a fallback.
 
     Returns
     -------
@@ -277,13 +284,40 @@ def seed_control_grid(
         # 2.  Grid topology
         # ---------------------------------------------------------------------
         Nu, Nv = [r // 4 + d for r, d in zip(grid_res, degree)]  # control pts
+
+        if use_lsq_fitting:
+            # -----------------------------------------------------------------
+            # 3a.  Least-squares B-spline fitting (proper control points)
+            # -----------------------------------------------------------------
+            import numpy as np
+            from modules.fitting.bspline_fitting import BSplineSurfaceFitter
+
+            xyz_np = xyz.cpu().numpy().astype(np.float64)
+            uv_np  = uv.cpu().numpy().astype(np.float64)
+
+            fitter = BSplineSurfaceFitter(
+                n_ctrl_u=Nu,
+                n_ctrl_v=Nv,
+                degree_u=du,
+                degree_v=dv,
+                smoothing=1e-3,
+                data_dependent_knots=True,
+            )
+            fit = fitter.fit(xyz_np, uv_np)
+
+            ctrl_pts = torch.from_numpy(fit.control_points.astype(np.float32)).to(device)
+            knot_u   = torch.from_numpy(fit.knots_u.astype(np.float32)).to(device)
+            knot_v   = torch.from_numpy(fit.knots_v.astype(np.float32)).to(device)
+            return ctrl_pts, knot_u, knot_v
+
+        # ---------------------------------------------------------------------
+        # 3b.  Legacy scatter-gather accumulation (fallback)
+        # ---------------------------------------------------------------------
         # Patch‑local integer cell coordinates
         cell_u = torch.clamp((uv[:, 0] * (grid_res[0] - 1) / 4).long(), 0, Nu - du - 1)
         cell_v = torch.clamp((uv[:, 1] * (grid_res[1] - 1) / 4).long(), 0, Nv - dv - 1)
 
-        # ---------------------------------------------------------------------
-        # 3.  Cubic B‑spline basis evaluation (closed form, no F.interpolate)
-        # ---------------------------------------------------------------------
+        # Cubic B‑spline basis evaluation (closed form, no F.interpolate)
         def cubic_basis(t: torch.Tensor) -> torch.Tensor:
             """Return (N,4) cubic B‑spline basis at relative offset t∈[0,1]."""
             t2, t3 = t * t, t * t * t
@@ -303,9 +337,7 @@ def seed_control_grid(
         Bv = cubic_basis(frac_v)
         basis = (Bu.unsqueeze(2) * Bv.unsqueeze(1)).view(-1, 16)  # (M,16)
 
-        # ---------------------------------------------------------------------
-        # 4.  Scatter‑add into control grid
-        # ---------------------------------------------------------------------
+        # Scatter‑add into control grid
         ctrl_pts = torch.zeros((Nu, Nv, 3), device=device)
         wt_sum = torch.zeros((Nu, Nv, 1), device=device)
 
@@ -323,9 +355,7 @@ def seed_control_grid(
 
         ctrl_pts = ctrl_pts / wt_sum.clamp_min(1e-6)
 
-        # ---------------------------------------------------------------------
-        # 5.  Knot vectors (centripetal)
-        # ---------------------------------------------------------------------
+        # Knot vectors (centripetal)
         knot_u = chord_length_knots(uv[:, 0], du, Nu - du).to(device)
         knot_v = chord_length_knots(uv[:, 1], dv, Nv - dv).to(device)
         return ctrl_pts, knot_u, knot_v
