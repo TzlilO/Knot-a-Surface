@@ -48,9 +48,9 @@ def main():
     grid_ref = grid.detach().clone().requires_grad_(True)
 
     # compact representation (same helper the live integration uses)
-    from modules.control_feature.position import PositionControl
-    cbu, cdbu, cdbuu, su = PositionControl._compact(bu, dbu, dbuu, H)
-    cbv, cdbv, cdbvv, sv = PositionControl._compact(bv, dbv, dbvv, W)
+    from modules.control_feature.base import compact_basis_windows
+    cbu, cdbu, cdbuu, su = compact_basis_windows(bu, dbu, dbuu, H)
+    cbv, cdbv, cdbvv, sv = compact_basis_windows(bv, dbv, dbvv, W)
 
     # ---- forward correctness ----
     out = bse.tp_contract(grid, cbu, cdbu, cdbuu, cbv, cdbv, cdbvv, su, sv)
