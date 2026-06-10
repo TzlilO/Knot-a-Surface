@@ -162,7 +162,7 @@ class ControlFeature(nn.Module):
         Returns:
             Interpolated values [Us*Vs, C].
         """
-        if self.cache_valid:
+        if self.cache_valid and False:
             return self.cache.reshape(-1, self.feature_channels)
 
         grid = self.features if self.use_pe else self.raw_features

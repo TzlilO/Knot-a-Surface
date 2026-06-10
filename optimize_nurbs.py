@@ -439,8 +439,6 @@ except ImportError:
 
 
 
-
-
 def visualize_view_distributions(model, cameras, save_dir=None, show=True):
     """
     Utility function to create nice-looking figures visualizing the view-dependent distribution
