@@ -670,14 +670,14 @@ def training(dataset, opt, pipe, args):
                 progress_bar.close()
 
             # --- Reporting ------------------------------------------------
-            training_report(
-                tb_writer, iteration,
-                torch.tensor(log_dict.get('L1', 0.0)),
-                total_loss, l1_loss,
-                iter_start.elapsed_time(iter_end),
-                args.test_iterations, scene, render, (pipe, background),
-                app_model, nurbs,
-            )
+            # training_report(
+            #     tb_writer, iteration,
+            #     torch.tensor(log_dict.get('L1', 0.0)),
+            #     total_loss, l1_loss,
+            #     iter_start.elapsed_time(iter_end),
+            #     args.test_iterations, scene, render, (pipe, background),
+            #     app_model, nurbs,
+            # )
             if iteration in args.save_iterations:
                 print(f"\n[ITER {iteration}] Saving model")
                 torch.save(

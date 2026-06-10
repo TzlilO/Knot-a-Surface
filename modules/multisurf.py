@@ -590,8 +590,7 @@ class MultiSurfaceSplineModel(nn.Module):
             object_resolution_scale: float = 2.0,
             cameras=None,
             faces=None,  # NEW
-            use_least_squares=True,  # NEW
-
+            use_least_squares=False,  # NEW
             **kwargs
     ) -> 'MultiSurfaceSplineModel':
         """

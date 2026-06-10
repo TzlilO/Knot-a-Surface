@@ -261,7 +261,8 @@ def safe_state(silent):
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)
-    torch.cuda.set_device(torch.device("cuda:0"))
+    print(torch.cuda.is_available())
+    # torch.cuda.set_device(torch.device("cuda"))
 class VideoLogger:
     def __init__(self, max_video_frames=256):
         self.reconstructed_frames = dict()

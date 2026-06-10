@@ -35,9 +35,9 @@ learning_rates:
 # ─── Densification / Pruning (inherited 3DGS) ───────────────────────────────
 densification:
   percent_dense: 0.001
-  densification_interval: 500
-  opacity_reset_interval: 3000
-  densify_from_iter: 500
+  densification_interval: 500000
+  opacity_reset_interval: 3000000
+  densify_from_iter: 500000
   densify_until_iter: 15_000
   densify_grad_threshold: 0.0002
   densify_abs_grad_threshold: 0.0008

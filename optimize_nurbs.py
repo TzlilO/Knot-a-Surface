@@ -336,11 +336,13 @@ WAND_LOGGER_TERMINATE = "__WAND_TERMINATE__"
 def wandb_logger_worker(queue: Queue, config):
     try:
         wandb.init(
-            project=config.get("project", "default"),
+            project=config.get("project", "NURBS"),
             name=config.get("name", None),
             group=config.get("group", None),
             config=config.get("config", {}),
-            entity=config.get("entity", None),
+            entity="sw7gynvgmn-hebrew-university-of-jerusalem",
+
+            # entity=config.get("entity", None),
             settings=wandb.Settings(start_method='thread') #, _disable_stats=True, _disable_meta=True)
         )
         wandb.save("modules/KnotSurface.py")
@@ -396,13 +398,32 @@ def wandb_logger_worker(queue: Queue, config):
                             step_metric="iteration",
                             goal="minimize",
                             summary="min")
+
+        wandb.define_metric("Eval/test/PSNR", step_metric="iteration",
+                            goal="maximize", summary="max")
+        wandb.define_metric("Eval/train/PSNR", step_metric="iteration",
+                            goal="maximize", summary="max")
+        wandb.define_metric("Eval/test/L1", step_metric="iteration",
+                            goal="minimize", summary="min")
+        wandb.define_metric("Eval/train/L1", step_metric="iteration",
+                            goal="minimize", summary="min")
+        wandb.define_metric("Stats/*", step_metric="iteration")
         while True:
             item = queue.get()
             if item == WAND_LOGGER_TERMINATE:
                 break
             try:
-                item = {k: (v.detach().cpu().item() if isinstance(v, torch.Tensor) else v) for k, v in item.items()}
-                wandb.log(item, step=item.get("step", None))
+                # Items are {"data": payload, "step": iteration}; log the
+                # payload itself, not the wrapper (which would nest every
+                # key under "data." and log "step" as a metric).
+                payload = item.get("data", item) if isinstance(item, dict) else item
+                step = item.get("step", None) if isinstance(item, dict) else None
+                payload = {
+                    k: (v.detach().cpu().item() if isinstance(v, torch.Tensor) else v)
+                    for k, v in payload.items()
+                    if k != "step"
+                }
+                wandb.log(payload, step=step)
             except Exception as e:
                 print(f"[W&B Worker] Logging failed: {e}")
     except Exception as e:
@@ -970,8 +991,52 @@ def log_qualitative_results(
             f"L1 {l1_test:.4f}  PSNR {psnr_test:.2f}"
         )
 
-        if log_images and wandb_queue is not None:
+        if wandb_queue is not None:
+            log_images[f"Eval/{config['name']}/PSNR"] = float(psnr_test)
+            log_images[f"Eval/{config['name']}/L1"] = float(l1_test)
             wandb_queue.put({"data": log_images, "step": iteration})
+
+
+@torch.no_grad()
+def log_model_statistics(nurbs) -> dict:
+    """Scalar statistics on parameters and gaussians for wandb."""
+    stats = {
+        "Stats/num_gaussians": int(nurbs.total_gaussians),
+        "Stats/num_parameters": int(nurbs.parameters_count),
+        "Stats/num_surfaces": int(nurbs.num_surfaces),
+    }
+    try:
+        scaling = nurbs.get_scaling
+        stats["Stats/scale_mean"] = scaling.mean().item()
+        stats["Stats/scale_max"] = scaling.max().item()
+        stats["Stats/scale_p95"] = torch.quantile(
+            scaling.reshape(-1)[:1_000_000], 0.95
+        ).item()
+
+        opacity = nurbs.get_opacity
+        stats["Stats/opacity_mean"] = opacity.mean().item()
+        stats["Stats/opacity_frac_solid"] = (opacity > 0.5).float().mean().item()
+
+        xyz = nurbs.get_xyz
+        stats["Stats/xyz_extent"] = (
+            (xyz.max(dim=0).values - xyz.min(dim=0).values).norm().item()
+        )
+    except Exception as e:
+        print(f"[Stats] Gaussian stats skipped: {e}")
+
+    for i, surface in enumerate(getattr(nurbs, "surfaces", [])):
+        try:
+            stats[f"Stats/surf{i}/ctrl_H"] = int(surface.state.H)
+            stats[f"Stats/surf{i}/ctrl_W"] = int(surface.state.W)
+            stats[f"Stats/surf{i}/samples_Us"] = int(surface.state.Us)
+            stats[f"Stats/surf{i}/samples_Vs"] = int(surface.state.Vs)
+            if surface.weights is not None:
+                w = surface.weights.features
+                stats[f"Stats/surf{i}/weight_mean"] = w.mean().item()
+                stats[f"Stats/surf{i}/weight_std"] = w.std().item()
+        except Exception:
+            pass
+    return stats
 
 
 
@@ -1235,13 +1300,20 @@ def training(dataset, opt, pipe, args, **kwargs) -> None:
                     scan_id, args.eval_gpu, paths, temp_chk_path, args.use_depth_normal, args.use_depth_filter, include_eval=args.include_eval)
                 future.add_done_callback(log_evaluation_results)
 
-            # ── 5. Held-out (test) evaluation — whole run, not only the
-            #      densification phase ────────────────────────────────────
-            if iteration in args.test_iterations:
+            # ── 5. Held-out (test) evaluation — every 10% of the run ─────
+            #      Renders test views (train views as fallback) and logs
+            #      rendered images, L1/PSNR, and parameter/gaussian stats.
+            eval_every = max(1, opt.iterations // 10)
+            if iteration % eval_every == 0 or iteration == opt.iterations:
                 log_qualitative_results(
                     iteration, nurbs, scene, pipe, background,
                     app_model, wandb_queue
                 )
+                if args.use_wandb and wandb_queue is not None:
+                    wandb_queue.put({
+                        "data": log_model_statistics(nurbs),
+                        "step": iteration,
+                    })
             # ── 11. Visualization (interactive only while debugging;
             #        otherwise dump to file so training never blocks) ────
             if getattr(args, 'show_plots', False) and iteration % show_interval == 1:
@@ -1409,7 +1481,7 @@ def main():
                         help="Path to DTU evaluation data.")
     parser.add_argument('--create_base_checkpoint_at', type=int, default=-1, help="If set, train to this iteration, save a checkpoint, and exit.")
     parser.add_argument('--use_wandb', action='store_true', default=False, help="Enable WandB logging")
-    parser.add_argument('--wandb_project', type=str, default="NURBS-Training", help="WandB project name")
+    parser.add_argument('--wandb_project', type=str, default="NURBS", help="WandB project name")
     parser.add_argument('--wandb_group', type=str, default=None, help="WandB group name")
     parser.add_argument('--wandb_run_name', type=str, default=None, help="WandB run name")
 

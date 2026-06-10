@@ -61,16 +61,19 @@ class NurbsOptimizationParams(OptimizationParams):
         self.freeze_uv_iter = 160_000
         self.subdiv_critertia = 'residual' #'hybrid'
         self.sampling_strategy = 'static' #'hybrid'
-        self.decomposition_mode = 'background' #'single'
+        self.decomposition_mode = 'single'
         # self.encode_points = 'pca' # 'geodesic' #'spherical' 'geodesic', 'pca
-        self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
+        # self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
         # self.encode_points = 'conformal' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
+        self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
+        # Chamfer post-fit of the initial control grid: refines the LS fit
+        # against the SfM point cloud before training starts (much better
+        # convergence starting point).
         self.post_fit_iterations = 500
         self.post_fit_enabled = False
-        self.base_res = 128
+        self.base_res = 256
         self.max_res = 512
-        self.min_res = 64
+        self.min_res = 128
         self.spline_degree = [3, 3]
         self.max_k_subdiv = 0.025
         self.max_k_prune = 0.0
@@ -79,21 +82,20 @@ class NurbsOptimizationParams(OptimizationParams):
         # Spline Model Parameters
         self.target_density_per_unit = 1
         self.sampling_density = 1.0
-        self.bind_to_grid = False
         self.refine_scales = True
         self.refine_rotations = True
         self.refine_opacities = True
         self.refine_weights = True
         self.optimize_intervals = False
-        self.optimize_knots = True
+        self.optimize_knots = False
 
         # Residual mode = the paper's formulation: splat scale/rotation are
         # DERIVED differentiably from surface tangents (Eqs. 5-6), with the
         # learned control features acting as a multiplicative/compositional
         # residual on top. With residual_* = False the geometry only
         # initializes free Gaussian attributes (ablation mode).
-        self.residual_scaling = True and self.refine_scales
-        self.residual_rots = True and self.refine_rotations
+        self.residual_scaling = False and self.refine_scales
+        self.residual_rots = False and self.refine_rotations
         self.residual_opacity = False and self.refine_opacities
 
         self.use_spatial_partitioning = False  # For subdivision

@@ -326,6 +326,7 @@ class BSplinePostFitter:
         best_loss = float("inf")
         best_ctrl = ctrl_pts.data.clone()
         patience_counter = 0
+        chamfer_ema = None
 
         if cfg.verbose:
             print(
@@ -376,9 +377,13 @@ class BSplinePostFitter:
                 normal_loss = torch.tensor(0.0, device=device)
 
             # --- Total loss ---
+            # Anneal smoothness: strong early (keeps the grid stable while the
+            # Chamfer term does large moves), decaying to 10% so fine detail
+            # is not regularized away in the sharpening phase.
+            smooth_anneal = max(0.1, 1.0 - iteration / max(1.0, 0.8 * cfg.num_iterations))
             total_loss = (
                     cfg.chamfer_weight * chamfer_loss
-                    + cfg.smoothness_weight * smooth_loss
+                    + cfg.smoothness_weight * smooth_anneal * smooth_loss
                     + cfg.normal_weight * normal_loss
             )
 
@@ -387,9 +392,17 @@ class BSplinePostFitter:
             scheduler.step()
 
             # --- Convergence check ---
+            # Snapshot on an EMA of the pure Chamfer term: per-iteration
+            # losses are stochastic (random surface/target subsets), and
+            # geometric fidelity — not the regularizers — is what makes a
+            # good training init.
             loss_val = total_loss.item()
-            if loss_val < best_loss - cfg.convergence_threshold:
-                best_loss = loss_val
+            chamfer_ema = (
+                chamfer_loss.item() if chamfer_ema is None
+                else 0.9 * chamfer_ema + 0.1 * chamfer_loss.item()
+            )
+            if chamfer_ema < best_loss - cfg.convergence_threshold:
+                best_loss = chamfer_ema
                 best_ctrl = ctrl_pts.data.clone()
                 patience_counter = 0
             else:
@@ -413,8 +426,36 @@ class BSplinePostFitter:
                     f"Total={loss_val:.6f} | LR={lr:.2e}"
                 )
 
-        if cfg.verbose:
-            print(f"[PostFit] Final loss: {best_loss:.6f}")
+        # --- Accept refinement only if it beats the initial fit ---
+        # Deterministic dense Chamfer of initial vs refined control grids;
+        # on clean/dense clouds the LS fit can already be optimal and the
+        # stochastic refinement must not degrade it.
+        with torch.no_grad():
+            def _dense_chamfer(cp: torch.Tensor) -> float:
+                sp = torch.einsum("uh,hwc->uwc", Bu, cp)
+                sp = torch.einsum("uwc,vw->uvc", sp, Bv).reshape(-1, 3)
+                s_step = max(1, sp.shape[0] // 4096)
+                t_step = max(1, target_pts.shape[0] // 8192)
+                d = torch.cdist(sp[::s_step], target_pts[::t_step])
+                return (d.min(dim=1).values.mean() + d.min(dim=0).values.mean()).item()
+
+            init_ctrl = torch.tensor(
+                surface_data.control_points, dtype=torch.float32, device=device
+            )
+            init_cd = _dense_chamfer(init_ctrl)
+            refined_cd = _dense_chamfer(best_ctrl)
+            if init_cd <= refined_cd:
+                if cfg.verbose:
+                    print(
+                        f"[PostFit] Keeping initial fit "
+                        f"(CD {init_cd:.6f} <= refined {refined_cd:.6f})"
+                    )
+                best_ctrl = init_ctrl
+            elif cfg.verbose:
+                print(
+                    f"[PostFit] Refinement improved dense CD: "
+                    f"{init_cd:.6f} -> {refined_cd:.6f}"
+                )
 
         # --- Build refined surface data ---
         refined = NURBSSurfaceData(
@@ -458,49 +499,15 @@ class BSplinePostFitter:
         Returns:
             B: [M, n_ctrl] basis function values
         """
-        M = params.shape[0]
-        n_knots = len(knots)
-        device = params.device
+        # Exact triangular-table algorithm (tested vs geomdl) — same basis
+        # the training path uses, so the refined init matches what the
+        # SplineModel will evaluate.
+        from modules.basis import bspline_basis_and_derivs_1d
 
-        # Degree 0: indicator functions
-        # N_{i,0}(t) = 1 if knots[i] <= t < knots[i+1], else 0
-        # Shape: [M, n_knots - 1]
-        N = torch.zeros(M, n_knots - 1, device=device)
-        for i in range(n_knots - 1):
-            if i == n_knots - 2:
-                # Last interval is closed: knots[i] <= t <= knots[i+1]
-                mask = (params >= knots[i]) & (params <= knots[i + 1])
-            else:
-                mask = (params >= knots[i]) & (params < knots[i + 1])
-            N[:, i] = mask.float()
-
-        # Build up degree by degree
-        for d in range(1, degree + 1):
-            N_new = torch.zeros(M, n_knots - 1 - d, device=device)
-            for i in range(n_knots - 1 - d):
-                # Left term
-                denom_left = knots[i + d] - knots[i]
-                if denom_left.abs() > 1e-10:
-                    left = (params - knots[i]) / denom_left * N[:, i]
-                else:
-                    left = torch.zeros(M, device=device)
-
-                # Right term
-                denom_right = knots[i + d + 1] - knots[i + 1]
-                if denom_right.abs() > 1e-10:
-                    right = (
-                            (knots[i + d + 1] - params) / denom_right * N[:, i + 1]
-                    )
-                else:
-                    right = torch.zeros(M, device=device)
-
-                N_new[:, i] = left + right
-            N = N_new
-
-        # N should now be [M, n_ctrl]
-        assert N.shape == (M, n_ctrl), (
-            f"Basis shape mismatch: got {N.shape}, expected ({M}, {n_ctrl}). "
-            f"Knots: {len(knots)}, degree: {degree}"
+        (N,) = bspline_basis_and_derivs_1d(params, knots, degree, max_deriv=0)
+        assert N.shape == (params.shape[0], n_ctrl), (
+            f"Basis shape mismatch: got {N.shape}, expected "
+            f"({params.shape[0]}, {n_ctrl}). Knots: {len(knots)}, degree: {degree}"
         )
         return N
 

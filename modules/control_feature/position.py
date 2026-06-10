@@ -1,5 +1,6 @@
 """Position control features (XYZ coordinates) with optional NURBS weights."""
 
+import os
 from typing import TYPE_CHECKING, Optional, Tuple
 
 import opt_einsum as oe
@@ -10,6 +11,15 @@ from .base import ControlFeature
 if TYPE_CHECKING:
     from modules.ModelState import ModelState
     from modules.basis import BasisFunction
+
+# Fused CUDA evaluation (one kernel for S, Su, Sv, Suu, Svv): optional —
+# falls back to the einsum path when the extension isn't built.
+try:
+    import bspline_eval as _bse
+    _FUSED_OK = os.environ.get("KNOTS_FUSED", "1") != "0"
+except ImportError:
+    _bse = None
+    _FUSED_OK = False
 
 
 class PositionControl(ControlFeature):
@@ -41,6 +51,10 @@ class PositionControl(ControlFeature):
         if self.cache_valid:
             return self.cache.reshape(-1, self.feature_channels)
 
+        if self._fused_available():
+            self._fused_eval()
+            return self.cache.reshape(-1, self.feature_channels)
+
         cpts = self.features
         if self.weights is not None:
             w = self.weights.features
@@ -54,6 +68,84 @@ class PositionControl(ControlFeature):
 
         self.set_cache(prod)
         return prod.reshape(-1, self.feature_channels)
+
+    # ------------------------------------------------------------------
+    # Fused CUDA evaluation: one local-support kernel computes the
+    # contraction sums for (S, Su, Sv, Suu, Svv); the rational quotient
+    # rule is applied elementwise here so its gradients come from autograd.
+    # ------------------------------------------------------------------
+
+    def _fused_available(self) -> bool:
+        if not _FUSED_OK:
+            return False
+        bu = self.basis.bu
+        return (
+            bu.is_cuda
+            and self.features.is_cuda
+            # kernel is compiled for degree 3 (4-wide windows)
+            and self.state.H >= 4 and self.state.W >= 4
+            # kernel evaluates the (u x v) outer-product grid — not valid
+            # for flattened paired-sample modes
+            and not getattr(self.state, 'flatten_uv', False)
+            and not getattr(self.state, 'full_basis', False)
+            and getattr(self.basis, 'contract_path', 'uh,hwc,vw->uvc')
+                == 'uh,hwc,vw->uvc'
+        )
+
+    @staticmethod
+    def _compact(dense: torch.Tensor, n_ctrl: int):
+        """Dense [M, n_ctrl] basis row -> (window values [M, 4], spans [M])."""
+        spans = (
+            (dense.abs() > 1e-12).to(torch.int64).argmax(dim=1)
+            .clamp(max=n_ctrl - 4)
+        )
+        cols = spans.unsqueeze(1) + torch.arange(4, device=dense.device).unsqueeze(0)
+        return torch.gather(dense, 1, cols), spans
+
+    def _fused_eval(self):
+        H, W = self.state.H, self.state.W
+        bu, su = self._compact(self.basis.bu, H)
+        dbu, _ = self._compact(self.basis.dbu, H)
+        dbuu = torch.gather(
+            self.basis.dbuu, 1,
+            su.unsqueeze(1) + torch.arange(4, device=bu.device).unsqueeze(0),
+        )
+        bv, sv = self._compact(self.basis.bv, W)
+        dbv, _ = self._compact(self.basis.dbv, W)
+        dbvv = torch.gather(
+            self.basis.dbvv, 1,
+            sv.unsqueeze(1) + torch.arange(4, device=bv.device).unsqueeze(0),
+        )
+
+        cpts = self.features
+        rational = self.weights is not None
+        if rational:
+            w = self.weights.features
+            if w.dim() == 2:
+                w = w.unsqueeze(-1)
+            grid = torch.cat([cpts * w, w], dim=-1)  # [H, W, 4]
+        else:
+            grid = cpts
+
+        out = _bse.tp_contract(grid, bu, dbu, dbuu, bv, dbv, dbvv, su, sv)
+        # out: [5, Us, Vs, C'] = (A, Au, Av, Auu, Avv)
+
+        if rational:
+            A, Wd = out[..., :3], out[..., 3:]
+            Wn = Wd[0].clamp(min=1e-6)
+            S = A[0] / Wn
+            Su = (A[1] - S * Wd[1]) / Wn
+            Sv = (A[2] - S * Wd[2]) / Wn
+            Suu = (A[3] - 2.0 * Su * Wd[1] - S * Wd[3]) / Wn
+            Svv = (A[4] - 2.0 * Sv * Wd[2] - S * Wd[4]) / Wn
+        else:
+            S, Su, Sv, Suu, Svv = out[0], out[1], out[2], out[3], out[4]
+
+        self.set_cache(S.contiguous())
+        self.dsu_cache = Su.contiguous()
+        self.dsv_cache = Sv.contiguous()
+        self.dsuu_cache = Suu.contiguous()
+        self.dsvv_cache = Svv.contiguous()
 
 
     # ------------------------------------------------------------------
@@ -143,6 +235,10 @@ class PositionControl(ControlFeature):
         cached = getattr(self, cache_attr, None)
         if cached is not None:
             return cached
+
+        if self._fused_available():
+            self._fused_eval()
+            return getattr(self, cache_attr)
 
         cpts = self.features
         if self.weights is not None:
