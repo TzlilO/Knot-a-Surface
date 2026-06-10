@@ -989,6 +989,24 @@ def log_qualitative_results(
 
 
 @torch.no_grad()
+def save_eval_comparison(iteration, nurbs, scene, pipe, background,
+                         app_model, out_dir):
+    """Side-by-side render|GT PNG every N iters — visible in the IDE tree."""
+    import torchvision
+    cams = scene.getTestCameras() or scene.getTrainCameras()
+    cam = cams[len(cams) // 2]
+    pkg = render(cam, nurbs, pipe, background, app_model=app_model,
+                 return_plane=False, return_depth_normal=False)
+    img = pkg["render"].clamp(0, 1)
+    gt = cam.get_image()[0].clamp(0, 1)
+    psnr_v = psnr(img, gt).mean().item()
+    os.makedirs(out_dir, exist_ok=True)
+    side = torch.cat([img, gt], dim=2)          # [3, H, 2W]: render | GT
+    torchvision.utils.save_image(
+        side, os.path.join(out_dir, f"iter_{iteration:06d}_psnr{psnr_v:05.2f}.png"))
+
+
+@torch.no_grad()
 def log_model_statistics(nurbs) -> dict:
     """Scalar statistics on parameters and gaussians for wandb."""
     stats = {
@@ -1363,6 +1381,16 @@ def training(dataset, opt, pipe, args, **kwargs) -> None:
                 if (iteration >= getattr(opt, 'resample_start', 1000)
                         and iteration % getattr(opt, 'resample_every', 500) == 0):
                     nurbs.redistribute_samples_by_visibility(verbose=True)
+
+            # ── IDE-visible eval snapshot every 500 iterations ──────────
+            if iteration % 500 == 0:
+                try:
+                    save_eval_comparison(
+                        iteration, nurbs, scene, pipe, background, app_model,
+                        out_dir=os.path.join("eval_vis", scene_name),
+                    )
+                except Exception as e:
+                    print(f"[EvalVis] skipped: {e}")
 
             nurbs.update_parameters(iteration)
             nurbs._invalidate_cache()

@@ -18,3 +18,4 @@ output_dtu/
 mesh/
 *.ply
 wandb/
+eval_vis/
