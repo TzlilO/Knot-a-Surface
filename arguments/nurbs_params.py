@@ -19,7 +19,7 @@ class NurbsOptimizationParams(OptimizationParams):
         self.knot_lr = 1e-4
 
         # --- Weights for loss terms ---
-        self.lambda_eikonal = 0.01
+        self.lambda_eikonal = 0.0
         self.eikonal_from_iter = 0
         self.quat_smoothness_weight = 0.0
         self.scale_deviation_weight = 0.0
@@ -45,7 +45,7 @@ class NurbsOptimizationParams(OptimizationParams):
         self.pe_lr_base = 0.01
         self.use_pe = False  # Enable PE mode
         self.pe_lr_scale = 0.01
-        self.pe_log_sampling = True
+        self.pe_log_sampling = False
         self.pe_max_freq = 8  # Enable PE mode
         self.pe_levels = 4  # Number of frequency levels
         self.pe_include_input = True  # Include identity term
@@ -63,9 +63,9 @@ class NurbsOptimizationParams(OptimizationParams):
         self.sampling_strategy = 'static' #'hybrid'
         self.decomposition_mode = 'single'
         # self.encode_points = 'pca' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
+        self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
         # self.encode_points = 'conformal' # 'geodesic' #'spherical' 'geodesic', 'pca
-        self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
+        # self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
         # Chamfer post-fit of the initial control grid: refines the LS fit
         # against the SfM point cloud before training starts (much better
         # convergence starting point).

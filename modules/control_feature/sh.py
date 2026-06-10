@@ -41,26 +41,23 @@ class SHControl(ControlFeature):
         return self._expected_feature_dim
 
     def forward(self) -> torch.Tensor:
-        if self.cache_valid:
-            return self.cache
+        from .base import fused_available, fused_contract
 
         cpts = self.features
-
-        interpolated = oe.contract(
-            self.basis.contract_path,
-            self.basis.bu, cpts, self.basis.bv,
-            optimize=self.basis.optimal_path,
-        ).contiguous()
+        if fused_available(self.state, self.basis, cpts):
+            interpolated = fused_contract(
+                cpts, self.basis, self.state.H, self.state.W
+            )[0]
+        else:
+            interpolated = oe.contract(
+                self.basis.contract_path,
+                self.basis.bu, cpts, self.basis.bv,
+                optimize=self.basis.optimal_path,
+            )
 
         if self.sh_component == 'dc':
-            reshaped = interpolated.view(-1, 1, 3)
-        else:
-            reshaped = interpolated.view(-1, self.num_sh_coeffs, 3)
-
-        self.set_cache(reshaped)
-        return reshaped
-
-    forward = forward
+            return interpolated.contiguous().view(-1, 1, 3)
+        return interpolated.contiguous().view(-1, self.num_sh_coeffs, 3)
 
     def compute_removed_grid(
         self, direction, remove_idx, blend_radius=3,
@@ -114,8 +111,7 @@ class SHControlWrapper(nn.Module):
         self.sh_rest = sh_rest
 
     def invalidate_all(self):
-        self.sh_dc._cache = None
-        self.sh_rest._cache = None
+        pass  # no caches
 
     @property
     def features(self):
@@ -138,13 +134,6 @@ class SHControlWrapper(nn.Module):
 
     forward = interpolate_samples
 
-    @property
-    def cache(self):
-        dc = self.sh_dc.cache.reshape(-1, self.sh_dc.feature_channels)
-        rest = self.sh_rest.cache.reshape(-1, self.sh_rest.feature_channels)
-        combined = torch.cat([dc, rest], dim=-1)
-        shc = dc.shape[-1] // 3 + rest.shape[-1] // 3
-        return combined.reshape(-1, shc, 3)
 
     # ------------------------------------------------------------------
     # Serialization

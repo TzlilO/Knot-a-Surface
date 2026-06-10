@@ -586,6 +586,168 @@ class SplineModel(nn.Module):
     @property
     def total_gaussians(self):
         return self.state.Us * self.state.Vs
+
+    # ------------------------------------------------------------------
+    # Single-surface training API (replaces MultiSurfaceSplineModel)
+    # ------------------------------------------------------------------
+
+    num_surfaces = 1
+
+    @property
+    def surfaces(self):
+        return [self]
+
+    def _invalidate_cache(self, force=False):
+        self.invalidate_all_caches(force=force)
+
+    def eikonal_losses(self, weight: float) -> torch.Tensor:
+        if weight <= 0.0:
+            return torch.tensor(0.0, device=self.device)
+        return self.eikonal_loss() * weight
+
+    @property
+    def normal_grids(self):
+        normals = F.normalize(self.surface_normals(), dim=-1)
+        return [normals.view(self.state.Us, self.state.Vs, 3)]
+
+    @property
+    def global_normal_grids(self):
+        global_normals = F.normalize(self.get_smallest_axis(), dim=-1)
+        return [global_normals.view(self.state.Us, self.state.Vs, 3)]
+
+    def weight_map_grids(self):
+        return [self.weights_map().view(self.state.Us, self.state.Vs, 1)]
+
+    @property
+    def scaling_grids(self):
+        return [self.get_scaling[..., :2].view(self.state.Us, self.state.Vs, 2)]
+
+    @property
+    def geo_scaling_grids(self):
+        return [
+            self.derive_scale()[..., :2].detach()
+            .view(self.state.Us, self.state.Vs, 2)
+        ]
+
+    def add_subdivision_stats(self, mask, viewspace_points,
+                              viewspace_points_abs, visibility_filter, radii):
+        if self.state.opt.subdiv_critertia in ['eikonal', 'spatial']:
+            return
+        grad_norm = torch.norm(viewspace_points.grad[..., :2], dim=-1, keepdim=True)
+        grad_norm_abs = torch.norm(viewspace_points_abs.grad[..., :2], dim=-1, keepdim=True)
+        self.state.add_subdivision_stats(
+            grad_norm, grad_norm_abs, mask * visibility_filter, radii,
+            visibility_filter,
+        )
+
+    def subdivide_and_cull(
+            self,
+            max_grad: float,
+            grad_abs_threshold: float,
+            min_opacity: float,
+            extent: float,
+            max_screen_size=None,
+            top_k_rate_subd: float = 0.1,
+            max_prune_rate: float = 0.1,
+            verbose: bool = False,
+    ) -> bool:
+        """Densify (knot insertion) and prune (knot removal) this surface."""
+        pruning_candidates = None
+        if max_prune_rate > 0:
+            pruning_candidates = self.get_pruning_candidates(
+                min_opacity=min_opacity,
+                max_screen_size=max_screen_size,
+                extent=extent,
+                use_partitioning=self.state.opt.use_spatial_partitioning_prune,
+                num_partitions=self.state.opt.num_partitions_prune,
+            )
+
+        start_count = self.total_gaussians
+
+        if top_k_rate_subd > 0:
+            candidates = self.get_subdivision_candidates(
+                use_partitioning=self.state.opt.use_spatial_partitioning,
+                num_partitions=self.state.opt.num_partitions,
+            )
+            min_k = max(min(0, int(0.5 * min(self.state.H, self.state.W))), 8)
+            top_k = max(int(top_k_rate_subd * min(self.state.H, self.state.W)), min_k)
+            candidates.sort(key=lambda x: x['score'], reverse=True)
+            self.apply_subdivision(cands=candidates[:top_k], optimizer=self.optimizer)
+
+        if max_prune_rate > 0 and pruning_candidates:
+            min_k = max(min(0, int(0.5 * min(self.state.H, self.state.W))), 8)
+            max_k = max(min(16, int(0.5 * min(self.state.H, self.state.W))), min_k)
+            top_k = max(min(int(max_prune_rate * min(self.state.H, self.state.W)), max_k), min_k)
+            self.prune_surface(
+                cands=pruning_candidates[:top_k],
+                optimizer=self.optimizer,
+                error_tolerance=1e-4,
+            )
+
+        changed = self.total_gaussians != start_count
+        self.state.init_grad_accumulators()
+        return changed
+
+    def multi_view_trim_all(
+            self,
+            cameras: List,
+            render_fn,
+            pipe,
+            background,
+            app_model=None,
+            min_observations: int = 1,
+            row_threshold: float = 0.8,
+            col_threshold: float = 0.8,
+            top_k_rate: float = 0.0,
+            max_k: int = 2,
+            verbose: bool = False,
+    ) -> bool:
+        """Remove control rows/cols whose samples are under-observed."""
+        if top_k_rate == 0.0:
+            return False
+
+        observe_cnt = torch.zeros(
+            self.state.Us * self.state.Vs, 1, device=self.device
+        )
+        with torch.no_grad():
+            for cam in cameras:
+                self.forward(cam)
+                render_pkg = render_fn(
+                    cam, self, pipe, background, app_model=app_model,
+                    return_plane=False, return_depth_normal=False,
+                )
+                if "out_observe" in render_pkg:
+                    observe_cnt[render_pkg["out_observe"].view(-1) > 0] += 1
+                elif "visibility_filter" in render_pkg:
+                    observe_cnt[render_pkg["visibility_filter"].view(-1)] += 1
+
+        candidates = self.get_multi_view_trim_candidates(
+            observe_cnt,
+            min_observations=min_observations,
+            row_threshold=row_threshold,
+            col_threshold=col_threshold,
+        )
+        all_cands = [
+            {'type': d, 'index': c['index'],
+             'score': c['under_observed_fraction'],
+             'reasons': [f"under_observed({c['under_observed_fraction']:.2%})"]}
+            for d in ('u', 'v') for c in candidates[d]
+        ]
+        if not all_cands:
+            return False
+        all_cands.sort(key=lambda x: x['score'], reverse=True)
+        top_k = min(int(top_k_rate * min(self.state.H, self.state.W)), max_k)
+
+        removed = 0
+        if top_k > 0:
+            removed = self.prune_surface(
+                cands=all_cands[:top_k],
+                optimizer=self.optimizer,
+                error_tolerance=float('inf'),
+            )
+        self.state.init_grad_accumulators()
+        return bool(removed)
+
     @property
     def grid_shape(self):
         return (self.state.Us, self.state.Vs, -1)

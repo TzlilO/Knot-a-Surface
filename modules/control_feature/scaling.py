@@ -52,19 +52,17 @@ class ScalingControl(ControlFeature):
 
     def forward(self) -> torch.Tensor:
         scales = super().forward()
-        scales = self._apply_density_correction(scales)
 
+        # Pad the flat normal axis BEFORE density correction (which indexes
+        # all three axes). `scales` is already activated (exp-space); the
+        # tiny positive value is exp(-9) ≈ 1.234e-4 in activated space.
         if self.state.scaling_dims == 2:
-            # `scales` is already activated (exp-space, positive); the flat
-            # normal axis gets a tiny positive scale (≈ exp(-9)).
             scaling_n = torch.full(
                 (scales.shape[0], 1), fill_value=1.234e-4, device=scales.device,
             )
             scales = torch.cat([scales, scaling_n], dim=-1)
 
-        self.set_cache(scales)
-
-        return scales
+        return self._apply_density_correction(scales)
 
     def _apply_density_correction(self, scales: torch.Tensor) -> torch.Tensor:
         """

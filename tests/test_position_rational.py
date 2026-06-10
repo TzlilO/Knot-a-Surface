@@ -126,11 +126,11 @@ def main():
     print(f"  [{'PASS' if grad_ok else 'FAIL'}] gradients reach control points AND weights")
     ok &= grad_ok
 
-    # Cache returns the SAME graph-bearing tensor (no detach)
+    # Cacheless: repeated forward recomputes and keeps autograd graph
     S2 = pos.forward()
-    cache_ok = S2.requires_grad
-    print(f"  [{'PASS' if cache_ok else 'FAIL'}] cached forward keeps autograd graph")
-    ok &= cache_ok
+    recompute_ok = S2.requires_grad
+    print(f"  [{'PASS' if recompute_ok else 'FAIL'}] repeated forward keeps autograd graph")
+    ok &= recompute_ok
 
     sys.exit(0 if ok else 1)
 

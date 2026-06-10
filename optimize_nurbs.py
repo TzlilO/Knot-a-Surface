@@ -40,13 +40,6 @@ try:
 except ImportError:
     WANDB_FOUND = False
 
-# Decomposition controller
-from modules.decompose import (
-    WarmupDecompositionController,
-    ControllerConfig,
-    DecompPhase,
-)
-
 # Project name (used for output paths)
 # PROJECT_DIR = "Knots"
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__)).split('/')[-1]
@@ -346,7 +339,7 @@ def wandb_logger_worker(queue: Queue, config):
             settings=wandb.Settings(start_method='thread') #, _disable_stats=True, _disable_meta=True)
         )
         wandb.save("modules/KnotSurface.py")
-        wandb.save("modules/multisurf.py")
+        wandb.save("modules/KnotSurface.py")
         wandb.save("arguments/__init__.py")
         wandb.save("arguments/nurbs_params.py")
         wandb.save("optimize_nurbs.py")
@@ -1040,39 +1033,6 @@ def log_model_statistics(nurbs) -> dict:
 
 
 
-def safe_decompose(controller, nurbs, opt, args):
-    """Attempt decomposition with fallback on failure."""
-    try:
-        return controller.decompose(nurbs, opt, args)
-    except Exception as e:
-        print(f"[Decompose] Failed: {e}. Continuing with current model.")
-        controller.phase = DecompPhase.DECOMPOSED
-        return nurbs
-
-
-def setup_batched_optimizer(model, training_cameras):
-    """Create the BatchedIntervalOptimizer for periodic global interval tuning."""
-    from modules.IntervalsRefiner import BatchedIntervalOptimizer, BatchConfig
-
-    config = BatchConfig(
-        num_steps=100,
-        batch_size=2,
-        lr=0.05,
-        chhugani_weight=0.1,
-        reconstruction_weight=0.1,
-        smoothness_weight=0.01,
-        grad_clip=1.0,
-        warmup_steps=len(training_cameras) // 2,
-    )
-    return BatchedIntervalOptimizer(model, training_cameras, config)
-
-
-def build_controller(**kwargs) -> WarmupDecompositionController:
-    """Build decomposition controller from kwargs."""
-    cfg = ControllerConfig(**kwargs)
-    return WarmupDecompositionController(cfg)
-
-
 def training(dataset, opt, pipe, args, **kwargs) -> None:
     """Main training loop."""
     # ── Setup ─────────────────────────────────────────────────────────
@@ -1301,7 +1261,7 @@ def training(dataset, opt, pipe, args, **kwargs) -> None:
             # ── 5. Held-out (test) evaluation — every 10% of the run ─────
             #      Renders test views (train views as fallback) and logs
             #      rendered images, L1/PSNR, and parameter/gaussian stats.
-            eval_every = max(1, opt.iterations // 10)
+            eval_every = max(1, opt.iterations // 50)
             if iteration % eval_every == 0 or iteration == opt.iterations:
                 log_qualitative_results(
                     iteration, nurbs, scene, pipe, background,

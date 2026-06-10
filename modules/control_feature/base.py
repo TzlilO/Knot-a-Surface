@@ -4,12 +4,16 @@ Base control feature module for B-spline surface properties.
 ControlFeature is the abstract base for all learnable surface attributes
 (position, rotation, scaling, opacity, SH coefficients, NURBS weights).
 It handles:
-  - B-spline interpolation (separable einsum or BMM)
-  - Cache management for interpolated values
+  - B-spline interpolation (fused CUDA kernel, einsum fallback)
   - Knot insertion/removal with neighbor blending
   - Serialization (capture/restore)
+
+No lazy caching: every access recomputes from the current parameters.
+The fused kernel makes recomputation cheap, and stale-cache bugs are
+impossible by construction.
 """
 
+import os
 from typing import TYPE_CHECKING, Tuple
 
 import opt_einsum as oe
@@ -20,6 +24,55 @@ import torch.nn.functional as F
 if TYPE_CHECKING:
     from modules.ModelState import ModelState
     from modules.basis import BasisFunction
+
+# Fused CUDA local-support evaluation (optional; einsum fallback).
+try:
+    import bspline_eval as _bse
+    _FUSED_OK = os.environ.get("KNOTS_FUSED", "1") != "0"
+except ImportError:
+    print("Warning: bspline_eval not found, falling back to slower PyTorch evaluation.")
+    _bse = None
+    _FUSED_OK = False
+
+
+def compact_basis_windows(b, db, d2b, n_ctrl):
+    """
+    Dense [M, n_ctrl] basis value/derivative rows -> compact [M, 4] windows
+    sharing ONE span per sample (span from the union support of all three
+    arrays: at a knot the VALUE of the leftmost basis vanishes while its
+    DERIVATIVE does not, so per-array spans would disagree).
+    """
+    support = b.abs() + db.abs() + d2b.abs()
+    spans = (
+        (support > 1e-12).to(torch.int64).argmax(dim=1).clamp(max=n_ctrl - 4)
+    )
+    cols = spans.unsqueeze(1) + torch.arange(4, device=b.device).unsqueeze(0)
+    return (
+        torch.gather(b, 1, cols),
+        torch.gather(db, 1, cols),
+        torch.gather(d2b, 1, cols),
+        spans,
+    )
+
+
+def fused_available(state, basis, tensor) -> bool:
+    """True when the fused CUDA kernel applies to this evaluation."""
+    return (
+        _FUSED_OK
+        and tensor.is_cuda
+        and basis.bu.is_cuda
+        and state.H >= 4 and state.W >= 4          # degree-3 kernel
+        and not getattr(state, 'flatten_uv', False)  # outer-product grid only
+        and not getattr(state, 'full_basis', False)
+        and getattr(basis, 'contract_path', 'uh,hwc,vw->uvc') == 'uh,hwc,vw->uvc'
+    )
+
+
+def fused_contract(grid, basis, H, W):
+    """[H,W,C] -> [5, Us, Vs, C] contraction sums (S, Su, Sv, Suu, Svv)."""
+    bu, dbu, dbuu, su = compact_basis_windows(basis.bu, basis.dbu, basis.dbuu, H)
+    bv, dbv, dbvv, sv = compact_basis_windows(basis.bv, basis.dbv, basis.dbvv, W)
+    return _bse.tp_contract(grid, bu, dbu, dbuu, bv, dbv, dbvv, su, sv)
 
 
 class ControlFeature(nn.Module):
@@ -61,18 +114,6 @@ class ControlFeature(nn.Module):
 
         self.initialize_control_feature(control_grid)
 
-        self._cache = None
-        self._cache_valid = False
-        self.__blending_alpha = 0.0
-        self._previous_cache = (
-            torch.zeros(
-                self.state.Us, self.state.Vs, control_grid.shape[-1],
-                device=self.device,
-            )
-            if control_grid is not None
-            else 0.0
-        )
-
     # ------------------------------------------------------------------
     # Initialization
     # ------------------------------------------------------------------
@@ -92,21 +133,9 @@ class ControlFeature(nn.Module):
         )
         self.control_features = nn.Parameter(control_features, requires_grad=True)
 
-    # ------------------------------------------------------------------
-    # Cache management
-    # ------------------------------------------------------------------
-
-    @property
-    def cache_valid(self):
-        return self._cache_valid and self._cache is not None
-
-    @property
-    def cache(self):
-        return self._cache
-
     def invalidate(self, hard: bool = False):
-        self._cache = None
-        self._cache_valid = False
+        """No caches exist; kept for API compatibility (subclasses hook it)."""
+        pass
 
 
     # ------------------------------------------------------------------
@@ -162,35 +191,22 @@ class ControlFeature(nn.Module):
         Returns:
             Interpolated values [Us*Vs, C].
         """
-        if self.cache_valid and False:
-            return self.cache.reshape(-1, self.feature_channels)
-
-        grid = self.features if self.use_pe else self.raw_features
-        if self.state.use_bmm:
-            raw = self._interpolate_bmm(
-                self.basis.bu, self.basis.bv, grid
-            ).contiguous()
+        grid = self.raw_features
+        if fused_available(self.state, self.basis, grid):
+            # Fused local-support CUDA kernel; [0] = value contraction.
+            raw = fused_contract(grid, self.basis, self.state.H, self.state.W)[0]
+        elif self.state.use_bmm:
+            raw = self._interpolate_bmm(self.basis.bu, self.basis.bv, grid)
         else:
             raw = oe.contract(
                 self.basis.contract_path,
                 self.basis.bu,
                 grid,
                 self.basis.bv,
-                # optimize=self.basis.optimal_path,
-            ).contiguous()
+            )
 
-        prod = raw if self.use_pe else self.activation(raw)
-        self.set_cache(prod)
+        prod = self.activation(raw.contiguous())
         return prod.reshape(-1, self.feature_channels)
-
-
-    def set_cache(self, new_tensor):
-        # Keep the autograd graph: the cache is reused by every consumer
-        # within one iteration (render, geometric losses, ...). Detaching
-        # here silently cuts gradients for all consumers after the first.
-        # Caches are invalidated each iteration via invalidate().
-        self._cache = new_tensor
-        self._cache_valid = True
 
     def _interpolate_bmm(
         self,
@@ -212,17 +228,8 @@ class ControlFeature(nn.Module):
     # Blending (alpha for temporal smoothing after subdivision)
     # ------------------------------------------------------------------
 
-    @property
-    def blending_alpha(self):
-        return self.__blending_alpha if self._previous_cache.sum() > 0.0 else 0.0
-
-    @property
-    def blending_beta(self):
-        return 1 - self.blending_alpha
-
-    def set_alpha(self, new_alpha):
-        self.__blending_alpha = new_alpha
-        self.invalidate(hard=True)
+    blending_alpha = 0.0
+    blending_beta = 1.0
 
     # ------------------------------------------------------------------
     # Knot insertion
@@ -672,12 +679,7 @@ class ControlFeature(nn.Module):
             'name': self.name,
             'use_pe': getattr(self, 'use_pe', False),
             'is_rational': self.is_rational,
-            'cache': None,
-            'cache_valid': self.cache_valid,
-            'blending_alpha': self.__blending_alpha,
         }
-        if self._cache is not None and self.cache_valid:
-            state['cache'] = self._cache.detach().clone().cpu()
         return state
 
     @classmethod
@@ -698,9 +700,4 @@ class ControlFeature(nn.Module):
             name=state.get('name'), use_pe=False, **kwargs,
         )
         instance.is_rational = state.get('is_rational', False)
-        instance.__blending_alpha = state.get('blending_alpha', 0.0)
-
-        cache = state.get('cache')
-        instance._cache = cache.to(device) if cache is not None else None
-        instance._previous_cache = None
         return instance

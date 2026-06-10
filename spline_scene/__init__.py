@@ -14,7 +14,7 @@ import random
 import os
 
 
-from modules.multisurf import MultiSurfaceSplineModel
+from modules.KnotSurface import SplineModel
 
 from scene.dataset_readers import sceneLoadTypeCallbacks
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
@@ -261,16 +261,21 @@ class SplineScene:
 
 
         if not late_init:
-            self.splines = MultiSurfaceSplineModel.from_pointcloud(
-                points=pcd,
-                colors=pcd_rgb,
-                config=config,  # NurbsOptimizationParams
-                args=args,  # Training args
-                # resolution=(128, 128),
+            # Single-surface model: fit ONE B-spline surface to the SfM
+            # cloud and build SplineModel directly — no multi-surface
+            # decomposition layer.
+            from modules.fitting.nurbs_from_pointcloud import (
+                create_nurbs_from_pointcloud, DecompositionMode,
+            )
+
+            train_cams = self.getTrainCameras().copy()
+            result = create_nurbs_from_pointcloud(
+                pcd, pcd_rgb,
+                mode=DecompositionMode.SINGLE,
+                generate_adaptive_samples=False,
                 nerf_radius=self.cameras_extent,
                 nerf_translate=scene_info.nerf_normalization['translate'],
-                train_cam_uids=list(set([cam.uid for cam in self.getTrainCameras()])),
-                cameras=self.getTrainCameras().copy(),
+                cameras=train_cams,
                 smoothing=smoothing,
                 sampling_resolution_factor=config.sampling_density,
                 base_resolution=config.base_res,
@@ -280,8 +285,23 @@ class SplineScene:
                 parameterization=config.encode_points,
                 post_fit_iterations=config.post_fit_iterations,
                 post_fit_enabled=config.post_fit_enabled,
-
             )
+            surf_data = result.surfaces[0]
+            self.splines = SplineModel(
+                surf_data=surf_data.to_dict(),
+                config=config,
+                args=args,
+                spatial_lr_scale=self.cameras_extent,
+                train_cam_uids=list(set(cam.uid for cam in train_cams)),
+                late_init=False,
+                surf_uid=0,
+                label=surf_data.label,
+                is_background=False,
+                cameras=train_cams,
+                target_density_per_unit=config.target_density_per_unit,
+                sampling_resolution_factor=config.sampling_density,
+            )
+            del result
         else:
             # Late init: create minimal model, caller will inject control points
             self.splines = None
@@ -315,7 +335,7 @@ class SplineScene:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_splines(self) -> MultiSurfaceSplineModel:
+    def get_splines(self) -> SplineModel:
         return self.splines
 
     def get_splesh(self):
@@ -601,7 +621,7 @@ def update_neighbors_by_surface_response(
 
     Args:
         scene            : SplineScene instance
-        multi_surface_model : MultiSurfaceSplineModel (must have run forward())
+        model : SplineModel (must have run forward())
         num_neighbors    : k nearest neighbors to store
         config           : SurfaceResponseConfig
         depth_min/max    : valid depth range
