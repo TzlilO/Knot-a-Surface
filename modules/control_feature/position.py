@@ -93,28 +93,37 @@ class PositionControl(ControlFeature):
         )
 
     @staticmethod
-    def _compact(dense: torch.Tensor, n_ctrl: int):
-        """Dense [M, n_ctrl] basis row -> (window values [M, 4], spans [M])."""
+    def _compact(b: torch.Tensor, db: torch.Tensor, d2b: torch.Tensor,
+                 n_ctrl: int):
+        """
+        Dense [M, n_ctrl] basis value/derivative rows -> compact [M, 4]
+        windows sharing ONE span per sample.
+
+        The span must come from the union support of all three arrays: at a
+        sample lying exactly on a knot the VALUE of the leftmost basis
+        vanishes while its DERIVATIVE does not, so per-array first-nonzero
+        spans would disagree and silently drop window entries.
+        """
+        support = b.abs() + db.abs() + d2b.abs()
         spans = (
-            (dense.abs() > 1e-12).to(torch.int64).argmax(dim=1)
+            (support > 1e-12).to(torch.int64).argmax(dim=1)
             .clamp(max=n_ctrl - 4)
         )
-        cols = spans.unsqueeze(1) + torch.arange(4, device=dense.device).unsqueeze(0)
-        return torch.gather(dense, 1, cols), spans
+        cols = spans.unsqueeze(1) + torch.arange(4, device=b.device).unsqueeze(0)
+        return (
+            torch.gather(b, 1, cols),
+            torch.gather(db, 1, cols),
+            torch.gather(d2b, 1, cols),
+            spans,
+        )
 
     def _fused_eval(self):
         H, W = self.state.H, self.state.W
-        bu, su = self._compact(self.basis.bu, H)
-        dbu, _ = self._compact(self.basis.dbu, H)
-        dbuu = torch.gather(
-            self.basis.dbuu, 1,
-            su.unsqueeze(1) + torch.arange(4, device=bu.device).unsqueeze(0),
+        bu, dbu, dbuu, su = self._compact(
+            self.basis.bu, self.basis.dbu, self.basis.dbuu, H
         )
-        bv, sv = self._compact(self.basis.bv, W)
-        dbv, _ = self._compact(self.basis.dbv, W)
-        dbvv = torch.gather(
-            self.basis.dbvv, 1,
-            sv.unsqueeze(1) + torch.arange(4, device=bv.device).unsqueeze(0),
+        bv, dbv, dbvv, sv = self._compact(
+            self.basis.bv, self.basis.dbv, self.basis.dbvv, W
         )
 
         cpts = self.features

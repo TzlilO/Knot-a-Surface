@@ -49,13 +49,8 @@ def main():
 
     # compact representation (same helper the live integration uses)
     from modules.control_feature.position import PositionControl
-    cb = PositionControl._compact
-    cbu, su = cb(bu, H)
-    cdbu, _ = cb(dbu, H)
-    cdbuu = torch.gather(dbuu, 1, su.unsqueeze(1) + torch.arange(4, device=dev).unsqueeze(0))
-    cbv, sv = cb(bv, W)
-    cdbv, _ = cb(dbv, W)
-    cdbvv = torch.gather(dbvv, 1, sv.unsqueeze(1) + torch.arange(4, device=dev).unsqueeze(0))
+    cbu, cdbu, cdbuu, su = PositionControl._compact(bu, dbu, dbuu, H)
+    cbv, cdbv, cdbvv, sv = PositionControl._compact(bv, dbv, dbvv, W)
 
     # ---- forward correctness ----
     out = bse.tp_contract(grid, cbu, cdbu, cdbuu, cbv, cdbv, cdbvv, su, sv)

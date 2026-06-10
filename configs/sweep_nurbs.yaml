@@ -1,0 +1,75 @@
+# W&B Bayesian sweep for the NURBS "sweet spot" configuration.
+#
+# Launch (on the GPU server, repo root, wandb logged in):
+#   wandb sweep configs/sweep_nurbs.yaml          # prints SWEEP_ID
+#   bash scripts/run_sweep_agent.sh <SWEEP_ID>    # one agent per GPU
+#
+# Each run: scan24 @ r2, 7000 iters (~50 min on the RTX 3090).
+# Optimizes held-out-view PSNR (test split via --eval, llffhold=8).
+
+program: scripts/sweep_train.py
+method: bayes
+metric:
+  name: Eval/test/PSNR
+  goal: maximize
+
+early_terminate:
+  type: hyperband
+  min_iter: 2000
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args}
+
+parameters:
+  # ── learning rates ──────────────────────────────────────────────
+  position_lr_init:
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 5.0e-4
+  nurbs_weight_lr:
+    distribution: log_uniform_values
+    min: 2.0e-4
+    max: 5.0e-3
+  knot_lr:
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 1.0e-3
+  scaling_lr:
+    distribution: log_uniform_values
+    min: 1.0e-3
+    max: 2.0e-2
+  rotation_lr:
+    distribution: log_uniform_values
+    min: 2.0e-4
+    max: 5.0e-3
+  opacity_lr:
+    distribution: log_uniform_values
+    min: 1.0e-2
+    max: 1.0e-1
+  feature_lr:
+    values: [0.001, 0.0025, 0.005]
+
+  # ── loss weights ────────────────────────────────────────────────
+  lambda_dssim:
+    distribution: uniform
+    min: 0.1
+    max: 0.4
+  lambda_eikonal:
+    values: [0.0, 0.005, 0.01, 0.05]
+  local_planar_deviation_weight:
+    values: [0.0, 0.05, 0.1, 0.3]
+
+  # ── model capacity / init ───────────────────────────────────────
+  base_res:
+    values: [96, 128, 192]
+  post_fit_iterations:
+    values: [500, 1500, 3000]
+
+  # ── densification ───────────────────────────────────────────────
+  densify_grad_threshold:
+    distribution: log_uniform_values
+    min: 1.0e-4
+    max: 1.0e-3

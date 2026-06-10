@@ -52,7 +52,7 @@ class ScalingControl(ControlFeature):
 
     def forward(self) -> torch.Tensor:
         scales = super().forward()
-        # scales = self._apply_density_correction(scales)
+        scales = self._apply_density_correction(scales)
 
         if self.state.scaling_dims == 2:
             # `scales` is already activated (exp-space, positive); the flat
