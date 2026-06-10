@@ -840,7 +840,7 @@ class PointCloudProcessor:
             color_complexity = np.zeros_like(geo_complexity)
 
         complexity = 0.7 * geo_complexity + 0.3 * color_complexity
-        ptp = complexity.ptp()
+        ptp = np.ptp(complexity)
         if ptp > 1e-8:
             complexity = (complexity - complexity.min()) / ptp
         else:
@@ -1047,7 +1047,7 @@ class SceneDecomposer:
 
         dist_from_center = np.linalg.norm(points - centroid, axis=1)
         dist_norm = (dist_from_center - dist_from_center.min()) / (
-            dist_from_center.ptp() + 1e-8
+            np.ptp(dist_from_center) + 1e-8
         )
 
         pca = PCA(n_components=3)
@@ -1056,7 +1056,7 @@ class SceneDecomposer:
         normal_dir = pca.components_[2]
         dist_from_plane = np.abs(np.dot(points - centroid, normal_dir))
         plane_norm = (dist_from_plane - dist_from_plane.min()) / (
-            dist_from_plane.ptp() + 1e-8
+            np.ptp(dist_from_plane) + 1e-8
         )
 
         uv_proj = pca.transform(points - centroid)[:, :2]
@@ -1102,7 +1102,7 @@ class SceneDecomposer:
         points = self.processor.points
         center = self.processor.bounds["center"]
         distances = np.linalg.norm(points - center, axis=1)
-        ptp = distances.ptp()
+        ptp = np.ptp(distances)
         if ptp > 1e-8:
             distances = (distances - distances.min()) / ptp
         else:
