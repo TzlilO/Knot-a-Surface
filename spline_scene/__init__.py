@@ -264,27 +264,14 @@ class SplineScene:
             # Single-surface model: fit ONE B-spline surface to the SfM
             # cloud and build SplineModel directly — no multi-surface
             # decomposition layer.
-            from modules.fitting.nurbs_from_pointcloud import (
-                create_nurbs_from_pointcloud, DecompositionMode,
-            )
+            from modules.fitting.simple_init import fit_initial_surface
 
             train_cams = self.getTrainCameras().copy()
-            result = create_nurbs_from_pointcloud(
+            result = fit_initial_surface(
                 pcd, pcd_rgb,
-                mode=DecompositionMode.SINGLE,
-                generate_adaptive_samples=False,
-                nerf_radius=self.cameras_extent,
-                nerf_translate=scene_info.nerf_normalization['translate'],
                 cameras=train_cams,
-                smoothing=smoothing,
-                sampling_resolution_factor=config.sampling_density,
-                base_resolution=config.base_res,
-                min_resolution=config.min_res,
-                max_resolution=config.max_res,
-                target_density_per_unit=config.target_density_per_unit,
+                quality=getattr(config, 'init_quality', 'balanced'),
                 parameterization=config.encode_points,
-                post_fit_iterations=config.post_fit_iterations,
-                post_fit_enabled=config.post_fit_enabled,
             )
             surf_data = result.surfaces[0]
             self.splines = SplineModel(

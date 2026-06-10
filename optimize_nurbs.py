@@ -1046,11 +1046,6 @@ def training(dataset, opt, pipe, args, **kwargs) -> None:
     # dirname = dataset.model_path.split('/')[-1]
     scan_id = dirname.split('n')[-1].split('_')[0]  # e.g., 118
     scene_name = os.path.basename(dataset.model_path)  # e.g., scan118
-    # bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
-    # if len(dirname.split("_")) <= 1 and not args.include_eval:
-    #     trial_index = prepare_output_and_logger(dataset)
-    # else:
-    #     trial_index = scene_name.split("_")[-1] if len(scene_name.split("_")) > 1 else "0"
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device='cuda')

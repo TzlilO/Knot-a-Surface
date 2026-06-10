@@ -29,8 +29,6 @@ class OpacityControl(ControlFeature):
     def forward(self) -> torch.Tensor:
         return super().forward() if self.control_features is not None else None
 
-    forward = forward
-
     def compute_inserted_grid(
         self, direction, knots, degree, val, insert_idx,
         insertion_fn, blend_radius=2, blend_strength=0.5, use_blend=False,old_H=None, old_W=None

@@ -44,7 +44,7 @@ def compact_basis_windows(b, db, d2b, n_ctrl):
     """
     support = b.abs() + db.abs() + d2b.abs()
     spans = (
-        (support > 1e-12).to(torch.int64).argmax(dim=1).clamp(max=n_ctrl - 4)
+        (support > 1e-9).to(torch.int64).argmax(dim=1).clamp(max=n_ctrl - 4)
     )
     cols = spans.unsqueeze(1) + torch.arange(4, device=b.device).unsqueeze(0)
     return (
@@ -127,10 +127,10 @@ class ControlFeature(nn.Module):
         control_features = (
             control_features
             .reshape(-1, self._original_channels)
-            .detach()
-            .clone()
+            # .detach()
+            # .clone()
             .contiguous()
-        )
+        ).requires_grad_(True)
         self.control_features = nn.Parameter(control_features, requires_grad=True)
 
     def invalidate(self, hard: bool = False):
@@ -160,8 +160,6 @@ class ControlFeature(nn.Module):
 
     @property
     def feature_channels(self):
-        if self.use_pe:
-            return self._original_channels
         return 0 if self.control_features is None else self.control_features.shape[-1]
 
     # ------------------------------------------------------------------
@@ -184,49 +182,26 @@ class ControlFeature(nn.Module):
         """
         Interpolate control features via B-spline basis functions.
 
-        Interpolation happens in RAW parameter space, activation afterwards
-        (paper Eq. 7: σ(Σ N·x̃), not Σ N·σ(x̃)). This also matches Boehm
-        knot insertion, which operates on raw parameters.
+        Formulation: activate-then-interpolate — the control grid is
+        activated ONCE (self.features) and the convex B-spline combination
+        is taken in activated space (Σ N·σ(x̃)). The fallback must NOT
+        re-apply the activation. RotationControl renormalizes its output
+        (a convex combination of unit quaternions is not unit).
 
         Returns:
             Interpolated values [Us*Vs, C].
         """
-        grid = self.raw_features
+        grid = self.features
         if fused_available(self.state, self.basis, grid):
             # Fused local-support CUDA kernel; [0] = value contraction.
-            raw = fused_contract(grid, self.basis, self.state.H, self.state.W)[0]
-        # elif self.state.use_bmm:
-        #     raw = self._interpolate_bmm(self.basis.bu, self.basis.bv, grid)
+            out = fused_contract(grid, self.basis, self.state.H, self.state.W)[0]
         else:
-            raw = oe.contract(
-                self.basis.contract_path,
-                self.basis.bu,
-                grid,
-                self.basis.bv,
+            # einsum fallback (CPU / non-grid modes); grid is ALREADY
+            # activated — no second activation.
+            out = oe.contract(
+                self.basis.contract_path, self.basis.bu, grid, self.basis.bv,
             )
-
-        prod = self.activation(raw.contiguous())
-        return prod.reshape(-1, self.feature_channels)
-    #
-    # def _interpolate_bmm(
-    #     self,
-    #     Bu: torch.Tensor,
-    #     Bv: torch.Tensor,
-    #     ctrl_points: torch.Tensor,
-    # ) -> torch.Tensor:
-    #     """BMM-based separable interpolation: Bu @ P @ Bv^T."""
-    #     H, W, C = ctrl_points.shape
-    #     Us = Bu.shape[0]
-    #
-    #     P_2d = ctrl_points.reshape(H, W * C)
-    #     step1 = torch.mm(Bu, P_2d)                          # [Us, W*C]
-    #     step1 = step1.reshape(Us, W, C).permute(0, 2, 1).reshape(Us * C, W)
-    #     step2 = torch.mm(step1, Bv.T)                       # [Us*C, Vs]
-    #     return step2.reshape(Us, C, -1).permute(0, 2, 1).contiguous()
-
-    # ------------------------------------------------------------------
-    # Blending (alpha for temporal smoothing after subdivision)
-    # ------------------------------------------------------------------
+        return out.contiguous().reshape(-1, self.feature_channels)
 
     blending_alpha = 0.0
     blending_beta = 1.0

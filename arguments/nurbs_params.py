@@ -9,11 +9,9 @@ class NurbsOptimizationParams(OptimizationParams):
 
 
         self.scaling_reset_factor = 0.5
-        self.nurbs_weight_lr = 0.001
-        self.background_lr_scale_factor = 10.0
+        self.nurbs_weight_lr = 0.01
+        self.background_lr_scale_factor = 1.0
         self.pe_lr_factor = 1.0
-        self.curr_factor = 1
-
         self.batch_size = 1
         self.uv_lr_factor = 1e-4
         self.knot_lr = 1e-4
@@ -62,15 +60,14 @@ class NurbsOptimizationParams(OptimizationParams):
         self.subdiv_critertia = 'residual' #'hybrid'
         self.sampling_strategy = 'static' #'hybrid'
         self.decomposition_mode = 'single'
-        # self.encode_points = 'pca' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # self.encode_points = 'conformal' # 'geodesic' #'spherical' 'geodesic', 'pca
         self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # Chamfer post-fit of the initial control grid: refines the LS fit
-        # against the SfM point cloud before training starts (much better
-        # convergence starting point).
+        # Initial-surface estimation: ONE knob — 'fast' | 'balanced' | 'fine'
+        # | 'raw' (raw = LS fit only, no Chamfer post-fit). Resolution, LS
+        # smoothing and post-fit budget are derived from the data; see
+        # modules/fitting/simple_init.py. The legacy post_fit_* knobs below
+        # no longer drive the live init path.
         self.post_fit_iterations = 500
-        self.post_fit_enabled = False
+        self.post_fit_enabled = True
         self.base_res = 256
         self.max_res = 512
         self.min_res = 128

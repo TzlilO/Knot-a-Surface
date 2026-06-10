@@ -88,13 +88,26 @@ class SamplerUV(nn.Module):
     # Activations
     # =====================================================================
 
+    # Margin keeps samples strictly interior to [0,1]: boundary basis rows
+    # are degenerate and a plain sigmoid saturates (vanishing gradients)
+    # when samples drift to the ends — once stuck at 0/1 they cannot recover.
+    _MARGIN = 1e-3
+
     @property
     def activation(self):
-        return torch.sigmoid if self.should_optimize else lambda x: x
+        if not self.should_optimize:
+            return lambda x: x
+        m = self._MARGIN
+        return lambda x: m + (1.0 - 2.0 * m) * torch.sigmoid(x)
 
     @property
     def inverse_activation(self):
-        return inverse_sigmoid if self.should_optimize else lambda x: x
+        if not self.should_optimize:
+            return lambda x: x
+        m = self._MARGIN
+        return lambda y: inverse_sigmoid(
+            ((y - m) / (1.0 - 2.0 * m)).clamp(1e-6, 1.0 - 1e-6)
+        )
 
     # =====================================================================
     # Interval Access (with upsampling / stochastic sampling)

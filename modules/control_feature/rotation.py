@@ -34,6 +34,11 @@ class RotationControl(ControlFeature):
     def activation(self):
         return lambda x: F.normalize(x, dim=-1)
 
+    def forward(self) -> torch.Tensor:
+        # A convex B-spline combination of unit quaternions is NOT unit --
+        # renormalize after interpolation (fused path applies no activation).
+        return F.normalize(super().forward(), dim=-1)
+
     def set_position(self, position: 'PositionControl'):
         self.position = position
 

@@ -137,15 +137,28 @@ class KnotVector(nn.Module):
 
         # Debug output
         self._debug_print_init_summary()
+    # Margin keeps internal knots strictly inside (0,1): a knot reaching a
+    # clamped end raises end-multiplicity (continuity collapse), and plain
+    # sigmoid saturation would freeze it there with zero gradient.
+    _MARGIN = 1e-3
+
     @property
     def activation(self):
-        """Activation function to ensure internal knots are in (0, 1)."""
-        return torch.sigmoid if self.should_optimize else lambda x: x
+        """Map raw params to internal knots in (margin, 1-margin)."""
+        if not self.should_optimize:
+            return lambda x: x
+        m = self._MARGIN
+        return lambda x: m + (1.0 - 2.0 * m) * torch.sigmoid(x)
 
     @property
     def inverse_activation(self):
-        """Inverse of the activation function for optimization."""
-        return inverse_sigmoid if self.should_optimize else lambda x: x
+        """Inverse of the margin-bounded activation."""
+        if not self.should_optimize:
+            return lambda x: x
+        m = self._MARGIN
+        return lambda y: inverse_sigmoid(
+            ((y - m) / (1.0 - 2.0 * m)).clamp(1e-6, 1.0 - 1e-6)
+        )
     def _create_uniform_internal_knots(self, n_internal: int, device: torch.device) -> torch.Tensor:
         """Create uniformly spaced internal knots in (0, 1)."""
         if n_internal <= 0:

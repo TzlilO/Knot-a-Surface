@@ -227,15 +227,6 @@ class ModelState:
             self._xyz_denom_abs.zero_()
             self.max_radii2D.zero_()
 
-    # @property
-    # def contract_path(self) -> str:
-    #
-    #     if self.ndim_interp == 2:
-    #         oe_path = 'hu,uvc,vw->hwc'
-    #     else:
-    #         oe_path = 'hwu, hwv, uvc -> hwc'
-    #
-    #     return oe_path
     @property
     def optimal_contract_path(self) -> str:
         return oe.contract_path(self.contract_path,

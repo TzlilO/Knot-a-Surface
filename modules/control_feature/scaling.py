@@ -22,7 +22,7 @@ class ScalingControl(ControlFeature):
         super().__init__(state, control_grid, basis, activation=activation, **kwargs)
         self._activation = torch.exp
         self._inverse_activation = torch.log
-        self.subdivision_scale_factor = 0.8
+        self.subdivision_scale_factor = 1
         self.subdivision_count = 2
         if position := kwargs.get('position'):
             self.set_position(position)
@@ -51,18 +51,13 @@ class ScalingControl(ControlFeature):
     # ------------------------------------------------------------------
 
     def forward(self) -> torch.Tensor:
-        scales = super().forward()
+        return super().forward()
 
         # Pad the flat normal axis BEFORE density correction (which indexes
         # all three axes). `scales` is already activated (exp-space); the
         # tiny positive value is exp(-9) ≈ 1.234e-4 in activated space.
-        if self.state.scaling_dims == 2:
-            scaling_n = torch.full(
-                (scales.shape[0], 1), fill_value=1.234e-4, device=scales.device,
-            )
-            scales = torch.cat([scales, scaling_n], dim=-1)
 
-        return scales#self._apply_density_correction(scales)
+        # return scales #self._apply_density_correction(scales)
 
     def _apply_density_correction(self, scales: torch.Tensor) -> torch.Tensor:
         """

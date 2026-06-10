@@ -8,9 +8,6 @@ import torch
 from ply_export import save_ply_single_surface
 from .control_feature import ControlFeature, PositionControl, WeightControl, ScalingControl, RotationControl, OpacityControl, SHControl, SHControlWrapper
 
-# from modules.tessellation.chhugani import (
-#     ForwardContext,
-# )
 from simple_knn._C import distCUDA2
 
 from .basis import BasisFunction, compute_bases_uv_diff
@@ -294,7 +291,7 @@ class SplineModel(nn.Module):
                 weights_init = self.inverse_weights_activation(weights_init)  # Inverse activation to get initial params
 
             scaling_ch = self.state.scaling_dims
-            self.update_sampling_density(1)
+            # self.update_sampling_density(1)
 
             self.basis.recompute()
             contract_path = self.basis.contract_path
@@ -305,8 +302,8 @@ class SplineModel(nn.Module):
             self._init_position(pos_init, weights_init)
             self._init_opacity(H, W)
             self._init_sh_features(features)
-            self._init_rots(dSu, dSv, H, W, precompute_rots=surf_data.get('control_quaternions'))
-            self._init_scaling(H, W, scaling_ch)
+            self._init_rots(dSu, dSv, H, W)
+            self._init_scaling()#H, W, scaling_ch)
 
             self._uv_recompute_interval = np.inf   # self.num_train_views if (uv_recompute <= 0 and self._sampling_mode != SamplingMode.STATIC) else uv_recompute
             self._last_uv_recompute_iter = -1
@@ -351,7 +348,7 @@ class SplineModel(nn.Module):
             initial_opac = torch.full((H * W, 1),
                                       fill_value=target_opacity,
                                       device=self.device)  # .squeeze(0)
-            opac_param = self.inverse_opacity_activation(initial_opac)  # Convert to raw parameter space
+            opac_param = self.inverse_opacity_activation(initial_opac).detach()  # Convert to raw parameter space
         self.opacity = OpacityControl(self.state, opac_param, self.basis, name=opacity_name)
 
     def _init_sh_features(self, features, dc_name=None, rest_name=None, **kwargs):
@@ -374,39 +371,20 @@ class SplineModel(nn.Module):
         )
         self.spherical_harmonics = SHControlWrapper(self.state, sh_dc, sh_rest)
 
-    def _init_scaling(self, H, W, scaling_ch, scaling_name=None, apply_sqrt=False, **kwargs):
+    def _init_scaling(self):#, H, W, scaling_ch, scaling_name=None, apply_sqrt=False, **kwargs):
 
-        if scaling_name is None:
-            scaling_name = f"scaling_{self.surf_uid}" if self.surf_uid is not None else "scaling"
-        scaling_init = None
         if self.state.opt.refine_scales:
 
-            if self.state.opt.residual_scaling:
-                scaling_init = self.scaling_inverse_activation(
-                    torch.ones((H * W, scaling_ch), device=self.device)).requires_grad_(True).contiguous()
-            else:
-                # scale_u = dSu.reshape(self.state.H, self.state.W, 3).norm(
-                #     dim=-1) * self.uv_sampler.delta_u / 2
-                # scale_v = dSv.reshape(self.state.H, self.state.W, 3).norm(
-                #     dim=-1) * self.uv_sampler.delta_v / 2
+            # scale_u = self.position.dSu.reshape(self.state.H, self.state.W, 3).norm(
+            #     dim=-1) * self.uv_sampler.delta_u / 2
+            # scale_v = self.position.dSv.reshape(self.state.H, self.state.W, 3).norm(
+            #     dim=-1) * self.uv_sampler.delta_v / 2
+            # with torch.no_grad():
+            dist = distCUDA2(self.position.control_features.float().cuda())
+            scales = torch.log(dist)[..., None].repeat(1, 3)
+            # scaling_init = torch.log((torch.stack([dist, , torch.ones(scale_v.shape, device=dist.device) * 1e-9], dim=-1)))#.reshape(self.state.H * self.state.W, scaling_ch)))#.detach().clone()
 
-                dist = torch.sqrt(
-                    distCUDA2((self.position.control_features).float().cuda()).clamp(1e-20, 5e-1))
-                # print(f"new scale {torch.quantile(dist, 0.1)}")
-                # scaling_init = (dist)
-                scaling_init = torch.log((torch.stack([dist, dist, torch.ones_like(dist) * 1e-9], dim=-1)).reshape(self.state.H * self.state.W, scaling_ch)).detach().clone()
-
-                # if apply_sqrt:
-                #     scale_u, scale_v = scale_u.sqrt(), scale_v.sqrt()
-                # if scaling_ch == 2:
-                #     scaling_init = torch.stack([scale_u, scale_v], dim=-1).reshape(self.state.H * self.state.W,
-                #                                                                    scaling_ch)
-                # else:
-                #     scale_n = 1e-8 * torch.ones_like(scale_u)  # Placeholder for normal-based scaling
-                #     scaling_init = torch.stack([scale_u, scale_v, scale_n], dim=-1).reshape(
-                #         self.state.H * self.state.W, scaling_ch)
-
-        self.scaling = ScalingControl(self.state, scaling_init, self.basis, name=scaling_name, position=self.position)
+            self.scaling = ScalingControl(self.state, scales, self.basis, name='scaling', position=self.position)
 
     def _init_rots(self, dSu, dSv, H, W, rotation_name=None, **kwargs):
         rotation_init = None
@@ -1051,7 +1029,7 @@ class SplineModel(nn.Module):
     def get_opacity(self) -> torch.Tensor:
         """Sample opacities with lazy caching."""
 
-        return self.opacity.forward().view(-1, 1)
+        return self.opacity.forward().reshape(-1, 1)
 
     @property
     def get_rotation(self) -> torch.Tensor:
@@ -1078,6 +1056,7 @@ class SplineModel(nn.Module):
         if self.state.opt.residual_scaling:
             scaling = self.derive_scale().view(-1, 3) * scaling
         return scaling
+
     @property
     def get_features(self) -> torch.Tensor:
         """Sample SH features with lazy caching."""
@@ -3110,127 +3089,7 @@ class SplineModel(nn.Module):
         self.recompute()
 
         return success_count
-    def prune_surface2(
-            self,
-            cand: Dict,
-            optimizer: Optional[torch.optim.Optimizer] = None,
-            error_tolerance: float = 1e-3
-    ) -> bool:
-        """
-        Apply a single pruning (knot removal) operation.
-        """
-        optimizer = optimizer if optimizer is not None else self.optimizer
 
-        is_u = (cand['type'] == 'u')
-        direction = 'u' if is_u else 'v'
-        remove_idx = cand['index']
-
-        H, W = self.state._H, self.state._W
-        degree = self.state.degree
-        # Safety checks
-        min_size = degree + 2
-        if (is_u and H <= min_size) or (not is_u and W <= min_size):
-            return False
-
-        if is_u:
-            if remove_idx < degree or remove_idx >= H - degree:
-                return False
-        else:
-            if remove_idx < degree or remove_idx >= W - degree:
-                return False
-
-        # Get current knot vectors
-        knots_u = self.knot_u.forward()
-        knots_v = self.knot_v.forward()
-        curr_knots = knots_u if is_u else knots_v
-
-        # ==========================================================================
-        # 1. Remove control point rows/columns from all feature modules
-        # ==========================================================================
-
-        tensors_dict = {}
-
-        for module in self.control_list:
-            if module.control_features is None:
-                continue
-            new_ctrl = module.compute_removed_grid(direction=direction, remove_idx=remove_idx)
-            tensors_dict[module.name] = new_ctrl
-
-        # ==========================================================================
-        # 2. Update knot vector
-        # ==========================================================================
-
-        n_internal = len(curr_knots) - 2 * (degree + 1)
-        if n_internal <= 0:
-            return False
-
-        internal_knot_idx = remove_idx - degree
-        internal_knot_idx = max(0, min(internal_knot_idx, n_internal - 1))
-        abs_knot_idx = degree + 1 + internal_knot_idx
-
-        new_knots = torch.cat([
-            curr_knots[:abs_knot_idx],
-            curr_knots[abs_knot_idx + 1:]
-        ])
-
-        # ==========================================================================
-        # 3. Update optimizer state for control features
-        # ==========================================================================
-
-        opt_tensors = self._remove_tensors_from_optimizer(
-            tensors_dict,
-            remove_idx,
-            direction='u' if is_u else 'v',
-            optimizer=optimizer
-        )
-
-        # ==========================================================================
-        # 4. Apply to modules
-        # ==========================================================================
-
-        for module in self.control_list:
-            if module.name in opt_tensors:
-                module.control_features = opt_tensors[module.name]
-
-        self.position.set_weights(self.weights)
-        # ==========================================================================
-        # 5. Update sampler intervals BEFORE updating state dimensions
-        # ==========================================================================
-        #
-        self.uv_sampler.prune_uv(direction, removed_idx=remove_idx, optimizer=optimizer)
-
-        new_internal_knots = new_knots[degree + 1:-(degree + 1)]
-        if is_u:
-            self.knot_u.update_knot_vector(self, new_internal_knots, u_bar=None, optimizer=optimizer)
-            self.state._H -= 1
-            self.state.base_u -= 1
-
-        else:
-            self.knot_v.update_knot_vector(self, new_internal_knots, u_bar=None, optimizer=optimizer)
-            self.state._W -= 1
-            self.state.base_v -= 1# self.state.sampling_density
-
-        self.basis.uv_sampler = self.uv_sampler
-        self.basis.knot_u = self.knot_u
-        self.basis.knot_v = self.knot_v
-        torch.cuda.empty_cache()
-        if hasattr(self, '_chhugani_tessellator'):
-            self._chhugani_tessellator.reset()
-        if hasattr(self, '_chhugani_params'):
-            del self._chhugani_params
-        self.invalidate_all_caches(force=True)
-        self.recompute()
-        return True
-
-    @staticmethod
-    def evaluate_points(einsum_path:str, control_points:torch.Tensor, basis_u:torch.Tensor, basis_v:torch.Tensor, optimal_path:str = 'auto') -> torch.Tensor:
-        return oe.contract(
-            einsum_path,
-            basis_u,
-            control_points,
-            basis_v,
-            optimize=optimal_path
-            )
 
     def optimize_intervals(self, num_steps=200, lr=0.005, verbose=True, render_fn=None, **kwargs):
         """
@@ -3356,10 +3215,6 @@ class SplineModel(nn.Module):
 
     def prune_grid(
             self,
-            min_opacity: float = 0.005,
-            max_screen_size: float = 20.0,
-            max_world_scale_factor: float = 0.1,
-            extent: Optional[float] = None,
             max_removals: int = 3,
             error_tolerance: float = 1e-4,
             optimizer: Optional[torch.optim.Optimizer] = None,
