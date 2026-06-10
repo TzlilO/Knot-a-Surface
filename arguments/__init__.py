@@ -12,9 +12,6 @@ from argparse import ArgumentParser, Namespace
 import sys
 import os
 
-from math import inf
-
-
 class GroupParams:
     pass
 
@@ -49,8 +46,7 @@ class ParamGroup:
 
 class ModelParams(ParamGroup):
     def __init__(self, parser, sentinel=False):
-        self.sh_degree = 1
-
+        self.sh_degree = 2
         self._source_path = ""
         self._model_path = ""
         self._images = "images"
@@ -64,15 +60,13 @@ class ModelParams(ParamGroup):
         self.multi_view_max_angle = 30
         self.multi_view_min_dis = 0.01
         self.multi_view_max_dis = 1.5
-
-
         super().__init__(parser, "Loading Parameters", sentinel)
-
 
     def extract(self, args):
         g = super().extract(args)
         g.source_path = os.path.abspath(g.source_path)
         return g
+
 
 class PipelineParams(ParamGroup):
     def __init__(self, parser):
@@ -95,17 +89,15 @@ class OptimizationParams(ParamGroup):
         self.rotation_lr = 0.001
         self.percent_dense = 0.001
         self.lambda_dssim = 0.2
-        self.densification_interval = 500
+        self.densification_interval = 100
         self.opacity_reset_interval = 3000
         self.densify_from_iter = 500
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
         self.scale_loss_weight = 100.0
-
         self.wo_image_weight = False
         self.single_view_weight = 0.015
         self.single_view_weight_from_iter = 7000
-
         self.use_virtul_cam = False
         self.virtul_cam_prob = 0.5
         self.use_multi_view_trim = True
@@ -126,109 +118,6 @@ class OptimizationParams(ParamGroup):
         self.random_background = False
         super().__init__(parser, "Optimization Parameters")
 
-class NurbsOptimizationParams(OptimizationParams):
-    # UV Consistency Settings
-
-    def __init__(self, parser):
-        self.device = 'cuda'
-        self.use_uv_consistency= False
-        self.uv_consistency_weight= 0.05
-        self.uv_consistency_max_neighbors= 2
-        self.uv_consistency_interval= 1  # Compute every N iterations
-        self.uv_consistency_start_iter= 1  # Start after warmup
-        self.uv_max_features= 2000
-        self.uv_match_ratio= 0.75
-        self.uv_min_matches= 20
-        self.uv_preprocess_max_neighbors= 3
-
-        self.scaling_reset_factor = 0.5
-        self.nurbs_weight_lr = 0.001
-        self.background_lr_scale_factor = 10.0
-        self.pe_lr_factor = 1.0
-        self.curr_factor = 1
-
-        self.batch_size = 1
-        self.uv_lr_factor = 1e-4
-        self.knot_lr = 1e-5
-
-        # --- Weights for loss terms ---
-        self.lambda_eikonal = 0.0
-        self.eikonal_from_iter = 0
-        self.quat_smoothness_weight = 0.0
-        self.scale_deviation_weight = 0.0
-        self.scale_smoothness_weight = 0.0
-        self.normal_smoothness_weight = 0.0
-        self.normal_global_smoothness_weight = 0.0
-        self.normal_dev_weight = 0.0
-        self.chamfer_weight = 0.0
-        self.cossim_weight = 0.0
-        self.kl_div_weight = 0.0
-
-        # --- Stage thresholds for loss activation ---
-        self.scale_consistency_from = 0
-        self.quat_smooth_from = 0
-        self.normal_smooth_from = 0
-        self.normal_dev_from = 0
-        self.local_planar_deviation_weight = 0.0
-        self.local_planar_deviation_from = 0
-
-
-        self.use_pe_sampling = False
-        self.pe_num_frequencies = 2
-        self.pe_lr_base = 0.01
-        self.use_pe = False  # Enable PE mode
-        self.pe_lr_scale = 0.01
-        self.pe_log_sampling = True
-        self.pe_max_freq = 8  # Enable PE mode
-        self.pe_levels = 4  # Number of frequency levels
-        self.pe_include_input = True  # Include identity term
-        self.pe_learnable_freqs = False  # Make frequencies learnable
-        self.discrepancy_from_iter = 70_000
-        self.lambda_uv_consistency = 0.0
-        self.uv_update_interval = inf
-        self.set_uv_adaptive_from = 1000000
-        self.set_uv_optimizable_from = inf
-        self.random_sampling = False
-        # self.sampling_strategy = None
-        self.freeze_uv_iter = 160_000
-        self.subdiv_critertia = 'residual' #'hybrid'
-        self.sampling_strategy = 'static' #'hybrid'
-        # self.decomposition_mode = 'kcc' #'single'
-        # self.decomposition_mode = 'background' #'single'
-        self.decomposition_mode = 'single' #'single'
-        self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
-        self.post_fit_iterations = 1000
-        self.post_fit_enabled = True
-        self.base_res = 128
-        self.max_res = 512
-
-        self.spline_degree = [3, 3]
-        self.max_k_subdiv = 0.02
-        self.max_k_prune = 0.0
-        self.max_k_prune_vis = 0.0
-
-        # Spline Model Parameters
-        self.target_density_per_unit = 1
-        self.sampling_density = 1.0
-
-        self.bind_to_grid = False
-        self.refine_scales = True
-        self.refine_rotations = True
-        self.refine_opacities = True
-        self.refine_weights = True
-        self.optimize_intervals = False
-        self.optimize_knots = False
-
-        self.residual_scaling = False and self.refine_scales
-        self.residual_rots = False and self.refine_rotations
-        self.residual_opacity = False and self.refine_opacities
-
-        self.use_spatial_partitioning = False  # For subdivision
-        self.use_spatial_partitioning_prune = False  # For pruning
-        self.num_partitions = 8  # Auto-adjust based on grid size
-        self.num_partitions_prune = 4  # Different for pruning
-        super().__init__(parser)
 
 def get_combined_args(parser : ArgumentParser):
     cmdlne_string = sys.argv[1:]
@@ -251,3 +140,5 @@ def get_combined_args(parser : ArgumentParser):
         if v != None:
             merged_dict[k] = v
     return Namespace(**merged_dict)
+
+

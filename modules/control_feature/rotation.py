@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from .base import ControlFeature
 from .quaternion_utils import quaternion_mean, slerp
-from modules.spline_formulas import uv_tangent
+from modules.spline_formulas import uv_tangent, n2q
 
 if TYPE_CHECKING:
     from .position import PositionControl
@@ -28,7 +28,8 @@ class RotationControl(ControlFeature):
 
     def __init__(self, state, control_grid, basis, use_residual=False, **kwargs):
         super().__init__(state, control_grid, basis, **kwargs)
-
+        if position:= kwargs.get('position'):
+            self.set_position(position)
     @property
     def activation(self):
         return lambda x: F.normalize(x, dim=-1)
@@ -36,16 +37,82 @@ class RotationControl(ControlFeature):
     def set_position(self, position: 'PositionControl'):
         self.position = position
 
-    def interpolate_samples(self) -> torch.Tensor:
-        return super().interpolate_samples().reshape(-1, 4)
-
-    forward = interpolate_samples
 
     # ------------------------------------------------------------------
     # Insertion: rotation-specific post-processing
     # ------------------------------------------------------------------
-
     def compute_inserted_grid(
+        self, direction, knots, degree, val, insert_idx,
+        insertion_fn, blend_radius=3, blend_strength=0.3, use_blend=False, old_H=None, old_W=None
+    ) -> Tuple[torch.Tensor, int]:
+        new_grid, insert_idx = super().compute_inserted_grid(
+            direction, knots, degree, val, insert_idx,
+            insertion_fn, blend_radius, blend_strength, use_blend=use_blend,
+        )
+
+        if direction == 'v':
+            new_grid = new_grid.permute(1, 0, 2)
+
+        new_slice = new_grid[insert_idx: insert_idx + degree + 1]
+
+        if self.state.opt.residual_rots:
+            new_slice = torch.zeros_like(new_slice)
+            new_slice[..., 0] = 1.0  # Identity quaternion
+        else:
+            if blend_strength > 0 and blend_radius is not None:
+                blend_radius = blend_radius if blend_radius is not None else degree
+                # FIX: Use control-grid-level finite differences (H, W, 3)
+                # instead of sample-grid derivatives (Us, Vs, 3).
+                # dsdu() and dsdv() are computed on the control grid and have
+                # the correct shape for indexing by insert_idx.
+            tangent = (
+                self.position.dsdu()[insert_idx: insert_idx + degree + 1]
+                if direction == 'u'
+                else self.position.dsdv()[insert_idx: insert_idx + degree + 1]
+            )
+
+            self.position.invalidate()  # Invalidate position cache to ensure dsdu/dsdv are up-to-date
+            tan_u, tan_v = self.position.dsdu(), self.position.dsdv()
+            H, W = (self.state.H, self.state.W) if not direction == 'v' else (self.state.W, self.state.H)
+            if direction == 'v':
+                tan_u, tan_v = tan_u.permute(1, 0, 2), tan_v.permute(1, 0, 2)
+
+            # target_rots = uv_tangent(tan_u, tan_v).reshape(H, W, 4)#.reshape(4, -1, 4) #angent.reshape(-1, 3))
+            target_rots = n2q(torch.cross(tan_u, tan_v, dim=-1)).reshape(H, W, 4) #.reshape(4, -1, 4) #angent.reshape(-1, 3))
+
+            new_grid[insert_idx: insert_idx + degree + 1] = target_rots[insert_idx: insert_idx + degree + 1]
+            # for i in range(new_slice.shape[0]):
+            #     w = blend_strength * torch.exp(
+            #         torch.tensor(-0.5 * (i / max(blend_radius / 2, 1)) ** 2)
+            #     )
+            #     new_slice[i] = slerp(new_slice[i], target_rots[i], t=w.item())
+            #
+            # # if blend_strength > 0 and blend_radius is not None:
+            #     blend_radius = blend_radius if blend_radius is not None else degree
+            #     # tangent = (
+            #     #     self.position.dsdu()[insert_idx: insert_idx + degree + 1]
+            #     #     if direction == 'u'
+            #     #     else self.position.dsdv()[insert_idx: insert_idx + degree + 1]
+            #     # )
+            #     # target_rots = uv_tangent(tangent.reshape(-1, 3))
+            # target_rots = (n2q(self.position.dsdu().cross(self.position.dsdv(), dim=-1)))
+            # if direction == 'v':
+            #     target_rots = target_rots.permute(1, 0, 2)
+            # new_slice = target_rots[insert_idx: insert_idx + degree + 1]
+            #
+            # for i in range(new_slice.shape[0]):
+            #     w = blend_strength * torch.exp(
+            #         torch.tensor(-0.5 * (i / max(blend_radius / 2, 1)) ** 2)
+            #     )
+            #     new_slice[i] = slerp(new_slice[i], target_rots[i], t=w.item())
+
+        new_grid[insert_idx: insert_idx + degree + 1] = new_slice
+
+        if direction == 'v':
+            new_grid = new_grid.permute(1, 0, 2)
+
+        return new_grid.contiguous(), insert_idx
+    def compute_inserted_grid2(
         self, direction, knots, degree, val, insert_idx,
         insertion_fn, blend_radius=None, blend_strength=0.3, use_blend=False,
     ) -> Tuple[torch.Tensor, int]:

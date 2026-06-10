@@ -14,7 +14,10 @@ from typing import List, Dict, Optional, Tuple, Union
 from dataclasses import dataclass
 import numpy as np
 
-from nurbs_from_pointcloud import (
+
+
+
+from modules.fitting.nurbs_from_pointcloud import (
     DecompositionMode,
     MultiSurfaceResult,
     NURBSSurfaceData,

@@ -1,0 +1,181 @@
+# =============================================================================
+#  Knots – NURBS Optimization Default Configuration
+# =============================================================================
+# Override any value with a scene-specific YAML or CLI flags.
+# Precedence: CLI > scene YAML > this file.
+
+# ─── Device ──────────────────────────────────────────────────────────────────
+device: "cuda"
+
+# ─── Training Schedule ───────────────────────────────────────────────────────
+training:
+  iterations: 30_000
+  batch_size: 1
+
+# ─── Learning Rates (inherited 3DGS base) ───────────────────────────────────
+learning_rates:
+  position_lr_init: 0.00016
+  position_lr_final: 0.0000016
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 30_000
+  feature_lr: 0.0025
+  opacity_lr: 0.05
+  scaling_lr: 0.005
+  rotation_lr: 0.001
+  # NURBS-specific
+  nurbs_weight_lr: 0.001
+  uv_lr_factor: 1.0e-4
+  knot_lr: 1.0e-5
+  pe_lr_factor: 1.0
+  pe_lr_base: 0.01
+  pe_lr_scale: 0.01
+  background_lr_scale_factor: 10.0
+  curr_factor: 1
+
+# ─── Densification / Pruning (inherited 3DGS) ───────────────────────────────
+densification:
+  percent_dense: 0.001
+  densification_interval: 500
+  opacity_reset_interval: 3000
+  densify_from_iter: 500
+  densify_until_iter: 15_000
+  densify_grad_threshold: 0.0002
+  densify_abs_grad_threshold: 0.0008
+  abs_split_radii2D_threshold: 20
+  max_abs_split_points: 50_000
+  max_all_points: 6_000_000
+  opacity_cull_threshold: 0.005
+  scaling_reset_factor: 0.5
+
+# ─── Multi-View Consistency (inherited 3DGS) ────────────────────────────────
+multi_view:
+  wo_image_weight: false
+  single_view_weight: 0.015
+  single_view_weight_from_iter: 7000
+  use_virtul_cam: false
+  virtul_cam_prob: 0.5
+  use_multi_view_trim: true
+  multi_view_ncc_weight: 0.15
+  multi_view_geo_weight: 0.03
+  multi_view_weight_from_iter: 7000
+  multi_view_patch_size: 3
+  multi_view_sample_num: 102400
+  multi_view_pixel_noise_th: 1.0
+  wo_use_geo_occ_aware: false
+
+# ─── Rendering ───────────────────────────────────────────────────────────────
+rendering:
+  lambda_dssim: 0.2
+  scale_loss_weight: 100.0
+  exposure_compensation: false
+  random_background: false
+
+# ─── UV Consistency ──────────────────────────────────────────────────────────
+uv_consistency:
+  enabled: false
+  weight: 0.05
+  max_neighbors: 2
+  interval: 1
+  start_iter: 1
+  max_features: 2000
+  match_ratio: 0.75
+  min_matches: 20
+  preprocess_max_neighbors: 3
+  lambda_uv_consistency: 0.0
+  update_interval: .inf
+  set_adaptive_from: 1_000_000
+  set_optimizable_from: .inf
+  freeze_uv_iter: 160_000
+
+# ─── Regularization Loss Weights ────────────────────────────────────────────
+regularization:
+  lambda_eikonal: 0.0
+  eikonal_from_iter: 0
+  quat_smoothness_weight: 0.0
+  scale_deviation_weight: 0.0
+  scale_smoothness_weight: 0.0
+  normal_smoothness_weight: 0.0
+  normal_global_smoothness_weight: 0.0
+  normal_dev_weight: 0.0
+  chamfer_weight: 0.0
+  cossim_weight: 0.0
+  kl_div_weight: 0.0
+  local_planar_deviation_weight: 0.0
+
+# ─── Stage Thresholds (iteration gates for loss activation) ─────────────────
+stage_thresholds:
+  scale_consistency_from: 0
+  quat_smooth_from: 0
+  normal_smooth_from: 0
+  normal_dev_from: 0
+  local_planar_deviation_from: 0
+  discrepancy_from_iter: 70_000
+
+# ─── Positional Encoding ────────────────────────────────────────────────────
+positional_encoding:
+  use_pe: false
+  use_pe_sampling: false
+  pe_num_frequencies: 2
+  pe_log_sampling: true
+  pe_max_freq: 8
+  pe_levels: 4
+  pe_include_input: true
+  pe_learnable_freqs: false
+
+# ─── Scene Decomposition ────────────────────────────────────────────────────
+decomposition:
+  mode: "single"            # "single" | "background" | "kcc"
+  encode_points: "geodesic" # "geodesic" | "spherical" | "pca"
+
+# ─── Spline Surface Model ───────────────────────────────────────────────────
+spline:
+  degree: [3, 3]
+  base_res: 128
+  max_res: 512
+  target_density_per_unit: 1
+  sampling_density: 1.0
+  bind_to_grid: false
+  optimize_intervals: false
+  optimize_knots: false
+
+# ─── Refinement Flags ───────────────────────────────────────────────────────
+refinement:
+  refine_scales: true
+  refine_rotations: true
+  refine_opacities: true
+  refine_weights: true
+  # Residual modes – only active when the corresponding refine flag is also true
+  residual_scaling: true
+  residual_rots: true
+  residual_opacity: false
+
+# ─── Adaptive Subdivision / Pruning ──────────────────────────────────────────
+subdivision:
+  sampling_strategy: "static"   # "static" | "hybrid"
+  subdiv_criteria: "residual"   # "residual" | "hybrid"
+  max_k_subdiv: 0.02
+  max_k_prune: 0.0
+  max_k_prune_vis: 0.0
+  random_sampling: false
+  use_spatial_partitioning: false
+  num_partitions: 8
+  use_spatial_partitioning_prune: false
+  num_partitions_prune: 4
+
+# ─── Post-Fit Optimization ──────────────────────────────────────────────────
+post_fit:
+  enabled: true
+  iterations: 1000
+
+# Coarse-to-Fine Sampling Parameters
+sampling:
+  curvature_weight: 0.005
+  min_partition_weight: 0.05
+  min_samples_per_partition: 1
+  sampling_density: 2
+  partition_ema_alpha: 0.9
+  partition_weight_ema_alpha: 1
+  resample_every: 300
+  samples_per_partition: 4
+  start_resampling_at: 70200
+  stop_resampling_after: 1  # High value to effectively disable stopping

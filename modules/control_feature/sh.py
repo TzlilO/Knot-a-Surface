@@ -40,7 +40,7 @@ class SHControl(ControlFeature):
     def feature_channels(self):
         return self._expected_feature_dim
 
-    def interpolate_samples(self) -> torch.Tensor:
+    def forward(self) -> torch.Tensor:
         if self.cache_valid:
             return self.cache
 
@@ -57,10 +57,10 @@ class SHControl(ControlFeature):
         else:
             reshaped = interpolated.view(-1, self.num_sh_coeffs, 3)
 
-        self._cache = reshaped
+        self.set_cache(reshaped)
         return reshaped
 
-    forward = interpolate_samples
+    forward = forward
 
     def compute_removed_grid(
         self, direction, remove_idx, blend_radius=3,
@@ -132,8 +132,8 @@ class SHControlWrapper(nn.Module):
 
     def interpolate_samples(self) -> torch.Tensor:
         return torch.cat([
-            self.sh_dc.interpolate_samples(),
-            self.sh_rest.interpolate_samples(),
+            self.sh_dc.forward(),
+            self.sh_rest.forward(),
         ], dim=1)
 
     forward = interpolate_samples

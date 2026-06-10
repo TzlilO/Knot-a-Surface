@@ -4,6 +4,7 @@ Robust KnotVector module with proper initialization and serialization.
 from typing import Optional, Dict, Any
 import torch
 import torch.nn as nn
+
 from utils.general_utils import inverse_sigmoid
 
 """
@@ -13,6 +14,56 @@ from typing import Optional, Dict, Any, Union
 import torch
 import torch.nn as nn
 from utils.general_utils import inverse_sigmoid
+
+from modules.optim_utils import (
+        splice_1d_optimizer_state,
+        replace_param_in_optimizer,
+        MomentumStrategy,
+    )
+def generate_open_uniform_knot_vector(n_ctrl_pts: int, degree: int, device='cuda'):
+    """
+    n_ctrl_pts = number of control points in U (or V)
+    degree     = spline degree (e.g. 3 for cubic)
+    Returns    = tensor of shape (n_ctrl_pts + degree + 1,)
+    """
+    # interior spans count = n_ctrl_pts - degree + 1
+    n_spans = n_ctrl_pts - degree + 1
+    return torch.cat([torch.zeros(degree, device=device),
+                      torch.linspace(0, 1, steps=n_spans, device=device),
+                      torch.ones(degree, device=device)],
+                     dim=0)
+
+def make_clamped_uniform_knots(
+        n_ctrl: int,
+        degree: int,
+        device: str = 'cuda'
+) -> torch.Tensor:
+    """
+    Create clamped uniform knot vector.
+
+    Args:
+        n_ctrl: Number of control points
+        degree: Polynomial degree
+        device:  Torch device
+
+    Returns:
+        knots: [n_ctrl + degree + 1] knot vector
+    """
+    n_knots = n_ctrl + degree + 1
+    n_internal = n_knots - 2 * (degree + 1)
+
+    # Clamped:  degree+1 zeros, internal, degree+1 ones
+    zeros = torch.zeros(degree + 1, device=device)
+    ones = torch.ones(degree + 1, device=device)
+
+    if n_internal > 0:
+        internal = torch.linspace(0, 1, n_internal + 2, device=device)[1:-1]
+    else:
+        internal = torch.tensor([], device=device)
+
+    knots = torch.cat([zeros, internal, ones])
+
+    return knots
 
 
 class KnotVector(nn.Module):
@@ -320,7 +371,11 @@ class KnotVector(nn.Module):
 
         # Sort to ensure monotonicity
         return full.sort()[0]
-
+        # return make_clamped_uniform_knots(
+        #     n_ctrl=self.state.H if self.direction == 'u' else self.state.W,
+        #     degree=self.degree,
+        #     device=self.state.device
+        # )
     def forward(self) -> torch.Tensor:
         """Return full knot vector."""
         return self.knots
@@ -332,55 +387,105 @@ class KnotVector(nn.Module):
     # =========================================================================
     # Knot Modification
     # =========================================================================
-
     def update_knot_vector(
             self,
             parent,  # SplineModel
+            insert_idx: int,
             new_internal_knots: torch.Tensor,
             u_bar: Optional[float] = None,
             optimizer: Optional[torch.optim.Optimizer] = None
     ):
         """
-        Update internal knots, handling optimizer state if needed.
+        Update internal knots after knot insertion/removal, with proper
+        optimizer state and buffer handling.
+
+        Handles:
+        - Non-optimizable path: re-registers buffer when size changes
+          (fixes RuntimeError on .copy_() with mismatched shapes)
+        - Optimizable path: splices optimizer state at insertion point
+          instead of zeroing all momentum
         """
-        # Validate new knots
         new_internal_knots = self._validate_internal_knots(
             new_internal_knots,
             new_internal_knots.device
         )
 
+        old_count = self._num_control - self.degree - 1  # current internal count
+        new_count = len(new_internal_knots)
+        count_delta = new_count - old_count
+
         if self.should_optimize:
-            # Transform to unconstrained space
+            # Transform to unconstrained (logit) space
             new_clamped = new_internal_knots.clamp(1e-6, 1.0 - 1e-6)
             new_raw = self.inverse_activation(new_clamped)
 
-            if u_bar is not None:
-                u_bar_clamped = torch.tensor(
-                    u_bar, device=self.state.device
-                ).clamp(1e-6, 1.0 - 1e-6)
-                # u_bar_raw = self.inverse_activation(u_bar_clamped)
-
-                opt_dict = parent.replace_tensor_to_optimizer(
-                    new_raw,
-                    self.name,
-                    optimizer=optimizer
+            if optimizer is None:
+                # No optimizer provided — just swap the parameter directly.
+                # This can happen during initialization or evaluation.
+                self._internal_knots = nn.Parameter(
+                    new_raw.contiguous(), requires_grad=True
                 )
-                self._internal_knots = opt_dict#[self.name]
+            elif count_delta == 0:
+                # Same size: simple replacement, zero momentum
+                opt_result = parent.replace_tensor_to_optimizer(
+                    new_raw, self.name, optimizer=optimizer
+                )
+                if opt_result is not None:
+                    self._internal_knots = opt_result
+                else:
+                    self._internal_knots = nn.Parameter(
+                        new_raw.contiguous(), requires_grad=True
+                    )
+            elif count_delta > 0:
+                # Insertion: splice optimizer state at the right location
+                # Find where the new knot was inserted
+                # insert_idx = self._find_knot_insert_idx(
+                #     new_internal_knots, old_count, u_bar
+                # )
+                self._internal_knots = self._splice_optimizer_insert(
+                    optimizer, new_raw, insert_idx, count_delta
+                )
             else:
-                self._internal_knots = parent.replace_tensor_to_optimizer(
-                    new_raw,
-                    self.name,
-                    optimizer=optimizer
+                # Removal: splice out the removed entries
+                # insert_idx = self._find_knot_remove_idx(
+                #     new_internal_knots, old_count, u_bar
+                # )
+                self._internal_knots = self._splice_optimizer_remove(
+                    optimizer, new_raw, insert_idx, abs(count_delta)
                 )
         else:
-            if hasattr(self, '_internal_knots_buffer'):
-                self._internal_knots_buffer = new_internal_knots.contiguous()
+            # ================================================================
+            # NON-OPTIMIZABLE PATH
+            # ================================================================
+            # CRITICAL FIX: Cannot .copy_() when sizes differ.
+            # Must re-register the buffer with the new size.
+            if count_delta != 0:
+                # Size changed — must create a new buffer
+                new_buffer = new_internal_knots.contiguous()
+                # Remove old buffer if it exists, then re-register
+                if hasattr(self, '_internal_knots_buffer'):
+                    delattr(self, '_internal_knots_buffer')
+                self.register_buffer(
+                    '_internal_knots_buffer', new_buffer
+                )
                 self._internal_knots = self._internal_knots_buffer
             else:
-                self._internal_knots = new_internal_knots.contiguous()
+                # Same size — in-place copy is safe
+                if hasattr(self, '_internal_knots_buffer'):
+                    self._internal_knots_buffer.copy_(
+                        new_internal_knots.contiguous()
+                    )
+                    self._internal_knots = self._internal_knots_buffer
+                else:
+                    self.register_buffer(
+                        '_internal_knots_buffer',
+                        new_internal_knots.contiguous()
+                    )
+                    self._internal_knots = self._internal_knots_buffer
 
-        # Update control point count
-        self._num_control = len(new_internal_knots) + self.degree + 1
+        # Update control point count (must be last)
+        self._num_control = new_count + self.degree + 1
+
 
     # =========================================================================
     # Serialization
@@ -412,7 +517,7 @@ class KnotVector(nn.Module):
         direction = state_dict['direction']
         num_control = state_dict['num_control']
         if not evaluate_mode:
-            internal_knots = nn.Parameter(state_dict['raw_parameter'], device=device, requires_grad=True)
+            internal_knots = nn.Parameter(state_dict['raw_parameter'], requires_grad=True)
         else:
             internal_knots = state_dict['internal_knots'].to(state.device)
 
@@ -491,3 +596,137 @@ class KnotVector(nn.Module):
         return instance
 
 
+   # ------------------------------------------------------------------
+    # Helpers for optimizer state splicing
+    # ------------------------------------------------------------------
+
+    def _find_knot_insert_idx(
+        self,
+        new_internal_knots: torch.Tensor,
+        old_count: int,
+        u_bar: Optional[float],
+    ) -> int:
+        """Find where in the internal knot vector the new knot was inserted."""
+        if u_bar is not None:
+            # The new internal knot is the one closest to u_bar
+            activated_new = self.activation(
+                self.inverse_activation(
+                    new_internal_knots.clamp(1e-6, 1.0 - 1e-6)
+                )
+            )
+            idx = torch.searchsorted(
+                activated_new,
+                torch.tensor(u_bar, device=new_internal_knots.device),
+                side='right',
+            ).item()
+            return max(0, min(idx, old_count))
+        # Fallback: assume insertion at the end
+        return old_count
+
+    def _find_knot_remove_idx(
+        self,
+        new_internal_knots: torch.Tensor,
+        old_count: int,
+        u_bar: Optional[float],
+    ) -> int:
+        """Find which internal knot was removed."""
+        if u_bar is not None:
+            old_activated = self.internal_knots
+            idx = torch.searchsorted(
+                old_activated,
+                torch.tensor(u_bar, device=old_activated.device),
+                side='right',
+            ).item()
+            # The removed knot is typically at or near this index
+            return max(0, min(idx, old_count - 1))
+        return old_count - 1
+
+    def _splice_optimizer_insert(
+        self,
+        optimizer: torch.optim.Optimizer,
+        new_raw: torch.Tensor,
+        insert_idx: int,
+        num_entries: int,
+    ) -> nn.Parameter:
+        """
+        Insert entries into optimizer state for knot parameters.
+        New entries get zero-initialized momentum (conservative default).
+        """
+        for group in optimizer.param_groups:
+            if group["name"] != self.name:
+                continue
+
+            old_param = group["params"][0]
+            old_state = optimizer.state.pop(old_param, None)
+
+            new_param = nn.Parameter(
+                new_raw.contiguous().requires_grad_(True)
+            )
+            group["params"][0] = new_param
+
+            if old_state is not None:
+                old_avg = old_state["exp_avg"]
+                old_avg_sq = old_state["exp_avg_sq"]
+
+                # Zero-initialized fill for new knot entries
+                fill_avg = torch.zeros(
+                    num_entries, *old_avg.shape[1:],
+                    device=old_avg.device, dtype=old_avg.dtype,
+                )
+                fill_avg_sq = torch.zeros(
+                    num_entries, *old_avg_sq.shape[1:],
+                    device=old_avg_sq.device, dtype=old_avg_sq.dtype,
+                )
+
+                old_state["exp_avg"] = torch.cat([
+                    old_avg[:insert_idx], fill_avg, old_avg[insert_idx:]
+                ], dim=0).contiguous()
+                old_state["exp_avg_sq"] = torch.cat([
+                    old_avg_sq[:insert_idx], fill_avg_sq, old_avg_sq[insert_idx:]
+                ], dim=0).contiguous()
+
+                optimizer.state[new_param] = old_state
+            # else: no state → parameter never stepped, nothing to restore
+
+            return new_param
+
+        # Group not found — fallback
+        return nn.Parameter(new_raw.contiguous().requires_grad_(True))
+
+    def _splice_optimizer_remove(
+        self,
+        optimizer: torch.optim.Optimizer,
+        new_raw: torch.Tensor,
+        remove_idx: int,
+        num_entries: int,
+    ) -> nn.Parameter:
+        """Remove entries from optimizer state for knot parameters."""
+        for group in optimizer.param_groups:
+            if group["name"] != self.name:
+                continue
+
+            old_param = group["params"][0]
+            old_state = optimizer.state.pop(old_param, None)
+
+            new_param = nn.Parameter(
+                new_raw.contiguous().requires_grad_(True)
+            )
+            group["params"][0] = new_param
+
+            if old_state is not None:
+                old_avg = old_state["exp_avg"]
+                old_avg_sq = old_state["exp_avg_sq"]
+
+                end_idx = min(remove_idx + num_entries, old_avg.shape[0])
+                old_state["exp_avg"] = torch.cat([
+                    old_avg[:remove_idx], old_avg[end_idx:]
+                ], dim=0).contiguous()
+                old_state["exp_avg_sq"] = torch.cat([
+                    old_avg_sq[:remove_idx], old_avg_sq[end_idx:]
+                ], dim=0).contiguous()
+
+                optimizer.state[new_param] = old_state
+
+            return new_param
+
+        return nn.Parameter(new_raw.contiguous().requires_grad_(True))

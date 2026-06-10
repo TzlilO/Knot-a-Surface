@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.DS_Store
+
+# Outputs & artifacts
+runs/
+output/
+output_dtu/
+mesh/
+*.ply
+wandb/

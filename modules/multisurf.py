@@ -20,6 +20,7 @@ from modules.fitting.nurbs_from_pointcloud import (
     DecompositionMode,
     create_nurbs_from_pointcloud,
 )
+from modules.knotvector import KnotVector
 from utils.general_utils import get_expon_lr_func
 
 
@@ -311,7 +312,6 @@ class MultiSurfaceSplineModel(nn.Module):
             point_labels: Optional[torch.Tensor] = None,
             device: str = 'cuda',
             **kwargs
-    # ):
     ):
         super().__init__()
         self.point_labels = point_labels
@@ -329,10 +329,8 @@ class MultiSurfaceSplineModel(nn.Module):
             # Unified optimizer (created in training_setup)
             self._optimizer: Optional[torch.optim.Optimizer] = None
 
-
-            eval = kwargs.get('eval', False)
-            if kwargs.get('setup_training', True):
-                self.training_setup()
+            # if kwargs.get('setup_training', True):
+            #     self.training_setup()
             self._update_surface_offsets()
             self._interpolator: Optional[UnifiedInterpolator] = None
             self._tessellator: Optional['ViewDependentTessellator'] = None
@@ -402,13 +400,12 @@ class MultiSurfaceSplineModel(nn.Module):
         return adaptive_lr
 
     def local_planar_deviation_loss(self, weight=1.0):
-        deviation_loss = 0.0
         if weight <= 0.0:
             return torch.tensor(0.0, device=self.device)
+        deviation_loss = 0.0
         for surface in self.surfaces:
-            # This is a placeholder - replace with actual computation
             deviation_loss = surface.local_planar_deviation_loss() + deviation_loss
-            return weight * deviation_loss
+        return weight * deviation_loss
     def training_setup(self, **kwargs):
         """
         Setup single unified optimizer for all surfaces.
@@ -416,6 +413,8 @@ class MultiSurfaceSplineModel(nn.Module):
         """
         all_param_groups = []
         train_args = {}
+        # for surface_idx, surface in enumerate(self.surfaces):
+        #     surface.training_setup()
         # 1. Initialize Scaler
         # scaler = SurfaceCharacteristicScaler(
         #     base_scale=self.surfaces[0].spatial_lr_scale,
@@ -447,23 +446,6 @@ class MultiSurfaceSplineModel(nn.Module):
             rotation_lr = training_args.rotation_lr
             knot_lr = training_args.knot_lr
             uv_lr = training_args.uv_lr_factor
-            if len(self.surfaces) > 1:
-                if surface.is_background:
-                    spatial_lr_scale *= background_lr_scale_factor_pos
-                    feature_lr =  surface.state.opt.feature_lr * background_lr_scale_factor_texture #/ background_lr_scale_factor
-                    opacity_lr =  training_args.opacity_lr * background_lr_scale_factor_texture #training_args.background_lr_scale_factor / training_args.background_lr_scale_factor
-                    scaling_lr =  training_args.scaling_lr * background_lr_scale_factor_dummy
-                    rotation_lr = training_args.rotation_lr *  background_lr_scale_factor_dummy
-                    knot_lr = training_args.knot_lr #* background_lr_scale_factor_dummy
-                    uv_lr = training_args.uv_lr_factor #* training_args.background_lr_scale_factor /training_args.background_lr_scale_factor
-                else:
-                    spatial_lr_scale *= obj_pos_factor
-                    feature_lr *= obj_factor
-                    opacity_lr *= obj_factor
-                    scaling_lr *= obj_factor
-                    rotation_lr *= obj_factor
-                    knot_lr *= obj_factor
-                    uv_lr *= obj_factor
 
             if surface.state.opt.refine_weights:
                 all_param_groups.append({
@@ -478,7 +460,7 @@ class MultiSurfaceSplineModel(nn.Module):
             })
             surface.scheduler = get_expon_lr_func(lr_init=training_args.position_lr_init * spatial_lr_scale,
                                                     lr_final=training_args.position_lr_final* spatial_lr_scale, #* adaptive_lr_scale,
-                                                    # lr_delay_mult=training_args.position_lr_delay_mult,
+                                                    lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
 
             # SH
@@ -590,6 +572,8 @@ class MultiSurfaceSplineModel(nn.Module):
         # if iteration % 100 == 0:
             # print(f"[MultiSurfaceSplineModel] Iteration {iteration} - Learning Rates: {lr}")
         return lr
+
+
     @classmethod
     def from_pointcloud(
             cls,
@@ -605,6 +589,9 @@ class MultiSurfaceSplineModel(nn.Module):
             bg_resolution_scale: float = 1.0,
             object_resolution_scale: float = 2.0,
             cameras=None,
+            faces=None,  # NEW
+            use_least_squares=True,  # NEW
+
             **kwargs
     ) -> 'MultiSurfaceSplineModel':
         """
@@ -621,7 +608,8 @@ class MultiSurfaceSplineModel(nn.Module):
             train_cam_uids: Camera UIDs for multi-view sampling
             **kwargs: Additional parameters
         """
-        # from . import SplineModel  # Import here to avoid circular
+
+
 
         # Create NURBS surfaces from point cloud
         result = create_nurbs_from_pointcloud(
@@ -629,14 +617,14 @@ class MultiSurfaceSplineModel(nn.Module):
             resolution=resolution,
             mode=decomposition_mode,
             generate_adaptive_samples=False,  # We'll handle sampling adaptively within SplineModel
-            sampling_resolution_factor=config.sampling_density,
             nerf_radius=nerf_radius,
             nerf_translate=nerf_translate,
             bg_resolution_scale=bg_resolution_scale,
             object_resolution_scale=object_resolution_scale,
             cameras=cameras,
-            **kwargs
-        )
+            faces = faces,
+            use_least_squares = use_least_squares,
+            ** kwargs)
 
         # Create SplineModel for each surface
         surfaces = []
@@ -644,52 +632,18 @@ class MultiSurfaceSplineModel(nn.Module):
 
         for i, surf_data in enumerate(result.surfaces):
             # Convert to geomdl format
-            from geomdl import BSpline
+            # from geomdl import BSpline
             # print(f"[MultiSurfaceSplineModel] Initializing surface {i} with label '{surf_data.label}' - Control Points: {surf_data.control_points.shape}, Knots U: {len(surf_data.knots_u)}, Knots V: {len(surf_data.knots_v)}")
             # print(f"  Sample control points: {surf_data.control_points[0, 0]}, {surf_data.control_points[-1, -1]}")
-            print(f"Degree U: {surf_data.degree_u}, Degree V: {surf_data.degree_v}")
-            geo_surf = BSpline.Surface()
-            geo_surf.degree_u = surf_data.degree_u
-            geo_surf.degree_v = surf_data.degree_v
-
-            H, W, _ = surf_data.control_points.shape
-            ctrlpts = []
-            for ii in range(H):
-                for jj in range(W):
-                    ctrlpts.append(surf_data.control_points[ii, jj].tolist())
-            geo_surf.set_ctrlpts(ctrlpts, H, W)
-            geo_surf.knotvector_u = surf_data.knots_u.tolist()
-            geo_surf.knotvector_v = surf_data.knots_v.tolist()
-
-            # Color surface
-            rgb_surf = BSpline.Surface()
-            rgb_surf.degree_u = surf_data.degree_u
-            rgb_surf.degree_v = surf_data.degree_v
-            rgb_ctrlpts = []
-            for ii in range(H):
-                for jj in range(W):
-                    rgb_ctrlpts.append(surf_data.control_colors[ii, jj].tolist())
-            rgb_surf.set_ctrlpts(rgb_ctrlpts, H, W)
-            rgb_surf.knotvector_u = surf_data.knots_u.tolist()
-            rgb_surf.knotvector_v = surf_data.knots_v.tolist()
-
-            initial_samples_u = surf_data.sampling_u_1D
-            initial_samples_v = surf_data.sampling_v_1D
-            complexity_map = surf_data.complexity_map
-
-            # Create SplineModel with adaptive initialization
+            # surf_data.
             spline_model = SplineModel(
-                surf=geo_surf,
-                surf_rgb=rgb_surf,
+                surf_data=surf_data.to_dict(),
                 config=config,
                 args=args,
                 spatial_lr_scale=nerf_radius,
                 train_cam_uids=train_cam_uids or [0],
                 late_init=False,
                 surf_uid=i,
-                initial_samples_u=torch.from_numpy(initial_samples_u).to('cuda') if initial_samples_u is not None else None,
-                initial_samples_v=torch.from_numpy(initial_samples_v).to('cuda') if initial_samples_v is not None else None,
-                complexity_map=complexity_map,
                 label=surf_data.label,
                 is_background=(surf_data.label == 'background'),
                 cameras=cameras,
@@ -854,7 +808,6 @@ class MultiSurfaceSplineModel(nn.Module):
             return self._cached_gaussians
 
         # Collect from active surfaces
-        rays_list = []
         xyz_list = []
         feat_list = []
         opac_list = []
@@ -890,26 +843,25 @@ class MultiSurfaceSplineModel(nn.Module):
             )
         else:
             self._cached_gaussians = BatchedGaussians(
-                xyz=torch.cat(xyz_list, dim=0), # Retain grads?
-                features=torch.cat(feat_list, dim=0),
-                opacity=torch.cat(opac_list, dim=0),
-                scaling=torch.cat(scale_list, dim=0),
-                rotation=torch.cat(rot_list, dim=0),
+                xyz=torch.cat(xyz_list, dim=0).clone(),
+                features=torch.cat(feat_list, dim=0).clone(),
+                opacity=torch.cat(opac_list, dim=0).clone(),
+                scaling=torch.cat(scale_list, dim=0).clone(),
+                rotation=torch.cat(rot_list, dim=0).clone(),
                 surface_indices=torch.cat(idx_list, dim=0)
             )
-
         self._cache_valid = True
         return self._cached_gaussians
 
     def _invalidate_cache(self, force=False):
-        """Invalidate the cached Gaussians."""
-        # sampling_mode = self.surfaces[0]._sampling_mode
-        # Also invalidate individual surface caches
+        """Invalidate the cached Gaussians (all surfaces, then the aggregate)."""
+        skip_aggregate = False
         for surface in self.surfaces:
             surface.invalidate_all_caches(force=force)
-
-            if not force and (surface.sampling_mode == SamplingMode.EVALUATION): #or sampling_mode == SamplingMode.STATIC):
-                return
+            if not force and surface.sampling_mode == SamplingMode.EVALUATION:
+                skip_aggregate = True
+        if skip_aggregate:
+            return
         self._cache_valid = False
         self._cached_gaussians = None
 
@@ -1309,7 +1261,7 @@ class MultiSurfaceSplineModel(nn.Module):
 
     @property
     def optimizer(self):
-        return self._optimizer
+        return self.surfaces[0].optimizer
 
     def add_subdivision_stats(self, mask, viewspace_points, viewspace_points_abs, visibility_filter, radii):
         """Log stats for all surfaces."""
@@ -1337,9 +1289,9 @@ class MultiSurfaceSplineModel(nn.Module):
                           radii_threshold: float = 100.0,
                           top_k_rate: float = 0.,
                           foreach_surface_apply=True,
-                          max_k: int = 32,
+                          max_k: int = 2,
                           verbose: bool = False,
-                          min_k: int = 12,
+                          min_k: int = 0,
                           ):
         """
         Subdivide grids globally across all surfaces.
@@ -1706,6 +1658,7 @@ class MultiSurfaceSplineModel(nn.Module):
     def get_states_by_idx(self, idx: int):
         return self.surfaces[idx].state
 
+    @classmethod
     def restore(self, state_dict: Dict, train_model: bool = False):
         """Restore state for all surfaces."""
         for surface, surf_state in zip(self.surfaces, state_dict['surfaces']):
@@ -1725,11 +1678,19 @@ class MultiSurfaceSplineModel(nn.Module):
         state = self.capture()
         with open(path, 'wb') as f:
             pickle.dump(state, f)
+    def set_knot_v(self, knot_v: torch.Tensor):
+        """Set knot vector in v direction for a specific surface."""
+        for surf in self.surfaces:
+            surf.knot_v = KnotVector(surf.state, 'v', knot_v)
+    def set_knot_u(self, knot_u: torch.Tensor):
+        """Set knot vector in u direction for a specific surface."""
+        for surf in self.surfaces:
+            surf.knot_u = KnotVector(surf.state, 'u', knot_u)
 
     @classmethod
     def load(cls, path: str, train_model: bool = False) -> 'MultiSurfaceSplineModel':
         """Load model from disk."""
-        i, state = torch.load(path)
+        state, i = torch.load(path)
         surfaces = []
         for surf_state in state['surfaces']:
             surface = SplineModel(late_init=True)
@@ -1737,17 +1698,17 @@ class MultiSurfaceSplineModel(nn.Module):
             surfaces.append(surface)
 
         model = cls(
-            surf=surfaces,
             labels=state['labels'],
             decomposition_mode=DecompositionMode(state['decomposition_mode'])
         )
+        model._surfaces = surfaces
 
         model._active_surfaces = state['active_surfaces']
         model._surface_weights = state['surface_weights']
 
         if state['point_labels'] is not None:
             model.point_labels = torch.tensor(state['point_labels'], dtype=torch.long)
-
+        model.training_setup()
         return model
 
     @property
@@ -1829,7 +1790,50 @@ class MultiSurfaceSplineModel(nn.Module):
         for surface in self.surfaces:
             surface.reset_scaling(optimizer=self.optimizer)
 
-    def prune_all_surfaces(
+    def prune_surface(
+            self,
+            pruning_candidates: List[List[dict]] = None,
+            min_opacity: float = 0.005,
+            max_screen_size: float = 20.0,
+            extent: Optional[float] = None,
+            top_k_rate: float = 0.0,
+            min_k: int = 0,
+            max_k: int = 16,
+            verbose: bool = True,
+    ) -> int:
+        """
+        Prune all surfaces based on 3DGS-like criteria.
+        """
+        total_removed = 0
+
+        for i, surface in enumerate(self.surfaces):
+            if verbose:
+                print(f"\n[MultiSurface Pruning] Surface {i} ({self.labels[i]})")
+
+            min_k = max(min(min_k, int(0.5 * min(surface.state.H, surface.state.W))), 8)
+            max_k = max(min(max_k, int(0.5 * min(surface.state.H, surface.state.W)), max_k), min_k)
+            top_k = max(min(int(top_k_rate * min(self.state(0).H, self.state(0).W)), max_k), min_k)
+
+            cands = pruning_candidates[i] if pruning_candidates is not None else None
+
+            if cands:
+                top_k_candidates = cands[:top_k]
+                removed = surface.prune_surface(
+                    cands=top_k_candidates,
+                    optimizer=self._optimizer,
+                    error_tolerance=1e-4
+                )
+
+                if isinstance(removed, bool):
+                    removed = len(top_k_candidates) if removed else 0
+
+                total_removed += removed
+
+                if verbose and removed > 0:
+                    print(f"  [Pruning] Removed {removed} knots successfully")
+
+        return total_removed
+    def prune_all_surfaces2(
             self,
             pruning_candidates: List[List[dict]] = None,
             min_opacity: float = 0.005,
@@ -1892,7 +1896,7 @@ class MultiSurfaceSplineModel(nn.Module):
             max_screen_size: float = 20.0,
             extent: Optional[float] = None,
             top_k_rate: float = 0.0,
-            min_k: int = 8,
+            min_k: int = 0,
             max_k: int = 16,
             verbose: bool = True,
     ) -> int:
@@ -1914,7 +1918,7 @@ class MultiSurfaceSplineModel(nn.Module):
         for i, surface in enumerate(self.surfaces):
             if verbose:
                 print(f"\n[MultiSurface Pruning] Surface {i} ({self.labels[i]})")
-            min_k = max(min(min_k, int(0.5 * min(surface.state.H, surface.state.W))), 8)
+            min_k = max(min(min_k, int(0.5 * min(surface.state.H, surface.state.W))), min_k)
             max_k = max(min(max_k, int(0.5 * min(surface.state.H, surface.state.W)), max_k), min_k)
             top_k = max(min(int(top_k_rate * min(self.state(0).H, self.state(0).W)), max_k), min_k)
 
@@ -2284,13 +2288,13 @@ class MultiSurfaceSplineModel(nn.Module):
                 verbose=verbose)
 
         final_num_gaussians = self.total_gaussians
-        is_pruned = curr_num_gaussians != final_num_gaussians
+        is_split = curr_num_gaussians != final_num_gaussians
 
         curr_num_gaussians = self.total_gaussians
 
         # Then prune each surface
         if max_prune_rate > 0:
-            self.prune_all_surfaces(
+            self.prune_surface(
                 pruning_candidates=pruning_candidates,
                 min_opacity=min_opacity,
                 max_screen_size=max_screen_size,
@@ -2301,7 +2305,7 @@ class MultiSurfaceSplineModel(nn.Module):
 
 
         final_num_gaussians = self.total_gaussians
-        is_split = curr_num_gaussians != final_num_gaussians
+        is_pruned = curr_num_gaussians != final_num_gaussians
         self._update_surface_offsets()
         for surf in self.surfaces:
             surf.state.init_grad_accumulators()

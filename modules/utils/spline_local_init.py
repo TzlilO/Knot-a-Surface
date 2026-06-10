@@ -1,393 +1,490 @@
+"""
+Multi-view depth fusion via TSDF → single consistent point cloud.
 
-# model/utils/pointcloud_sampling.py
+Replaces the naive per-view concatenation in `depth_maps_to_pointcloud`
+with a proper fusion that:
+  1. Removes per-view depth inconsistencies
+  2. Produces a single canonical UV parameterization
+  3. Returns per-point observation counts for downstream weighting
+
+Requires: open3d (already a dependency — used in spline_render.py)
+"""
+
+import numpy as np
 import torch
+import warnings
+from typing import List, Tuple, Optional, Dict
 
-def random_downsample(*tensors, reduction: float = 0.01, generator=None):
+try:
+    import open3d as o3d
+    HAS_O3D = True
+except ImportError:
+    HAS_O3D = False
+
+
+def fused_depth_to_pointcloud(
+    cameras: list,
+    depth_maps: list,
+    voxel_size: float = 0.005,
+    depth_trunc: float = 5.0,
+    sdf_trunc_factor: float = 4.0,
+    max_depth_quantile: float = 0.95,
+    grazing_angle_deg: float = 80.0,
+    downsample_voxel: Optional[float] = None,
+    color_images: Optional[list] = None,
+    device: str = "cuda",
+) -> Dict[str, torch.Tensor]:
     """
-    Randomly keep `reduction` fraction of rows from each input tensor.
-    All tensors must have the same first-dimension length.
+    Fuse multi-view depth maps into a single consistent point cloud
+    via TSDF integration, then compute a global UV parameterization.
 
-    Args
-    ----
-    *tensors   : torch.Tensor
-        Point-aligned tensors, e.g. xyz (N,3), uv (N,2), normals (N,3).
-    reduction  : float, default 0.01
-        Fraction to keep; e.g. 0.01 ⇒ 1 %.
-    generator  : torch.Generator or None
-        Optional RNG to make the sampling reproducible.
-
-    Returns
-    -------
-    Tuple[torch.Tensor, …]  — tensors with ⌈N·reduction⌉ rows
-    """
-    if not 0.0 < reduction <= 1.0:
-        raise ValueError("reduction must be in (0,1].")
-
-    N = tensors[0].shape[0]
-    if any(t.shape[0] != N for t in tensors):
-        raise ValueError("All tensors must share the same first dimension.")
-
-    # Bernoulli mask — allocate on the device of the first tensor
-    device = tensors[0].device
-    rng = torch.rand(N, device=device, generator=generator)
-    keep = rng < reduction                                   # Bool mask
-
-    # Safety check: never return an empty set
-    if not keep.any():
-        # Fall back to at least one random index
-        idx = torch.randint(0, N, (1,), device=device, generator=generator)
-        keep[idx] = True
-
-    return tuple(t[keep] for t in tensors)
-import torch
-from torch.nn import functional as F
-def voxel_downsample(xyz, uv, size=0.01):
-    keys = torch.floor(xyz / size).long()
-    _, uniq = torch.unique(keys, return_inverse=True, dim=0)
-    keep = torch.zeros_like(uniq).scatter_reduce_(0, uniq, uniq,
-                                                  reduce='amin').bool()
-    return xyz[keep], uv[keep]
-# ---------- 1.1  helper: depth → point cloud -------------------------------
-def depth_maps_to_pointcloud(depth, K, T_cam2world, device='cuda'):
-    """
-    Args
-        depth : (B,H,W)  float32 [metres]
-        K     : (B,3,3)  intrinsics
-        T_cam2world : (B,4,4)
-    Returns
-        xyz : (N,3)  concatenated point cloud in world coords
-        uv  : (N,2)  image-plane barycentric parameters in [0,1]^2
-    """
-    B, H, W = depth.shape
-    i, j = torch.meshgrid(torch.arange(H, device=depth.device),
-                          torch.arange(W, device=depth.device),
-                          indexing="ij")
-    ones = torch.ones_like(i, dtype=torch.float32)
-    pix = torch.stack((j, i, ones), dim=-1)  # (H,W,3)
-
-    pix = pix.view(1, H * W, 3).repeat(B, 1, 1)           # (B,HW,3)
-    d   = depth.view(B, -1, 1)                            # (B,HW,1)
-    Kinv = torch.inverse(K)                               # (B,3,3)
-
-    cam_xyz = (Kinv @ pix.transpose(1,2)).transpose(1,2)  # (B,HW,3)
-    cam_xyz *= d                                          # scale by depth
-    world   = torch.cat([cam_xyz, torch.ones_like(cam_xyz[...,:1])], -1)
-    world   = (T_cam2world @ world.transpose(1,2)).transpose(1,2)[...,:3]
-
-    uv = torch.stack((j.float() / (W-1), i.float() / (H-1)), -1)  # (H,W,2)
-    uv = uv.view(1, -1, 2).repeat(B, 1, 1)
-    # world, uv = voxel_downsample(world, uv)
-
-    return world.reshape(-1,3), uv.reshape(-1,2)
-
-# ---------- 1.2  helper: centripetal parametrisation -----------------------
-def chord_length_knots(params, degree, num_ctrl):
-    """Returns open, centripetal knot vector as torch tensor (num_ctrl+degree+1)."""
-    d = torch.sqrt(torch.sum((params[1:] - params[:-1]) ** 2, dim=-1))
-    u = torch.cat((torch.zeros(1, device=d.device),
-                   torch.cumsum(d / d.sum(), dim=0)))
-    # open uniform style ends
-    knot = torch.nn.functional.pad(u, (degree+1, degree+1), mode="constant", value=1.0)
-    knot[:degree+1] = 0.0
-    knot[-degree-1:] = 1.0
-    return knot
-
-# ---------- 1.3  Liew-style local least-squares seeding --------------------
-
-# model/utils/pointcloud_sampling.py
-import torch
-
-def random_downsample(*tensors, reduction: float = 0.01, generator=None):
-    """
-    Randomly keep `reduction` fraction of rows from each input tensor.
-    All tensors must have the same first-dimension length.
-
-    Args
-    ----
-    *tensors   : torch.Tensor
-        Point-aligned tensors, e.g. xyz (N,3), uv (N,2), normals (N,3).
-    reduction  : float, default 0.01
-        Fraction to keep; e.g. 0.01 ⇒ 1 %.
-    generator  : torch.Generator or None
-        Optional RNG to make the sampling reproducible.
-
-    Returns
-    -------
-    Tuple[torch.Tensor, …]  — tensors with ⌈N·reduction⌉ rows
-    """
-    if not 0.0 < reduction <= 1.0:
-        raise ValueError("reduction must be in (0,1].")
-
-    N = tensors[0].shape[0]
-    if any(t.shape[0] != N for t in tensors):
-        raise ValueError("All tensors must share the same first dimension.")
-
-    # Bernoulli mask — allocate on the device of the first tensor
-    device = tensors[0].device
-    rng = torch.rand(N, device=device, generator=generator)
-    keep = rng < reduction                                   # Bool mask
-
-    # Safety check: never return an empty set
-    if not keep.any():
-        # Fall back to at least one random index
-        idx = torch.randint(0, N, (1,), device=device, generator=generator)
-        keep[idx] = True
-
-    return tuple(t[keep] for t in tensors)
-import torch
-from torch.nn import functional as F
-def voxel_downsample(xyz, uv, size=0.01):
-    keys = torch.floor(xyz / size).long()
-    _, uniq = torch.unique(keys, return_inverse=True, dim=0)
-    keep = torch.zeros_like(uniq).scatter_reduce_(0, uniq, uniq,
-                                                  reduce='amin').bool()
-    return xyz[keep], uv[keep]
-# ---------- 1.1  helper: depth → point cloud -------------------------------
-def depth_maps_to_pointcloud(depth, K, T_cam2world, device='cuda'):
-    """
-    Args
-        depth : (B,H,W)  float32 [metres]
-        K     : (B,3,3)  intrinsics
-        T_cam2world : (B,4,4)
-    Returns
-        xyz : (N,3)  concatenated point cloud in world coords
-        uv  : (N,2)  image-plane barycentric parameters in [0,1]^2
-    """
-    B, H, W = depth.shape
-    i, j = torch.meshgrid(torch.arange(H, device=depth.device),
-                          torch.arange(W, device=depth.device),
-                          indexing="ij")
-    ones = torch.ones_like(i, dtype=torch.float32)
-    pix = torch.stack((j, i, ones), dim=-1)  # (H,W,3)
-
-    pix = pix.view(1, H * W, 3).repeat(B, 1, 1)           # (B,HW,3)
-    d   = depth.view(B, -1, 1)                            # (B,HW,1)
-    Kinv = torch.inverse(K)                               # (B,3,3)
-
-    cam_xyz = (Kinv @ pix.transpose(1,2)).transpose(1,2)  # (B,HW,3)
-    cam_xyz *= d                                          # scale by depth
-    world   = torch.cat([cam_xyz, torch.ones_like(cam_xyz[...,:1])], -1)
-    world   = (T_cam2world @ world.transpose(1,2)).transpose(1,2)[...,:3]
-
-    uv = torch.stack((j.float() / (W-1), i.float() / (H-1)), -1)  # (H,W,2)
-    uv = uv.view(1, -1, 2).repeat(B, 1, 1)
-    # world, uv = voxel_downsample(world, uv)
-
-    return world.reshape(-1,3), uv.reshape(-1,2)
-
-# ---------- 1.2  helper: centripetal parametrisation -----------------------
-# ---------- helper: centripetal / fallback knot vector --------------------
-def chord_length_knots(params: torch.Tensor,
-                       degree: int,
-                       num_ctrl: int,
-                       use_uniform=True) -> torch.Tensor:
-    """
-    Produce an open knot vector of length `num_ctrl + degree + 1`.
-    • Centripetal parametrisation when ≥ 2 distinct parameter samples
-    • Uniform fallback when not enough information is available
-    """
-    device = params.device
-    if params.numel() < 2 or use_uniform:
-        use_uniform = True
-    else:
-        d = torch.diff(params)
-        use_uniform = torch.allclose(d, torch.zeros_like(d))
-
-    if use_uniform:
-        # Uniform open knot vector
-        knot = torch.zeros(num_ctrl + degree + 1, device=device)
-        knot[degree + 1 : num_ctrl] = torch.linspace(
-            0.0, 1.0, num_ctrl - degree - 1, device=device
-        )
-        knot[num_ctrl:] = 1.0
-        return knot
-
-    # --- standard centripetal formulation --------------------------------
-    d = torch.sqrt(torch.sum((params[1:] - params[:-1]) ** 2, dim=-1))
-    u = torch.cat(
-        (
-            torch.zeros(1, device=device),
-            torch.cumsum(d / d.sum(), dim=0)[..., None],
-        )
-    )
-    knot = torch.nn.functional.pad(
-        u, (degree + 1, degree + 1), mode="constant", value=1.0
-    )
-    knot[: degree + 1] = 0.0
-    knot[-degree - 1 :] = 1.0
-    return knot
-
-# ---------- 1.3  Liew‑style local least‑squares seeding --------------------
-def seed_control_grid(
-    xyz,
-    uv,
-    grid_res=(32, 32),
-    degree=(3, 3),
-    k: int = 16,
-    reduce_factor: float = 0.01,
-):
-    """
-    Density‑aware bootstrap that converts a (possibly huge) point cloud
-    into an initial bicubic tensor‑product B‑spline control grid.
+    This eliminates the fundamental problem with `depth_maps_to_pointcloud`:
+    each view contributes its own pixels with its own image-plane UV,
+    producing overlapping points with inconsistent parameterizations.
+    TSDF fusion merges redundant observations and outputs one canonical
+    point per surface location.
 
     Parameters
     ----------
-    xyz : (N, 3) torch.Tensor
-        Point positions in world metres.
-    uv  : (N, 2) torch.Tensor
-        Normalised parameter coordinates in [0, 1]² produced by
-        `depth_maps_to_pointcloud`.
-    grid_res : (int, int)
-        Number of B‑spline *surface* evaluation samples per direction.
-        The resulting control‑grid resolution equals
-        `(grid_res[i] // 4 + degree[i])`.
-    degree : (int, int)
-        B‑spline polynomial degree in (u, v).
-    k : int
-        Unused for now – kept for future k‑NN variants.
-    reduce_factor : float in (0, 1]
-        Target fraction of points to *keep* (≈ memory guard).
+    cameras : list of Camera (scene.cameras.Camera)
+        Training cameras with .R, .T, .Fx, .Fy, .Cx, .Cy,
+        .image_width, .image_height, .FoVx, .FoVy attributes.
+    depth_maps : list of torch.Tensor or np.ndarray
+        Per-view depth maps, each (H, W) in world meters.
+        Must be same length as `cameras`.
+    voxel_size : float
+        TSDF voxel size in meters. Controls output point density.
+        Smaller = denser but slower. 0.005 is good for room-scale.
+    depth_trunc : float
+        Maximum depth to integrate (meters). Points beyond this are sky/noise.
+    sdf_trunc_factor : float
+        SDF truncation distance = sdf_trunc_factor * voxel_size.
+        4.0 is standard for room-scale scenes.
+    max_depth_quantile : float
+        Per-view adaptive depth truncation: ignore depths beyond this
+        quantile of each view's depth distribution. Prevents integrating
+        SfM failures at extreme depth.
+    grazing_angle_deg : float
+        Filter depth pixels where the view ray hits the surface at
+        a grazing angle (> this many degrees from the normal).
+        These pixels have high depth uncertainty.
+    downsample_voxel : float or None
+        If set, further downsample the output cloud to this voxel size.
+        Useful for very large scenes.
+    color_images : list of torch.Tensor or None
+        Per-view RGB images, each (3, H, W) float in [0, 1].
+        If None, output colors will be uniform grey.
+    device : str
+        Output tensor device.
 
     Returns
     -------
-    ctrl_pts : (Nu, Nv, 3) torch.Tensor
-    knot_u   : (Nu + du + 1) torch.Tensor
-    knot_v   : (Nv + dv + 1) torch.Tensor
+    dict with keys:
+        "xyz"    : (N, 3) torch.Tensor — world-space point positions
+        "colors" : (N, 3) torch.Tensor — RGB in [0, 1]
+        "normals": (N, 3) torch.Tensor — estimated surface normals
+        "uv"     : (N, 2) torch.Tensor — global UV parameterization in [0, 1]²
+        "obs_count" : (N,) torch.Tensor — per-point observation count
     """
-    from simple_knn._C import distCUDA2  # fast, O(N) memory
-    with torch.no_grad():
+    if not HAS_O3D:
+        raise ImportError(
+            "open3d is required for TSDF fusion. "
+            "Install with: pip install open3d"
+        )
 
-        device = xyz.device
-        du, dv = degree
+    n_views = len(cameras)
+    assert len(depth_maps) == n_views, \
+        f"Got {n_views} cameras but {len(depth_maps)} depth maps"
 
-        # ---------------------------------------------------------------------
-        # 1.  Density‑aware down‑sampling  (keep ≈ reduce_factor × N points)
-        # ---------------------------------------------------------------------
-        # distCUDA2 returns squared distance to the nearest neighbour
-        nn_d2 = distCUDA2(xyz)           # (N,)   numpy or torch
-        if not isinstance(nn_d2, torch.Tensor):
-            nn_d2 = torch.from_numpy(nn_d2).to(device)
-        nn_d = torch.sqrt(nn_d2)         # metres
-        thresh = torch.quantile(nn_d, 1.0 - reduce_factor)
-        keep_mask = nn_d >= thresh       # sparse areas survive
-        xyz = xyz[keep_mask]
-        uv = uv[keep_mask]
+    # ------------------------------------------------------------------
+    # 1. Build TSDF volume
+    # ------------------------------------------------------------------
+    sdf_trunc = sdf_trunc_factor * voxel_size
+    volume = o3d.pipelines.integration.ScalableTSDFVolume(
+        voxel_length=voxel_size,
+        sdf_trunc=sdf_trunc,
+        color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
+    )
 
-        # ---------------------------------------------------------------------
-        # 2.  Grid topology
-        # ---------------------------------------------------------------------
-        Nu, Nv = [r // 4 + d for r, d in zip(grid_res, degree)]  # control pts
-        # Patch‑local integer cell coordinates
-        cell_u = torch.clamp((uv[:, 0] * (grid_res[0] - 1) / 4).long(), 0, Nu - du - 1)
-        cell_v = torch.clamp((uv[:, 1] * (grid_res[1] - 1) / 4).long(), 0, Nv - dv - 1)
+    # ------------------------------------------------------------------
+    # 2. Integrate each view
+    # ------------------------------------------------------------------
+    integrated_count = 0
+    for i in range(n_views):
+        cam = cameras[i]
+        depth = depth_maps[i]
 
-        # ---------------------------------------------------------------------
-        # 3.  Cubic B‑spline basis evaluation (closed form, no F.interpolate)
-        # ---------------------------------------------------------------------
-        def cubic_basis(t: torch.Tensor) -> torch.Tensor:
-            """Return (N,4) cubic B‑spline basis at relative offset t∈[0,1]."""
-            t2, t3 = t * t, t * t * t
-            return torch.stack(
-                (
-                    (1 - 3 * t + 3 * t2 - t3) / 6,
-                    (4 - 6 * t2 + 3 * t3) / 6,
-                    (1 + 3 * t + 3 * t2 - 3 * t3) / 6,
-                    t3 / 6,
-                ),
-                dim=-1,
+        # --- Convert depth to numpy (H, W) float32 ---
+        if isinstance(depth, torch.Tensor):
+            depth_np = depth.detach().cpu().squeeze().numpy().astype(np.float32)
+        else:
+            depth_np = np.asarray(depth, dtype=np.float32).squeeze()
+
+        H, W = depth_np.shape
+
+        # --- Per-view adaptive depth clipping ---
+        valid_depth = depth_np[depth_np > 0]
+        if len(valid_depth) < 100:
+            warnings.warn(f"[TSDF] View {i} has <100 valid depth pixels, skipping")
+            continue
+
+        view_depth_max = min(
+            depth_trunc,
+            float(np.quantile(valid_depth, max_depth_quantile)),
+        )
+
+        # Zero out invalid depths
+        depth_clean = depth_np.copy()
+        depth_clean[depth_clean <= 0] = 0
+        depth_clean[depth_clean > view_depth_max] = 0
+
+        # --- Optional: grazing angle filter ---
+        if grazing_angle_deg < 90.0:
+            depth_clean = _filter_grazing_angles(
+                depth_clean, cam, grazing_angle_deg
             )
 
-        frac_u = (uv[:, 0] * (grid_res[0] - 1) / 4) - cell_u
-        frac_v = (uv[:, 1] * (grid_res[1] - 1) / 4) - cell_v
-        Bu = cubic_basis(frac_u)
-        Bv = cubic_basis(frac_v)
-        basis = (Bu.unsqueeze(2) * Bv.unsqueeze(1)).view(-1, 16)  # (M,16)
+        # --- Build Open3D intrinsic ---
+        fx = float(cam.Fx)
+        fy = float(cam.Fy)
+        cx = float(cam.Cx)
+        cy = float(cam.Cy)
+        intrinsic = o3d.camera.PinholeCameraIntrinsic(W, H, fx, fy, cx, cy)
 
-        # ---------------------------------------------------------------------
-        # 4.  Scatter‑add into control grid
-        # ---------------------------------------------------------------------
-        ctrl_pts = torch.zeros((Nu, Nv, 3), device=device)
-        wt_sum = torch.zeros((Nu, Nv, 1), device=device)
+        # --- Build W2C extrinsic (4x4) ---
+        #  cam.R is stored such that R^T is the W2C rotation
+        #  cam.T is the translation in the W2C [R^T | T] matrix
+        #  This matches your spline_render.py convention exactly
+        R_np = np.asarray(cam.R, dtype=np.float64)
+        T_np = np.asarray(cam.T, dtype=np.float64)
+        extrinsic = np.eye(4, dtype=np.float64)
+        extrinsic[:3, :3] = R_np.T  # W2C rotation
+        extrinsic[:3, 3] = T_np     # W2C translation
 
-        # Pre‑compute per‑sample control‑point indices
-        for du_i in range(4):
-            for dv_j in range(4):
-                w = basis[:, du_i * 4 + dv_j].unsqueeze(-1)       # (M,1)
-                if torch.allclose(w, torch.zeros_like(w)):
-                    continue
-                u_idx = (cell_u + du_i).clamp(max=Nu - 1)
-                v_idx = (cell_v + dv_j).clamp(max=Nv - 1)
+        # --- Build RGBD image ---
+        depth_o3d = o3d.geometry.Image(
+            (depth_clean * 1000.0).astype(np.uint16)
+        )
 
-                ctrl_pts.index_put_((u_idx, v_idx), xyz * w, accumulate=True)
-                wt_sum.index_put_((u_idx, v_idx), w, accumulate=True)
+        if color_images is not None and i < len(color_images):
+            color_img = color_images[i]
+            if isinstance(color_img, torch.Tensor):
+                # (3, H, W) → (H, W, 3) uint8
+                color_np = (
+                    color_img.detach().cpu().permute(1, 2, 0)
+                    .clamp(0, 1).mul(255).byte().numpy()
+                )
+            else:
+                color_np = (np.asarray(color_img) * 255).astype(np.uint8)
+            # Resize if needed
+            if color_np.shape[0] != H or color_np.shape[1] != W:
+                import cv2
+                color_np = cv2.resize(color_np, (W, H))
+            color_o3d = o3d.geometry.Image(color_np)
+        else:
+            # No color → uniform grey
+            color_np = np.full((H, W, 3), 128, dtype=np.uint8)
+            color_o3d = o3d.geometry.Image(color_np)
 
-        ctrl_pts = ctrl_pts / wt_sum.clamp_min(1e-6)
+        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+            color_o3d, depth_o3d,
+            depth_scale=1000.0,
+            depth_trunc=view_depth_max,
+            convert_rgb_to_intensity=False,
+        )
 
-        # ---------------------------------------------------------------------
-        # 5.  Knot vectors (centripetal)
-        # ---------------------------------------------------------------------
-        knot_u = chord_length_knots(uv[:, 0], du, Nu - du).to(device)
-        knot_v = chord_length_knots(uv[:, 1], dv, Nv - dv).to(device)
-        return ctrl_pts, knot_u, knot_v
+        volume.integrate(rgbd, intrinsic, extrinsic)
+        integrated_count += 1
 
-def seed_control_grid2(xyz, uv,
-                      grid_res=(32,32), degree=(3,3), k=16, reduce_factor=0.01):
+    if integrated_count == 0:
+        raise RuntimeError("[TSDF] No views were integrated — check depth maps")
+
+    print(f"[TSDF] Integrated {integrated_count}/{n_views} views")
+
+    # ------------------------------------------------------------------
+    # 3. Extract point cloud from TSDF
+    # ------------------------------------------------------------------
+    pcd = volume.extract_point_cloud()
+
+    if len(pcd.points) == 0:
+        raise RuntimeError(
+            "[TSDF] Extracted 0 points — try increasing depth_trunc "
+            "or decreasing voxel_size"
+        )
+
+    print(f"[TSDF] Extracted {len(pcd.points)} points from volume")
+
+    # Optional further downsampling
+    if downsample_voxel is not None and downsample_voxel > voxel_size:
+        pcd = pcd.voxel_down_sample(downsample_voxel)
+        print(f"[TSDF] Downsampled to {len(pcd.points)} points "
+              f"(voxel={downsample_voxel:.4f})")
+
+    # Estimate normals if not already present
+    if not pcd.has_normals():
+        pcd.estimate_normals(
+            search_param=o3d.geometry.KDTreeSearchParamKNN(knn=20)
+        )
+
+    # Orient normals toward cameras (use the first camera center)
+    cam0_center = _get_camera_center(cameras[0])
+    pcd.orient_normals_towards_camera_location(cam0_center)
+
+    # ------------------------------------------------------------------
+    # 4. Compute per-point observation counts
+    # ------------------------------------------------------------------
+    points_np = np.asarray(pcd.points, dtype=np.float64)
+    obs_count = _compute_observation_counts(
+        points_np, cameras, depth_maps, depth_trunc,
+        depth_tolerance=3.0 * voxel_size,
+    )
+
+    # ------------------------------------------------------------------
+    # 5. Global UV parameterization via PCA
+    #    (conformal_parameterize can be swapped in here later)
+    # ------------------------------------------------------------------
+    uv_np = _compute_global_uv(points_np)
+
+    # ------------------------------------------------------------------
+    # 6. Pack into tensors
+    # ------------------------------------------------------------------
+    xyz = torch.from_numpy(points_np.astype(np.float32)).to(device)
+    colors = torch.from_numpy(
+        np.asarray(pcd.colors, dtype=np.float32)
+    ).to(device)
+    normals = torch.from_numpy(
+        np.asarray(pcd.normals, dtype=np.float32)
+    ).to(device)
+    uv = torch.from_numpy(uv_np.astype(np.float32)).to(device)
+    obs = torch.from_numpy(obs_count.astype(np.float32)).to(device)
+
+    print(f"[TSDF] Final point cloud: {len(xyz)} pts, "
+          f"mean obs={obs.mean():.1f}, "
+          f"UV range=[{uv.min():.3f}, {uv.max():.3f}]")
+
+    return {
+        "xyz": xyz,
+        "colors": colors,
+        "normals": normals,
+        "uv": uv,
+        "obs_count": obs,
+    }
+
+
+# ======================================================================
+#  Internal helpers
+# ======================================================================
+
+def _get_camera_center(cam) -> np.ndarray:
     """
-    Args
-        xyz      : (N,3) point positions (metres, world)
-        uv       : (N,2) param coords in [0,1]^2
-        grid_res : (#patch_u * 4 , #patch_v * 4) for bicubic
+    Extract camera center in world coordinates.
+
+    Convention: W2C is [R^T | T], so C2W is its inverse,
+    and camera center = -R @ T  (since T = -R^T @ center).
+    """
+    R = np.asarray(cam.R, dtype=np.float64)   # R such that R^T is W2C rot
+    T = np.asarray(cam.T, dtype=np.float64)   # T in W2C
+    # W2C: [R^T | T] → camera_center = -(R^T)^{-1} @ T = -R @ T
+    center = -R @ T
+    return center
+
+
+def _filter_grazing_angles(
+    depth: np.ndarray,
+    cam,
+    max_angle_deg: float,
+) -> np.ndarray:
+    """
+    Zero out depth pixels where the view ray is nearly tangent to the
+    surface (estimated from local depth gradients).
+
+    Grazing-angle pixels have very high depth uncertainty and produce
+    noisy surface estimates. Filtering them before TSDF integration
+    avoids phantom surfaces.
+    """
+    H, W = depth.shape
+
+    # Compute local surface normals from depth via finite differences
+    # These are approximate but sufficient for filtering
+    fx = float(cam.Fx)
+    fy = float(cam.Fy)
+    cx = float(cam.Cx)
+    cy = float(cam.Cy)
+
+    # Pixel grid
+    u_grid, v_grid = np.meshgrid(np.arange(W), np.arange(H))
+
+    # Unproject to camera space
+    z = depth.copy()
+    z[z <= 0] = np.nan
+    x = (u_grid - cx) * z / fx
+    y = (v_grid - cy) * z / fy
+
+    # Finite-difference normals in camera space
+    # dP/du and dP/dv, then cross product
+    dxdu = np.gradient(x, axis=1)
+    dxdv = np.gradient(x, axis=0)
+    dydu = np.gradient(y, axis=1)
+    dydv = np.gradient(y, axis=0)
+    dzdu = np.gradient(z, axis=1)
+    dzdv = np.gradient(z, axis=0)
+
+    # Normal = (dP/du) × (dP/dv)
+    nx = dydu * dzdv - dzdu * dydv
+    ny = dzdu * dxdv - dxdu * dzdv
+    nz = dxdu * dydv - dydu * dxdv
+
+    norm_len = np.sqrt(nx**2 + ny**2 + nz**2) + 1e-12
+    nx /= norm_len
+    ny /= norm_len
+    nz /= norm_len
+
+    # View direction for each pixel (camera space: ray = normalize([x, y, z]))
+    ray_len = np.sqrt(x**2 + y**2 + z**2) + 1e-12
+    vx = x / ray_len
+    vy = y / ray_len
+    vz = z / ray_len
+
+    # Angle between normal and view ray
+    cos_angle = np.abs(nx * vx + ny * vy + nz * vz)
+    cos_threshold = np.cos(np.radians(max_angle_deg))
+
+    # Zero out grazing-angle pixels
+    depth_out = depth.copy()
+    grazing_mask = cos_angle < cos_threshold
+    grazing_mask |= np.isnan(cos_angle)
+    depth_out[grazing_mask] = 0
+
+    n_filtered = int(grazing_mask.sum())
+    n_valid = int((depth > 0).sum())
+    if n_filtered > 0.5 * n_valid:
+        # If we'd filter >50% of pixels, the threshold is too aggressive
+        # — likely a forward-facing scene. Skip filtering for this view.
+        return depth
+
+    return depth_out
+
+
+def _compute_observation_counts(
+    points: np.ndarray,
+    cameras: list,
+    depth_maps: list,
+    depth_trunc: float,
+    depth_tolerance: float = 0.015,
+) -> np.ndarray:
+    """
+    For each fused 3D point, count how many views observe it consistently.
+
+    A point is "observed" by a view if:
+      1. It projects inside the image
+      2. It is in front of the camera
+      3. Its depth matches the view's depth map within tolerance
+
+    This gives a per-point confidence weight: points seen from many
+    views are reliable; points from a single view may be noise.
+
+    Parameters
+    ----------
+    points : (N, 3) world-space positions
+    cameras : list of Camera
+    depth_maps : list of depth tensors/arrays
+    depth_trunc : max depth
+    depth_tolerance : absolute depth difference tolerance (meters)
+
     Returns
-        ctrl_pts : (Nu,Nv,3)
-        knot_u   : (Nu+du+1)
-        knot_v   : (Nv+dv+1)
+    -------
+    obs_count : (N,) float, per-point observation count (>= 1)
     """
-    from simple_knn._C import distCUDA2
+    N = len(points)
+    obs_count = np.zeros(N, dtype=np.float32)
 
-    device = xyz.device
-    du,dv  = degree
-    Nu, Nv = [r//4 + du for r in grid_res]  # 4×4 control pts per patch
+    for i, cam in enumerate(cameras):
+        depth = depth_maps[i]
+        if isinstance(depth, torch.Tensor):
+            depth_np = depth.detach().cpu().squeeze().numpy().astype(np.float32)
+        else:
+            depth_np = np.asarray(depth, dtype=np.float32).squeeze()
 
-    # 1.3.1 build cell indices for each sample
-    cell_u = torch.clamp((uv[:,0] * (grid_res[0]-1) / 4).long(), 0, Nu-du-1)
-    cell_v = torch.clamp((uv[:,1] * (grid_res[1]-1) / 4).long(), 0, Nv-dv-1)
+        H, W = depth_np.shape
+        fx = float(cam.Fx)
+        fy = float(cam.Fy)
+        cx = float(cam.Cx)
+        cy = float(cam.Cy)
 
-    # index in flattened control grid (0..Nu*Nv-1)
-    root_idx = cell_v * Nu + cell_u
+        # Build W2C transform
+        R = np.asarray(cam.R, dtype=np.float64)
+        T = np.asarray(cam.T, dtype=np.float64)
+        # W2C: x_cam = R^T @ x_world + T
+        pts_cam = (R.T @ points.T).T + T[None, :]
 
-    dist2 = distCUDA2(torch.from_numpy(xyz.detach().cpu().numpy()).float().cuda())
-    dist = dist2[dist2 < torch.quantile(dist2, q=reduce_factor)]
+        z = pts_cam[:, 2]
+        valid_z = z > 0.01
 
-    grid_t = torch.linspace(0,1,5,device=device)
-    B = torch.stack([F.interpolate(
-                          torch.eye(1,5,device=device), size=4,
-                          mode='linear', align_corners=False)[0]  # placeholder
-                    ])  # not elegant, but we only need 4 values anyway
-    # quick tensor look-up
-    Bu = B[0, (uv[:,0]*(B.shape[1]-1)).long()]
-    Bv = B[0, (uv[:,1]*(B.shape[1]-1)).long()]
-    basis = (Bu.unsqueeze(1) * Bv.unsqueeze(2)).view(-1,16)  # (N,16)
+        # Project to pixel
+        u = fx * pts_cam[:, 0] / z + cx
+        v = fy * pts_cam[:, 1] / z + cy
 
-    # 1.3.4 accumulate numerator and weights in a sparse grid
-    ctrl_pts = torch.zeros((Nu,Nv,3), device=device)
-    wt_sum   = torch.zeros((Nu,Nv,1), device=device)
+        # Bounds check
+        u_int = np.round(u).astype(np.int64)
+        v_int = np.round(v).astype(np.int64)
+        in_bounds = (
+            valid_z &
+            (u_int >= 0) & (u_int < W) &
+            (v_int >= 0) & (v_int < H)
+        )
 
-    # flatten grid for scatter-add
-    flat_xyz = xyz.repeat(1,16).view(-1,3)                    # (N*16,3)
-    flat_wt  = basis.repeat_interleave(1,dim=0)[...,None]     # (N*16,1)
+        # Depth consistency check
+        indices = np.where(in_bounds)[0]
+        if len(indices) == 0:
+            continue
 
-    # which control point each copied sample contributes to
-    offset_u = torch.arange(4, device=device).repeat(Nv*Nu)  # dummy
-    # *** This section is intentionally left schematic ***:
-    # build indices u_idx, v_idx for each contribution,
-    # then scatter_reduce().
-    # For brevity I omit the boilerplate; the idea should be clear.
+        u_valid = u_int[indices]
+        v_valid = v_int[indices]
+        z_valid = z[indices]
 
-    # final divide
-    ctrl_pts = ctrl_pts / wt_sum.clamp_min(1e-6)
+        depth_at_proj = depth_np[v_valid, u_valid]
 
-    # 1.3.5 knot vectors
-    knot_u = chord_length_knots(uv[:,0], du, Nu-du)
-    knot_v = chord_length_knots(uv[:,1], dv, Nv-dv)
+        # A point is consistently observed if:
+        # - The depth map has valid depth at this pixel
+        # - The point's depth matches within tolerance (relative)
+        has_depth = depth_at_proj > 0
+        depth_diff = np.abs(depth_at_proj - z_valid)
+        # Use relative + absolute tolerance: max(absolute, relative * depth)
+        tol = np.maximum(depth_tolerance, 0.02 * z_valid)
+        consistent = has_depth & (depth_diff < tol)
 
-    return ctrl_pts, knot_u, knot_v
+        obs_count[indices[consistent]] += 1.0
+
+    # Ensure minimum count of 1 (every point was seen by at least the
+    # view that created it in the TSDF)
+    obs_count = np.maximum(obs_count, 1.0)
+
+    return obs_count
+
+
+def _compute_global_uv(points: np.ndarray) -> np.ndarray:
+    """
+    Compute a global UV parameterization for the fused point cloud.
+
+    Uses PCA projection as the default. This is the plug-in point for
+    upgrading to conformal parameterization (Fix 4) later.
+
+    Returns
+    -------
+    uv : (N, 2) in [0.001, 0.999]
+    """
+    from sklearn.decomposition import PCA
+
+    N = len(points)
+    if N < 3:
+        return np.full((N, 2), 0.5)
+
+    pca = PCA(n_components=2)
+    proj = pca.fit_transform(points - points.mean(axis=0))
+
+    uv = proj - proj.min(axis=0)
+    rng = uv.max(axis=0)
+    rng[rng < 1e-10] = 1.0
+    uv = uv / rng
+
+    return np.clip(uv, 0.001, 0.999)

@@ -116,16 +116,6 @@ class Scene:
                     json_str = json.dumps(json_d, separators=(',', ':'))
                     file.write(json_str)
                     file.write('\n')
-                    # print(f"frame {cur_cam.image_name}, neareast {cur_cam.nearest_names}, \
-                    #       angle {angles[id][cur_cam.nearest_id]}, diss {diss[id][cur_cam.nearest_id]}")
-        # p = "/sci/labs/sagieb/zlilovadia/nurbs/output/surfels/scan118"
-        # if self.loaded_iter:
-        #     self.gaussians.load_ply(os.path.join(self.model_path,
-        #                                                    "point_cloud",
-        #                                                    "iteration_" + str(self.loaded_iter),
-        #                                                    "point_cloud.ply"))
-        # else:
-        #     self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
 
     def save(self, iteration, mask=None):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

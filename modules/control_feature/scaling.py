@@ -7,6 +7,8 @@ import torch
 from .base import ControlFeature
 
 
+from simple_knn._C import distCUDA2
+
 class ScalingControl(ControlFeature):
     """
     Learnable per-control-point scaling in log-space.
@@ -22,6 +24,8 @@ class ScalingControl(ControlFeature):
         self._inverse_activation = torch.log
         self.subdivision_scale_factor = 0.8
         self.subdivision_count = 2
+        if position := kwargs.get('position'):
+            self.set_position(position)
 
     @property
     def activation(self):
@@ -34,9 +38,9 @@ class ScalingControl(ControlFeature):
     @property
     def features(self):
         """Exponentiated control grid (world-space scales)."""
-        return self.control_features.view(
+        return self.activation(self.control_features.view(
             self.state.H, self.state.W, self.control_features.shape[-1]
-        ).exp()
+        ))
 
     @property
     def density_factor(self):
@@ -46,20 +50,21 @@ class ScalingControl(ControlFeature):
     # Interpolation with density correction + normal padding
     # ------------------------------------------------------------------
 
-    def interpolate_samples(self) -> torch.Tensor:
-        scales = super().interpolate_samples()
+    def forward(self) -> torch.Tensor:
+        scales = super().forward()
         # scales = self._apply_density_correction(scales)
 
         if self.state.scaling_dims == 2:
+            # `scales` is already activated (exp-space, positive); the flat
+            # normal axis gets a tiny positive scale (≈ exp(-9)).
             scaling_n = torch.full(
-                (scales.shape[0], 1), fill_value=-9.0, device=scales.device,
+                (scales.shape[0], 1), fill_value=1.234e-4, device=scales.device,
             )
             scales = torch.cat([scales, scaling_n], dim=-1)
 
-        self._cache = scales
-        return scales
+        self.set_cache(scales)
 
-    # forward = interpolate_samples
+        return scales
 
     def _apply_density_correction(self, scales: torch.Tensor) -> torch.Tensor:
         """
@@ -87,8 +92,47 @@ class ScalingControl(ControlFeature):
     # ------------------------------------------------------------------
     # Insertion: shrink new control point scales
     # ------------------------------------------------------------------
-
     def compute_inserted_grid(
+        self, direction, knots, degree, val, insert_idx,
+        insertion_fn, blend_radius=None, blend_strength=0.3, use_blend=False, old_H=None, old_W=None
+    ) -> Tuple[torch.Tensor, int]:
+        new_grid, insert_idx = super().compute_inserted_grid(
+            direction, knots, degree, val, insert_idx,
+            insertion_fn, blend_radius, blend_strength, use_blend=use_blend,
+        )
+        self.position.invalidate()
+        # old_H, old_W = self.state.H, self.state.W
+        H, W = self.state.H, self.state.W
+        xyz = self.position.features.detach().reshape(H, W, -1)
+        if direction == 'v':
+            new_grid = new_grid.permute(1, 0, 2)
+            xyz = xyz.permute(1, 0, 2)
+        new_slice_pos = xyz[insert_idx: insert_idx + degree + 1]
+
+        dist = torch.sqrt(
+            distCUDA2(new_slice_pos.reshape(-1, 3)).clamp_min(1e-20)) * 0.5
+        # print(f"new scale {torch.quantile(dist, 0.1)}")
+        # scaling_init = (dist)
+        scaling_init = torch.log(
+            (torch.stack([dist, dist, torch.ones_like(dist) * 1e-6], dim=-1)))[insert_idx: insert_idx + degree + 1].reshape(degree+1, -1,
+                                                                                       3).detach().clone().contiguous()
+
+        new_grid[insert_idx: insert_idx + degree + 1] = scaling_init.contiguous()
+
+        # Shrink UV scales of newly inserted control points.
+        # We're now in log-space directly, so subtract log(shrink_factor).
+        # Use span-ratio-derived factor instead of magic 0.8*2.
+        shrink_factor = self.subdivision_scale_factor * self.subdivision_count  # 0.8 * 2 = 1.6
+        log_shrink = torch.tensor(shrink_factor, device=new_grid.device).log()
+        new_slice = new_grid[insert_idx: insert_idx + degree + 1]
+        new_slice[..., :2] = new_slice[..., :2] - log_shrink
+        new_grid[insert_idx: insert_idx + degree + 1] = new_slice
+
+        if direction == 'v':
+            new_grid = new_grid.permute(1, 0, 2)
+
+        return new_grid, insert_idx
+    def compute_inserted_grid2(
         self, direction, knots, degree, val, insert_idx,
         insertion_fn, blend_radius=None, blend_strength=0.3, use_blend=False,
     ) -> Tuple[torch.Tensor, int]:
@@ -100,11 +144,11 @@ class ScalingControl(ControlFeature):
         if direction == 'v':
             new_grid = new_grid.permute(1, 0, 2)
 
-        # Shrink UV scales of newly inserted control points
-        new_slice = new_grid[insert_idx: insert_idx + degree + 1]
-        new_slice_uv = new_slice[..., :2].exp() / (0.8 * 2)
-        new_slice[..., :2] = new_slice_uv.log()
-        new_grid[insert_idx: insert_idx + degree + 1] = new_slice
+        # # Shrink UV scales of newly inserted control points
+        # new_slice = new_grid[insert_idx: insert_idx + degree + 1]
+        # new_slice_uv = new_slice[..., :2].exp() / (0.8 * 2)
+        # new_slice[..., :2] = new_slice_uv.log()
+        # new_grid[insert_idx: insert_idx + degree + 1] = new_slice
 
         if direction == 'v':
             new_grid = new_grid.permute(1, 0, 2)
@@ -123,7 +167,7 @@ class ScalingControl(ControlFeature):
             direction, remove_idx,
             blend_radius=blend_radius,
             blend_strength=blend_strength,
-            use_blend=blend_radius if blend_radius is not None else self.state.degree,
+            use_blend=False,
         )
         new_ctrl = self.apply_removal_compensation(
             new_ctrl, direction, remove_idx,

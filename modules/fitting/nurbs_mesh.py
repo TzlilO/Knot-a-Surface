@@ -465,7 +465,7 @@ class NURBSMeshGenerator:
         if surface. spherical_harmonics.sh_dc.cache is not None:
             sh_dc = surface.spherical_harmonics.sh_dc.cache
         else:
-            sh_dc = surface.spherical_harmonics. sh_dc.interpolate_samples()
+            sh_dc = surface.spherical_harmonics. sh_dc.forward()
 
         sh_dc = sh_dc.reshape(Us, Vs, -1)
 

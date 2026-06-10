@@ -32,17 +32,17 @@ class WeightControl(ControlFeature):
             self.state.H, self.state.W, self.control_features.shape[-1],
         )
 
-    def interpolate_samples(self) -> torch.Tensor:
-        return super().interpolate_samples()
+    def forward(self) -> torch.Tensor:
+        return super().forward()
 
-    forward = interpolate_samples
+    forward = forward
 
     def get_weights(self):
         return self.features
 
     def compute_inserted_grid(
         self, direction, knots, degree, val, insert_idx,
-        insertion_fn, blend_radius=None, blend_strength=0.3, use_blend=False,
+        insertion_fn, blend_radius=None, blend_strength=0.3, use_blend=False, old_H=None, old_W=None
     ) -> Tuple[torch.Tensor, int]:
         return super().compute_inserted_grid(
             direction, knots, degree, val, insert_idx,

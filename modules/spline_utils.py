@@ -7252,21 +7252,6 @@ def upsample_grid(grid: torch.Tensor, scale_factor: float = 2.0) -> torch.Tensor
 
 
 
-def generate_open_uniform_knot_vector(n_ctrl_pts: int, degree: int, device='cuda'):
-    """
-    n_ctrl_pts = number of control points in U (or V)
-    degree     = spline degree (e.g. 3 for cubic)
-    Returns    = tensor of shape (n_ctrl_pts + degree + 1,)
-    """
-    # interior spans count = n_ctrl_pts - degree + 1
-    n_spans = n_ctrl_pts - degree + 1
-    # start with degree zeros
-    start = torch.zeros(degree, device=device)
-    # then uniform from 0→1
-    middle = torch.linspace(0, 1, steps=n_spans, device=device)
-    # then degree ones
-    end   = torch.ones(degree, device=device)
-    return torch.cat([start, middle, end], dim=0)
 
 
 

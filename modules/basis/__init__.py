@@ -149,6 +149,134 @@ def generate_bspline_basis_matrices_d(
         'deriv2': (dbuu, dbvv)
     }
 
+def bspline_basis_and_derivs_1d(
+    u: torch.Tensor,        # [M] parameter values
+    knots: torch.Tensor,    # [n_ctrl + degree + 1] knot vector
+    degree: int,
+    max_deriv: int = 2,
+) -> Tuple[torch.Tensor, ...]:
+    """
+    Exact B-spline basis values and derivatives (triangular-table algorithm,
+    The NURBS Book A2.3). Fully vectorized over samples, differentiable
+    w.r.t. both `u` and `knots`, valid for non-uniform knot vectors.
+
+    Returns (N, dN, ..., d^k N), each [M, n_ctrl].
+    """
+    device = u.device
+    dtype = u.dtype
+    m = knots.shape[0] - 1
+    n = m - degree
+    M = u.shape[0]
+
+    u = u.reshape(-1)
+    u_col = u.unsqueeze(1)
+
+    # ── Build the full triangular table ──────────────────────────────────────
+    # table[d] stores N_{i,d}(u) for all i, shape [M, m-d]
+    table = {}
+
+    # Degree 0
+    left_edges = knots[:-1].unsqueeze(0)
+    right_edges = knots[1:].unsqueeze(0)
+    N0 = ((u_col >= left_edges) & (u_col < right_edges)).to(dtype)
+
+    # Right endpoint fix
+    last_span_mask = (u == knots[m])
+    if last_span_mask.any():
+        for j in range(m - 1, -1, -1):
+            if knots[j] < knots[j + 1]:
+                N0[last_span_mask, j] = 1.0
+                break
+
+    table[0] = N0[:, :m]  # [M, m]
+
+    # Degrees 1 through p
+    for d in range(1, degree + 1):
+        n_d = m - d  # number of basis functions at degree d
+        prev = table[d - 1]
+
+        t_left = knots[:n_d].unsqueeze(0)
+        t_right = knots[d:d + n_d].unsqueeze(0)
+        denom_l = t_right - t_left
+
+        t_left_r = knots[1:n_d + 1].unsqueeze(0)
+        t_right_r = knots[d + 1:d + 1 + n_d].unsqueeze(0)
+        denom_r = t_right_r - t_left_r
+
+        alpha = torch.where(
+            denom_l.abs() > 1e-14,
+            (u_col - t_left) / denom_l,
+            torch.zeros(1, device=device, dtype=dtype)
+        )
+
+        beta = torch.where(
+            denom_r.abs() > 1e-14,
+            (t_right_r - u_col) / denom_r,
+            torch.zeros(1, device=device, dtype=dtype)
+        )
+
+        table[d] = alpha * prev[:, :n_d] + beta * prev[:, 1:n_d + 1]
+
+    # ── Extract basis values ─────────────────────────────────────────────────
+    B = table[degree][:, :n]  # [M, n]
+
+    results = [B]
+
+    for k in range(1, max_deriv + 1):
+        if degree - k < 0:
+            # Derivative order exceeds degree → result is zero
+            results.append(torch.zeros(M, n, device=device, dtype=dtype))
+            continue
+
+        # Start from degree-(p-k) table
+        source_degree = degree - k
+        n_source = m - source_degree  # number of functions at source degree
+
+        # Clone the source to avoid modifying the table
+        D = table[source_degree][:, :n_source].clone()
+
+        current_n = n_source
+
+        for step in range(k):
+
+            p_eff = source_degree + step + 1  # = (p-k) + step + 1
+            new_n = current_n - 1
+
+            # Vectorized computation over all i at once
+            # Knot spans for left term: t_{i+p_eff} - t_i, for i = 0..new_n-1
+            t_lo = knots[:new_n]                    # [new_n]
+            t_hi = knots[p_eff:p_eff + new_n]      # [new_n]
+            denom_left = (t_hi - t_lo).unsqueeze(0) # [1, new_n]
+
+            # Knot spans for right term: t_{i+1+p_eff} - t_{i+1}, for i = 0..new_n-1
+            t_lo_r = knots[1:new_n + 1]                     # [new_n]
+            t_hi_r = knots[p_eff + 1:p_eff + 1 + new_n]    # [new_n]
+            denom_right = (t_hi_r - t_lo_r).unsqueeze(0)    # [1, new_n]
+
+            left_term = torch.where(
+                denom_left.abs() > 1e-14,
+                D[:, :new_n] / denom_left,
+                torch.zeros(1, device=device, dtype=dtype)
+            )
+
+            right_term = torch.where(
+                denom_right.abs() > 1e-14,
+                D[:, 1:new_n + 1] / denom_right,
+                torch.zeros(1, device=device, dtype=dtype)
+            )
+
+            D = p_eff * (left_term - right_term)  # [M, new_n]
+            current_n = new_n
+
+        assert D.shape[1] == n, (
+            f"Derivative shape mismatch: got {D.shape[1]}, expected {n}. "
+            f"degree={degree}, k={k}, m={m}, source_degree={source_degree}"
+        )
+        results.append(D)
+
+    return tuple(results)
+
+
 def compute_all_derivatives_2d(
     uv: torch.Tensor,  # [Us x Vs x 2] or [N x 2] evaluation parameters for uv space
     knots_u: torch.Tensor,  # [nu + pu + 1] knot vector for u
@@ -157,124 +285,6 @@ def compute_all_derivatives_2d(
     degree_v: int,  # Polynomial degree pv for v
     max_deriv: int = 2  # Maximum derivative order
 ) -> Tuple[Tuple[torch.Tensor, ...], Tuple[torch.Tensor, ...]]:
-
-    # Helper function for 1D computation (copied from the provided 1D implementation)
-    def compute_1d(u: torch.Tensor, knots: torch.Tensor, degree: int, max_deriv: int) -> Tuple[torch.Tensor, ...]:
-        device = u.device
-        dtype = u.dtype
-        m = knots.shape[0] - 1
-        n = m - degree
-        M = u.shape[0]
-
-        u_col = u.unsqueeze(1)
-        u_shape = u.shape
-        u = u.reshape(-1)
-
-        # ── Build the full triangular table ──────────────────────────────────────
-        # table[d] stores N_{i,d}(u) for all i, shape [M, m-d]
-        table = {}
-
-        # Degree 0
-        left_edges = knots[:-1].unsqueeze(0)
-        right_edges = knots[1:].unsqueeze(0)
-        N0 = ((u_col >= left_edges) & (u_col < right_edges)).to(dtype)
-
-        # Right endpoint fix
-        last_span_mask = (u == knots[m])
-        if last_span_mask.any():
-            for j in range(m - 1, -1, -1):
-                if knots[j] < knots[j + 1]:
-                    N0[last_span_mask, j] = 1.0
-                    break
-
-        table[0] = N0[:, :m]  # [M, m]
-
-        # Degrees 1 through p
-        for d in range(1, degree + 1):
-            n_d = m - d  # number of basis functions at degree d
-            prev = table[d - 1]
-
-            t_left = knots[:n_d].unsqueeze(0)
-            t_right = knots[d:d + n_d].unsqueeze(0)
-            denom_l = t_right - t_left
-
-            t_left_r = knots[1:n_d + 1].unsqueeze(0)
-            t_right_r = knots[d + 1:d + 1 + n_d].unsqueeze(0)
-            denom_r = t_right_r - t_left_r
-
-            alpha = torch.where(
-                denom_l.abs() > 1e-14,
-                (u_col - t_left) / denom_l,
-                torch.zeros(1, device=device, dtype=dtype)
-            )
-
-            beta = torch.where(
-                denom_r.abs() > 1e-14,
-                (t_right_r - u_col) / denom_r,
-                torch.zeros(1, device=device, dtype=dtype)
-            )
-
-            table[d] = alpha * prev[:, :n_d] + beta * prev[:, 1:n_d + 1]
-
-        # ── Extract basis values ─────────────────────────────────────────────────
-        B = table[degree][:, :n]  # [M, n]
-
-        results = [B]
-
-        for k in range(1, max_deriv + 1):
-            if degree - k < 0:
-                # Derivative order exceeds degree → result is zero
-                results.append(torch.zeros(M, n, device=device, dtype=dtype))
-                continue
-
-            # Start from degree-(p-k) table
-            source_degree = degree - k
-            n_source = m - source_degree  # number of functions at source degree
-
-            # Clone the source to avoid modifying the table
-            D = table[source_degree][:, :n_source].clone()
-
-            current_n = n_source
-
-            for step in range(k):
-
-                p_eff = source_degree + step + 1  # = (p-k) + step + 1
-                new_n = current_n - 1
-
-                # Vectorized computation over all i at once
-                # Knot spans for left term: t_{i+p_eff} - t_i, for i = 0..new_n-1
-                t_lo = knots[:new_n]                    # [new_n]
-                t_hi = knots[p_eff:p_eff + new_n]      # [new_n]
-                denom_left = (t_hi - t_lo).unsqueeze(0) # [1, new_n]
-
-                # Knot spans for right term: t_{i+1+p_eff} - t_{i+1}, for i = 0..new_n-1
-                t_lo_r = knots[1:new_n + 1]                     # [new_n]
-                t_hi_r = knots[p_eff + 1:p_eff + 1 + new_n]    # [new_n]
-                denom_right = (t_hi_r - t_lo_r).unsqueeze(0)    # [1, new_n]
-
-                left_term = torch.where(
-                    denom_left.abs() > 1e-14,
-                    D[:, :new_n] / denom_left,
-                    torch.zeros(1, device=device, dtype=dtype)
-                )
-
-                right_term = torch.where(
-                    denom_right.abs() > 1e-14,
-                    D[:, 1:new_n + 1] / denom_right,
-                    torch.zeros(1, device=device, dtype=dtype)
-                )
-
-                D = p_eff * (left_term - right_term)  # [M, new_n]
-                current_n = new_n
-
-            assert D.shape[1] == n, (
-                f"Derivative shape mismatch: got {D.shape[1]}, expected {n}. "
-                f"degree={degree}, k={k}, m={m}, source_degree={source_degree}"
-            )
-            results.append(D)
-
-        return tuple(results)
-
     # Handle input shape: assume [Us, Vs, 2] or [N, 2]
     if uv.dim() == 3:
         # [Us, Vs, 2] -> flatten to [Us*Vs]
@@ -285,96 +295,40 @@ def compute_all_derivatives_2d(
         u = uv[:, 0]
         v = uv[:, 1]
     else:
-
         raise ValueError(f"uv must be of shape [Us, Vs, 2] or [N, 2]. Got {uv.shape}")
 
-    # Compute for u and v directions
-    results_u = compute_1d(u, knots_u, degree_u, max_deriv)
-    results_v = compute_1d(v, knots_v, degree_v, max_deriv)
-    # results_u = [r_u.reshape(uv.shape[:-1] + (r_u.shape[-1],)) for r_u in results_u]
-    # results_v = [r_v.reshape(uv.shape[:-1] + (r_v.shape[-1],)) for r_v in results_v]
+    results_u = bspline_basis_and_derivs_1d(u, knots_u, degree_u, max_deriv)
+    results_v = bspline_basis_and_derivs_1d(v, knots_v, degree_v, max_deriv)
     return results_u, results_v
+
+
 def compute_bases_uv_diff(
-        samples_u: torch.Tensor,  # [Us] with requires_grad=True
-        samples_v: torch.Tensor,  # [Vs] with requires_grad=True
+        samples_u: torch.Tensor,  # [Us]
+        samples_v: torch.Tensor,  # [Vs]
         knots_u: torch.Tensor,
         knots_v: torch.Tensor,
         num_control_u: int,  # H
         num_control_v: int,  # W
-        degree: int = 3
-, device='cuda') -> BasisFuncs:
+        degree: int = 3,
+        device='cuda') -> BasisFuncs:
     """
-    Generate basis matrices WITH full gradient support.
-
-    CRITICAL: All operations preserve gradients w.r.t. samples_u/samples_v.
-
-    Returns:
-        Dict with:
-            'basis': (bu, bv) - 0th order
-            'deriv1': (dbu, dbv) - 1st derivatives
-            'deriv2': (dbuu, dbvv) - 2nd derivatives
+    Separable basis matrices with values + first/second derivatives,
+    differentiable w.r.t. samples and knots (exact, non-uniform-safe).
     """
-    from modules.basis.basis_matrix import DifferentiableBSplineBasis
-
-    basis_computer = DifferentiableBSplineBasis(degree=degree, device=device)
-
-    # Ensure gradient tracking
-    # assert samples_u.requires_grad, "samples_u must have requires_grad=True"
-    # assert samples_v.requires_grad, "samples_v must have requires_grad=True"
-    #
-    # 0th order (positions)
-    bu, bv = basis_computer.forward(
-        samples_u, samples_v,
-        knots_u, knots_v,
-        num_control_u, num_control_v
+    bu, dbu, dbuu = bspline_basis_and_derivs_1d(
+        samples_u.reshape(-1), knots_u, degree, max_deriv=2
     )
-
-    # 1st derivatives
-    dbu = basis_computer._compute_dbasis_matrix_form(
-        samples_u,
-        knots_u,
-        num_control_u,
-        degree=3
+    bv, dbv, dbvv = bspline_basis_and_derivs_1d(
+        samples_v.reshape(-1), knots_v, degree, max_deriv=2
     )
-    dbv = basis_computer._compute_dbasis_matrix_form(
-        samples_v,
-        knots_v,
-        num_control_v,
-        degree=3
+    assert bu.shape[-1] == num_control_u and bv.shape[-1] == num_control_v, (
+        f"Basis/control mismatch: bu {tuple(bu.shape)} vs H={num_control_u}, "
+        f"bv {tuple(bv.shape)} vs W={num_control_v}"
     )
-
-    # 2nd derivatives
-    dbuu = basis_computer._compute_d2basis_matrix_form(
-        samples_u,
-        knots_u,
-        num_control_u,
-        degree=3
+    return BasisFuncs(
+        bu_data={'basis': bu, 'deriv1': dbu, 'deriv2': dbuu},
+        bv_data={'basis': bv, 'deriv1': dbv, 'deriv2': dbvv},
     )
-    dbvv = basis_computer._compute_d2basis_matrix_form(
-        samples_v,
-        knots_v,
-        num_control_v,
-        degree=3
-    )
-
-    # Verify gradient flow
-    # assert bu.requires_grad, "Basis lost gradients!"
-    # assert dbu.requires_grad, "Derivative basis lost gradients!"
-    bu_data = {
-        'basis': bu, 'deriv1': dbu, 'deriv2': dbuu
-    }
-    bv_data = {
-        'basis': bv, 'deriv1': dbv, 'deriv2': dbvv
-    }
-    basis_funcs = BasisFuncs(
-        bu_data,
-        bv_data
-    )
-    return basis_funcs
-    # return {
-    #     'basis': (bu, bv),
-    #     'deriv1': (dbu, dbv),
-    #     'deriv2': (dbuu, dbvv)}
 
 def compute_basis_u(samples, knots=None, num_control_points=4, degree=3, device='cuda'):
     return compute_bases_uv_diff(samples, knots, num_control_points, degree, device)
@@ -383,22 +337,100 @@ def compute_basis_v(samples, knots=None, num_control_points=4, degree=3, device=
     return compute_bases_uv_diff(samples, knots, num_control_points, degree, device)
 def compute_bases_uv(samples_u, samples_v, knots_u, knots_v, num_control_u: int, num_control_v: int, degree=3,
                      device='cuda', uv_grid=None) -> BasisFuncs:
-    # bu, dbu, dbuu = generate_bspline_basis_matrices(samples_u, knots_u, num_control_u, degree, device)
-    # bv, dbv, dbvv = generate_bspline_basis_matrices(samples_v, knots_v, num_control_v, degree, device)
-    # if uv_grid is not None:
-    #     BU, BV = compute_all_derivatives_2d(uv_grid, knots_u, knots_v, degree_u=degree, degree_v=degree, max_deriv=2)
-    #     bu, dbu, dbuu = BU
-    #     bv, dbv, dbvv = BV
-    #     bu, dbu, dbuu = bu, dbu, dbuu
-    #     bv, dbv, dbvv = bv, dbv, dbvv
-    # else:
-    bu, dbu, dbuu = compute_all_derivatives(samples_u, knots_u, degree, max_deriv=2)
-    bv, dbv, dbvv = compute_all_derivatives(samples_v, knots_v, degree, max_deriv=2)
-
-    return BasisFuncs(
-        bu_data={'basis': bu, 'deriv1': dbu, 'deriv2': dbuu},
-        bv_data={'basis': bv, 'deriv1': dbv, 'deriv2': dbvv}
+    return compute_bases_uv_diff(
+        samples_u, samples_v, knots_u, knots_v,
+        num_control_u, num_control_v, degree=degree, device=device,
     )
+@torch.jit.script
+def cox_de_boor_basis_and_derivative(
+        u:       torch.Tensor,   # (N,)
+        U:       torch.Tensor,   # (n_ctrl+degree+1,)
+        degree:  int,
+        eps:     float = 1e-12
+):
+    """
+    Fully-vectorised, autograd-friendly Cox–de Boor evaluation up to 2nd
+    derivative.  Works on any dtype / device supported by PyTorch.
+    Returns
+    -------
+    N    : (N, n_ctrl)   – basis
+    dN   : (N, n_ctrl)   – first derivative
+    d2N  : (N, n_ctrl)   – second derivative
+    """
+    Np = u.shape[0]
+    n_ctrl = U.numel() - degree - 1          # *always* consistent
+
+    # ------------------------------------------------------------------
+    # zero-degree
+    # ------------------------------------------------------------------
+    u_col  = u.unsqueeze(1)                  # (N,1)
+    # Only the first n_ctrl knot spans generate zero-degree basis functions
+    left   = U[:n_ctrl]                      # (n_ctrl,)
+    right  = U[1:n_ctrl+1]                   # (n_ctrl,)
+    N0 = ((u_col >= left) & (u_col < right)).to(u.dtype)  # (N, n_ctrl)
+
+    # include right endpoint
+    N0[u == U[-1], -1] = 1.0
+
+    # tensor container for progressive degrees
+    N_all = [N0]                             # list of (N,n_ctrl+k)
+
+    # ------------------------------------------------------------------
+    # recursion for degree 1 … p
+    # ------------------------------------------------------------------
+    for k in range(1, degree + 1):
+        left_denom  = (U[k:    k+n_ctrl]   - U[:n_ctrl]).clamp_min(eps)   # (n_ctrl,)
+        right_denom = (U[k+1: k+1+n_ctrl] - U[1:n_ctrl+1]).clamp_min(eps) # (n_ctrl,)
+
+        left_coeff  = (u_col - U[:n_ctrl])           / left_denom         # (N,n_ctrl)
+        right_coeff = (U[k+1:k+1+n_ctrl] - u_col)    / right_denom        # (N,n_ctrl)
+
+        Nk   = left_coeff  * N_all[-1]                              \
+             + right_coeff * torch.cat([N_all[-1][:, 1:],           # shift
+                                         torch.zeros(Np, 1,
+                                                     dtype=u.dtype,
+                                                     device=u.device)],
+                                        dim=1)
+        N_all.append(Nk)
+
+    N = N_all[-1]                              # (N,n_ctrl)
+
+    # ------------------------------------------------------------------
+    # 1st derivative
+    # ------------------------------------------------------------------
+    if degree == 0:
+        dN = u.new_zeros(Np, n_ctrl)
+    else:
+        left_denom  = (U[degree:     degree+n_ctrl]   - U[:n_ctrl]).clamp_min(eps)
+        right_denom = (U[degree+1:   degree+1+n_ctrl] - U[1:n_ctrl+1]).clamp_min(eps)
+
+        term_left  = degree / left_denom  * N_all[degree-1]
+        term_right = degree / right_denom * torch.cat([N_all[degree-1][:, 1:],
+                                                       u.new_zeros(Np,1)], dim=1)
+        dN = term_left - term_right                           # (N,n_ctrl)
+
+    # ------------------------------------------------------------------
+    # 2nd derivative
+    # ------------------------------------------------------------------
+    if degree <= 1:
+        d2N = u.new_zeros(Np, n_ctrl)
+    else:
+        a = degree * (degree-1)
+        A_denom = (U[degree] - U[:n_ctrl]).clamp_min(eps) * \
+                  (U[degree-1] - U[:n_ctrl]).clamp_min(eps)
+        B_denom = (U[degree] - U[1:n_ctrl+1]).clamp_min(eps) * \
+                  (U[degree] - U[:n_ctrl]).clamp_min(eps)
+        C_denom = (U[degree+1:degree+1+n_ctrl] - U[1:n_ctrl+1]).clamp_min(eps) * \
+                  (U[degree+1:degree+1+n_ctrl] - U[2:n_ctrl+2]).clamp_min(eps)
+
+        A = a / A_denom * N_all[degree-2]
+        B = a / B_denom * torch.cat([N_all[degree-2][:, 1:], u.new_zeros(Np,1)], dim=1)
+        C = a / C_denom * torch.cat([N_all[degree-2][:, 2:], u.new_zeros(Np,2)], dim=1)
+
+        d2N = A - 2*B + C
+
+    # ------------------------------------------------------------------
+    return N, dN, d2N
 def generate_bspline_basis_matrices(samples, knots=None, num_control_points=4, degree=3, device='cuda'):
     """
     Computes the B-spline basis matrix and its derivatives for a given knot vector.
@@ -507,280 +539,6 @@ def find_span_vectorized(
     return span
 
 
-def basis_functions_and_derivatives(
-        u: torch.Tensor,
-        knots: torch.Tensor,
-        degree: int,
-        n_derivs: int = 2
-) -> Tuple[torch.Tensor, ...]:
-    """
-    Compute basis functions and their derivatives (vectorized, differentiable).
-    Fixed to avoid all inplace operations.
-
-    Args:
-        u: [... ] parameter values in [0, 1]
-        knots: [n_knots] knot vector
-        degree: polynomial degree
-        n_derivs: number of derivatives to compute (0, 1, or 2)
-
-    Returns:
-        N: [..., n_ctrl] basis function values
-        dN: [... , n_ctrl] first derivatives (if n_derivs >= 1)
-        d2N: [..., n_ctrl] second derivatives (if n_derivs >= 2)
-    """
-    n_knots = len(knots)
-    n_ctrl = n_knots - degree - 1
-
-    batch_shape = u.shape
-    device = u.device
-    dtype = u.dtype
-
-    # Find spans
-    span = find_span_vectorized(u, knots, degree, n_ctrl)
-
-    # Flatten for processing
-    u_flat = u.reshape(-1)
-    span_flat = span.reshape(-1)
-    n_samples = u_flat.shape[0]
-
-    # Use lists to collect results (avoid inplace tensor modifications)
-    # Build basis using De Boor-Cox recursion WITHOUT inplace ops
-
-    # Initialize basis values for degree 0
-    # N[i,j] = basis function j at sample i
-    N_prev = torch.zeros(n_samples, degree + 1, device=device, dtype=dtype)
-    N_prev[:, 0] = 1.0
-
-    # Store all intermediate N values for derivative computation
-    ndu_list = [N_prev.clone()]
-
-    # Build up the triangular table
-    for j in range(1, degree + 1):
-        N_curr = torch.zeros(n_samples, degree + 1, device=device, dtype=dtype)
-
-        # Compute left and right differences for this level
-        # left[r] = u - knots[span - j + 1 + r]
-        # right[r] = knots[span + 1 + r] - u
-
-        left_list = []
-        right_list = []
-
-        for r in range(j):
-            idx_left = (span_flat - j + 1 + r).clamp(0, n_knots - 1).long()
-            idx_right = (span_flat + 1 + r).clamp(0, n_knots - 1).long()
-            left_list.append(u_flat - knots[idx_left])
-            right_list.append(knots[idx_right] - u_flat)
-
-        # Stack for vectorized computation
-        left = torch.stack(left_list, dim=1) if left_list else torch.zeros(n_samples, 0, device=device, dtype=dtype)
-        right = torch.stack(right_list, dim=1) if right_list else torch.zeros(n_samples, 0, device=device, dtype=dtype)
-
-        # Compute new basis values
-        saved = torch.zeros(n_samples, device=device, dtype=dtype)
-
-        N_vals = []
-        for r in range(j):
-            denom = right[:, r] + left[:, j - 1 - r]
-            denom = torch.where(denom.abs() < 1e-10, torch.ones_like(denom), denom)
-            temp = N_prev[:, r] / denom
-
-            new_val = saved + right[:, r] * temp
-            N_vals.append(new_val)
-            saved = left[:, j - 1 - r] * temp
-
-        N_vals.append(saved)
-
-        # Stack results (no inplace modification)
-        for r in range(j + 1):
-            N_curr = N_curr.clone()
-            N_curr[:, r] = N_vals[r]
-
-        ndu_list.append(N_curr.clone())
-        N_prev = N_curr
-
-    # Extract final basis functions
-    N_local = N_prev  # [n_samples, degree+1]
-
-    # Scatter to full control point size
-    N = torch.zeros(n_samples, n_ctrl, device=device, dtype=dtype)
-    for i in range(degree + 1):
-        idx = (span_flat - degree + i).clamp(0, n_ctrl - 1).long()
-        # Use index_add for non-inplace accumulation
-        N = N.scatter_add(1, idx.unsqueeze(-1), N_local[:, i:i + 1])
-
-    N = N.reshape(*batch_shape, n_ctrl)
-    results = [N]
-
-    if n_derivs >= 1:
-        # Compute first derivatives using finite differences (stable approach)
-        eps = 1e-5
-        u_plus = (u + eps).clamp(0, 1)
-        u_minus = (u - eps).clamp(0, 1)
-
-        # Recursively compute basis at perturbed points
-        N_plus = _basis_functions_only(u_plus, knots, degree, n_ctrl)
-        N_minus = _basis_functions_only(u_minus, knots, degree, n_ctrl)
-
-        dN = (N_plus - N_minus) / (2 * eps)
-        results.append(dN)
-
-    if n_derivs >= 2:
-        # Second derivatives via finite differences
-        eps = 1e-4
-        u_plus = (u + eps).clamp(0, 1)
-        u_minus = (u - eps).clamp(0, 1)
-
-        N_plus = _basis_functions_only(u_plus, knots, degree, n_ctrl)
-        N_center = _basis_functions_only(u, knots, degree, n_ctrl)
-        N_minus = _basis_functions_only(u_minus, knots, degree, n_ctrl)
-
-        d2N = (N_plus - 2 * N_center + N_minus) / (eps * eps)
-        results.append(d2N)
-
-    return tuple(results)
-
-
-def _basis_functions_only(
-        u: torch.Tensor,
-        knots: torch.Tensor,
-        degree: int,
-        n_ctrl: int
-) -> torch.Tensor:
-    """
-    Compute basis functions only (no derivatives).
-    Optimized helper that avoids inplace operations.
-    """
-    n_knots = len(knots)
-    batch_shape = u.shape
-    device = u.device
-    dtype = u.dtype
-
-    # Find spans
-    span = find_span_vectorized(u, knots, degree, n_ctrl)
-
-    u_flat = u.reshape(-1)
-    span_flat = span.reshape(-1)
-    n_samples = u_flat.shape[0]
-
-    # Initialize
-    N_prev = torch.zeros(n_samples, degree + 1, device=device, dtype=dtype)
-    N_prev = N_prev.clone()
-    N_prev[:, 0] = 1.0
-
-    for j in range(1, degree + 1):
-        # Compute differences
-        left_list = []
-        right_list = []
-
-        for r in range(j):
-            idx_left = (span_flat - j + 1 + r).clamp(0, n_knots - 1).long()
-            idx_right = (span_flat + 1 + r).clamp(0, n_knots - 1).long()
-            left_list.append(u_flat - knots[idx_left])
-            right_list.append(knots[idx_right] - u_flat)
-
-        left = torch.stack(left_list, dim=1)
-        right = torch.stack(right_list, dim=1)
-
-        # Build new level
-        saved = torch.zeros(n_samples, device=device, dtype=dtype)
-        N_vals = []
-
-        for r in range(j):
-            denom = right[:, r] + left[:, j - 1 - r]
-            denom = torch.where(denom.abs() < 1e-10, torch.ones_like(denom), denom)
-            temp = N_prev[:, r] / denom
-
-            new_val = saved + right[:, r] * temp
-            N_vals.append(new_val)
-            saved = left[:, j - 1 - r] * temp
-
-        N_vals.append(saved)
-
-        # Create new tensor (no inplace)
-        N_curr = torch.stack(N_vals + [torch.zeros(n_samples, device=device, dtype=dtype)] * (degree - j), dim=1)
-        N_prev = N_curr
-
-    # Scatter to full size
-    N_local = N_prev[:, :degree + 1]
-    N = torch.zeros(n_samples, n_ctrl, device=device, dtype=dtype)
-
-    for i in range(degree + 1):
-        idx = (span_flat - degree + i).clamp(0, n_ctrl - 1).long()
-        N = N.scatter_add(1, idx.unsqueeze(-1), N_local[:, i:i + 1])
-
-    return N.reshape(*batch_shape, n_ctrl)
-
-
-def create_basis_from_uv_grid(
-        uv_grid: torch.Tensor,
-        knots_u: torch.Tensor,
-        knots_v: torch.Tensor,
-        degree: int,
-        n_derivs: int = 2,
-        target_shape_u = None,
-        target_shape_v = None,
-        normalize: bool = True,
-        is_grid: bool = True
-) -> Tuple[torch.Tensor, ...]:
-    """
-    Create basis functions from a UV sample grid.
-
-    This is the main entry point for creating differentiable basis functions
-    from arbitrary (potentially learned) UV coordinates.
-
-    Args:
-        uv_grid: [Us, Vs, 2] or [N, 2] UV coordinates in [0, 1]
-        knots_u: [n_knots_u] knot vector for U direction
-        knots_v: [n_knots_v] knot vector for V direction
-        degree: polynomial degree (same for both directions)
-        n_derivs: number of derivatives (0, 1, or 2)
-
-    Returns:
-        Bu: [Us, Vs, n_ctrl_u] or [N, n_ctrl_u] U basis values
-        Bv: [Us, Vs, n_ctrl_v] or [N, n_ctrl_v] V basis values
-        dBu: First derivative of U basis (if n_derivs >= 1)
-        dBv: First derivative of V basis (if n_derivs >= 1)
-        d2Bu: Second derivative of U basis (if n_derivs >= 2)
-        d2Bv: Second derivative of V basis (if n_derivs >= 2)
-    """
-    # Handle both grid and flat inputs
-    # is_grid = uv_grid.dim() == 3
-
-    H, W = knots_u.shape[0] - degree - 1, knots_v.shape[0] - degree - 1
-    if is_grid:
-        u_samples = uv_grid[..., 0]  # [Us, Vs]
-        v_samples = uv_grid[..., 1]  # [Us, Vs]
-        Us, Vs, = u_samples.shape[0:2] if is_grid else uv_grid.shape[0]
-    else:
-
-        u_samples = uv_grid[0]
-        v_samples = uv_grid[1]
-        Us, Vs = u_samples.shape[0], v_samples.shape[0]
-
-    # Compute basis for U
-    u_results = basis_functions_and_derivatives(
-        u_samples, knots_u, degree, n_derivs
-    )
-
-    # Compute basis for V
-    v_results = basis_functions_and_derivatives(
-        v_samples, knots_v, degree, n_derivs
-    )
-    norm_u = H if normalize else 1.0
-    norm_v = W if normalize else 1.0
-    u_results = [u.reshape(target_shape_u) for u in u_results]
-    v_results = [v.reshape(target_shape_v) for v in v_results]
-
-
-    return BasisFuncs(  bu=u_results[0],
-                        dbu=u_results[1] / (Us * Vs) if n_derivs >= 1 else None,
-                        dbuu=u_results[2] if n_derivs >= 2 else None,
-                        bv=v_results[0],
-                        dbv=v_results[1] / (Us * Vs) if n_derivs >= 1 else None,
-                        dbvv=v_results[2] if n_derivs >= 2 else None
-                        )
-
-
 def evaluate_surface(
         Bu: torch.Tensor,
         Bv: torch.Tensor,
@@ -811,116 +569,6 @@ def evaluate_surface(
         result = result[..., 1:] / weights
 
     return result
-
-
-class DifferentiableBasisModule(torch.nn.Module):
-    """
-    PyTorch module wrapper for differentiable basis computation.
-
-    This can be used as a drop-in replacement for BasisFunction when
-    you need fully differentiable UV-to-basis computation.
-    """
-
-    def __init__(
-            self,
-            n_ctrl_u: int,
-            n_ctrl_v: int,
-            degree: int = 3,
-            device: str = 'cuda'
-    ):
-        super().__init__()
-        self.n_ctrl_u = n_ctrl_u
-        self.n_ctrl_v = n_ctrl_v
-        self.degree = degree
-        self.device = device
-
-        # Initialize with clamped uniform knots
-        knots_u = make_clamped_uniform_knots(n_ctrl_u, degree, device=device)
-        knots_v = make_clamped_uniform_knots(n_ctrl_v, degree, device=device)
-
-        self.register_buffer('knots_u', knots_u)
-        self.register_buffer('knots_v', knots_v)
-
-        # Cache
-        self._Bu = None
-        self._Bv = None
-        self._dBu = None
-        self._dBv = None
-
-    def forward(
-            self,
-            uv_grid: torch.Tensor,
-            compute_derivs: bool = True
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Compute basis functions for given UV grid.
-
-        Args:
-            uv_grid: [Us, Vs, 2] UV coordinates
-            compute_derivs: If True, also compute derivatives
-
-        Returns:
-            Bu, Bv: Basis function values
-        """
-        n_derivs = 2 if compute_derivs else 0
-
-        results = create_basis_from_uv_grid(
-            uv_grid,
-            self.knots_u,
-            self.knots_v,
-            self.degree,
-            n_derivs=n_derivs
-        )
-
-        self._Bu = results[0]
-        self._Bv = results[1]
-
-        if compute_derivs and len(results) >= 4:
-            self._dBu = results[2]
-            self._dBv = results[3]
-
-        return self._Bu, self._Bv
-
-    @property
-    def Bu(self) -> torch.Tensor:
-        if self._Bu is None:
-            raise RuntimeError("Call forward() first")
-        return self._Bu
-
-    @property
-    def Bv(self) -> torch.Tensor:
-        if self._Bv is None:
-            raise RuntimeError("Call forward() first")
-        return self._Bv
-
-    @property
-    def dBu(self) -> Optional[torch.Tensor]:
-        return self._dBu
-
-    @property
-    def dBv(self) -> Optional[torch.Tensor]:
-        return self._dBv
-
-    def evaluate(
-            self,
-            control_points: torch.Tensor,
-            is_rational: bool = False
-    ) -> torch.Tensor:
-        """Evaluate surface using cached basis."""
-        return evaluate_surface(self.Bu, self.Bv, control_points, is_rational)
-
-    def update_knots(self, knots_u: torch.Tensor, knots_v: torch.Tensor):
-        """Update knot vectors (e.g., after refinement)."""
-        self.knots_u = knots_u.to(self.device)
-        self.knots_v = knots_v.to(self.device)
-        self.n_ctrl_u = len(knots_u) - self.degree - 1
-        self.n_ctrl_v = len(knots_v) - self.degree - 1
-
-        # Invalidate cache
-        self._Bu = None
-        self._Bv = None
-        self._dBu = None
-        self._dBv = None
 
 
 def make_clamped_uniform_knots(
@@ -992,35 +640,6 @@ class BasisFunction(nn.Module):
 
 
 
-    def compute_uniform_basis(self, knot_u, knot_v):
-        u = torch.linspace(0.0, 1.0, self.state.Us, device=self.state.device)
-        v = torch.linspace(0.0, 1.0, self.state.Vs, device=self.state.device)
-        if self.state.full_basis:
-            samples_uv = torch.stack(torch.meshgrid(u, v, indexing='ij'), dim=-1).view(-1, 2)
-
-        bu, dbu, dbuu = create_basis_from_uv_grid(
-            samples_uv,
-            knot_u,
-            knot_v,
-            degree=3,
-            n_derivs=self.state.deriv_order,
-            target_shape=self.basis_layout_u)#((self.state.Vs * self.state.Us, self.state.H) if self.state.flatten_uv else (self.state.Us, self.state.H)))
-
-        # bv shape: (H, W, n_ctrl_v)
-        bv, dbv, dbvv = create_basis_from_uv_grid(
-            v,
-            knot_v,
-            degree=3,
-            deriv_order=self.state.deriv_order,
-            target_shape=self.basis_layout_v)#((self.state.Vs * self.state.Us, self.state.W) if self.state.flatten_uv else (self.state.Vs, self.state.W)))
-
-
-        self._uniform_basis_funcs = BasisFuncs(bu,
-                                               dbu,
-                                               dbuu,
-                                               bv,
-                                               dbv,
-                                               dbvv)
     @property
     def basis_layout_v(self):
         if self.state.full_basis:
@@ -1060,7 +679,7 @@ class BasisFunction(nn.Module):
 
     @property
     def optimal_path(self):
-        return self._optimal_path if self._optimal_path is not None else self.contract_path
+        return self._optimal_path if self._optimal_path is not None else 'auto'
 
     def set_knot_u(self, knot_u: 'KnotVector'):
         self.knot_u = knot_u
@@ -1086,16 +705,6 @@ class BasisFunction(nn.Module):
         self._basis_funcs.bv = buv.bv
         self._basis_funcs.dbv = buv.dbv
         self._basis_funcs.dbvv = buv.dbvv
-    def update_basis(self, precomp_u, precomp_v):
-        self._basis_funcs.bu = precomp_u[0],
-        self._basis_funcs.dbu = precomp_u[1] if self.state.deriv_order >= 1 else None,
-        self._basis_funcs.dbuu = precomp_u[2] if self.state.deriv_order >= 2 else None,
-        self._basis_funcs.bv = precomp_v[0],
-        self._basis_funcs.dbv = precomp_v[1] if self.state.deriv_order >= 1 else None,
-        self._basis_funcs.dbvv = precomp_v[2] if self.state.deriv_order >= 2 else None
-        if self.optimal_path is None:
-            self.set_optimal_path()
-
     def set_knot_v(self, knot_v: 'KnotVector'):
         self.knot_v = knot_v
     def forward(self, samples_uv, knot_u, knot_v, **kwargs):
@@ -1124,8 +733,10 @@ class BasisFunction(nn.Module):
                                                          (self.state.H, self.state.W, 3),
                                                          shapes=True)
 
-            except Exception as e:
-                self._optimal_path = self.contract_path
+            except Exception:
+                # Fall back to a valid opt_einsum strategy name — the
+                # contract STRING is not a valid `optimize=` argument.
+                self._optimal_path = 'auto'
 
 
     @property
@@ -1181,8 +792,11 @@ class BasisFunction(nn.Module):
         return self._Buv
 
     def recompute(self):
-        compute = compute_bases_uv_diff if self.state.opt.optimize_intervals else compute_bases_uv
-        self.clear()
+        compute = compute_bases_uv_diff #if self.state.opt.optimize_intervals else compute_bases_uv
+        # compute = compute_bases_uv
+        # self.clear()
+        # u = torch.linspace(0.0, 1.0, self.state.Us, device=self.state.device)
+        # v = torch.linspace(0.0, 1.0, self.state.Vs, device=self.state.device)
         basis_data = compute(
             self.uv_sampler.interval_u,
             self.uv_sampler.interval_v,

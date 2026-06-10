@@ -62,6 +62,7 @@ class ControlFeature(nn.Module):
         self.initialize_control_feature(control_grid)
 
         self._cache = None
+        self._cache_valid = False
         self.__blending_alpha = 0.0
         self._previous_cache = (
             torch.zeros(
@@ -97,7 +98,7 @@ class ControlFeature(nn.Module):
 
     @property
     def cache_valid(self):
-        return self._cache is not None
+        return self._cache_valid and self._cache is not None
 
     @property
     def cache(self):
@@ -105,9 +106,8 @@ class ControlFeature(nn.Module):
 
     def invalidate(self, hard: bool = False):
         self._cache = None
-        if hard:
-            self.__blending_alpha = 0.0
-            torch.cuda.empty_cache()
+        self._cache_valid = False
+
 
     # ------------------------------------------------------------------
     # Feature access
@@ -115,11 +115,18 @@ class ControlFeature(nn.Module):
 
     @property
     def features(self):
-        """Return activated control grid [H, W, C] for interpolation."""
+        """Return activated control grid [H, W, C]."""
         return self.activation(
             self.control_features.view(
                 self.state.H, self.state.W, self.control_features.shape[-1]
             )
+        )
+
+    @property
+    def raw_features(self):
+        """Raw (parameter-space) control grid [H, W, C] for interpolation."""
+        return self.control_features.view(
+            self.state.H, self.state.W, self.control_features.shape[-1]
         )
 
     @property
@@ -144,34 +151,46 @@ class ControlFeature(nn.Module):
     # Interpolation
     # ------------------------------------------------------------------
 
-    def interpolate_samples(self) -> torch.Tensor:
+    def forward(self) -> torch.Tensor:
         """
         Interpolate control features via B-spline basis functions.
+
+        Interpolation happens in RAW parameter space, activation afterwards
+        (paper Eq. 7: σ(Σ N·x̃), not Σ N·σ(x̃)). This also matches Boehm
+        knot insertion, which operates on raw parameters.
 
         Returns:
             Interpolated values [Us*Vs, C].
         """
         if self.cache_valid:
-            return self._cache.reshape(-1, self.feature_channels)
+            return self.cache.reshape(-1, self.feature_channels)
 
+        grid = self.features if self.use_pe else self.raw_features
         if self.state.use_bmm:
-            prod = self._interpolate_bmm(
-                self.basis.bu, self.basis.bv, self.features
+            raw = self._interpolate_bmm(
+                self.basis.bu, self.basis.bv, grid
             ).contiguous()
         else:
-            prod = oe.contract(
+            raw = oe.contract(
                 self.basis.contract_path,
                 self.basis.bu,
-                self.features,
+                grid,
                 self.basis.bv,
-                optimize=self.basis.optimal_path,
+                # optimize=self.basis.optimal_path,
             ).contiguous()
 
-        self._cache = prod
+        prod = raw if self.use_pe else self.activation(raw)
+        self.set_cache(prod)
         return prod.reshape(-1, self.feature_channels)
 
-    # Alias for backward compatibility with version 1 of the file
-    forward = interpolate_samples
+
+    def set_cache(self, new_tensor):
+        # Keep the autograd graph: the cache is reused by every consumer
+        # within one iteration (render, geometric losses, ...). Detaching
+        # here silently cuts gradients for all consumers after the first.
+        # Caches are invalidated each iteration via invalidate().
+        self._cache = new_tensor
+        self._cache_valid = True
 
     def _interpolate_bmm(
         self,
@@ -208,8 +227,61 @@ class ControlFeature(nn.Module):
     # ------------------------------------------------------------------
     # Knot insertion
     # ------------------------------------------------------------------
-
     def compute_inserted_grid(
+        self,
+        direction: str,
+        knots: torch.Tensor,
+        degree: int,
+        val: float,
+        insert_idx: int,
+        insertion_fn: callable,
+        blend_radius: int = None,
+        blend_strength: float = 0.3,
+        use_blend: bool = False,
+            old_H=None, old_W=None
+
+    ) -> Tuple[torch.Tensor, int]:
+        """
+        Compute new control grid after Boehm knot insertion.
+
+        Operates in RAW PARAMETER SPACE to preserve mathematical exactness
+        of Boehm's algorithm. For identity-activated features (position, SH),
+        this is equivalent to the previous activated-space insertion.
+        For non-linear activations (exp, sigmoid), this avoids the
+        systematic bias introduced by activation→insertion→inverse_activation.
+        """
+        H, W = self.state._H, self.state._W
+        blend_radius = blend_radius if blend_radius is not None else degree
+
+        # KEY FIX: Use raw control_features (parameter space), NOT self.features (activated space)
+        if self.use_pe:
+            raw_grid = self.features.view(H, W, self._original_channels)
+        else:
+            ch = self.feature_channels
+            raw_grid = self.control_features.view(H, W, ch)
+
+        if direction == 'v':
+            raw_grid = raw_grid.permute(1, 0, 2)
+
+        # Boehm insertion in parameter space — exact for affine activations,
+        # correct convex combination in parameter space for non-linear ones.
+        new_grid, _ = insertion_fn(raw_grid, knots, degree, val)
+        # No inverse_activation needed: we're already in parameter space.
+
+        if use_blend:
+            new_grid = self._apply_insertion_blending(
+                new_grid, insert_idx, degree,
+                blend_radius, blend_strength, direction='ortho',
+            )
+
+        if direction == 'v':
+            new_grid = new_grid.permute(1, 0, 2)
+
+        return new_grid.contiguous(), insert_idx
+    def set_position(self, position):
+        setattr(self, 'position', position)
+
+    def compute_inserted_grid2(
         self,
         direction: str,
         knots: torch.Tensor,
@@ -605,7 +677,7 @@ class ControlFeature(nn.Module):
             'blending_alpha': self.__blending_alpha,
         }
         if self._cache is not None and self.cache_valid:
-            state['cache'] = self._cache.clone().cpu()
+            state['cache'] = self._cache.detach().clone().cpu()
         return state
 
     @classmethod

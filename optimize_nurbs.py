@@ -6,68 +6,79 @@
 # This software is free for non-commercial, research and evaluation use
 # under the terms of the LICENSE.md file.
 #
-# For inquiries contact  george.drettakis@inria.fr
-import builtins
-# ----  F R E E Z E   S O U R C E   T R E E  ----
-import pathlib, datetime
-import time
-from typing import List, Dict, Tuple
+
+from __future__ import annotations
+
+# =====================================================================
+# §1  Imports & Constants
+# =====================================================================
 
 import json
-import shutil
 import os
+import pathlib
 import re
+import shutil
 import subprocess
 import sys
-import torch
+import time
+import threading
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+from argparse import ArgumentParser, Namespace
+from concurrent.futures import Future, ProcessPoolExecutor
+from multiprocessing import Process, Queue
+
 import numpy as np
-import matplotlib.pyplot as plt
+import torch
+from matplotlib import pyplot as plt
 
-from modules.decompose import WarmupDecompositionController, ControllerConfig, DecompPhase, safe_decompose
 
-# from model.modules.decompose import WarmupDecompositionController, ControllerConfig, DecompPhase, safe_decompose
+# Try importing wandb; gracefully degrade if unavailable
+try:
+    import wandb
+    WANDB_FOUND = True
+except ImportError:
+    WANDB_FOUND = False
 
-VERBOSE = os.environ.get('VERBOSE', '0') == '1'
-# Override built-in print to respect VERBOSE flag
-VERBOSE = '1' # By Force!
-original_print = builtins.print
-def conditional_print(*args, **kwargs):
-    if VERBOSE:
-        original_print(*args, **kwargs)
-builtins.print = conditional_print
+# Decomposition controller
+from modules.decompose import (
+    WarmupDecompositionController,
+    ControllerConfig,
+    DecompPhase,
+)
+
+# Project name (used for output paths)
+# PROJECT_DIR = "Knots"
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__)).split('/')[-1]
-print(f"Project directory: {PROJECT_DIR}")
-def safe_git_commit(message: str, max_attempts: int = 10, sleep_base: float = 1.0) -> None:
-    """
-    Atomically `git add -A` + `git commit -m <message>` with retries.
-    If another process holds .git/index.lock we back‑off, wait, and retry.
 
-    Args:
-        message: Commit message.
-        max_attempts: Max number of retries before bailing.
-        sleep_base: Base seconds to wait; actual wait is sleep_base * (attempt #) plus jitter.
-    """
-    attempt = 0
-    while attempt < max_attempts:
-        try:
-            subprocess.check_call(["git", "add", "-A"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.check_call(["git", "commit", "-m", message],
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return
-        except subprocess.CalledProcessError:
-            lock_path = pathlib.Path(".git/index.lock")
-            if lock_path.exists():
-                # Another process is mid‑commit; wait then retry
-                attempt += 1
-                time.sleep(sleep_base * attempt + random.uniform(0, 0.5))
-            else:
-                # Commit failed for another reason – re‑raise
-                raise
-    raise RuntimeError("safe_git_commit: giving up after multiple attempts – .git/index.lock is still present.")
+# How often to re-aggregate Chhugani importance maps
+AGGREGATION_INTERVAL = 500
+
+# How often to refresh camera neighborhoods post-warmup
+WARM_UP_ITERATIONS = 2000
+
+# Sentinel for terminating the WandB logger process
+WAND_LOGGER_TERMINATE = "TERMINATE"
+
+# Thread-safe global for best Chamfer distance
+_best_cd_lock = threading.Lock()
+best_cd = float("inf")
+
+
+def _get_best_cd() -> float:
+    with _best_cd_lock:
+        return best_cd
+
+
+def _set_best_cd(val: float) -> None:
+    global best_cd
+    with _best_cd_lock:
+        best_cd = val
+
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent
 RUN_DIR    = pathlib.Path(os.environ.get("PGSR_RUN_DIR",
-                    REPO_ROOT / "runs" / datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
+                    REPO_ROOT / "runs" / datetime.now().strftime("%Y%m%d_%H%M%S")))
 SNAPSHOT   = RUN_DIR / "frozen_src"
 # Detect debugger (e.g. PyCharm). Skip snapshotting/autocommit when True.
 _DEBUG_MODE = sys.gettrace() is not None
@@ -97,13 +108,14 @@ from concurrent.futures import Future, ProcessPoolExecutor
 import cv2
 from tqdm import tqdm
 
-from arguments import ModelParams, NurbsOptimizationParams, PipelineParams
+from arguments import ModelParams, PipelineParams
+from arguments.nurbs_params import NurbsOptimizationParams
 from gaussian_renderer import render
 from scene.app_model import AppModel
 from scene.cameras import Camera
-from spline_scene import SplineScene, refresh_camera_neighbors_post_warmup
+from spline_scene import SplineScene
 from utils.general_utils import safe_state
-from utils.graphics_utils import patch_offsets, patch_warp
+from utils.graphics_utils import patch_offsets, patch_warp, get_pixel_grid, get_cam_RT_cuda
 from utils.image_utils import psnr
 from utils.loss_utils import get_img_grad_weight, l1_loss, lncc, ssim, param_surf_deviation, cossim_loss_multisurf
 import random
@@ -129,6 +141,7 @@ def run_evaluation(iteration, scene_name, trial_index, scan_id, eval_gpu, paths,
                    temp_checkpoint_path,
                    use_depth_normal=False,
                    use_depth_filter=False,
+                   include_eval=False
                   ):
     """
     Worker function to run evaluation scripts asynchronously. It now tracks the best
@@ -206,15 +219,10 @@ def run_evaluation(iteration, scene_name, trial_index, scan_id, eval_gpu, paths,
                     if iter_num != best_iter:
                         shutil.rmtree(os.path.join(pc_root, sub), ignore_errors=True)
     out_base_path = paths['out_base_path']
-    if trial_index == 0:
+    # sys_args = f"CUDA_VISIBLE_DEVICES={eval_gpu} {python_executable}# optimize_nurbs.py --source_path {paths['source_path']} --model_path {temp_checkpoint_path} --images {paths['images']} --resolution {paths['resolution']} --white_background {paths['white_background']} --data_device {paths['data_device']} --eval {paths['eval']} --preload_img {paths['preload_img']} --ncc_scale {paths['ncc_scale']} --multi_view_num {paths['multi_view_num']} --multi_view_max_angle {paths['multi_view_max_angle']} --multi_view_min_dis {paths['multi_view_min_dis']} --multi_view_max_dis {paths['multi_view_max_dis']}"
 
-        model_exp_dir =  f"{out_base_path}/surfels/{scene_name}"
-    else:
-        model_exp_dir = f"{out_base_path}/surfels/{scene_name}_{trial_index}"
-
-    # model_dir = f"{out_base_path}/surfels/{scene_name}_{trial_index}"
-    # mesh_path = f"{model_dir}/mesh/tsdf_fusion_post.ply"
-    # common_args = f'--num_cluster 1 --use_depth_filter --voxel_size {0.002} --max_depth {5.0} --iteration {iteration} --quiet'
+    # if trial_index == 0:
+    model_exp_dir = f"{out_base_path}"
     mesh_output_dir = os.path.join(model_exp_dir, "mesh")
     # A dedicated directory to store the artifacts of the best run
     best_artifacts_dir = os.path.join(model_exp_dir, "best_run_artifacts")
@@ -223,110 +231,104 @@ def run_evaluation(iteration, scene_name, trial_index, scan_id, eval_gpu, paths,
     # Default best‑model record so it is always defined
     best_model_info = {'score': float('inf'), 'iteration': -1}
 
-
-
     try:
-        # Set the CUDA device for this worker process
         # torch.cuda.set_device(eval_gpu)
 
         python_executable = sys.executable
-        common_args = f'--num_cluster 1 {depth_filter} --voxel_size {0.002} --max_depth {5.0} {use_depth_normal} --iteration {iteration} --quiet'
+        sys_args = f"CUDA_VISIBLE_DEVICES={os.getenv('CUDA_VISIBLE_DEVICES')[0]} {python_executable} "
+        common_args = f'--num_cluster 1 {depth_filter} --voxel_size {0.002} --max_depth {5.0} {use_depth_normal} --iteration {iteration}'
 
         with_rendering = "spline_render"
 
 
-        render_cmd = f'{python_executable} {with_rendering}.py -m {model_exp_dir} {common_args}'
+        render_cmd = f'{sys_args} {with_rendering}.py -m {model_exp_dir} {common_args}'
         # print(render_cmd)
         execute_command(render_cmd, log_messages)
-        # 2. Run evaluation script
-        current_mesh_path = os.path.join(mesh_output_dir, "tsdf_fusion_post.ply")
-        if not os.path.exists(current_mesh_path):
-            log_messages.append(f"Error: Mesh file not created at {current_mesh_path}. Evaluation cannot proceed.")
-            if os.path.exists(mesh_output_dir): shutil.rmtree(mesh_output_dir)
-            return {"logs": "\n".join(log_messages), "metric_dict": None, "iteration": iteration}
-        # 3. Run evaluation script now that mesh exists
-        eval_cmd = (
-            f"{python_executable} scripts/eval_dtu/evaluate_single_scene.py "
-            f"--input_mesh {current_mesh_path} "
-            f"--scan_id {scan_id} "
-            f"--mask_dir {paths['data_base_path']} --DTU {paths['dtu_eval_path']} --output_dir {model_exp_dir}"
-        )
-        # print(eval_cmd)
-        eval_stdout = execute_command(eval_cmd, log_messages)
+        if include_eval:
+            # 2. Run evaluation script
+            current_mesh_path = os.path.join(mesh_output_dir, "tsdf_fusion_post.ply")
+            if not os.path.exists(current_mesh_path):
+                log_messages.append(f"Error: Mesh file not created at {current_mesh_path}. Evaluation cannot proceed.")
+                if os.path.exists(mesh_output_dir): shutil.rmtree(mesh_output_dir)
+                return {"logs": "\n".join(log_messages), "metric_dict": None, "iteration": iteration}
+            # 3. Run evaluation script now that mesh exists
+            eval_cmd = (
+                f"{python_executable} scripts/eval_dtu/evaluate_single_scene.py "
+                f"--input_mesh {current_mesh_path} "
+                f"--scan_id {scan_id} "
+                f"--mask_dir {paths['data_base_path']} --DTU {paths['dtu_eval_path']} --output_dir {model_exp_dir}"
+            )
+            # print(eval_cmd)
+            eval_stdout = execute_command(eval_cmd, log_messages)
 
+            #
+            # # 3. Parse score from output
+            chamfer_match = re.search(r"^\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*$", eval_stdout, re.MULTILINE)
+            if chamfer_match:
+                chamfer_dict = {'mean_d2s': float(chamfer_match.group(1)), 'mean_s2d': float(chamfer_match.group(2)),
+                                'over_all': float(chamfer_match.group(3))}
+                current_score = chamfer_dict['over_all']
+                log_messages.append(f"[Eval Worker] Parsed Chamfer Metrics for iter {iteration}: {chamfer_dict}")
+            # else:
+            #     log_messages.append("[Eval Worker] Warning: Could not parse Chamfer metrics. Cannot compare performance.")
+                # shutil.rmtree(mesh_output_dir)
+                # return {"logs": "\n".join(log_messages), "metric_dict": None, "iteration": iteration}
 
-        # 3. Parse score from output
-        chamfer_match = re.search(r"^\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*$", eval_stdout, re.MULTILINE)
-        if chamfer_match:
-            chamfer_dict = {'mean_d2s': float(chamfer_match.group(1)), 'mean_s2d': float(chamfer_match.group(2)),
-                            'over_all': float(chamfer_match.group(3))}
-            current_score = chamfer_dict['over_all']
-            log_messages.append(f"[Eval Worker] Parsed Chamfer Metrics for iter {iteration}: {chamfer_dict}")
-        else:
-            log_messages.append("[Eval Worker] Warning: Could not parse Chamfer metrics. Cannot compare performance.")
-            shutil.rmtree(mesh_output_dir)
-            return {"logs": "\n".join(log_messages), "metric_dict": None, "iteration": iteration}
+            # 4. Read best score so far using the new JSON format
+            best_model_info = {'score': best_cd, 'iteration': -1}
+            if os.path.exists(best_model_info_file):
+                try:
+                    with open(best_model_info_file, 'r') as f:
+                        best_model_info = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    log_messages.append(f"Warning: Could not read {best_model_info_file}. Assuming no prior best score.")
 
-        # 4. Read best score so far using the new JSON format
-        best_model_info = {'score': best_cd, 'iteration': -1}
-        if os.path.exists(best_model_info_file):
-            try:
-                with open(best_model_info_file, 'r') as f:
-                    best_model_info = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                log_messages.append(f"Warning: Could not read {best_model_info_file}. Assuming no prior best score.")
+            # 5. Compare and manage artifacts
+            if current_score < best_model_info['score']:
+                best_info = f"+++ New Best Score Found at Iteration {iteration}! Score: {current_score:.4f} (Old best: {best_model_info['score']:.4f} at iter {best_model_info['iteration']}) +++"
+                print(best_info)
+                log_messages.append(
+                    best_info)
 
-        # 5. Compare and manage artifacts
-        if current_score < best_model_info['score']:
-            best_info = f"+++ New Best Score Found at Iteration {iteration}! Score: {current_score:.4f} (Old best: {best_model_info['score']:.4f} at iter {best_model_info['iteration']}) +++"
-            print(best_info)
-            log_messages.append(
-                best_info)
+                # Update best model info
+                best_model_info = {'score': current_score, 'iteration': iteration}
+                with open(best_model_info_file, 'w') as f:
+                    json.dump(best_model_info, f, indent=4)
 
-            # Update best model info
-            best_model_info = {'score': current_score, 'iteration': iteration}
-            with open(best_model_info_file, 'w') as f:
-                json.dump(best_model_info, f, indent=4)
+                # Remove old best artifacts if they exist
+                if os.path.exists(best_artifacts_dir):
+                    shutil.rmtree(best_artifacts_dir)
 
-            # Remove old best artifacts if they exist
-            if os.path.exists(best_artifacts_dir):
-                shutil.rmtree(best_artifacts_dir)
+                # Promote current artifacts to be the new best
+                os.rename(mesh_output_dir, best_artifacts_dir)
+                log_messages.append(f"Saved new best model artifacts to: {best_artifacts_dir}")
 
-            # Promote current artifacts to be the new best
-            os.rename(mesh_output_dir, best_artifacts_dir)
-            log_messages.append(f"Saved new best model artifacts to: {best_artifacts_dir}")
+            else:
+                log_messages.append(
+                    f"Score {current_score:.4f} did not improve over best of {best_model_info['score']:.4f} (from iter {best_model_info['iteration']}). Cleaning up intermediate files.")
+                # shutil.rmtree(mesh_output_dir)
+            best_info = f"--- Current Best Model: Iteration {best_model_info['iteration']} | Score: {best_model_info['score']:.5f} | Path: {best_artifacts_dir} ---"
+            log_messages.append(best_info)
+            # Keep only artefacts from the current best iteration
+            if do_cleanup:
+                cleanup_non_best_artifacts(model_exp_dir, best_model_info['iteration'])
 
-        else:
-            log_messages.append(
-                f"Score {current_score:.4f} did not improve over best of {best_model_info['score']:.4f} (from iter {best_model_info['iteration']}). Cleaning up intermediate files.")
-            shutil.rmtree(mesh_output_dir)
-        best_info = f"--- Current Best Model: Iteration {best_model_info['iteration']} | Score: {best_model_info['score']:.5f} | Path: {best_artifacts_dir} ---"
-        log_messages.append(best_info)
-        # Keep only artefacts from the current best iteration
-        if do_cleanup:
-            cleanup_non_best_artifacts(model_exp_dir, best_model_info['iteration'])
+            return {"logs": "\n".join(log_messages),
+                    "metric_dict": chamfer_dict,
+                    "iteration": iteration,
+                    "best": best_info,
+                    "best_score": best_model_info['score']}
 
-        return {"logs": "\n".join(log_messages),
-                "metric_dict": chamfer_dict,
-                "iteration": iteration,
-                "best": best_info,
+        # Rendering-only path (include_eval=False): no metric to report.
+        return {"logs": "\n".join(log_messages), "metric_dict": None,
+                "iteration": iteration, "best": None,
                 "best_score": best_model_info['score']}
-
 
     except Exception as e:
         log_messages.append(f"[Eval Worker] An unexpected error occurred: {e}")
         if os.path.exists(mesh_output_dir):
             shutil.rmtree(mesh_output_dir)
         return {"logs": "\n".join(log_messages), "metric_dict": None, "iteration": iteration, "best": None, "best_score": np.inf}
-    finally:
-        if os.path.exists(temp_checkpoint_path):
-            os.remove(temp_checkpoint_path)
-        # On error or normal exit: cleanup if requested
-        if do_cleanup:
-            try:
-                cleanup_non_best_artifacts(model_exp_dir, best_model_info.get('iteration', -1))
-            except Exception as e:
-                log_messages.append(f"[Eval Worker] Cleanup failed: {e}")
 
 WAND_LOGGER_TERMINATE = "__WAND_TERMINATE__"
 
@@ -341,9 +343,10 @@ def wandb_logger_worker(queue: Queue, config):
             entity=config.get("entity", None),
             settings=wandb.Settings(start_method='thread') #, _disable_stats=True, _disable_meta=True)
         )
-        wandb.save("model/__init__.py")
-        wandb.save("model/modules/KnotSurface.py")
+        wandb.save("modules/KnotSurface.py")
+        wandb.save("modules/multisurf.py")
         wandb.save("arguments/__init__.py")
+        wandb.save("arguments/nurbs_params.py")
         wandb.save("optimize_nurbs.py")
         wandb.save("spline_render.py")
 
@@ -398,10 +401,8 @@ def wandb_logger_worker(queue: Queue, config):
             if item == WAND_LOGGER_TERMINATE:
                 break
             try:
-                # For metrics with a defined step_metric, wandb will use the value
-                # from the data dictionary (e.g., item['data']['iteration']).
-                # The 'step' argument is used for all other standard metrics.
-                wandb.log(item["data"], step=item.get("step", None))
+                item = {k: (v.detach().cpu().item() if isinstance(v, torch.Tensor) else v) for k, v in item.items()}
+                wandb.log(item, step=item.get("step", None))
             except Exception as e:
                 print(f"[W&B Worker] Logging failed: {e}")
     except Exception as e:
@@ -470,7 +471,7 @@ def visualize_view_distributions(model, cameras, save_dir=None, show=True):
         axs[1].set_xlabel("U Bins")
         axs[1].set_ylabel("Normalized Density")
         axs[1].set_ylim(0, 1)
-        axs[1].sampling_grid(True, linestyle='--', alpha=0.5)
+        axs[1].grid(True, linestyle='--', alpha=0.5)
 
         # V Density Bar Plot
         axs[2].bar(np.arange(len(density_v)), density_v, color='lightgreen')
@@ -478,7 +479,7 @@ def visualize_view_distributions(model, cameras, save_dir=None, show=True):
         axs[2].set_xlabel("V Bins")
         axs[2].set_ylabel("Normalized Density")
         axs[2].set_ylim(0, 1)
-        axs[2].sampling_grid(True, linestyle='--', alpha=0.5)
+        axs[2].grid(True, linestyle='--', alpha=0.5)
 
         # 2D Intensity Heatmap
         im = axs[3].imshow(density_2d, cmap='viridis', aspect='auto', origin='lower')
@@ -486,7 +487,7 @@ def visualize_view_distributions(model, cameras, save_dir=None, show=True):
         axs[3].set_xlabel("V Bins")
         axs[3].set_ylabel("U Bins")
         fig.colorbar(im, ax=axs[3], orientation='vertical', fraction=0.046, pad=0.04)
-        axs[3].sampling_grid(False)
+        axs[3].grid(False)
 
         plt.tight_layout()
 
@@ -501,222 +502,6 @@ def visualize_view_distributions(model, cameras, save_dir=None, show=True):
         figures.append(fig)
 
     return figures
-
-
-def plot_render_outputs(render_dict, nurbs_prop_dict, gt_image, nurbs: 'MultiSurfaceSplineModel', uid=None, title=None):
-    """
-    Side-by-side visualization:
-    - Left (50%): High-res renders (GT, RGB, normals, depth) → stacked vertically
-    - Right (50%): Grid quantities → arranged in a compact, near-square grid
-    """
-    import matplotlib.gridspec as gridspec
-    render_dict['gt_image'] = gt_image
-    # ------------------------------------------------------------------ #
-    # Visualization helpers
-    # ------------------------------------------------------------------ #
-    vis_normal = lambda x: np.uint8((x[..., [1, 2, 0]] + 1) / 2 * 255)
-    # vis_normal = lambda x: x
-    vis_sh     = lambda x: SH2RGB(x[..., :3]).detach().cpu().numpy()
-    vis_gray   = lambda x: (x.squeeze().cpu().numpy() if isinstance(x, torch.Tensor) else x)
-    vis_grad   = lambda x: ((x - x.min()) / (x.max() - x.min() + 1e-6)).cpu().numpy() if isinstance(x, torch.Tensor) else x
-
-    # ------------------------------------------------------------------ #
-    # Plot definitions
-    # ------------------------------------------------------------------ #
-    image_plots = [
-        {'key': 'gt_image',                     'title': 'Ground Truth',      'vis': None},
-        {'key': 'render',                     'title': 'Rendered RGB',      'vis': None},
-        {'key': 'rendered_normal',            'title': 'Rendered Normal',   'vis': lambda x: vis_normal(x.permute(1,2,0).cpu().numpy())},
-        {'key': 'depth_normal',               'title': 'Depth Normal',      'vis': lambda x: vis_normal(x.permute(1,2,0).cpu().numpy())},
-        {'key': 'plane_depth',                'title': 'Plane Depth',       'vis': None},
-        {'key': 'decomposed_final_img',                'title': 'Decomposed Images',       'vis': None},
-        {'key': 'object',                'title': 'Decomposed Images',       'vis': None},
-        {'key': 'background',                'title': 'Decomposed Images',       'vis': None},
-    ]
-
-
-    grid_plots_all = []
-    for i, surf in enumerate(nurbs.surfaces):
-        grid_shape = surf.state.sampling_layout
-        cp_grid_shape = surf.state.control_layout
-        grid_plots_all.extend([
-            {'key': f'norm_grid_{i}',               'title': f'Grid Normals {i}',      'vis': lambda x, gs=grid_shape: vis_normal(x.cpu().numpy().reshape(gs))},
-            {'key': f'weights_map_per_view_{i}',               'title': f'Surface {surf.label}: Grid Weights {i}',      'vis': lambda x, gs=grid_shape: vis_gray(x.cpu().numpy().reshape(gs))},
-            {'key': f'depth_map_per_view_{i}',               'title': f'Grid Depth {i}',      'vis': lambda x, gs=grid_shape: vis_grad(x.cpu().numpy().reshape(gs))},
-            {'key': f'sh_grid_{i}',                 'title': f'Surface {surf.label}: Grid SH {i}',           'vis': lambda x, gs=grid_shape: vis_sh(x).reshape(gs)},
-            {'key': f'sh_cpt_{i}',                 'title': f'Surface {surf.label}: Control - Grid SH {i}',           'vis': lambda x, gs=cp_grid_shape: vis_sh(x).reshape(gs)},
-            {'key': f'visibility_cp_{i}',                 'title': f'Grid SH {i}',           'vis': lambda x, gs=cp_grid_shape: vis_sh(x).reshape(gs)},
-            ])
-
-
-
-    # (0, grid_shape_0, cp_grid_shape_0),
-    # (1, grid_shape_1, cp_grid_shape_1),
-
-    #grid_plots_all = [
-    #     {'key': 'Grads XYZ',                  'title': 'Grads XYZ',         'vis': lambda x: vis_grad(x.reshape(nurbs.state.control_layout))},
-    #     {'key': 'Grid Normals',               'title': 'Grid Normals',      'vis': lambda x: vis_normal(x.cpu().numpy().reshape(grid_shape))},
-    #     {'key': f'sh_grid_{i}',   'title': 'Grid SH',           'vis': lambda x: vis_sh(x).reshape(grid_shape)},
-    #     # {'key': 'Grid Opacity',               'title': 'Grid Opacity',      'vis': lambda x: vis_gray(x).reshape(grid_shape)},
-    #     # {'key': 'Grid Scale',                 'title': 'Scaling Norm',      'vis': lambda x: vis_gray(x).reshape(grid_shape)},
-    #     {'key': 'out_observe',                'title': 'Out Observe',       'vis': lambda x: vis_grad(x.float()).reshape(grid_shape)},
-    #     {'key': 'radii',                      'title': 'Radii',             'vis': lambda x: vis_grad(x.float()).reshape(grid_shape)},
-    #     {'key': 'Normals',          'title': 'Normals From Depths', 'vis': lambda x: vis_normal(x.float()).reshape(grid_shape)},
-    #     {'key': 'Depths',          'title': 'Depths', 'vis': lambda x: vis_grad(x.float()).reshape(cp_grid_shape)},
-    #     {'key': 'CP Spherical Harmonics',          'title': 'CP Spherical Harmonics', 'vis': lambda x: vis_sh(x.float()).reshape(cp_grid_shape)},
-    #     {'key': 'Backfaces',          'title': 'Backfaces Filter', 'vis': lambda x: vis_gray(x.float()).reshape(grid_shape)},
-    # ]
-    to_include = []
-    for i in range(len(nurbs.surfaces)):
-        to_include.extend([
-            f'norm_grid_{i}',
-            f'sh_grid_{i}',
-            f'weights_map_per_view_{i}',
-            f'sh_cpt_{i}',
-                           # f'sh_cpt_{i}',
-                           # f'visibility_cp_{i}'
-                           ])
-
-
-    grid_plots = []
-    for p in grid_plots_all:
-        if p['key'] in to_include:
-            grid_plots.append(p)
-
-    # Optional density intensity
-    if uid is not None:
-        try:
-            density_u = getattr(nurbs, 'partition_density_u', None)
-            density_v = getattr(nurbs, 'partition_density_v', None)
-            if density_u is not None and density_v is not None:
-                du = density_u.cpu().numpy()[uid] / (density_u[uid].max() + 1e-6)
-                dv = density_v.cpu().numpy()[uid] / (density_v[uid].max() + 1e-6)
-                density_2d = np.outer(du, dv)
-                grid_plots.append({'img': density_2d, 'title': 'Density Intensity', 'vis': None})
-        except:
-            pass
-
-    # ------------------------------------------------------------------ #
-    # Collect images
-    # ------------------------------------------------------------------ #
-    def collect(plist, rdict):
-        imgs, titles = [], []
-        for p in plist:
-            if 'key' in p and p['key'] in rdict:
-                data = rdict[p['key']]
-            elif 'img' in p:
-                data = p['img']
-            else:
-                continue
-            img = p['vis'](data) if p['vis'] else data
-            imgs.append(img)
-            titles.append(p['title'])
-        return imgs, titles
-
-    img_images, img_titles   = collect(image_plots, render_dict)
-    grid_images, grid_titles = collect(grid_plots,   nurbs_prop_dict)
-
-    if not img_images and not grid_images:
-        return
-
-    # ------------------------------------------------------------------ #
-    # Preprocessing + resizing
-    # ------------------------------------------------------------------ #
-    gt_h, gt_w = (gt_image.shape[-2:] if isinstance(gt_image, torch.Tensor) else gt_image.shape[:2])
-
-    def preprocess(img, target_size=None):
-        if isinstance(img, torch.Tensor):
-            if img.ndim == 3 and img.shape[0] in (1, 3, 4):
-                img = img.permute(1, 2, 0)
-            img = img.detach().cpu().numpy()
-
-        img = np.clip(img, 0, 1) if img.dtype != np.uint8 else img.astype(np.float32)/255.0
-
-        if target_size is not None:
-            h, w = img.shape[:2]
-            if (h, w) != target_size:
-                c = 1 if img.ndim == 2 else img.shape[-1]
-                t = torch.from_numpy(img)
-                t = t.permute(2, 0, 1) if c == 3 else t.unsqueeze(0)
-                t = F.interpolate(t.unsqueeze(0), size=target_size, mode='bilinear', align_corners=False)[0]
-                img = t.permute(1, 2, 0).numpy() if c > 1 else t[0].numpy()
-        return img
-
-    # Preprocess all
-    img_processed   = [preprocess(im, (gt_h, gt_w)) for im in img_images]
-    grid_processed  = [preprocess(im ) for im in grid_images]
-
-    # Find best near-square layout for grid plots
-    def best_grid_layout(n):
-        if n <= 1: return 1, 1
-        best = (1, n)
-        min_diff = float('inf')
-        for rows in range(1, int(n**0.5) + 2):
-            cols = (n + rows - 1) // rows
-            diff = abs(cols - rows)
-            waste = rows * cols - n
-            if diff < min_diff or (diff == min_diff and waste < (best[0] * best[1] - n)):
-                min_diff = diff
-                best = (rows, cols)
-        return best[0], best[1]
-
-    grid_rows, grid_cols = best_grid_layout(len(grid_processed))
-    im_rows, im_cols = best_grid_layout(len(img_images))
-
-    # Target uniform size for grid plots (use largest dimension)
-    if grid_processed:
-        max_h = max(im.shape[0] for im in grid_processed)
-        max_w = max(im.shape[1] for im in grid_processed)
-        target_grid_size = (max_h, max_w)
-        grid_processed = [preprocess(im.squeeze(), target_grid_size) for im in grid_images]  # re-process with final size
-
-    # ------------------------------------------------------------------ #
-    # Final figure with GridSpec
-    # ------------------------------------------------------------------ #
-    fig = plt.figure(figsize=(24, 10))  # Wide, balanced
-    outer_gs = gridspec.GridSpec(1, 2, figure=fig, wspace=0.15, width_ratios=[1, 1])
-
-    # Left: Image renders (vertical stack)
-    left_gs = gridspec.GridSpecFromSubplotSpec(im_rows, im_cols, subplot_spec=outer_gs[0],
-                                               wspace=0.01, hspace=0.1)
-    try:
-        for i, (img, ttl) in enumerate(zip(img_processed, img_titles)):
-
-            ax = fig.add_subplot(left_gs[i // im_cols, i % im_cols])
-            cmap = 'jet' if 'Depth' in ttl else ('gray' if img.ndim == 2 or img.shape[2] == 1 else None)
-            ax.imshow(img.squeeze() if img.ndim == 3 and img.shape[2] == 1 else img, cmap=cmap)
-            ax.set_title(ttl, fontsize=13, pad=10)
-            ax.axis('off')
-    except Exception as e:
-        print(f"Error plotting image renders: {e}")
-        pass
-
-
-    # Right: Grid plots in compact grid
-    if grid_processed:
-        right_gs = gridspec.GridSpecFromSubplotSpec(grid_rows, grid_cols,
-                                                    subplot_spec=outer_gs[1],
-                                                    wspace=0.08, hspace=0.3)
-        for i, (img, ttl) in enumerate(zip(grid_processed, grid_titles)):
-            ax = fig.add_subplot(right_gs[i // grid_cols, i % grid_cols])
-            cmap = 'gray' if img.ndim == 2 or img.shape[2] == 1 else None
-            ax.imshow(img.squeeze() if img.ndim == 3 and img.shape[2] == 1 else img, cmap=cmap)
-            ax.set_title(ttl, fontsize=11)
-            ax.axis('off')
-
-        # Turn off unused subplots
-        total_cells = grid_rows * grid_cols
-        for j in range(len(grid_processed), total_cells):
-            ax = fig.add_subplot(right_gs[j // grid_cols, j % grid_cols])
-            ax.axis('off')
-
-    # ------------------------------------------------------------------ #
-    # Final polish
-    # ------------------------------------------------------------------ #
-    suptitle = title + " — Renders (left) | Grid Fields (right)" if title else "Render vs Grid Diagnostics"
-    fig.suptitle(suptitle, fontsize=18, y=0.98)
-    # plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.show()
 
 
 def gen_virtul_cam(cam, trans_noise=1.0, deg_noise=15.0):
@@ -795,10 +580,11 @@ def process_batch_views(
         for k, v in view_log_dict.items():
             log_dict[k] = log_dict.get(k, 0) + v / batch_size
 
-        # Backward with graph retention for all but last view
-        # CRITICAL: retain_graph=True for intermediate views
+        # Backward with graph retention for all but last view.
+        # Scale by 1/B so accumulated gradients are the batch MEAN: without
+        # this the effective learning rate grows linearly with batch size.
         retain_graph = not is_last_view
-        view_loss.backward(retain_graph=retain_graph)
+        (view_loss / batch_size).backward(retain_graph=retain_graph)
 
         # Optional: Clear intermediate tensors to save memory
         if not is_last_view:
@@ -833,7 +619,7 @@ def process_view(scene, nurbs, viewpoint_cam, pipe, background, app_model, opt, 
     log_dict.update({"L1": l1_loss_val, "SSIM": 1.0 - ssim_loss_val, "Photometric Loss": image_loss})
     scale_loss_weight = opt.scale_loss_weight #if iteration >= opt.refine_scaling_from else 0.0
 
-    if iteration >= opt.eikonal_from_iter and opt.lambda_eikonal >= 0:# and False:  # e.g., add to config as 1000
+    if iteration >= opt.eikonal_from_iter and opt.lambda_eikonal > 0:# and False:  # e.g., add to config as 1000
         eik_loss = nurbs.eikonal_losses(opt.lambda_eikonal)  # Add lambda_eikonal to config, e.g., 0.5
         total_loss += eik_loss
         log_dict['Eikonal Loss'] = eik_loss.item()
@@ -850,12 +636,12 @@ def process_view(scene, nurbs, viewpoint_cam, pipe, background, app_model, opt, 
             total_loss = total_loss + normal_deviation
             log_dict['Normal Deviation Loss'] = normal_deviation.item()
         if normal_smoothness_weight > 0.0:
-            normal_smoothness = cossim_loss_multisurf(nurbs.normal_grids, weight_maps=nurbs.weight_map_grids(), w=normal_global_smoothness_weight)
+            normal_smoothness = cossim_loss_multisurf(nurbs.normal_grids, weight_maps=nurbs.weight_map_grids(), w=normal_smoothness_weight)
             total_loss = total_loss + normal_smoothness
             log_dict['Normal Smoothness Loss'] = normal_smoothness.item()
 
         if normal_global_smoothness_weight > 0.0:
-            global_normal_smoothness = cossim_loss_multisurf(nurbs.global_normal_grids, weight_maps=nurbs.weight_map_grids(),w= normal_smoothness_weight)
+            global_normal_smoothness = cossim_loss_multisurf(nurbs.global_normal_grids, weight_maps=nurbs.weight_map_grids(), w=normal_global_smoothness_weight)
             total_loss = total_loss + global_normal_smoothness
             log_dict['Global Normal Consistency Loss'] = global_normal_smoothness.item()
 
@@ -914,9 +700,7 @@ def process_view(scene, nurbs, viewpoint_cam, pipe, background, app_model, opt, 
                 geo_weight = opt.multi_view_geo_weight
                 ## compute geometry consistency mask and loss
                 H, W = render_pkg['plane_depth'].squeeze().shape
-                ix, iy = torch.meshgrid(
-                    torch.arange(W), torch.arange(H), indexing='xy')
-                pixels = torch.stack([ix, iy], dim=-1).float().to(render_pkg['plane_depth'].device)
+                pixels = get_pixel_grid(W, H, render_pkg['plane_depth'].device)
                 nearest_render_pkg = render(nearest_cam, nurbs, pipe, bg, app_model=app_model,
                                             return_plane=True, return_depth_normal=False)
 
@@ -928,8 +712,7 @@ def process_view(scene, nurbs, viewpoint_cam, pipe, background, app_model, opt, 
 
                 pts_in_nearest_cam = pts_in_nearest_cam / (pts_in_nearest_cam[:, 2:3])
                 pts_in_nearest_cam = pts_in_nearest_cam * map_z.squeeze()[..., None]
-                R = torch.tensor(nearest_cam.R).float().cuda()
-                T = torch.tensor(nearest_cam.T).float().cuda()
+                R, T = get_cam_RT_cuda(nearest_cam)
                 pts_ = (pts_in_nearest_cam - T) @ R.transpose(-1, -2)
                 pts_in_view_cam = pts_ @ viewpoint_cam.world_view_transform[:3,
                                          :3] + viewpoint_cam.world_view_transform[3, :3]
@@ -1051,15 +834,16 @@ def process_view(scene, nurbs, viewpoint_cam, pipe, background, app_model, opt, 
     return total_loss, log_dict, render_pkg
 
 
-
-
 def async_wandb_logger(queue, img_dict, run_dict, iteration):
     try:
         if img_dict is not None:
             safe_img_dict = {k: v.detach().cpu().numpy() if torch.is_tensor(v) else v for k, v in img_dict.items()}
 
         if run_dict is not None:
-            safe_run_dict = {k: v.detach().item() if isinstance(v, torch.Tensor) and v.numel() == 1 else v for k, v in run_dict.items() if v > 0}
+            # Note: no `v > 0` filter — it raised on multi-element tensors
+            # and silently dropped legitimately zero-valued losses.
+            safe_run_dict = {k: v.detach().item() if isinstance(v, torch.Tensor) and v.numel() == 1 else v
+                             for k, v in run_dict.items()}
 
         safe_run_dict['iteration'] = iteration
         queue.put_nowait({"data": {**safe_img_dict, **safe_run_dict}, "step": iteration})
@@ -1115,293 +899,399 @@ def prepare_img_log(iteration, images_dict):
             img = np.clip(img, 0, 1)
 
         log_data[key] = wandb.Image(img, caption=key)
-        return log_data
+    return log_data
 
-def training(dataset, opt, pipe, args):
-    global best_cd
-    debug_mode = False
-    test_iteration = args.test_iterations
-    save_iteration = args.save_iterations
-    checkpoint_iterations = args.checkpoint_iterations,
-    start_iteration = args.start_checkpoint
-    # torch.cuda.set_device(str(args.train_gpu))
-    first_iter = 0
-    scan_id = dataset.model_path.split('/')[-1].split('n')[-1]
+@torch.no_grad()
+def log_qualitative_results(
+    iteration: int,
+    nurbs,
+    scene: SplineScene,
+    pipe,
+    background: torch.Tensor,
+    app_model,
+    wandb_queue: Optional[Queue],
+    scene_name: Optional[str] = None,
+) -> None:
+    """Render fixed views and log to WandB."""
+    test_cameras = scene.getTestCameras()
+    train_cameras = scene.getTrainCameras()
+    validation_configs = [
+        {"name": "test", "cameras": test_cameras},
+        {
+            "name": "train",
+            "cameras": [
+                train_cameras[idx % len(train_cameras)]
+                for idx in range(5, 30, 5)
+            ],
+        },
+    ]
+
+    for config in validation_configs:
+        if not config["cameras"]:
+            continue
+
+        l1_test = 0.0
+        psnr_test = 0.0
+        log_images = {}
+        for viewpoint in config["cameras"]:
+            render_pkg = render(
+                viewpoint, nurbs, pipe, background,
+                app_model=app_model,
+                return_plane=False,
+                return_depth_normal=False,
+            )
+            gt_img = viewpoint.get_image()[0]
+            psnr_val = psnr(render_pkg["render"].detach(), gt_img).mean()#.double()
+            l1_test += l1_loss(render_pkg["render"].detach(), gt_img).mean()#.double()
+            psnr_test += psnr_val
+
+            if WANDB_FOUND and wandb_queue is not None:
+                gt_np = gt_img.detach().cpu().numpy().transpose(1, 2, 0)
+                render_np = (
+                    render_pkg["render"].detach().clamp(0, 1).cpu().numpy().transpose(1, 2, 0)
+                )
+                key_base = (
+                    f"Qualitative/{config['name']}/View_{viewpoint.image_name}"
+                )
+                log_images[f"{key_base}/Ground_Truth"] = wandb.Image(gt_np)
+                log_images[f"{key_base}/Render"] = wandb.Image(render_np)
+            # nurbs_prop_dict=nurbs.prepare_grid_for_vis(viewpoint)
+            # plot_render_outputs(
+            #     render_pkg, nurbs_prop_dict,
+            #     viewpoint.get_image()[0],
+            #     nurbs, uid=viewpoint.uid,
+            #     title=f"Report for scan{scene_name} after {iteration} Iterations"
+            # )
+        n = len(config["cameras"])
+        psnr_test /= n
+        l1_test /= n
+        print(
+            f"\n[ITER {iteration}] Evaluating {config['name']}: "
+            f"L1 {l1_test:.4f}  PSNR {psnr_test:.2f}"
+        )
+
+        if log_images and wandb_queue is not None:
+            wandb_queue.put({"data": log_images, "step": iteration})
+
+
+
+
+
+def safe_decompose(controller, nurbs, opt, args):
+    """Attempt decomposition with fallback on failure."""
+    try:
+        return controller.decompose(nurbs, opt, args)
+    except Exception as e:
+        print(f"[Decompose] Failed: {e}. Continuing with current model.")
+        controller.phase = DecompPhase.DECOMPOSED
+        return nurbs
+
+
+def setup_batched_optimizer(model, training_cameras):
+    """Create the BatchedIntervalOptimizer for periodic global interval tuning."""
+    from modules.IntervalsRefiner import BatchedIntervalOptimizer, BatchConfig
+
+    config = BatchConfig(
+        num_steps=100,
+        batch_size=2,
+        lr=0.05,
+        chhugani_weight=0.1,
+        reconstruction_weight=0.1,
+        smoothness_weight=0.01,
+        grad_clip=1.0,
+        warmup_steps=len(training_cameras) // 2,
+    )
+    return BatchedIntervalOptimizer(model, training_cameras, config)
+
+
+def build_controller(**kwargs) -> WarmupDecompositionController:
+    """Build decomposition controller from kwargs."""
+    cfg = ControllerConfig(**kwargs)
+    return WarmupDecompositionController(cfg)
+
+
+def training(dataset, opt, pipe, args, **kwargs) -> None:
+    """Main training loop."""
+    # ── Setup ─────────────────────────────────────────────────────────
+    device = "cuda"
+    dirname = dataset.model_path.split('/')[-1]
     scene_name = os.path.basename(dataset.model_path)  # e.g., scan118
-    trial_index = prepare_output_and_logger(dataset)
-    device = 'cuda'
-    render_components = None
-    decomposed_final_img = None
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+    background = torch.tensor(bg_color, dtype=torch.float32, device='cuda')
+    app_model = AppModel()
+
+    # dirname = dataset.model_path.split('/')[-1]
+    scan_id = dirname.split('n')[-1].split('_')[0]  # e.g., 118
+    scene_name = os.path.basename(dataset.model_path)  # e.g., scan118
+    # bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+    # if len(dirname.split("_")) <= 1 and not args.include_eval:
+    #     trial_index = prepare_output_and_logger(dataset)
+    # else:
+    #     trial_index = scene_name.split("_")[-1] if len(scene_name.split("_")) > 1 else "0"
+
+    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+    background = torch.tensor(bg_color, dtype=torch.float32, device='cuda')
     app_model = AppModel().cuda()
     app_model.train()
-    background = torch.tensor(bg_color, dtype=torch.float32, device=device)
-    scene = SplineScene(dataset, opt, scan_id=scene_name, pipe=pipe, background=background, app_model=app_model)
-    nurbs = scene.get_splines()
 
+    if (scene := kwargs.get("scene")) is None:
+        if len(dirname.split("_")) <= 1:# and not args.include_eval:
+            trial_index = prepare_output_and_logger(dataset)
+        # Import and run the standard training loop
+        scene = SplineScene(
+            dataset, opt, scan_id=kwargs.get("scene_name", "0"),
+            pipe=pipe, background=background, app_model=app_model,
+        )
+    else:
+        trial_index = scene_name.split("_")[-1] if len(scene_name.split("_")) > 1 else "0"
+    args.model_path = dataset.model_path
+    args.source_path = dataset.source_path
+    if (nurbs := kwargs.get("nurbs")) is None:
+        nurbs = scene.get_splines()
+
+
+    # ── Checkpoint resume ─────────────────────────────────────────────
+    first_iter = 0
     if args.start_checkpoint:
         try:
             print(f"Loading checkpoint from {args.start_checkpoint}")
-            checkpoint, loaded_iter = torch.load(args.start_checkpoint)
-            # model = SplineModel().restore(checkpoint)
-            # model = MultiSurfaceSplineModel().restore()
-            print(f"Checkpoint has being loaded.Continue optimization from iteration {loaded_iter}")
+            _checkpoint, loaded_iter = torch.load(args.start_checkpoint)
+            nurbs.restore(_checkpoint, train_model=True)
             first_iter = loaded_iter
             print(f"Resuming training from iteration {first_iter}")
-            # nurbs = model
         except Exception as e:
-            print(f"\n\n\nFailed with {e}")
-
-            pass
-    terminal_width = shutil.get_terminal_size().columns * 3
+            print(f"Failed to load checkpoint: {e}")
     first_iter += 1
 
-    # region: Logging and Async Executor Setup
-    progress_bar = tqdm(range(first_iter, opt.iterations + 1), desc="Training progress", ncols=terminal_width)
-    wandb_queue,wandb_config, wandb_proc = None, None, None
+    # ── Logging and async executor ────────────────────────────────────
+    terminal_width = shutil.get_terminal_size().columns * 3
+    progress_bar = tqdm(
+        range(first_iter, opt.iterations + 1),
+        desc="Training progress",
+        ncols=terminal_width,
+    )
 
-    if args.use_wandb:
+    wandb_queue: Optional[Queue] = None
+    wandb_proc = None
+    if args.use_wandb and WANDB_FOUND:
         wandb_queue = Queue(maxsize=100)
         wandb_config = {
             "project": args.wandb_project,
-            "name": f"{scene_name}_{trial_index}",
+            "name": f"{scene_name}",
             "group": scene_name,
             "config": vars(opt),
-            "entity": "Tzlil"  # Replace with your entity or set to None
+            "entity": "Tzlil",
         }
-        wandb_proc = Process(target=wandb_logger_worker, args=(wandb_queue, wandb_config), daemon=True)
+        wandb_proc = Process(
+            target=wandb_logger_worker,
+            args=(wandb_queue, wandb_config),
+            daemon=True,
+        )
         wandb_proc.start()
 
-
-    def save_config_args(args):
-        """Saves the config arguments to a file in the model's output directory."""
-        with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
-            cfg_log_f.write(str(Namespace(**vars(args))))
-
-    def log_evaluation_results(future: Future):
-        """Callback to log results from the evaluation worker."""
-        global best_cd
+    def log_evaluation_results(future: Future) -> None:
+        """Callback for async evaluation results."""
         try:
             result = future.result()
-            best_cd = result["best_score"]
-
-            print(result["best"])  # Print all logs from the worker
+            if result is None:
+                print("[Eval Callback] Worker returned no result.")
+                return
+            if result.get("best_score") is not None and np.isfinite(result["best_score"]):
+                _set_best_cd(result["best_score"])
+            if result.get("best"):
+                print(result["best"])
             if result.get("metric_dict") is not None:
-                log_data = {"Evaluation/Chamfer Distance": result["metric_dict"]}
+                log_data = {
+                    "Evaluation/Chamfer Distance": result["metric_dict"],
+                }
                 if args.use_wandb and wandb_queue is not None:
-                    wandb_queue.put({"data": log_data, "iteration": result["iteration"]})
-                best_cd = result["best_score"]
+                    wandb_queue.put({
+                        "data": log_data,
+                        "iteration": result["iteration"],
+                    })
             else:
-                print(f"[Eval Callback] Failure in processing evaluation result: {result['logs']}")
+                print(
+                    f"[Eval Callback] Evaluation failed: "
+                    f"{result.get('logs', 'no logs')[:200]}"
+                )
         except Exception as e:
-            print(f"[Eval Callback] Error processing evaluation result: {e}")
+            print(f"[Eval Callback] Error: {e}")
 
-    images_to_log = {}
-    # Executor for running evaluation tasks on a separate process
+    import multiprocessing as mp
     ctx = mp.get_context("spawn")
     eval_executor = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
-    viewpoint_stack = scene.getTrainCameras().copy()
-    # Configure batch size
-    BATCH_SIZE = opt.batch_size  # Start with 4, adjust based on GPU memory
+
+    # ── Training state ────────────────────────────────────────────────
+    BATCH_SIZE = opt.batch_size
     USE_BATCHED_TRAINING = BATCH_SIZE > 1
     debug_path = os.path.join(scene.model_path, "debug")
-    batched_optimizer = setup_batched_optimizer(nurbs, scene.getTrainCameras().copy())
-    # Initialize gradient accumulation
-    if USE_BATCHED_TRAINING:
-        nurbs.enable_gradient_accumulation(BATCH_SIZE)
-    next_camera=0
-    cycles_complete=0
-    ema_psnr_for_log=0.0
-    controller = build_controller(
-                                  decomp_depth_views=4,
-                                  warmup_iters=opt.densify_from_iter,
-                                  min_psnr_to_decompose=15.0,
-                                  n_components=2
-                                  )
+    viewpoint_stack = None
+    # batched_optimizer = setup_batched_optimizer(
+    #     nurbs, scene.getTrainCameras().copy()
+    # )
 
-    triggered = False
+    next_camera = 0
+    cycles_complete = 0
+    ema_psnr_for_log = 0.0
+    show_interval = 500
+    render_components = None
+    decomposed_final_img = None
+
+    # ══════════════════════════════════════════════════════════════════
+    # MAIN TRAINING LOOP
+    # ══════════════════════════════════════════════════════════════════
     for iteration in range(first_iter, opt.iterations + 1):
-        # --- Step 1: Periodic aggregation refresh ---
-        if (iteration % AGGREGATION_INTERVAL == 1
-                and iteration > WARM_UP_ITERATIONS and opt.sampling_strategy == 'adaptive'):
-            nurbs.refresh_chhugani_aggregation(
-                scene.getTrainCameras().copy(),
-                max_views=2,
-                aggregation_mode='max',  # Conservative: covers all views
-            )
+
         if iteration % 1000 == 0 and iteration > 0:
             nurbs.oneupSHdegree()
 
-            BATCH_SIZE = max(1, BATCH_SIZE - 1)
+        # ── 2. Camera selection (shuffled per epoch) ──────────────────
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
-            next_camera = -1 if next_camera == 0 else 0
+            random.shuffle(viewpoint_stack)
             cycles_complete += 1
-            if cycles_complete % 2 == 0:
-                nurbs.densify_sampling_density(quant=0.05)
-                # nurbs.update_uv_distribution_chhugani(viewpoint_cam)
+
+        # ── 3. LR schedule + forward pass + loss ──────────────────────
+        learning_rates = nurbs.update_learning_rate(iteration)
 
         if USE_BATCHED_TRAINING:
-
-            # Take random batch
             batch_cameras = []
             for _ in range(min(BATCH_SIZE, len(viewpoint_stack))):
-                # next_camera = random.randint(0, len(viewpoint_stack) - 1)
-                batch_cameras.append(viewpoint_stack.pop(next_camera))
-
-            # Process batch with accumulation
+                batch_cameras.append(viewpoint_stack.pop())
             total_loss, log_dict, render_pkg = process_batch_views(
                 scene, nurbs, batch_cameras, pipe, background,
-                app_model, opt, iteration, dataset, debug_path
+                app_model, opt, iteration, dataset, debug_path,
             )
             viewpoint_cam = batch_cameras[-1]
         else:
-            # next_camera = random.randint(0, len(viewpoint_stack) - 1)
-
-            viewpoint_cam = viewpoint_stack.pop(next_camera)
+            viewpoint_cam = viewpoint_stack.pop()
             total_loss, log_dict, render_pkg = process_view(
                 scene, nurbs, viewpoint_cam, pipe, background,
-                app_model, opt, iteration, dataset, debug_path
+                app_model, opt, iteration, dataset, debug_path,
             )
             total_loss.backward()
 
-
-        # ── 2. Controller update (before forward pass) ───────────────────────
-        # NOTE: call update() AFTER the previous iteration's forward() so
-        # that surface.ray is populated (required by _record_depth → uv_depth)
-
-
+        # ── 4. Optimizer step ─────────────────────────────────────────
         if iteration <= opt.iterations:
             nurbs.optimizer.step()
             app_model.optimizer.step()
-            nurbs.optimizer.zero_grad(set_to_none = True)
-            app_model.optimizer.zero_grad(set_to_none = True)
-
-        # Periodically: global interval optimization
-        if iteration % 2000 == 0 and iteration < 16000:# and opt.sampling_strategy == 'adaptive':
-            print(f"\n[Iteration {iteration}] Running batched interval optimization...")
-
-            # This processes ALL surfaces × batch of views in one call
-            results = batched_optimizer.optimize(
-                render_fn=render,
-                pipe=pipe,
-                background=background,
-                app_model=app_model,
-            )
-            # Results are automatically stored as surface._global_intervals
-            # Per-view Chhugani will blend with these on subsequent forward passes
-
-            print(f"[Iteration {iteration}] Batched interval optimization complete. "
-                  f"Optimized {len(results)} surfaces.\n")
-            for r, surface in zip(results, nurbs.surfaces):
-                surface.uv_sampler.update_intervals_global(*r)
+            nurbs.optimizer.zero_grad(set_to_none=True)
+            app_model.optimizer.zero_grad(set_to_none=True)
 
 
-        with ((torch.no_grad())):
-
-            learning_rates = nurbs.update_learning_rate(iteration)
-
-            log_dict['Total Loss'] = total_loss.item()
+        # ── 6. Logging & progress bar ─────────────────────────────────
+        with torch.no_grad():
+            log_dict["Total Loss"] = total_loss.item()
             if iteration % 10 == 0:
-                progress_bar.set_postfix({"Loss": f"{log_dict['Total Loss']:.4f}", "Points":( nurbs.total_gaussians), "CD": f"{best_cd:.5f}", "Params": {nurbs.parameters_count}})
+                progress_bar.set_postfix({
+                    "Loss": f"{log_dict['Total Loss']:.4f}",
+                    "Points": nurbs.total_gaussians,
+                    "CD": f"{_get_best_cd():.5f}",
+                    "Params": nurbs.parameters_count,
+                })
                 progress_bar.update(10)
             if iteration == opt.iterations:
                 progress_bar.close()
 
-            if iteration % 2000 == 1 and args.use_wandb:
-                images_to_log = {}
-
-                # Ground truth and rendered image
-                # images_to_log["Renders/GT_Image"] = viewpoint_cam.get_image()[0].detach()
-                images_to_log["Renders/Rendered_Image"] = render_pkg['render']
-
-                # Depth visualization
-                if 'plane_depth' in render_pkg:
-                    depth_vis = depth_to_colormap(render_pkg['plane_depth'])
-                    images_to_log["Renders/Depth"] = depth_vis
-
-                # Normal visualization
-                if 'rendered_normal' in render_pkg:
-                    normal_vis = normal_to_rgb(render_pkg['rendered_normal'])
-                    images_to_log["Renders/Rendered_Normal"] = normal_vis
-
-                if 'depth_normal' in render_pkg:
-                    depth_normal_vis = normal_to_rgb(render_pkg['depth_normal'])
-                    images_to_log["Renders/Depth_Normal"] = depth_normal_vis
-
-            new_psnr_val = psnr(render_pkg['render'], viewpoint_cam.original_image.cuda()).mean().item()
-            ema_psnr_for_log = 0.4 * new_psnr_val + 0.6 * ema_psnr_for_log
-            log_dict['PSNR'] = ema_psnr_for_log
-
-            if iteration % 1000 == 0 and args.use_wandb:
-                for lr_name, lr_value in learning_rates.items():
-                    if lr_name == 'background':
-                        log_dict['Learning Rate (Background-Position)'] = lr_value
-                    else:
-                        log_dict['Learning Rate (Object-Position)'] = lr_value
+            # WandB scalar logging
+            if iteration % 2000 == 1 and args.use_wandb and wandb_queue is not None:
+                psnr_val = psnr(
+                    render_pkg["render"], viewpoint_cam.get_image()[0]
+                ).mean()
+                ema_psnr_for_log = (
+                    0.9 * ema_psnr_for_log + 0.1 * psnr_val.item()
+                    if ema_psnr_for_log > 0 else psnr_val.item()
+                )
+                training_log = {
+                    "iteration": iteration,
+                    "Training/Total Loss": log_dict["Total Loss"],
+                    "Training/PSNR": psnr_val.item(),
+                }
+                for k, v in log_dict.items():
+                    training_log[f"Training/{k}"] = v.item() if isinstance(v, torch.Tensor) else v
+                wandb_queue.put({"data": training_log, "step": iteration})
 
 
-                log_dict['Total Splat Samplings'] = nurbs.total_gaussians
-                async_wandb_logger(wandb_queue, prepare_img_log(iteration, images_to_log), log_dict, iteration)
-            # if cycles_completed:
-            if (iteration in save_iteration):
-                print("\n[ITER {}] Saving NURBS-based 3D-Gaussians".format(iteration))
-                scene.save(iteration, scan_name=scene_name)
-
-                nurbs_state_dict = nurbs.capture()
-                torch.save((nurbs_state_dict, iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-
-
-            BASE_MODEL_PATH = f"/sci/labs/sagieb/zlilovadia/{PROJECT_DIR}/base_models/DTU/scan{scan_id}/{trial_index}" # TODO: EXPORT to env var
-            if iteration in args.checkpoint_iterations:
-                checkpoint_path = os.path.join(scene.model_path, f"chkpnt{iteration}.pth")
-                print(f"\n[ITER {iteration}] Saving full training checkpoint to {checkpoint_path}...")
-                nurbs_state_dict = nurbs.capture()
-                torch.save((nurbs_state_dict, iteration), checkpoint_path)
+            if iteration in args.save_iterations:
+                print(f"\n[ITER {iteration}] Saving checkpoint")
+                torch.save(
+                    (nurbs.capture(), iteration),
+                    os.path.join(
+                        scene.model_path, f"chkpnt{iteration}.pth"
+                    ),
+                )
 
             if iteration in args.evaluation_iterations:
                 print(f"\n[ITER {iteration}] Staging model for evaluation.")
+                torch.cuda.synchronize()
                 temp_chk_path = os.path.join(scene.model_path, f"temp_chkpnt_eval_{iteration}.pth")
                 paths = {
-                    "out_base_path": args.out_base_path,
+                    "out_base_path": args.model_path,
                     "data_base_path": args.data_base_path,
                     "dtu_eval_path": args.dtu_eval_path,
                 }
                 future = eval_executor.submit(
                     run_evaluation, iteration, scene_name, trial_index,
-                    scan_id, args.eval_gpu, paths, temp_chk_path, args.use_depth_normal, args.use_depth_filter)
+                    scan_id, args.eval_gpu, paths, temp_chk_path, args.use_depth_normal, args.use_depth_filter, include_eval=args.include_eval)
                 future.add_done_callback(log_evaluation_results)
 
-            if iteration % show_interval == 1:
-                to_render = {}
-                to_render.update(render_pkg)
-                to_render.update(
-                    )
+            # ── 5. Held-out (test) evaluation — whole run, not only the
+            #      densification phase ────────────────────────────────────
+            if iteration in args.test_iterations:
+                log_qualitative_results(
+                    iteration, nurbs, scene, pipe, background,
+                    app_model, wandb_queue
+                )
+            # ── 11. Visualization (interactive only while debugging;
+            #        otherwise dump to file so training never blocks) ────
+            if getattr(args, 'show_plots', False) and iteration % show_interval == 1:
                 try:
-                    to_render.update(render_components)
-                    to_render.update({'decomposed_final_img': decomposed_final_img})
-                except:
-                    pass
-                nurbs_prop_dict = nurbs.prepare_grid_for_vis(viewpoint_cam)
-                plot_render_outputs(to_render, nurbs_prop_dict, viewpoint_cam.get_image()[0], nurbs, uid=viewpoint_cam.uid, title=f"{scene_name}_{trial_index}")
-                del to_render
-                del nurbs_prop_dict
+                    from utils.image_utils import plot_render_outputs
+                    to_render = dict(render_pkg)
+                    to_render["gt_image"] = viewpoint_cam.get_image()[0]
+                    if render_components is not None:
+                        to_render.update(render_components)
+                    if decomposed_final_img is not None:
+                        to_render["decomposed_final_img"] = decomposed_final_img
+                    nurbs_prop_dict = nurbs.prepare_grid_for_vis(viewpoint_cam)
+                    os.makedirs(debug_path, exist_ok=True)
+                    plot_render_outputs(
+                        to_render, nurbs_prop_dict,
+                        viewpoint_cam.get_image()[0],
+                        nurbs, uid=viewpoint_cam.uid,
+                        title=f"{scene_name}_{trial_index}",
+                        save_path=os.path.join(debug_path, f"diag_{iteration:06d}.png"),
+                        show=_DEBUG_MODE,
+                    )
+                    del to_render, nurbs_prop_dict
+                except Exception as e:
+                    print(f"[Visualization] Skipped due to error: {e}")
+                # ── 7. Densification & pruning ────────────────────────────────
+            if iteration < opt.densify_until_iter:
+                mask = (
+                    (render_pkg["out_observe"] > 0)
+                    & render_pkg["visibility_filter"]
+                )
+                nurbs.add_subdivision_stats(
+                    mask,
+                    render_pkg["viewspace_points"],
+                    render_pkg["viewspace_points_abs"],
+                    render_pkg["visibility_filter"],
+                    render_pkg["radii"],
+                )
 
-            if iteration < opt.densify_until_iter:# and controller.phase == DecompPhase.DECOMPOSED:
-                mask = (render_pkg["out_observe"] > 0) & render_pkg['visibility_filter']
-                nurbs.add_subdivision_stats(mask,
-                                            render_pkg["viewspace_points"],
-                                            render_pkg["viewspace_points_abs"],
-                                            render_pkg['visibility_filter'],
-                                            render_pkg['radii'],)
-                if iteration in args.test_iterations:
-                    log_qualitative_results(iteration, nurbs, scene, pipe, background, app_model, wandb_queue, dataset,
-                                            scene_name=scan_id)
+                # Compute size_threshold *before* it's needed
+                size_threshold = (
+                    opt.abs_split_radii2D_threshold
+                    if iteration > opt.opacity_reset_interval
+                    else np.inf
+                )
 
-                if not (iteration % opt.densification_interval):
-                    size_threshold = opt.abs_split_radii2D_threshold if iteration > opt.opacity_reset_interval else np.inf
                 did_change = False
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 1:
+                if (
+                    iteration > opt.densify_from_iter
+                    and iteration % opt.densification_interval == 1
+                ):
                     did_change = nurbs.subdivide_and_cull(
                         max_grad=opt.densify_grad_threshold,
                         grad_abs_threshold=opt.densify_grad_threshold,
@@ -1410,11 +1300,13 @@ def training(dataset, opt, pipe, args):
                         max_screen_size=size_threshold,
                         top_k_rate_subd=opt.max_k_subdiv,
                         max_prune_rate=opt.max_k_prune,
-                        verbose=False
+                        verbose=False,
                     )
-                    # nurbs.mark_all_aggregations_stale()
 
-                if opt.use_multi_view_trim and iteration % 1000 == 1:
+                if (
+                    opt.use_multi_view_trim
+                    and iteration % 1000 == 1
+                ):
                     did_change |= nurbs.multi_view_trim_all(
                         cameras=scene.getTrainCameras(),
                         render_fn=render,
@@ -1425,64 +1317,34 @@ def training(dataset, opt, pipe, args):
                         row_threshold=0.8,
                         col_threshold=0.8,
                         top_k_rate=opt.max_k_prune_vis,
-                        verbose=False
+                        verbose=False,
                     )
-                if did_change:
-                    controller.reset_depth_buffer()
-                    # nurbs.mark_all_aggregations_stale()
-                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+
+                if (
+                    iteration % opt.opacity_reset_interval == 0
+                    or (
+                        dataset.white_background
+                        and iteration == opt.densify_from_iter
+                    )
+                ):
                     nurbs.reset_opacity()
 
+            # ── 8. Model state updates ────────────────────────────────────
             nurbs.update_parameters(iteration)
-
-            # if iteration % WARM_UP_ITERATIONS == 1:
-            #     refresh_camera_neighbors_post_warmup(
-            #         scene, nurbs, iteration,
-            #         warmup_iterations=WARM_UP_ITERATIONS,
-            #         num_neighbors=dataset.multi_view_num,
-            #         verbose=True
-            #     )
             nurbs._invalidate_cache()
-            if controller.phase != DecompPhase.DECOMPOSED:
-                for surf in nurbs.surfaces:
-                    surf.ray_info()  # Ensure ray is populated before depth recording
 
-                triggered = controller.update(iteration, nurbs, viewpoint_cam, ema_psnr_for_log)
 
-                if triggered and controller.phase != DecompPhase.DECOMPOSED:
-                    print(f"\n[Train] Decomposing model at iteration {iteration}")
-
-                    # Use safe_decompose instead of controller.decompose directly
-                    nurbs = safe_decompose(controller, nurbs, opt, args)
-
-                    # Reset LR (training_setup() already rebuilt optimizer,
-                    # but position scheduler needs iteration context)
-                    for surface in nurbs.surfaces:
-                        surface._last_subdivision_step = iteration
-                        surface.iteration = iteration
-
-                    # Update surface offsets (required before add_subdivision_stats)
-                    nurbs._update_surface_offsets()
-                    batched_optimizer.model = nurbs
-                    print(f"[Train] Decomposition complete. New model: {nurbs}. Resuming training.")
-            if iteration == 2001:
-                refresh_camera_neighbors_post_warmup(
-                    scene, nurbs, iteration,
-                    warmup_iterations=WARM_UP_ITERATIONS,
-                    num_neighbors=dataset.multi_view_num,
-                    verbose=True
-                )
-    # Final cleanup
+    # ══════════════════════════════════════════════════════════════════
+    # End of training — cleanup
+    # ══════════════════════════════════════════════════════════════════
     print("Shutting down evaluation worker pool...")
     eval_executor.shutdown(wait=True)
     print("Shutting down WandB logger...")
-    if args.use_wandb:
+    if args.use_wandb and wandb_queue is not None:
         wandb_queue.put(WAND_LOGGER_TERMINATE)
-        wandb_proc.join(timeout=10)
-    app_model.save_weights(scene.model_path, opt.iterations)
-    print("\nTraining complete.")
-
-
+        if wandb_proc is not None:
+            wandb_proc.join(timeout=30)
+    return scene
 
 # region: Setup and Main Execution
 def prepare_output_and_logger(args):
@@ -1504,97 +1366,6 @@ def prepare_output_and_logger(args):
 
     return trial_index
 
-
-@torch.no_grad()
-def log_qualitative_results(iteration, nurbs, scene, pipe, background, app_model, wandb_queue, push_logs=False, args=None, scene_name=None):
-    """
-    Renders a few fixed views and logs the qualitative results (images, normals, etc.) to WandB.
-    This function is analogous to the original training_report_splines.
-    """
-    # Define which views to log
-    test_cameras = scene.getTestCameras()
-    train_cameras = scene.getTrainCameras()
-    validation_configs = ({'name': 'test', 'cameras': test_cameras},
-                          {'name': 'train',
-                           'cameras': [train_cameras[idx % len(scene.getTrainCameras())] for idx in
-                                       range(5, 30, 5)]})
-    # save_training_collage, save_comparison_collage
-    output_path = os.path.join(scene.model_path, scene_name)
-    #
-    # saved_files = save_training_collage(
-    #     model=nurbs,
-    #     cameras=train_cameras,
-    #     render_fn=render,  # Your render function
-    #     pipe=pipe,
-    #     background=torch.tensor([0, 0, 0], device='cuda'),
-    #     output_path=os.path.join(output_path, f'training_collage_{iteration}'),
-    #     num_samples=16,
-    #     selection_mode='uniform',
-    #     add_labels=True,
-    #     render_depth=True,
-    #     render_normal=False
-    # )
-    #
-    # # For GT vs Render comparison
-    # save_comparison_collage(
-    #     model=nurbs,
-    #     cameras=train_cameras,
-    #     render_fn=render,
-    #     pipe=pipe,
-    #     background=torch.tensor([0, 0, 0], device='cuda'),
-    #     output_path=output_path + f'/comparison_collage_iter_{iteration}',
-    #     num_samples=8
-    # )
-    # saved_paths = save_nurbs_surface_maps(
-    #     model=nurbs,
-    #     output_path=os.path.join(scene.model_path, scene_name),
-    #     view_camera=scene.getTrainCameras()[0],  # For view-dependent normals
-    #     save_color=True,  # SH DC color map
-    #     save_normal=True,  # Surface normals
-    #     save_opacity=True,  # Opacity values
-    #     save_scaling=True  # Scaling in U, V, N directions
-    # )
-    for config in validation_configs:
-        l1_test = 0.0
-        psnr_test = 0.0
-        if not config['cameras']:
-            continue
-
-        log_images = {}
-        for idx, viewpoint in enumerate(config['cameras']):
-            render_pkg = render(viewpoint, nurbs, pipe, background, app_model=app_model, return_plane=False,
-                                return_depth_normal=False)
-
-            gt_image = viewpoint.get_image()[0].cpu().numpy().transpose(1, 2, 0)
-
-            render_image = render_pkg["render"].clamp(0.0, 1.0).cpu().numpy().transpose(1, 2, 0)
-
-            log_key_base = f"Qualitative/{config['name']}/View_{viewpoint.image_name}"
-            log_images[f"{log_key_base}/Ground_Truth"] = wandb.Image(gt_image, caption=f"GT_{viewpoint.image_name}")
-            log_images[f"{log_key_base}/Render"] = wandb.Image(render_image, caption=f"Render_{viewpoint.image_name}")
-
-            if "depth_normal" in render_pkg:
-                normals = render_pkg["depth_normal"].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
-                log_images[f"{log_key_base}/Normals"] = wandb.Image(normals, caption=f"Normals_{viewpoint.image_name}")
-
-            if "plane_depth" in render_pkg:
-                depth = render_pkg["plane_depth"].squeeze().cpu().numpy()
-                if depth.max() > 0:
-                    depth_vis = cv2.applyColorMap((depth / depth.max() * 255).astype(np.uint8), cv2.COLORMAP_JET)
-                    log_images[f"{log_key_base}/Depth"] = wandb.Image(depth_vis,
-                                                                      caption=f"Depth_{viewpoint.image_name}")
-            psnr_val = psnr(render_pkg['render'], viewpoint.get_image()[0]).mean().double()
-            l1_test += l1_loss(render_pkg['render'], viewpoint.get_image()[0]).mean().double()
-            psnr_test += psnr_val
-
-        psnr_test /= len(config['cameras'])
-        l1_test /= len(config['cameras'])
-        print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
-
-        if log_images and push_logs and wandb_queue is not None:
-            wandb_queue.put({"data": log_images, "step": iteration})
-
-
 def main():
     parser = ArgumentParser(description="Training script parameters")
     lp = ModelParams(parser)
@@ -1610,12 +1381,15 @@ def main():
     # first_iter = 1
     eval_interval = 4000 // cycle
     test_iterations = list(range(0, 30000, 1000))
+    # test_iterations = [30000]
     save_iterations = list(range(first_iter, 30000//cycle, eval_interval))
-    evals = [15_000, 21_000, 25_000, 30_000]
-    evals.append(1)
-    evals.append(9_000)
-    evals.append(13_000)
-    evaluation_iterations = checkpoint_iterations = save_iterations = evals
+    evals = [9_000, 13_000, 15_000, 21_000, 25_000, 30_000]
+    # Independent copies: argparse stores the default object itself, so a
+    # shared list would alias all three arguments (and a later append to one
+    # would mutate the others).
+    evaluation_iterations = list(evals)
+    checkpoint_iterations = list(evals)
+    save_iterations = list(evals)
 
     parser.add_argument("--evaluation_iterations", nargs="+", type=int, default=evaluation_iterations)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=test_iterations)
@@ -1639,6 +1413,11 @@ def main():
     parser.add_argument('--wandb_group', type=str, default=None, help="WandB group name")
     parser.add_argument('--wandb_run_name', type=str, default=None, help="WandB run name")
 
+
+    parser.add_argument('--include_eval', action='store_true', default=False, help="Run Chamfer Distance")
+    parser.add_argument('--show_plots', action='store_true', default=False,
+                        help="Dump periodic render/grid diagnostic figures (interactive in debug mode)")
+
     parser.add_argument(
         "--seed", type=int, default=22,
         help="Random seed for reproducible runs"
@@ -1650,87 +1429,25 @@ def main():
     args = parser.parse_args()
     args.model_path = os.path.join(args.model_path, scan_id)
     args.source_path = os.path.join(args.source_path, scan_id)
-    args.use_wandb = True
-    print(f"[INFO] Using seed={args.seed} for full determinism")
-    args.save_iterations.append(args.iterations)
+    setup_seed(args.seed)
+    print(f"[INFO] Using seed={args.seed}")
+    if args.iterations not in args.save_iterations:
+        args.save_iterations.append(args.iterations)
     print("Optimizing " + args.model_path)
     safe_state(args.quiet)
-    # args.train_gpu = f"cuda:{args.train_gpu}"
-    # args.eval_gpu = f"cuda:{args.eval_gpu}"
     devices = os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")
-    print(f"[INFO] CUDA_VISIBLE_DEVICES={devices}, parsed devices: {devices}")
-    if devices and devices[0].isdigit():
-        gpu_id = int(devices[0])
-
+    print(f"[INFO] CUDA_VISIBLE_DEVICES={devices}")
+    gpu_id = int(devices[0]) if devices and devices[0].isdigit() else 0
     args.eval_gpu = args.train_gpu = f"cuda:{gpu_id}"
-    # args.eval_gpu = f"cuda:{0}"
-    # torch.cuda.set_device(args.train_gpu)
-    # torch.set_num_threads(8)
 
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    # torch.autograd.set_detect_anomaly(True)
     training(
         lp.extract(args), op.extract(args), pp.extract(args), args,
 
     )
-"""
-Updated training loop integration for batched interval optimization.
-
-Replace the old single-view `optimize_global_intervals` call with the
-batched version.
-"""
-
-
-def setup_batched_optimizer(model, training_cameras):
-    """Call once at training start or after model structure changes."""
-    from modules.IntervalsRefiner import BatchedIntervalOptimizer, BatchConfig
-
-
-    config = BatchConfig(
-        num_steps=100,
-        batch_size=2,           # Views per gradient step
-        lr=0.05,
-        chhugani_weight=0.1,    # Don't stray too far from geometry
-        reconstruction_weight=0.1,
-        smoothness_weight=0.01,
-        grad_clip=1.0,
-        warmup_steps=len(training_cameras)//2,
-    )
-
-    return BatchedIntervalOptimizer(model, training_cameras, config)
-"""
-Minimal integration of WarmupDecompositionController into your train.py.
-
-Assumes your train.py looks roughly like:
-    model = MultiSurfaceSplineModel.from_pointcloud(...)
-    for iteration in range(1, opt.iterations + 1):
-        camera = get_camera(...)
-        model.forward(camera)
-        render_pkg = render(camera, model, ...)
-        loss = compute_loss(...)
-        loss.backward()
-        model.step()
-        model.update_learning_rate(iteration)
-"""
-
-
-
-def build_controller(**kwargs) -> WarmupDecompositionController:
-    """Build controller from your existing config/args."""
-    cfg = ControllerConfig(
-        warmup_iters=getattr(kwargs, 'warmup_iters', 2000),
-        n_depth_views=getattr(kwargs, 'decomp_depth_views', 32),
-        min_psnr_to_decompose=getattr(kwargs, 'decomp_min_psnr', 20.0),
-        n_components=getattr(kwargs, 'n_surface_components', 2),
-        # segmentation_mode=
-    )
-    return WarmupDecompositionController(cfg)
-
 
 
 
 if __name__ == "__main__":
-    import multiprocessing as mp
-    mp.set_start_method("spawn", force=True)
     main()
 

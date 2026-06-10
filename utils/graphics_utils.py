@@ -194,3 +194,33 @@ def patch_warp(H, uv):
     grid_tmp = grid_tmp.reshape(B, P, 3)
     grid = grid_tmp[..., :2] / (grid_tmp[..., 2:] + 1e-10)
     return grid
+
+
+_PIXEL_GRID_CACHE = {}
+
+
+def get_pixel_grid(W: int, H: int, device) -> torch.Tensor:
+    """Cached (H, W, 2) grid of pixel coordinates (x, y), float32."""
+    key = (W, H, str(device))
+    grid = _PIXEL_GRID_CACHE.get(key)
+    if grid is None:
+        ix, iy = torch.meshgrid(
+            torch.arange(W, device=device),
+            torch.arange(H, device=device),
+            indexing='xy',
+        )
+        grid = torch.stack([ix, iy], dim=-1).float()
+        _PIXEL_GRID_CACHE[key] = grid
+    return grid
+
+
+def get_cam_RT_cuda(cam):
+    """Cached CUDA tensors of a camera's R and T (built once per camera)."""
+    cached = getattr(cam, '_RT_cuda', None)
+    if cached is None:
+        cached = (
+            torch.tensor(cam.R).float().cuda(),
+            torch.tensor(cam.T).float().cuda(),
+        )
+        cam._RT_cuda = cached
+    return cached

@@ -39,17 +39,18 @@ class DifferentiableBSplineBasis(nn.Module):
             [-3, 0, 3, 0],
             [3, -6, 3, 0],
             [-1, 3, -3, 1]
-        ], device='cuda')
-        self.D = (1 / 2) * torch.tensor([
+        ], dtype=torch.float32, device=self.device)
+        # Power-basis differentiation: d/du [1,u,u²,u³] = D·[1,u,u²,u³]
+        self.D = torch.tensor([
             [0, 1, 0, 0],
             [0, 0, 2, 0],
             [0, 0, 0, 3],
-            [0, 0, 0, 0]], device='cuda')
-        self.D2 = (1 / 2) * torch.tensor([
+            [0, 0, 0, 0]], dtype=torch.float32, device=self.device)
+        self.D2 = torch.tensor([
             [0, 0, 2, 0],
             [0, 0, 0, 6],
             [0, 0, 0, 0],
-            [0, 0, 0, 0]], device='cuda')
+            [0, 0, 0, 0]], dtype=torch.float32, device=self.device)
         # Precompute derivative basis matrices
         self.M_prime = self.D @ self.M  # First derivative basis
         self.M_double_prime = self.D2 @ self.M  # Second derivative basis

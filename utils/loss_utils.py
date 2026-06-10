@@ -32,13 +32,18 @@ def create_window(window_size, channel):
     window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
     return window
 
+_SSIM_WINDOW_CACHE = {}
+
+
 def ssim(img1, img2, window_size=11, size_average=True):
     channel = img1.size(-3)
-    window = create_window(window_size, channel)
-
-    if img1.is_cuda:
-        window = window.cuda(img1.get_device())
-    window = window.type_as(img1)
+    key = (window_size, channel, img1.device, img1.dtype)
+    window = _SSIM_WINDOW_CACHE.get(key)
+    if window is None:
+        window = create_window(window_size, channel).to(
+            device=img1.device, dtype=img1.dtype
+        )
+        _SSIM_WINDOW_CACHE[key] = window
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
 
@@ -157,17 +162,16 @@ def cossim_loss_multisurf(feature_vecs: List[torch.Tensor], weight_maps: List[to
     losses = []
     if weight_maps is None:
         weight_maps = [None] * len(feature_vecs)
-    for f, w in zip(feature_vecs, weight_maps):
-        losses.append(cosine_similarity_geodesic_loss(f, w))
-    return torch.stack(losses).mean()
+    for feats, wmap in zip(feature_vecs, weight_maps):
+        losses.append(cosine_similarity_geodesic_loss(feats, wmap))
+    return w * torch.stack(losses).mean()
 def param_surf_deviation(learned_vecs: List[torch.Tensor], geo_vecs: List[torch.Tensor], weight_maps: List[torch.Tensor]=None, w=0.0 ) -> torch.Tensor:
     if w <= 0.0:
         return torch.tensor(0.0, device='cuda')
     losses = []
-    # if weight_maps is None:
-    for l, g, w in zip(learned_vecs, geo_vecs, weight_maps if weight_maps is not None else [None] * len(learned_vecs)):
-        losses.append(cosine_similarity_loss(l, g, w))
-    return torch.stack(losses).mean()
+    for learned, geo, wmap in zip(learned_vecs, geo_vecs, weight_maps if weight_maps is not None else [None] * len(learned_vecs)):
+        losses.append(cosine_similarity_loss(learned, geo, wmap))
+    return w * torch.stack(losses).mean()
 
 def scale_surf_deviation(learned_vecs: List[torch.Tensor], grid_vecs: List[torch.Tensor], weight_maps: List[torch.Tensor]=None) -> torch.Tensor:
     losses = []
@@ -176,13 +180,22 @@ def scale_surf_deviation(learned_vecs: List[torch.Tensor], grid_vecs: List[torch
         losses.append(cosine_similarity_loss(l, g, w))
     return torch.stack(losses).mean()
 def cosine_similarity_loss(vec_a: torch.Tensor, vec_b: torch.Tensor, weight_maps:torch.Tensor = None) -> torch.Tensor:
+    """(1 - cos) loss, optionally weighted per pixel.
+
+    weight_maps is an (..., 1) importance map. It scales the per-pixel loss
+    and is normalized to mean 1 so the loss magnitude is independent of the
+    weight scale. (F.normalize over the singleton channel would map every
+    weight to +/-1 and destroy the map.)
+    """
     vec_a = F.normalize(vec_a, dim=-1)
     vec_b = F.normalize(vec_b, dim=-1)
-    weight_maps = F.normalize(weight_maps, dim=-1) if weight_maps is not None else 1.0
-    cossim = vec_a * vec_b * weight_maps
-    cossim_sum = cossim.sum(dim=-1)
-    loss = ((1 - cossim_sum)).mean()
-    return loss
+    cossim_sum = (vec_a * vec_b).sum(dim=-1)
+    per_pixel = 1 - cossim_sum
+    if weight_maps is not None:
+        wmap = torch.nan_to_num(weight_maps.squeeze(-1), nan=0.0)
+        wmap = wmap / wmap.mean().clamp(min=1e-8)
+        per_pixel = per_pixel * wmap
+    return per_pixel.mean()
 def l1_loss1(vec_a: torch.Tensor, vec_b: torch.Tensor=None) -> torch.Tensor:
     loss = (vec_a - vec_b).abs().sum(dim=-1).mean()
     return loss
@@ -191,14 +204,16 @@ def l1_geodesic_loss(features_grid: torch.Tensor) -> torch.Tensor:
     loss_v = (features_grid[:, 1:, ...] - features_grid[:,:-1, ...])
     return loss_u.abs().sum(-1).mean() + loss_v.abs().sum(-1).mean()
 def cosine_similarity_geodesic_loss(features_grid: torch.Tensor, weight_maps: torch.Tensor=None, radius: int = 1, sigma: float = 1) -> torch.Tensor:
-    features_grid = F.normalize(features_grid, dim=-1)
-    weight_maps = F.normalize(weight_maps, dim=-1) if weight_maps is not None else 1.0
     assert features_grid.dim() == 3, "features_grid must be (H, W, C)"
-    cos_u = features_grid[1:, :, :] * features_grid[:-1, :, :]
-    cos_v = features_grid[:, 1:, :] * features_grid[:, :-1, :]
-    weight_maps = weight_maps.squeeze(-1) if weight_maps.dim() == 3 else weight_maps
-    cos_u = cos_u.sum(dim=-1)  # (H-1, W)
-    cos_v = cos_v.sum(dim=-1)  # (H, W-1)
+    features_grid = F.normalize(features_grid, dim=-1)
+    if weight_maps is None:
+        weight_maps = torch.ones(features_grid.shape[:2], device=features_grid.device)
+    else:
+        weight_maps = weight_maps.squeeze(-1) if weight_maps.dim() == 3 else weight_maps
+        weight_maps = torch.nan_to_num(weight_maps, nan=0.0)
+        weight_maps = weight_maps / weight_maps.mean().clamp(min=1e-8)
+    cos_u = (features_grid[1:, :, :] * features_grid[:-1, :, :]).sum(dim=-1)  # (H-1, W)
+    cos_v = (features_grid[:, 1:, :] * features_grid[:, :-1, :]).sum(dim=-1)  # (H, W-1)
     w_u = weight_maps[1:, :] * weight_maps[:-1, :]
     w_v = weight_maps[:, 1:] * weight_maps[:, :-1]
     loss_u = ((1 - cos_u)*w_u).mean()

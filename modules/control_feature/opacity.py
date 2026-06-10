@@ -26,14 +26,14 @@ class OpacityControl(ControlFeature):
     def inverse_activation(self):
         return inverse_sigmoid
 
-    def interpolate_samples(self) -> torch.Tensor:
-        return super().interpolate_samples() if self.control_features is not None else None
+    def forward(self) -> torch.Tensor:
+        return super().forward() if self.control_features is not None else None
 
-    forward = interpolate_samples
+    forward = forward
 
     def compute_inserted_grid(
         self, direction, knots, degree, val, insert_idx,
-        insertion_fn, blend_radius=2, blend_strength=0.5, use_blend=False,
+        insertion_fn, blend_radius=2, blend_strength=0.5, use_blend=False,old_H=None, old_W=None
     ) -> Tuple[torch.Tensor, int]:
         return super().compute_inserted_grid(
             direction, knots, degree, val, insert_idx,

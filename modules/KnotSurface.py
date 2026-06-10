@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Tuple, Optional, List, Dict, Any
 import numpy as np
 import torch.nn as nn
@@ -7,33 +8,33 @@ import torch
 from ply_export import save_ply_single_surface
 from .control_feature import ControlFeature, PositionControl, WeightControl, ScalingControl, RotationControl, OpacityControl, SHControl, SHControlWrapper
 
-from modules.tessellation.chhugani import (
-    attach_chhugani_to_surface,
-    ForwardContext,
-)
-
+# from modules.tessellation.chhugani import (
+#     ForwardContext,
+# )
+from simple_knn._C import distCUDA2
 
 from .basis import BasisFunction, compute_bases_uv_diff
 from .knotvector import KnotVector
 from .sampling.SamplerUV import SamplerUV
 from .ModelState import ModelState, SamplingMode
 
-from modules.spline_formulas import uv_tangent
-from pytorch3d.transforms import quaternion_to_matrix
+from modules.spline_formulas import uv_tangent, n2q
+from modules.control_feature.quaternion_utils import quaternion_to_matrix
 from utils.general_utils import (
     get_expon_lr_func, strip_symmetric, build_scaling_rotation, inverse_sigmoid
 )
+
 import opt_einsum as oe
 
 from utils.sh_utils import RGB2SH
 from .sampling.ray_utils import compute_ray_info, compute_oriented_normals
-from .tessellation import (
-    GridTessellator,
-    TriangleMesh,
-    TessellationConfig,
-    mesh_to_obj,
-    mesh_to_ply,
-)
+# from .tessellation import (
+#     GridTessellator,
+#     TriangleMesh,
+#     TessellationConfig,
+#     mesh_to_obj,
+#     mesh_to_ply,
+# )
 
 def standardize_quaternion(quaternions: torch.Tensor) -> torch.Tensor:
     return torch.where(quaternions[..., 0:1] < 0, -quaternions, quaternions)
@@ -231,8 +232,6 @@ class SplineModel(nn.Module):
     ):
         super(SplineModel, self).__init__()
         self.setup_functions()
-        surf = kwargs.get('surf', None)
-        surf_rgb = kwargs.get('surf_rgb', None)
         args = kwargs.get('args', None)
         config = kwargs.get('config', None)
         spatial_lr_scale = kwargs.get('spatial_lr_scale', 1.0)
@@ -241,11 +240,15 @@ class SplineModel(nn.Module):
         self.surf_uid = kwargs.get('surf_uid', None)
         self.force_recompute = False
         self.label = kwargs.get('label', 'surface')
-        attach_chhugani_to_surface(self)
+        surf_data = kwargs.get('surf_data', defaultdict())
+        control_points = surf_data.get('control_points', None)
 
-        if not late_init:
-            ctrl_pts, ctrl_rgb, knots_u, knots_v = self.extract_surface(surf, surf_rgb)
-            H, W = ctrl_pts.shape[:2]
+        if not late_init and control_points is not None:
+
+            ctrl_pts, control_colors, knots_u, knots_v = self.extract_surface(surf_data, device='cuda',
+                                                                            transposed=surf_data.get('transposed', False),
+                                                                            flipped=surf_data.get('flipped', False)) # complexity_map = surf_data.complexity_map
+            H, W, _ = ctrl_pts.shape
             self.state = ModelState(opt=config,
                                     H=H,
                                     W=W,
@@ -264,13 +267,12 @@ class SplineModel(nn.Module):
             self.spatial_lr_scale = spatial_lr_scale  # or 1.0
             self.res_v = self.res_u = self.state.sampling_density
             self.iteration = 0
-
             knots_u = torch.sort(knots_u)[0].clone().detach()
             knots_v = torch.sort(knots_v)[0].clone().detach()
             self.knot_u = KnotVector(self.state, direction='u', initial_knots=knots_u, name=f"knot_u_{self.surf_uid}")
             self.knot_v = KnotVector(self.state, direction='v', initial_knots=knots_v, name=f"knot_v_{self.surf_uid}")
-            # self._chhugani_aggregation = AggregationState()
-            fused_color = RGB2SH((ctrl_rgb)).reshape(-1, 3).clone()
+            fused_color = RGB2SH(control_colors.clamp(0, 1)).reshape(-1, 3).clone()
+            # fused_color = RGB2SH(fused_color / fused_color.norm(dim=-1, keepdim=True).clamp(min=1e-6))
             features = (torch.zeros((H * W, 3, (self.state.max_sh_degree + 1) ** 2)).float().cuda().clone())
             features[:, :3, 0] = fused_color
             features[:, 3:, 1:] = 0.0
@@ -278,10 +280,12 @@ class SplineModel(nn.Module):
             self.uv_sampler = SamplerUV(
                 state=self.state,
                 mode='single',
+                base_u=kwargs.get('base_u', None),
+                base_v=kwargs.get('base_v', None),
             )
             self.basis = BasisFunction(self.state, self.uv_sampler, knot_u=self.knot_u, knot_v=self.knot_v)
             self.cameras = kwargs.get('cameras', None)
-            pos_init = ctrl_pts.reshape(H * W, -1).squeeze().contiguous()
+            pos_init = ctrl_pts.reshape(-1, 3).detach().clone().requires_grad_(True).contiguous()
             weights_init = None
             if self.refine_weights_active:
                 # 1. Generate Noise
@@ -294,30 +298,24 @@ class SplineModel(nn.Module):
 
             self.basis.recompute()
             contract_path = self.basis.contract_path
-            dSu = oe.contract(contract_path, self.basis.dbu, ctrl_pts, self.basis.bv).reshape(H, W, -1)# / self.Us
+            dSu = oe.contract(contract_path, self.basis.dbu, ctrl_pts, self.basis.bv).reshape(H, W, 3).detach().clone()# / self.Us
 
-            dSv = oe.contract(contract_path, self.basis.bu, ctrl_pts, self.basis.dbv).reshape(H, W, -1)#  / self.Vs
+            dSv = oe.contract(contract_path, self.basis.bu, ctrl_pts, self.basis.dbv).reshape(H, W, 3).detach().clone()# / self.Us#  / self.Vs
 
             self._init_position(pos_init, weights_init)
             self._init_opacity(H, W)
             self._init_sh_features(features)
-            self._init_rots(dSu, dSv, H, W)
-            self._init_scaling(H, W, dSu, dSv, scaling_ch)
+            self._init_rots(dSu, dSv, H, W, precompute_rots=surf_data.get('control_quaternions'))
+            self._init_scaling(H, W, scaling_ch)
 
-            self.cameras = kwargs.get('cameras', list())
-            if kwargs['train_cam_uids'] is not None:
-                self.train_cam_uids = kwargs['train_cam_uids']
-            self.num_train_views = len(self.train_cam_uids)
-
-            self._uv_recompute_interval = np.inf # self.num_train_views if (uv_recompute <= 0 and self._sampling_mode != SamplingMode.STATIC) else uv_recompute
+            self._uv_recompute_interval = np.inf   # self.num_train_views if (uv_recompute <= 0 and self._sampling_mode != SamplingMode.STATIC) else uv_recompute
             self._last_uv_recompute_iter = -1
             self._snapshot_iteration = None
 
             self._last_subdivision_step = 0
             self.update_sampling_density(self.state.opt.sampling_density)
-            self._forward_context = ForwardContext()
-            self._forward_context = ForwardContext()
             torch.cuda.empty_cache()
+            self.training_setup()
             self.invalidate_all_caches(force=True)
 
 
@@ -345,7 +343,6 @@ class SplineModel(nn.Module):
     def is_background(self):
         return self.state.label == 'background'
     def _init_opacity(self, H, W, opacity_name=None,  **kwargs):
-
         if opacity_name is None:
             opacity_name = f"opacity_{self.surf_uid}" if self.surf_uid is not None else "opacity"
         opac_param = None
@@ -354,13 +351,6 @@ class SplineModel(nn.Module):
             initial_opac = torch.full((H * W, 1),
                                       fill_value=target_opacity,
                                       device=self.device)  # .squeeze(0)
-            # if self.is_background:
-            #     target_opacity = 0.85  # Background should start HIGH opacity
-            #     initial_opac = torch.full((H * W, 1), fill_value=target_opacity, device=self.device)
-            # else:
-            #     target_opacity = 0.5
-            #     initial_opac = torch.full((H * W, 1), fill_value=target_opacity, device=self.device)
-
             opac_param = self.inverse_opacity_activation(initial_opac)  # Convert to raw parameter space
         self.opacity = OpacityControl(self.state, opac_param, self.basis, name=opacity_name)
 
@@ -384,69 +374,85 @@ class SplineModel(nn.Module):
         )
         self.spherical_harmonics = SHControlWrapper(self.state, sh_dc, sh_rest)
 
-    def _init_scaling(self, H, W, dSu, dSv, scaling_ch, scaling_name=None, apply_sqrt=False, **kwargs):
+    def _init_scaling(self, H, W, scaling_ch, scaling_name=None, apply_sqrt=False, **kwargs):
+
         if scaling_name is None:
             scaling_name = f"scaling_{self.surf_uid}" if self.surf_uid is not None else "scaling"
         scaling_init = None
         if self.state.opt.refine_scales:
+
             if self.state.opt.residual_scaling:
                 scaling_init = self.scaling_inverse_activation(
                     torch.ones((H * W, scaling_ch), device=self.device)).requires_grad_(True).contiguous()
             else:
-                scale_u = dSu.reshape(self.state.H, self.state.W, 3).norm(
-                    dim=-1) * self.uv_sampler.delta_u / 2
-                scale_v = dSv.reshape(self.state.H, self.state.W, 3).norm(
-                    dim=-1) * self.uv_sampler.delta_v / 2
-                if apply_sqrt:
-                    scale_u, scale_v = scale_u.sqrt(), scale_v.sqrt()
-                if scaling_ch == 2:
-                    scaling_init = torch.stack([scale_u, scale_v], dim=-1).reshape(self.state.H * self.state.W,
-                                                                                   scaling_ch)
-                else:
-                    scale_n = 1e-8 * torch.ones_like(scale_u)  # Placeholder for normal-based scaling
-                    scaling_init = torch.stack([scale_u, scale_v, scale_n], dim=-1).reshape(
-                        self.state.H * self.state.W, scaling_ch)
+                # scale_u = dSu.reshape(self.state.H, self.state.W, 3).norm(
+                #     dim=-1) * self.uv_sampler.delta_u / 2
+                # scale_v = dSv.reshape(self.state.H, self.state.W, 3).norm(
+                #     dim=-1) * self.uv_sampler.delta_v / 2
 
-        # scaling_init = self.scaling_inverse_activation((torch.ones((H * W, scaling_ch), device=self.device) / (self.spatial_lr_scale * (self.H * self.W))).sqrt()).requires_grad_(True).contiguous()
-        scaling_init = self.scaling_inverse_activation(scaling_init.clamp_min(1e-10)).requires_grad_(True).contiguous()
-        self.scaling = ScalingControl(self.state, scaling_init, self.basis, name=scaling_name)
+                dist = torch.sqrt(
+                    distCUDA2((self.position.control_features).float().cuda()).clamp(1e-20, 5e-1))
+                # print(f"new scale {torch.quantile(dist, 0.1)}")
+                # scaling_init = (dist)
+                scaling_init = torch.log((torch.stack([dist, dist, torch.ones_like(dist) * 1e-9], dim=-1)).reshape(self.state.H * self.state.W, scaling_ch)).detach().clone()
+
+                # if apply_sqrt:
+                #     scale_u, scale_v = scale_u.sqrt(), scale_v.sqrt()
+                # if scaling_ch == 2:
+                #     scaling_init = torch.stack([scale_u, scale_v], dim=-1).reshape(self.state.H * self.state.W,
+                #                                                                    scaling_ch)
+                # else:
+                #     scale_n = 1e-8 * torch.ones_like(scale_u)  # Placeholder for normal-based scaling
+                #     scaling_init = torch.stack([scale_u, scale_v, scale_n], dim=-1).reshape(
+                #         self.state.H * self.state.W, scaling_ch)
+
+        self.scaling = ScalingControl(self.state, scaling_init, self.basis, name=scaling_name, position=self.position)
 
     def _init_rots(self, dSu, dSv, H, W, rotation_name=None, **kwargs):
+        rotation_init = None
+        normals = torch.cross(dSu, dSv, dim=-1)
+
         if rotation_name is None:
             rotation_name = f"rotation_{self.surf_uid}" if self.surf_uid is not None else "rotation"
-        if self.state.opt.refine_rotations:
-            if not self.state.opt.residual_rots:
-                rotation_init = F.normalize(uv_tangent(dSu, dSv).detach().clone().reshape(H * W, 4).contiguous(),
-                                            dim=-1)
-            else:
-                identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).expand(H * W, -1)
-                rotation_init = F.normalize(
-                    identity_quat + uv_tangent(dSu, dSv).detach().clone().reshape(H * W, 4).contiguous(), dim=-1)
+
+
+        if kwargs.get('precompute_rots', None) is not None:
+            rotation_init = kwargs.get('precompute_rots', None)
+            print("Using precomputed rotations for initialization.")
 
         else:
-            rotation_init = None
-        self.rotation = RotationControl(self.state, rotation_init, self.basis, name=rotation_name)
+            if self.state.opt.refine_rotations:
+                if not self.state.opt.residual_rots:
+                    rotation_init = F.normalize(n2q(normals).reshape(H * W, 4).contiguous(),
+                                                dim=-1)
+                else:
+                    # Residual mode composes with the geometry-derived
+                    # rotation, so the learned residual starts at identity.
+                    rotation_init = torch.tensor(
+                        [1.0, 0.0, 0.0, 0.0], device=self.device
+                    ).expand(H * W, -1).contiguous()
+        self.rotation = RotationControl(self.state, rotation_init, self.basis, name=rotation_name, position=self.position)
 
-    def extract_surface(self, surf, surf_rgb, device='cuda', transposed=False, flipped=False):
-        ctrl2d = torch.stack([torch.tensor(ctrl2d, device='cuda')[..., :3] for ctrl2d in surf.ctrlpts2d],
-                             dim=0)
-        knots_u = torch.tensor(surf.knotvector_u, device=device)  # torch.stack(knot_u_list, dim=0)
-        knots_v = torch.tensor(surf.knotvector_v, device=device)  # torch.stack(knot_u_list, dim=0)
-
-        if surf_rgb is not None:
-            ctrl2d_rgb = torch.stack(
-                [torch.tensor(ctrl2d, device='cuda')[..., :3] for ctrl2d in surf_rgb.ctrlpts2d], dim=0)
-
-        else:
-            ctrl2d_rgb = torch.full_like(ctrl2d, fill_value=0.5)
-        ctrl_pts = ctrl2d.detach().clone()
-        ctrl_rgb = ctrl2d_rgb.detach().clone()
-        if transposed:# := (knots_u[1] - knots_u[0]) < 0:
+    def extract_surface(self, surf_data, device='cuda', transposed=False, flipped=False):
+        cpts2d = surf_data.get('control_points')
+        knotvector_u = surf_data.get('knots_u')
+        knotvector_v = surf_data.get('knots_v')
+        cpts2d_rgb = surf_data.get('control_colors')
+        cpts_tensor = torch.stack([torch.tensor(ctrl2d, device='cuda')[..., :3] for ctrl2d in cpts2d], dim=0)
+        try:
+            cpts_rgb_tensor = torch.stack([torch.tensor(ctrl2d, device='cuda')[..., :3] for ctrl2d in cpts2d_rgb],
+                                          dim=0)
+        except AttributeError as e:
+            cpts_rgb_tensor = torch.full_like(cpts_tensor, fill_value=0.5)
+        ctrl_pts = cpts_tensor.detach().clone()
+        ctrl_rgb = cpts_rgb_tensor.detach().clone()
+        knots_u = torch.tensor(knotvector_u, device=device)  # torch.stack(knot_u_list, dim=0)
+        knots_v = torch.tensor(knotvector_v, device=device)  # torch.stack(knot_u_list, dim=0)
+        if transposed:  # := (knots_u[1] - knots_u[0]) < 0:
             ctrl_pts = ctrl_pts.transpose(0, 1)
             ctrl_rgb = ctrl_rgb.transpose(0, 1)
             knots_u, knots_v = knots_v, knots_u
-
-        if flipped:# := (knots_u[1] - knots_u[0]) < 0:
+        if flipped:  # := (knots_u[1] - knots_u[0]) < 0:
             ctrl_pts = torch.flip(ctrl_pts, dims=[0])
             ctrl_rgb = torch.flip(ctrl_rgb, dims=[0])
             knots_u = torch.flip(knots_u, dims=[0])
@@ -518,58 +524,61 @@ class SplineModel(nn.Module):
 
         save_ply_single_surface(
             path=path,
-            xyz=xyz.reshape(-1, 3),
-            normals=normals.reshape(-1, 3),
+            xyz=xyz.view(-1, 3),
+            normals=normals.view(-1, 3),
             features_dc=features_dc,
             features_rest=features_rest,
-            opacities=opacities.reshape(-1, 1),
-            scaling=scaling.reshape(-1, 3),
-            rotation=rotation.reshape(-1, 4),
+            opacities=opacities.view(-1, 1),
+            scaling=scaling.view(-1, 3),
+            rotation=rotation.view(-1, 4),
         )
 
     def compute_grid_normals(self, cam):
         return self.get_normal(cam)
-    @torch.no_grad()
+
     def derive_scale(self):
-        scale_u = (self.position.dSu.reshape(self.state.Us, self.state.Vs, 3).norm(dim=-1)) * self.uv_sampler.delta_u #* 1.6  #* self.spatial_lr_scale  #* 0.5# / (self.state.Us * 2)#
-        scale_v = (self.position.dSv.reshape(self.state.Us, self.state.Vs, 3).norm(dim=-1)) * self.uv_sampler.delta_v #* 1.6  #* self.spatial_lr_scale # * 0.5# /(self.state.Vs * 2)#* self.uv_sampler.delta_v
+        """
+        Splat scales from surface differential geometry (paper Eq. 5):
+        the metric stretch ||S_u||, ||S_v|| times the parametric step gives
+        the world-space footprint of one UV sample; normal scale ~ 0 (planar).
+        Differentiable: gradients reach the control points through dSu/dSv.
+        """
+        scale_u = (
+            self.position.dSu.reshape(self.state.Us, self.state.Vs, 3).norm(dim=-1)
+            * self.uv_sampler.delta_u
+        )
+        scale_v = (
+            self.position.dSv.reshape(self.state.Us, self.state.Vs, 3).norm(dim=-1)
+            * self.uv_sampler.delta_v
+        )
+        scale_normal = torch.full_like(scale_u, fill_value=1e-9)
+        return torch.stack([scale_u, scale_v, scale_normal], dim=-1).view(-1, 3)
 
-
-        scale_normal = torch.full_like(scale_u, fill_value=1e-6)
-
-        return torch.stack([scale_u, scale_v, scale_normal], dim=-1).reshape(-1, 3)#.clamp(min=1e-20, max=1e-1 / self.spatial_lr_scale)
-
-    @torch.no_grad()
     def derive_rotation(self, eps=1e-8):
-        rotation = uv_tangent(self.position.dSu, self.position.dSv)
-        return rotation #/ rotation.norm(dim=-1, keepdim=True)# F.normalize(rotation, dim=-1)
+        """
+        Splat rotations from the surface tangent frame (paper Eq. 6).
+        Differentiable: no detach/no_grad — rendering gradients w.r.t.
+        orientation flow back into the control points.
+        """
+        dSu = self.position.dSu.reshape(self.state.Us, self.state.Vs, 3)
+        dSv = self.position.dSv.reshape(self.state.Us, self.state.Vs, 3)
+        return uv_tangent(dSu, dSv).view(-1, 4)
 
     @property
     def dSu(self):
-        if self.position.dsu_cache is not None:
-            return self.position.dsu_cache
-        else:
-            return self.position.dSu
+        return self.position.dSu
 
     @property
     def dSv(self):
-        if self.position.dsv_cache is not None:
-            return self.position.dsv_cache
-        else:
-            return self.position.dSv
+        return self.position.dSv
 
     @property
     def dSuu(self):
-        if self.position.dsuu_cache is not None:
-            return self.position.dsuu_cache
-        else:
-            return self.position.dSuu
+        return self.position.dSuu
+
     @property
     def dSvv(self):
-        if self.position.dsvv_cache is not None:
-            return self.position.dsvv_cache
-        else:
-            return self.position.dSvv
+        return self.position.dSvv
     @property
     def Sn(self):
         return torch.cross(self.dSu, self.dSv, dim=-1).contiguous()
@@ -671,10 +680,127 @@ class SplineModel(nn.Module):
         self.invalidate_control_features(force)
 
         if (self.state.opt.optimize_knots or self.state.opt.optimize_intervals or force):
-            self._forward_context = ForwardContext()
             self.uv_sampler.invalidate()
 
             self.basis.clear()
+
+    def training_setup(self, **kwargs):
+        """
+        Setup single unified optimizer for all surfaces.
+        This is the key optimization - one optimizer. step() instead of N.
+        """
+        l = []
+        training_args = self.state.opt
+        spatial_lr_scale = self.spatial_lr_scale
+        feature_lr = training_args.feature_lr
+        opacity_lr = training_args.opacity_lr
+        scaling_lr = training_args.scaling_lr
+        rotation_lr = training_args.rotation_lr
+        knot_lr = training_args.knot_lr
+        uv_lr = training_args.uv_lr_factor
+
+        if self.state.opt.refine_weights:
+            l.append({
+                'params': [self.weights.control_features],
+                'lr': training_args.nurbs_weight_lr,
+                'name': self.weights.name
+            })
+        l.append({
+            'params': [self.position.control_features],
+            'lr': training_args.position_lr_init * spatial_lr_scale, #,
+            'name': self.position.name
+        })
+        self.scheduler = get_expon_lr_func(lr_init=training_args.position_lr_init * spatial_lr_scale,
+                                           lr_final=training_args.position_lr_final* spatial_lr_scale,
+                                           lr_delay_mult=training_args.position_lr_delay_mult,
+                                           max_steps=training_args.position_lr_max_steps)
+
+        # SH
+        l.append({
+            'params': [self.spherical_harmonics.sh_dc.control_features],
+            'lr': feature_lr,
+            'name': self.spherical_harmonics.sh_dc.name,
+        })
+        l.append({
+            'params': [self.spherical_harmonics.sh_rest.control_features],
+            'lr': feature_lr / 20,
+            'name': self.spherical_harmonics.sh_rest.name,
+        })
+
+        # Opacity
+        if self.refine_opacity_active:
+            l.append({
+                'params': [self.opacity.control_features],
+                'lr': opacity_lr,
+                'name': self.opacity.name
+            })
+
+        # Scaling
+        if self.refine_scales_active:
+            l.append({
+                'params': [self.scaling.control_features],
+                'lr': scaling_lr, # * adaptive_lr_scale,
+                'name': self.scaling.name
+            })
+
+
+        # Rotation
+        if self.refine_rotations_active:
+            l.append({
+                'params': [self.rotation.control_features],
+                'lr': rotation_lr,
+                'name': self.rotation.name
+            })
+
+        if self.state.opt.optimize_knots:
+            u_factor = torch.diff(self.knot_u.internal_knots.detach() / 2)
+            u_factor = u_factor[u_factor > 0].min()  # Avoid zero or negative factors
+            v_factor = torch.diff(self.knot_v.internal_knots.detach() / 2) #.nonzero().min(
+            v_factor = v_factor[v_factor > 0].min()
+
+            l.append({
+                'params': [self.knot_u._internal_knots],
+                'lr': knot_lr * u_factor,  # Scale by min interval to keep updates stable
+                'name': self.knot_u.name
+            })
+            l.append({
+                'params': [self.knot_v._internal_knots],
+                'lr': knot_lr * v_factor,  # Scale by min interval to keep updates stable
+                'name': self.knot_v.name
+
+            })
+        if self.state.opt.optimize_intervals:
+            u_name = self.basis.uv_sampler.u_name
+            v_name = self.basis.uv_sampler.v_name
+            delta_u = self.basis.uv_sampler.delta_u.detach()
+            delta_v = self.basis.uv_sampler.delta_v.detach()
+            delta_u = delta_u[delta_u > 0].min()  # Avoid zero or negative factors
+            delta_v = delta_v[delta_v > 0].min()
+            l.append({
+                'params': [self.basis.uv_sampler._interval_u],
+                'lr': uv_lr * delta_u,  # Scale by min interval to keep updates stable
+                'name': u_name,
+                # 'eps': 1e-8
+
+            })
+            l.append({
+                'params': [self.basis.uv_sampler._interval_v],
+                'lr': uv_lr * delta_v,  # Scale by min interval to keep updates stable
+                'name': v_name,
+                # 'eps':1e-8
+            })
+        self._optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+
+        # def invalidate_hook(optimizer, args, kwargs):
+            # self._invalidate_cache(True)  # Your invalidation logic here
+        self._training_args = training_args
+        print("Optimizer setup with parameter groups:")
+        for param_group in self._optimizer.param_groups:
+            print(f" - {param_group['name']}: {len(param_group['params'][0])} parameters, lr={param_group['lr']:.6e}")
+
+    @property
+    def optimizer(self):
+        return self._optimizer
 
     def update_learning_rate(self, iteration, optimizer=None, lr_scheduler=None):
         """Update learning rates based on schedulers."""
@@ -743,13 +869,13 @@ class SplineModel(nn.Module):
         return smallest_axis.squeeze(dim=2)
 
     def get_points_from_depth(self, fov_camera, depth, scale=1):
+        from utils.graphics_utils import get_cam_RT_cuda
         st = int(max(int(scale / 2) - 1, 0))
         depth_view = depth.squeeze()[st::scale, st::scale]
         rays_d = fov_camera.get_rays(scale=scale)
         depth_view = depth_view[:rays_d.shape[0], :rays_d.shape[1]]
         pts = (rays_d * depth_view[..., None]).reshape(-1, 3)
-        R = torch.tensor(fov_camera.R).float().cuda()
-        T = torch.tensor(fov_camera.T).float().cuda()
+        R, T = get_cam_RT_cuda(fov_camera)
         pts = (pts - T) @ R.transpose(-1, -2)
         return pts
 
@@ -771,20 +897,22 @@ class SplineModel(nn.Module):
 
         if not self.state.opt.refine_rotations:
             rots = self.derive_rotation()
-            return rots.reshape(-1, 4)
+            return F.normalize(rots.view(-1, 4))
 
-        rots = self.rotation.forward().reshape(-1, 4)
+        rots = self.rotation.forward().view(-1, 4)
 
         if self.state.opt.residual_rots:
             rots = quaternion_multiply(rots,
-                                       self.derive_rotation().reshape(-1, 4))
-        return rots.reshape(-1, 4)
+                                       self.derive_rotation().view(-1, 4))
+        return rots.view(-1, 4)
 
     @property
     def get_scaling(self) -> torch.Tensor:
         """Sample scaling with lazy caching."""
+        if not self.refine_scales_active:
+            return self.derive_scale().view(-1, 3)
+        scaling = self.scaling.forward().view(-1, 3)
 
-        scaling = self.scaling.forward().reshape(-1, 3)
         if self.state.opt.residual_scaling:
             scaling = self.derive_scale().view(-1, 3) * scaling
         return scaling
@@ -865,12 +993,6 @@ class SplineModel(nn.Module):
         if hasattr(self, 'optimizer'):
             captured['optimizer'] = self.optimizer.state_dict()
 
-        captured['context'] = {
-            'warped_us': self._forward_context.warped_us,
-            'warped_vs': self._forward_context.warped_vs,
-            'warped_uvs': self._forward_context.warped_uvs,
-            'uv_basis': self._forward_context.uv_basis,
-        }
         return captured
 
     def restore(self, model_args: dict, train_model=False):
@@ -879,13 +1001,13 @@ class SplineModel(nn.Module):
         self.knot_u = KnotVector.from_state(
             model_args['knot_u_state'],
             self.state,
-            evaluate_mode=True
+            # evaluate_mode=True
 
         )
         self.knot_v = KnotVector.from_state(
             model_args['knot_v_state'],
             self.state,
-            evaluate_mode=True
+            # evaluate_mode=True
 
         )
         self.spatial_lr_scale = model_args.get('spatial_lr_scale', 1.0)
@@ -938,11 +1060,6 @@ class SplineModel(nn.Module):
             device='cuda'
         )
 
-        self._forward_context = ForwardContext()
-        self._forward_context.warped_us = model_args.get('context', {}).get('warped_us', {})
-        self._forward_context.warped_vs = model_args.get('context', {}).get('warped_vs', {})
-        self._forward_context.warped_uvs = model_args.get('context', {}).get('warped_uvs', {})
-        self._forward_context.uv_basis =  model_args.get('context', {}).get('uv_basis', {})
         self._uv_recompute_interval = 1  # Recompute every N iterations
         self._last_uv_recompute_iter = -1
         self._snapshot_iteration = None
@@ -995,9 +1112,7 @@ class SplineModel(nn.Module):
             optimizable_tensors = self.replace_tensor_to_optimizer(scaling_param, self.scaling.name, optimizer=optimizer)
             self.scaling.control_features = optimizable_tensors
 
-    def insert_tensors_to_optimizer(self, tensors_dict, direction='u', degree=None, u_bar=None, insert_idx=None, optimizer=None,
-                                    momentum_strategy='zero' # 'zero', 'neighbor_avg', 'neighbor_max', 'copy_nearest'
-                                    ):
+    def insert_tensors_to_optimizer(self, tensors_dict, direction='u', insert_idx=None, optimizer=None):
         optimizable_tensors = {}
         if optimizer is None:
             optimizer = self.optimizer
@@ -1020,20 +1135,38 @@ class SplineModel(nn.Module):
             params = group['params'][0]
             stored_state = optimizer.state.get(params, None)
             H, W = self.state._H, self.state._W
+            new_H, new_W = new_grid.shape[:2]
             # --- 2. Optimizer State Update (Interpolation) ---
+            num_new = new_H - H if not is_v else new_W - W
             if stored_state is not None:
                 exp_avg = stored_state["exp_avg"].view(H, W, -1)
                 exp_avg_sq = stored_state["exp_avg_sq"].view(H, W, -1)
 
+                new_exp_avg_reshaped = torch.zeros_like(new_grid) #.reshape(-1, *ch)
+                new_exp_avg_sq_reshaped = torch.zeros_like(new_grid) #.reshape(-1, *ch)
                 if is_v:
-                    knots = self.knot_v()
                     exp_avg = exp_avg.permute(1, 0, 2)
+                    new_exp_avg_reshaped = new_exp_avg_reshaped.permute(1, 0, 2)
                     exp_avg_sq = exp_avg_sq.permute(1, 0, 2)
-                else:
-                    knots = self.knot_u()
+                    new_exp_avg_sq_reshaped = new_exp_avg_sq_reshaped.permute(1, 0, 2)
+                new_exp_avg_reshaped[insert_idx] = 0.0  # Initialize new entries to zero
+                new_exp_avg_sq_reshaped[insert_idx] = 0.0
+                try:
+                    # if insert_idx > 0:
+                        # new_exp_avg_reshaped[insert_idx+degree+1:] = exp_avg[insert_idx:]
 
-                new_exp_avg_reshaped, _ = insert_knot_u(exp_avg, knots, degree, u_bar, insert_idx)
-                new_exp_avg_sq_reshaped, _ = insert_knot_u(exp_avg_sq, knots, degree, u_bar, insert_idx)
+                        new_exp_avg_reshaped[:insert_idx] = exp_avg[:insert_idx]
+                        new_exp_avg_sq_reshaped[:insert_idx] = exp_avg_sq[:insert_idx]
+                        new_exp_avg_reshaped[insert_idx + num_new:] = exp_avg[insert_idx:]
+                        new_exp_avg_sq_reshaped[insert_idx + num_new:] = exp_avg_sq[insert_idx:]
+                        # new_exp_avg_sq_reshaped[insert_idx+degree+1:] = exp_avg_sq[insert_idx:]
+
+                    # if insert_idx < (H if not is_v else W):
+
+                except Exception as e:
+                    print("Error during momentum update:", e)
+                    # print(f"insert_idx: {insert_idx}, exp_avg shape: {exp_avg.shape}, new_exp_avg_reshaped shape: {new_exp_avg_reshaped.shape}")
+                    # print("direction:", direction)
                 if is_v:
                     new_exp_avg_reshaped = new_exp_avg_reshaped.permute(1, 0, 2)
                     new_exp_avg_sq_reshaped = new_exp_avg_sq_reshaped.permute(1, 0, 2)
@@ -1091,7 +1224,7 @@ class SplineModel(nn.Module):
                 continue
 
             name = group["name"]
-            if  name.startswith('f_dc'):
+            if name.startswith('f_dc'):
                 ch = self.spherical_harmonics.sh_dc.control_features.shape[1:]
             elif name.startswith('f_rest'):
                 ch = self.spherical_harmonics.sh_rest.control_features.shape[1:]
@@ -1214,12 +1347,15 @@ class SplineModel(nn.Module):
         t_u, t_v = self.dSu, self.dSv
         normals = torch.cross(t_u, t_v, dim=-1)
 
-        # Compute norm of each normal vector
+        # Compute norm of each area element ||Su x Sv||
         norms = torch.linalg.norm(normals, dim=-1)  # [N]
 
-        # Eikonal loss:  penalize deviation from unit length
-        # Using (||n|| - 1)^2 for smooth gradients
-        eikonal_error = (norms - 1.0).abs()
+        # Parameterization-regularity loss: penalize deviation of the area
+        # element from its mean. Normalizing by the mean keeps the loss
+        # scale-invariant (a raw (||n||-1) target depends on scene units and
+        # fights the geometry-derived splat scales).
+        mean_norm = norms.mean().detach().clamp(min=1e-12)
+        eikonal_error = (norms / mean_norm - 1.0).abs()
         eikonal_error = eikonal_error if weight is None else eikonal_error.reshape(-1) * weight.reshape(-1)
 
         if reduction == 'mean':
@@ -1290,7 +1426,6 @@ class SplineModel(nn.Module):
     def get_normals(self, camera) -> torch.Tensor:
         """Alias for surface_normals_oriented for backward compatibility."""
         return self.surface_normals_oriented(camera)
-
 
 
     def local_planar_deviation_loss(
@@ -1381,8 +1516,6 @@ class SplineModel(nn.Module):
 
     def get_snapshot_intervals(self, uid: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get activated snapshot intervals for a specific view."""
-        # if self._interval_u is None:
-        #     raise RuntimeError("Snapshot parameters not initialized")
 
         idx = self.uid_to_idx.get(uid, 0)
         u = self.uv_sampler._decode(self.uv_sampler._interval_u[idx])
@@ -1453,21 +1586,19 @@ class SplineModel(nn.Module):
         )
 
     def uv_depth(self):
+        """Per-sample ray depth; invalid rays (missed / non-positive) are NaN."""
         try:
             depths = self.ray.depths.reshape(self.state.Us, self.state.Vs, 1)
-            final = torch.full(depths.shape, fill_value=torch.nan, device=depths.device)
-            final = torch.where((depths > 0) & (~depths.isnan()) & (depths != torch.nan), depths, final)
-            # final = torch.where((depths > 0) & (~depths.isnan()) & (depths < torch.inf), depths, final)
-            return final
-        except Exception as e:
+            invalid = torch.full_like(depths, fill_value=torch.nan)
+            return torch.where((depths > 0) & depths.isfinite(), depths, invalid)
+        except Exception:
             return torch.ones((self.state.Us, self.state.Vs, 1), device='cuda')
 
     def weights_map(self):
+        """Inverse-depth weights; invalid rays get weight 0 (not NaN)."""
         uv_depth = self.uv_depth()
-        if uv_depth is not None:
-            return 1 / self.uv_depth().reshape(self.state.Us, self.state.Vs, 1)
-        else:
-            return torch.ones((self.state.Us, self.state.Vs, 1), device='cuda')
+        weights = 1.0 / uv_depth
+        return torch.nan_to_num(weights, nan=0.0, posinf=0.0, neginf=0.0)
 
     def weights_diff(self):
         weight_maps = self.weights_map()
@@ -1484,86 +1615,12 @@ class SplineModel(nn.Module):
         if should_recompute:
             self.basis.recompute()
 
-    def _forward_adaptive(self, camera, alpha: float, beta: float):
-        """
-        Forward pass with adaptive UV recomputation.
-
-        WARMUP PROTOCOL:
-        - For the first _warmup_iterations steps, use STATIC uniform
-          intervals. This lets the surface geometry converge before we
-          start adapting the sampling distribution.
-        - After warmup, switch to Chhugani view-dependent tessellation.
-        """
-        # --- Phase 1: Warmup (static uniform sampling) ---
-        if not self.state._warmup_complete:
-            if self.iteration < self.state._warmup_iterations:
-                self._forward_static()
-                return
-
-            self.state._warmup_complete = True
-            self.invalidate_all_caches(force=True)
-            self._forward_context = ForwardContext()
-            # self._forward_context.warped_us.clear()
-            # self._forward_context.warped_vs.clear()
-            # self._forward_context.warped_uvs.clear()
-            # self._forward_context.uv_basis.clear()
-
-            self.basis.clear()
-            print(f"[Surface {self.surf_uid}] Warmup complete at iter "
-                  f"{self.iteration}. Switching to adaptive tessellation.")
-
-        # --- Phase 2: Adaptive (Chhugani view-dependent) ---
-        uid = camera.uid
-
-        # Periodically clear caches to allow re-tessellation
-
-        if self.iteration % self.state._ada_sampling_interval == 1:
-            self.invalidate_all_caches(force=True)
-            self._forward_context.warped_us.clear()
-            self._forward_context.warped_vs.clear()
-            self._forward_context.warped_uvs.clear()
-            self._forward_context.uv_basis.clear()
-            self.basis.clear()
-
-        # Try to use cached intervals for this view
-        try:
-            buv = self._forward_context.uv_basis[uid]
-            self.basis.replace_funcs(buv)
-        except KeyError:
-
-            nearest = None
-            if hasattr(self, 'cameras') and self.cameras:
-                rand_id = camera.nearest_id[
-                    torch.randint(0, len(camera.nearest_id), (1,)).item()
-                ]
-                nearest = [self.cameras[rand_id]]
-
-            self.update_uv_distribution_chhugani(
-                camera, neighbor_cameras=nearest
-            )
-
-        self.invalidate_control_features()
 
     def _forward_optimizable(self, camera):
         """Forward pass with optimizable UV parameters."""
         self.recompute()#(self.uv_sampler.interval_u, self.uv_sampler.interval_v, self.knot_u(), self.knot_v())
 
 
-    def get_real_normal(self, view_cam):
-        normal_global = F.normalize(self.dSu, dim=-1).cross(F.normalize(self.dSv, dim=-1), dim=-1).view(-1, 3) #self.get_smallest_axis()
-
-        # Compute view direction for each point
-        xyz = self.get_xyz
-        view_dirs = view_cam.camera_center - xyz  # Points toward camera
-
-        # Flip normals that point away from camera
-        dot_product = (normal_global * view_dirs).sum(dim=-1)
-        flip_mask = dot_product < 0.0
-
-        # Apply flip (creates new tensor, doesn't modify in place)
-        oriented_normals = normal_global.clone()
-        oriented_normals[flip_mask] = -oriented_normals[flip_mask]
-        return oriented_normals
 
     # =========================================================================
     # PARAMETER UPDATE (Extended)
@@ -1891,19 +1948,20 @@ class SplineModel(nn.Module):
     def _compute_pruning_metrics(self, H, W, Us, Vs, device):
         """Extract and compute all pruning metrics."""
         # Opacity (control point level)
-        opacity_ctrl = self.opacity.features
+        opacity_ctrl = torch.sigmoid(self.opacity.control_features).reshape(H, W)
 
         # Radii
         if hasattr(self.state, 'max_radii2D') and self.state.max_radii2D.numel() > 0:
             radii_sampling = self.state.max_radii2D.reshape(Us, Vs)
-            radii_ctrl = F.adaptive_avg_pool2d(
+            radii_ctrl = F.adaptive_max_pool2d(
                 radii_sampling.unsqueeze(0).unsqueeze(0), (H, W)
             ).squeeze()
         else:
-            radii_sampling = torch.zeros(H, W, device=device)
+            radii_ctrl = torch.zeros(H, W, device=device)
         max_scale_ctrl, visibility_ctrl, grad_ctrl = torch.zeros((3, H, W), device=device).unbind(0) # Placeholder tensors
-        return opacity_ctrl, max_scale_ctrl, grad_ctrl, visibility_ctrl, radii_ctrl
+        # return opacity_ctrl, max_scale_ctrl, grad_ctrl, visibility_ctrl, radii_ctrl
 
+        return opacity_ctrl, max_scale_ctrl, visibility_ctrl, grad_ctrl, radii_ctrl
 
     def _get_partitioned_pruning_candidates(
             self, H, W, degree,
@@ -2103,7 +2161,7 @@ class SplineModel(nn.Module):
             return []
 
         # Compute per-sampling-point metrics
-        opacity_ctrl, max_scale_ctrl, grad_ctrl, visibility_ctrl, radii_ctrl = \
+        opacity_ctrl, max_scale_ctrl, visibility_ctrl, grad_ctrl, radii_ctrl = \
             self._compute_pruning_metrics(H, W, Us, Vs, device)
 
         # Determine if using partitioning
@@ -2297,7 +2355,10 @@ class SplineModel(nn.Module):
         # Score proportional to how far below threshold (for ranking)
         # Debug prints for shapes and values
         scores[transparent_mask] += (min_opacity - opacity.squeeze()[transparent_mask]) / (min_opacity + 1e-8)
-
+        if extent is not None and extent > 0:
+            big_ws_mask = scale > max_world_scale_factor * extent
+            scores[big_ws_mask] = torch.max(scores[big_ws_mask],
+                                            (scale[big_ws_mask] / (max_world_scale_factor * extent)))
         # ===================================================================
         # CRITERION 2: Too large in screen-space (radii > max_screen_size)
         #   Original 3DGS:  big_points_ss = max_radii2D > max_screen_size
@@ -2345,7 +2406,7 @@ class SplineModel(nn.Module):
         # do not affect later indices.
         u_cands = sorted([c for c in cands if c['type'] == 'u'], key=lambda x: x['val'], reverse=True)
         v_cands = sorted([c for c in cands if c['type'] == 'v'], key=lambda x: x['val'], reverse=True)
-
+        old_H, old_W = self.state._H, self.state._W
         self._last_subdivision_step = self.iteration
 
         for cand_item in u_cands + v_cands:
@@ -2387,16 +2448,17 @@ class SplineModel(nn.Module):
                     val=val,
                     insert_idx=insert_idx,
                     insertion_fn=insert_knot_u,
-                    use_blend=False
+                    use_blend=False,
+                    old_H=old_H,
+                    old_W=old_W,
                 )
 
                 tensors_dict[module.name] = (new_grid, insert_idx)
 
             # C. Update Optimizer (Adam States)
             opt_tensors = self.insert_tensors_to_optimizer(
-                tensors_dict, direction=direction, degree=self.state.degree, u_bar=val, insert_idx=insert_idx,
+                tensors_dict, direction=direction, insert_idx=insert_idx,
                 optimizer=optimizer,
-                momentum_strategy=self.state.optimizer_blend_strategy
             )
 
             # D. Apply to Modules
@@ -2414,33 +2476,26 @@ class SplineModel(nn.Module):
             if self.sampling_mode != SamplingMode.ADAPTIVE or hasattr(self.uv_sampler, '_interval_u_global'):
                 self.uv_sampler.subdivide(
                     direction=direction,
+                    # insert_idx=insert_idx,
                     val=val,
                     optimizer=optimizer)
 
+            internal_knots = new_knots_full[self.state.degree + 1: -(self.state.degree + 1)]
             if is_u_split:
-                internal_knots = new_knots_full[self.state.degree + 1: -(self.state.degree + 1)]
-                self.knot_u.update_knot_vector(self, torch.sort(internal_knots)[0], u_bar=val, optimizer=optimizer)
+                self.knot_u.update_knot_vector(self, insert_idx, torch.sort(internal_knots)[0], u_bar=val, optimizer=optimizer)
                 self.state._H += 1
                 self.state.base_u += 1
             else:
-                internal_knots = new_knots_full[self.state.degree + 1: -(self.state.degree + 1)]
-                self.knot_v.update_knot_vector(self, torch.sort(internal_knots)[0], u_bar=val, optimizer=optimizer)
+                self.knot_v.update_knot_vector(self, insert_idx, torch.sort(internal_knots)[0], u_bar=val, optimizer=optimizer)
                 self.state._W += 1
                 self.state.base_v += 1
+            self.recompute()
 
         # DONE WITH ALL CANDIDATES. NOW FINALIZE.
         torch.cuda.empty_cache()
         self.basis.uv_sampler = self.uv_sampler
         self.basis.knot_u = self.knot_u
         self.basis.knot_v = self.knot_v
-
-        if hasattr(self, '_chhugani_tessellator'):
-            self._chhugani_tessellator.reset()
-        if hasattr(self, '_forward_context'):
-            from modules.tessellation.chhugani import ForwardContext
-            self._forward_context = ForwardContext()
-        if hasattr(self, '_chhugani_params'):
-            del self._chhugani_params
 
         self.invalidate_all_caches(force=True)
     def subdivide_surface(self, cand, optimizer=None):
@@ -2536,18 +2591,10 @@ class SplineModel(nn.Module):
 
             # self.state.update_samples(num_interval_insertions, direction='v')
 
-        torch.cuda.empty_cache()
         self.basis.uv_sampler = self.uv_sampler
         self.basis.knot_u = self.knot_u
         self.basis.knot_v = self.knot_v
 
-        if hasattr(self, '_chhugani_tessellator'):
-            self._chhugani_tessellator.reset()
-        if hasattr(self, '_forward_context'):
-            from modules.tessellation.chhugani import ForwardContext
-            self._forward_context = ForwardContext()
-        if hasattr(self, '_chhugani_params'):
-            del self._chhugani_params
         self.invalidate_all_caches(force=True)
 
 
@@ -2629,6 +2676,147 @@ class SplineModel(nn.Module):
         return candidates
 
     def prune_surface(
+            self,
+            cands: Optional[List[Dict]] = None,
+            cand: Optional[Dict] = None,
+            optimizer: Optional[torch.optim.Optimizer] = None,
+            error_tolerance: float = 1e-3
+    ) -> int:
+        """
+        Apply pruning (knot removal) operations.
+
+        Supports both single and batch modes:
+          - Pass a single candidate via `cand`
+          - Pass multiple candidates via `cands`
+
+        Returns the number of successful removals.
+        """
+        if cands is None and cand is not None:
+            cands = [cand]
+
+        if not cands:
+            return 0
+
+        optimizer = optimizer if optimizer is not None else self.optimizer
+
+        # Separate U and V candidates, sort in strictly reverse order by index
+        # This ensures that removal of a higher index doesn't invalidate lower indices
+        u_cands = sorted([c for c in cands if c['type'] == 'u'], key=lambda x: x['index'], reverse=True)
+        v_cands = sorted([c for c in cands if c['type'] == 'v'], key=lambda x: x['index'], reverse=True)
+
+        success_count = 0
+
+        for cand_item in u_cands + v_cands:
+            is_u = (cand_item['type'] == 'u')
+            direction = 'u' if is_u else 'v'
+            remove_idx = cand_item['index']
+
+            H, W = self.state._H, self.state._W
+            degree = self.state.degree
+
+            # Safety checks
+            min_size = degree + 2
+            if (is_u and H <= min_size) or (not is_u and W <= min_size):
+                continue
+
+            if is_u:
+                if remove_idx < degree or remove_idx >= H - degree:
+                    continue
+            else:
+                if remove_idx < degree or remove_idx >= W - degree:
+                    continue
+
+            # Get current knot vectors
+            knots_u = self.knot_u.forward()
+            knots_v = self.knot_v.forward()
+            curr_knots = knots_u if is_u else knots_v
+
+            # ======================================================================
+            # 1. Remove control point rows/columns from all feature modules
+            # ======================================================================
+            tensors_dict = {}
+
+            for module in self.control_list:
+                if module.control_features is None:
+                    continue
+                new_ctrl = module.compute_removed_grid(direction=direction, remove_idx=remove_idx)
+                tensors_dict[module.name] = new_ctrl
+
+            # ======================================================================
+            # 2. Update knot vector
+            # ======================================================================
+            n_internal = len(curr_knots) - 2 * (degree + 1)
+            if n_internal <= 0:
+                continue
+
+            internal_knot_idx = remove_idx - degree
+            internal_knot_idx = max(0, min(internal_knot_idx, n_internal - 1))
+            abs_knot_idx = degree + 1 + internal_knot_idx
+
+            new_knots = torch.cat([
+                curr_knots[:abs_knot_idx],
+                curr_knots[abs_knot_idx + 1:]
+            ])
+
+            # ======================================================================
+            # 3. Update optimizer state for control features
+            # ======================================================================
+            opt_tensors = self._remove_tensors_from_optimizer(
+                tensors_dict,
+                remove_idx,
+                direction='u' if is_u else 'v',
+                optimizer=optimizer
+            )
+
+            # ======================================================================
+            # 4. Apply to modules
+            # ======================================================================
+            for module in self.control_list:
+                if module.name in opt_tensors:
+                    module.control_features = opt_tensors[module.name]
+
+            self.position.set_weights(self.weights)
+
+            # ======================================================================
+            # 5. Update sampler intervals BEFORE updating state dimensions
+            # ======================================================================
+            self.uv_sampler.prune_uv(direction, removed_idx=remove_idx, optimizer=optimizer)
+
+            new_internal_knots = new_knots[degree + 1:-(degree + 1)]
+            if is_u:
+                self.knot_u.update_knot_vector(self, new_internal_knots, u_bar=None, optimizer=optimizer)
+                self.state._H -= 1
+                self.state.base_u -= 1
+            else:
+                self.knot_v.update_knot_vector(self, new_internal_knots, u_bar=None, optimizer=optimizer)
+                self.state._W -= 1
+                self.state.base_v -= 1
+
+            success_count += 1
+
+        if success_count == 0:
+            return 0
+
+        # DONE WITH ALL CANDIDATES. NOW FINALIZE.
+        self.basis.uv_sampler = self.uv_sampler
+        self.basis.knot_u = self.knot_u
+        self.basis.knot_v = self.knot_v
+        torch.cuda.empty_cache()
+
+        if hasattr(self, '_chhugani_tessellator'):
+            self._chhugani_tessellator.reset()
+        if hasattr(self, '_forward_context'):
+            from modules.tessellation.chhugani import ForwardContext
+            self._forward_context = ForwardContext()
+        if hasattr(self, '_chhugani_params'):
+            del self._chhugani_params
+
+        self.invalidate_all_caches(force=True)
+        self.recompute()
+
+        return success_count
+
+    def prune_surface1(
             self,
             cands: Optional[List[Dict]] = None,
             cand: Optional[Dict] = None,
@@ -2753,9 +2941,6 @@ class SplineModel(nn.Module):
 
         if hasattr(self, '_chhugani_tessellator'):
             self._chhugani_tessellator.reset()
-        if hasattr(self, '_forward_context'):
-            from modules.tessellation.chhugani import ForwardContext
-            self._forward_context = ForwardContext()
         if hasattr(self, '_chhugani_params'):
             del self._chhugani_params
 
@@ -2869,9 +3054,6 @@ class SplineModel(nn.Module):
         torch.cuda.empty_cache()
         if hasattr(self, '_chhugani_tessellator'):
             self._chhugani_tessellator.reset()
-        if hasattr(self, '_forward_context'):
-            from tessellation.chhugani import ForwardContext
-            self._forward_context = ForwardContext()
         if hasattr(self, '_chhugani_params'):
             del self._chhugani_params
         self.invalidate_all_caches(force=True)
@@ -3019,6 +3201,270 @@ class SplineModel(nn.Module):
             max_removals: int = 3,
             error_tolerance: float = 1e-4,
             optimizer: Optional[torch.optim.Optimizer] = None,
+            verbose: bool = True,
+            candidates=None,
+    ) -> int:
+        """
+        Main pruning entry point - removes knots based on 3DGS-like criteria.
+        """
+        optimizer = optimizer if optimizer is not None else self.optimizer
+        if not candidates:
+            if verbose:
+                print("[Pruning] No candidates found")
+            return 0
+
+        if verbose:
+            print(f"[Pruning] Found {len(candidates)} candidates, attempting up to {max_removals} removals")
+
+        successful_removals = 0
+        attempted = 0
+
+        for cand in candidates[: max_removals * 2]:
+            if successful_removals >= max_removals:
+                break
+
+            attempted += 1
+            removed = self.prune_surface(
+                cand=cand,
+                optimizer=optimizer,
+                error_tolerance=error_tolerance
+            )
+            success = removed > 0
+
+            if success:
+                successful_removals += 1
+                if verbose:
+                    print(f"  [Pruning] Removed {cand['type'].upper()} at idx={cand['index']}, "
+                          f"val={cand['val']:.4f}, reasons:  {', '.join(cand['reasons'])}")
+            else:
+                if verbose:
+                    print(f"  [Pruning] Failed to remove {cand['type'].upper()} at idx={cand['index']} "
+                          f"(exceeded error tolerance)")
+
+        if verbose:
+            print(f"[Pruning] Completed:  {successful_removals}/{attempted} successful, "
+                  f"grid now {self.state._H}x{self.state._W}")
+
+        return successful_removals
+
+    def insert_tensors_to_optimizer(
+            self,
+            tensors_dict: Dict[str, Tuple[torch.Tensor, int]],
+            direction: str = 'u',
+            degree: int = None,
+            u_bar: float = None,
+            insert_idx: int = None,
+            optimizer: torch.optim.Optimizer = None,
+            momentum_strategy: str = 'interpolate',  # 'interpolate' or 'zero'
+    ) -> Dict[str, nn.Parameter]:
+        """
+        Insert new control point rows/columns into optimizer state after Boehm knot insertion.
+
+        For each parameter group in `tensors_dict`, replaces the old flat parameter with the
+        new (H+1, W, C) or (H, W+1, C) grid and updates Adam's running averages (exp_avg,
+        exp_avg_sq) to match.
+
+        Args:
+            tensors_dict: Maps group name -> (new_grid [H', W', C], insert_idx).
+            direction:    'u' (insert row) or 'v' (insert column).
+            degree:       B-spline degree (required when momentum_strategy='interpolate').
+            u_bar:        Inserted knot value (required when momentum_strategy='interpolate').
+            insert_idx:   Index along the insertion axis where the new row/col was placed.
+            optimizer:    Optimizer instance; defaults to self.optimizer.
+            momentum_strategy:
+                'interpolate' - Apply Boehm's formula to exp_avg / exp_avg_sq (recommended).
+                'zero'        - Zero-initialize momentum for the inserted entries.
+
+        Returns:
+            Dict mapping group name -> updated nn.Parameter.
+        """
+        if optimizer is None:
+            optimizer = self.optimizer
+
+        is_v = (direction == 'v')
+        H, W = self.state._H, self.state._W
+        optimizable_tensors: Dict[str, nn.Parameter] = {}
+
+        for group in optimizer.param_groups:
+            name = group["name"]
+            value = tensors_dict.get(name)
+            if value is None:
+                continue
+
+            new_grid, _ = value
+
+            # --- 1. Determine feature channel shape ---
+            if name.startswith('f_dc'):
+                ch = self.spherical_harmonics.sh_dc.control_features.shape[1:]
+            elif name.startswith('f_rest'):
+                ch = self.spherical_harmonics.sh_rest.control_features.shape[1:]
+            else:
+                ch = new_grid.shape[-1:]
+
+            old_param = group['params'][0]
+            stored_state = optimizer.state.get(old_param, None)
+
+            # --- 2. Update optimizer momentum ---
+            if stored_state is not None:
+                new_stored = self._interpolate_adam_state(
+                    stored_state=stored_state,
+                    old_shape=(H, W),
+                    new_grid=new_grid,
+                    ch=ch,
+                    is_v=is_v,
+                    insert_idx=insert_idx,
+                    degree=degree,
+                    u_bar=u_bar,
+                    strategy=momentum_strategy,
+                )
+                stored_state["exp_avg"] = new_stored["exp_avg"]
+                stored_state["exp_avg_sq"] = new_stored["exp_avg_sq"]
+
+            # --- 3. Replace parameter in optimizer ---
+            new_param = nn.Parameter(
+                new_grid.reshape(-1, *ch).contiguous(), requires_grad=True
+            )
+
+            if stored_state is not None:
+                del optimizer.state[old_param]
+                group["params"][0] = new_param
+                optimizer.state[new_param] = stored_state
+            else:
+                group["params"][0] = new_param
+
+            optimizable_tensors[name] = new_param
+
+        return optimizable_tensors
+
+    def _interpolate_adam_state(
+            self,
+            stored_state: Dict[str, torch.Tensor],
+            old_shape: Tuple[int, int],
+            new_grid: torch.Tensor,
+            ch: Tuple[int, ...],
+            is_v: bool,
+            insert_idx: int,
+            degree: int,
+            u_bar: float,
+            strategy: str,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Produce new exp_avg / exp_avg_sq tensors that match `new_grid`'s shape.
+
+        Two strategies:
+            'interpolate' — use Boehm's knot insertion (same formula applied to the
+                            momentum tensors so the convex-combination structure is
+                            inherited from the spline refinement).
+            'zero'        — copy unchanged rows, zero-fill the inserted entries.
+
+        Returns dict with keys 'exp_avg', 'exp_avg_sq'.
+        """
+        H, W = old_shape
+
+        # Reshape flat momentum -> (H, W, feat)
+        exp_avg = stored_state["exp_avg"].view(H, W, -1)
+        exp_avg_sq = stored_state["exp_avg_sq"].view(H, W, -1)
+
+
+        new_avg, new_avg_sq = self._zero_fill_momentum(
+            exp_avg, exp_avg_sq, new_grid, is_v, insert_idx
+        )
+
+
+        return {
+            "exp_avg": new_avg.reshape(-1, *ch).contiguous(),
+            "exp_avg_sq": new_avg_sq.reshape(-1, *ch).contiguous(),
+        }
+
+    def _boehm_interpolate_momentum(
+            self,
+            exp_avg: torch.Tensor,  # (H, W, feat)
+            exp_avg_sq: torch.Tensor,  # (H, W, feat)
+            is_v: bool,
+            degree: int,
+            u_bar: float,
+            insert_idx: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply Boehm's knot insertion formula to Adam running averages."""
+        if is_v:
+            knots = self.knot_v()
+            exp_avg = exp_avg.permute(1, 0, 2)
+            exp_avg_sq = exp_avg_sq.permute(1, 0, 2)
+        else:
+            knots = self.knot_u()
+
+        new_avg, _ = insert_knot_u(exp_avg, knots, degree, u_bar, insert_idx)
+        new_avg_sq, _ = insert_knot_u(exp_avg_sq, knots, degree, u_bar, insert_idx)
+
+        if is_v:
+            new_avg = new_avg.permute(1, 0, 2)
+            new_avg_sq = new_avg_sq.permute(1, 0, 2)
+
+        return new_avg, new_avg_sq
+
+    def _zero_fill_momentum(
+            self,
+            exp_avg: torch.Tensor,  # (H, W, feat)
+            exp_avg_sq: torch.Tensor,  # (H, W, feat)
+            new_grid: torch.Tensor,  # (H', W', C)
+            is_v: bool,
+            insert_idx: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Copy existing momentum, zero-fill the inserted row/column.
+
+        Validates shapes to fail fast instead of silently corrupting state.
+        """
+        new_avg = torch.zeros_like(new_grid)
+        new_avg_sq = torch.zeros_like(new_grid)
+
+        if is_v:
+            exp_avg = exp_avg.permute(1, 0, 2)  # (W, H, feat)
+            exp_avg_sq = exp_avg_sq.permute(1, 0, 2)
+            new_avg = new_avg.permute(1, 0, 2)  # (W', H, feat)
+            new_avg_sq = new_avg_sq.permute(1, 0, 2)
+
+        old_len = exp_avg.shape[0]
+        new_len = new_avg.shape[0]
+        num_new = new_len - old_len
+
+        # Validate
+        if num_new <= 0:
+            raise RuntimeError(
+                f"Expected new momentum to be larger than old "
+                f"({new_len} vs {old_len}). Check new_grid shape."
+            )
+        if insert_idx < 0 or insert_idx > old_len:
+            raise RuntimeError(
+                f"insert_idx={insert_idx} out of range [0, {old_len}]."
+            )
+
+        # Copy prefix (unchanged rows before insertion)
+        if insert_idx > 0:
+            new_avg[:insert_idx] = exp_avg[:insert_idx]
+            new_avg_sq[:insert_idx] = exp_avg_sq[:insert_idx]
+
+        # Inserted entries stay zero (already initialized)
+
+        # Copy suffix (rows after insertion, shifted by num_new)
+        if insert_idx < old_len:
+            new_avg[insert_idx + num_new:] = exp_avg[insert_idx:]
+            new_avg_sq[insert_idx + num_new:] = exp_avg_sq[insert_idx:]
+
+        if is_v:
+            new_avg = new_avg.permute(1, 0, 2)
+            new_avg_sq = new_avg_sq.permute(1, 0, 2)
+
+        return new_avg, new_avg_sq
+    def prune_grid2(
+            self,
+            min_opacity: float = 0.005,
+            max_screen_size: float = 20.0,
+            max_world_scale_factor: float = 0.1,
+            extent: Optional[float] = None,
+            max_removals: int = 3,
+            error_tolerance: float = 1e-4,
+            optimizer: Optional[torch.optim.Optimizer] = None,
             verbose: bool = True
     , candidates=None) -> int:
         """
@@ -3079,122 +3525,5 @@ class SplineModel(nn.Module):
         return successful_removals
 
 
-    def tessellate(
-            self,
-            camera=None,
-            config: Optional[TessellationConfig] = None,
-    ) -> TriangleMesh:
-        """
-        Generate differentiable triangle mesh from current surface.
-
-        Args:
-            camera: Optional camera for normal orientation
-            config:  Tessellation configuration
-
-        Returns:
-            TriangleMesh with differentiable vertices
-        """
-        if not hasattr(self, '_tessellator') or config is not None:
-            self._tessellator = GridTessellator(config or TessellationConfig())
-
-        Us, Vs = self.state.Us, self.state.Vs
-
-        # Get surface points
-        xyz = self.get_xyz.reshape(Us, Vs, 3)
-
-        # Get colors from SH DC component
-        colors = self.get_features[:, 0, :].reshape(Us, Vs, 3)
-        colors = torch.sigmoid(colors)  # Map to [0, 1]
-
-        # Get normals (use geometric for better quality)
-        du = self.position.du.reshape(Us, Vs, 3)
-        dv = self.position.dv.reshape(Us, Vs, 3)
-        normals = torch.cross(du, dv, dim=-1)
-        normals = torch.nn.functional.normalize(normals, dim=-1)
-
-        # Orient toward camera if provided
-        if camera is not None:
-            view_dirs = camera.camera_center - xyz
-            dot = (normals * view_dirs).sum(dim=-1, keepdim=True)
-            normals = torch.where(dot < 0, -normals, normals)
-
-        return self._tessellator.tessellate(xyz, colors, normals)
-
-    def export_mesh(
-            self,
-            filepath: str,
-            camera=None,
-            format: str = 'obj',
-            resolution: Optional[Tuple[int, int]] = None,
-            **kwargs
-    ):
-        """
-        Export surface as triangle mesh file.
-
-        Args:
-            filepath: Output file path
-            camera: Optional camera for normal orientation
-            format: 'obj' or 'ply'
-            resolution: Optional (Us, Vs) for export resolution
-            **kwargs: Additional export options
-        """
-        if resolution is not None and resolution != (self.state.Us, self.state.Vs):
-            # Generate at different resolution
-            mesh = self._tessellate_at_resolution(resolution, camera)
-        else:
-            mesh = self.tessellate(camera)
-
-        if format.lower() == 'obj':
-            mesh_to_obj(mesh, filepath, **kwargs)
-        elif format.lower() == 'ply':
-            mesh_to_ply(mesh, filepath, **kwargs)
-        else:
-            raise ValueError(f"Unknown format:  {format}")
-
-        print(f"Exported mesh to {filepath}:  {mesh.num_vertices} vertices, {mesh.num_faces} faces")
-
-    def _tessellate_at_resolution(
-            self,
-            resolution: Tuple[int, int],
-            camera=None,
-    ) -> TriangleMesh:
-        """Generate mesh at specific resolution."""
-        Us, Vs = resolution
-        device = self.device
-
-        # Create UV grid at target resolution
-        u_samples = torch.linspace(0, 1, Us, device=device)
-        v_samples = torch.linspace(0, 1, Vs, device=device)
-        uu, vv = torch.meshgrid(u_samples, v_samples, indexing='ij')
-        uv_grid = torch.stack([uu, vv], dim=-1).reshape(-1, 2)
-
-        # Temporarily compute basis at new resolution
-        with torch.no_grad():
-            self.basis.forward(uv_grid, self.knot_u(), self.knot_v())
-            xyz = self.position.forward().reshape(Us, Vs, 3)
-            colors = self.spherical_harmonics.sh_dc.forward()
-            colors = torch.sigmoid(colors.reshape(Us, Vs, 3))
-
-            # Restore original basis
-            self.invalidate_all_caches()
-
-        # Compute normals from finite differences
-        du = torch.zeros_like(xyz)
-        dv = torch.zeros_like(xyz)
-        du[:-1] = xyz[1:] - xyz[:-1]
-        du[-1] = du[-2]
-        dv[:, :-1] = xyz[:, 1:] - xyz[:, :-1]
-        dv[:, -1] = dv[:, -2]
-
-        normals = torch.cross(du, dv, dim=-1)
-        normals = torch.nn.functional.normalize(normals, dim=-1)
-
-        if camera is not None:
-            view_dirs = camera.camera_center - xyz
-            dot = (normals * view_dirs).sum(dim=-1, keepdim=True)
-            normals = torch.where(dot < 0, -normals, normals)
-
-        tessellator = GridTessellator(TessellationConfig())
-        return tessellator.tessellate(xyz, colors, normals)
 
 

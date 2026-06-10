@@ -9,6 +9,24 @@ import torch
 import torch.nn.functional as F
 
 
+def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
+    """
+    Convert quaternions [..., 4] in (w, x, y, z) format to rotation
+    matrices [..., 3, 3]. Matches pytorch3d.transforms.quaternion_to_matrix.
+    """
+    w, x, y, z = torch.unbind(quaternions, -1)
+    two_s = 2.0 / (quaternions * quaternions).sum(-1)
+    o = torch.stack(
+        (
+            1 - two_s * (y * y + z * z), two_s * (x * y - z * w), two_s * (x * z + y * w),
+            two_s * (x * y + z * w), 1 - two_s * (x * x + z * z), two_s * (y * z - x * w),
+            two_s * (x * z - y * w), two_s * (y * z + x * w), 1 - two_s * (x * x + y * y),
+        ),
+        -1,
+    )
+    return o.reshape(quaternions.shape[:-1] + (3, 3))
+
+
 def quaternion_mean(quats: torch.Tensor) -> torch.Tensor:
     """
     Compute average quaternion via Markley's eigenvector method.

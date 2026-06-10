@@ -37,33 +37,24 @@ class PositionControl(ControlFeature):
     # Interpolation (overrides base to handle rational denominator)
     # ------------------------------------------------------------------
 
-    def interpolate_samples(self, cache=True) -> torch.Tensor:
+    def forward(self) -> torch.Tensor:
         if self.cache_valid:
-            return self.cache
+            return self.cache.reshape(-1, self.feature_channels)
 
         cpts = self.features
         if self.weights is not None:
-            cpts = cpts * self.weights.features
-            denom = self.weights.interpolate_samples()
+            w = self.weights.features
+            cpts = cpts * w
 
-        if self.state.use_bmm:
-            prod = self._interpolate_bmm(
-                self.basis.bu, self.basis.bv, cpts
-            ).contiguous()
-        else:
-            prod = oe.contract(
-                self.basis.contract_path,
-                self.basis.bu, cpts, self.basis.bv,
-                optimize=self.basis.optimal_path,
-            ).contiguous()
+        prod = self._contract(self.basis.bu, self.basis.bv, cpts)
 
         if self.weights is not None:
-            prod = prod / (denom + 1e-8)
+            denom = self._contract(self.basis.bu, self.basis.bv, w).clamp(min=1e-6)
+            prod = prod / denom
 
-        self._cache = prod
+        self.set_cache(prod)
         return prod.reshape(-1, self.feature_channels)
 
-    forward = interpolate_samples
 
     # ------------------------------------------------------------------
     # Features (no activation for positions)
@@ -78,10 +69,6 @@ class PositionControl(ControlFeature):
     # ------------------------------------------------------------------
     # Surface point access
     # ------------------------------------------------------------------
-
-    @property
-    def S(self):
-        return self._cache.view(-1, 3)
 
     # ------------------------------------------------------------------
     # Finite-difference derivatives from cached samples
@@ -116,7 +103,7 @@ class PositionControl(ControlFeature):
         return self.dsdu().norm(dim=-1, keepdim=True)
 
     def dsdu(self):
-        grid = self.features.reshape(self.state.H, self.state.W, 3).clone()
+        grid = self.features.reshape(self.state.H, self.state.W, 3)
         d = grid[1:, :, :] - grid[:-1, :, :]
         return torch.cat([d[:1, :, :], d], dim=0)
 
@@ -133,24 +120,51 @@ class PositionControl(ControlFeature):
     # Analytic B-spline derivatives (using derivative basis functions)
     # ------------------------------------------------------------------
 
-    def _deriv_interpolate(self, bu, bv, cache_attr):
-        """Helper for derivative computations."""
+    def _contract(self, bu, bv, grid):
+        if self.state.use_bmm:
+            return self._interpolate_bmm(bu, bv, grid).contiguous()
+        return oe.contract(
+            self.basis.contract_path,
+            bu, grid, bv,
+            optimize=self.basis.optimal_path,
+        ).contiguous()
+
+    def _deriv_interpolate(self, bu, bv, cache_attr, d1_pair=None):
+        """
+        Surface partial derivative for the basis pair (bu, bv), where exactly
+        one of the two is a derivative basis.
+
+        B-spline:  S' = Σ N' P
+        NURBS:     S = A/W with A = Σ N (w P), W = Σ N w. Quotient rule:
+                   S'  = (A' − S·W') / W
+                   S'' = (A'' − 2·S'·W' − S·W'') / W   (d1_pair gives the
+                   first-derivative basis pair for the same direction)
+        """
+        cached = getattr(self, cache_attr, None)
+        if cached is not None:
+            return cached
+
         cpts = self.features
         if self.weights is not None:
-            cpts = cpts * self.weights.features
-            denom = self.weights.interpolate_samples()
+            w = self.weights.features
+            cpts = cpts * w
 
-        if self.state.use_bmm:
-            prod = self._interpolate_bmm(bu, bv, cpts).contiguous()
-        else:
-            prod = oe.contract(
-                self.basis.contract_path,
-                bu, cpts, bv,
-                optimize=self.basis.optimal_path,
-            ).contiguous()
+        prod = self._contract(bu, bv, cpts)
 
         if self.weights is not None:
-            prod = prod / denom.clamp(min=1e-6)
+            W = self._contract(self.basis.bu, self.basis.bv, w.unsqueeze(-1) if w.dim() == 2 else w).clamp(min=1e-6)
+            W_prime = self._contract(bu, bv, w.unsqueeze(-1) if w.dim() == 2 else w)
+            S = self._contract(self.basis.bu, self.basis.bv, cpts) / W
+            if d1_pair is None:
+                # First derivative
+                prod = (prod - S * W_prime) / W
+            else:
+                # Second derivative
+                b1u, b1v = d1_pair
+                A1 = self._contract(b1u, b1v, cpts)
+                W1 = self._contract(b1u, b1v, w.unsqueeze(-1) if w.dim() == 2 else w)
+                S1 = (A1 - S * W1) / W
+                prod = (prod - 2.0 * S1 * W1 - S * W_prime) / W
 
         setattr(self, cache_attr, prod)
         return prod
@@ -165,11 +179,17 @@ class PositionControl(ControlFeature):
 
     @property
     def dSuu(self):
-        return self._deriv_interpolate(self.basis.dbuu, self.basis.bv, 'dsuu_cache')
+        return self._deriv_interpolate(
+            self.basis.dbuu, self.basis.bv, 'dsuu_cache',
+            d1_pair=(self.basis.dbu, self.basis.bv),
+        )
 
     @property
     def dSvv(self):
-        return self._deriv_interpolate(self.basis.bu, self.basis.dbvv, 'dsvv_cache')
+        return self._deriv_interpolate(
+            self.basis.bu, self.basis.dbvv, 'dsvv_cache',
+            d1_pair=(self.basis.bu, self.basis.dbv),
+        )
 
     # ------------------------------------------------------------------
     # Cache invalidation
@@ -177,6 +197,7 @@ class PositionControl(ControlFeature):
 
     def invalidate(self, hard=False):
         super().invalidate(hard)
+        self.basis.recompute()
         self.dsu_cache = None
         self.dsv_cache = None
         self.dsuu_cache = None

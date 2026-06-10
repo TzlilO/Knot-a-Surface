@@ -278,10 +278,12 @@ def render_sets(dataset: ModelParams, iteration: int, pipeline: PipelineParams, 
         nurbs = load_model(load_path)
 
 
+
         if not skip_train:
             render_set(nurbs, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(),
                        pipeline, background, app_model=None,
                        max_depth=max_depth, volume=volume, use_depth_filter=use_depth_filter, use_depth_normal=use_depth_normal)
+
             print(f"extract_triangle_mesh")
             mesh = volume.extract_triangle_mesh()
 
@@ -322,12 +324,14 @@ if __name__ == "__main__":
     parser.add_argument("--num_cluster", default=1, type=int)
     parser.add_argument("--use_depth_filter", action="store_true")
     parser.add_argument("--use_depth_normal", action="store_true")
+    devices = os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")
+    print(f"[INFO] CUDA_VISIBLE_DEVICES={devices}, parsed devices: {devices}")
 
+
+    device = f"cuda:{devices[0]}"
+    # torch.cuda.set_device(device)
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
-
-    args.use_depth_normal = False
-    args.use_depth_filter = False
 
     # print(f"use depth normal: {args.use_depth_normal}")
     # print(f"use depth filter: {args.use_depth_filter}")

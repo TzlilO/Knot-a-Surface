@@ -26,6 +26,7 @@ from sklearn.preprocessing import StandardScaler
 
 from geomdl import BSpline
 
+from modules.fitting.mesh_patch import least_squares_bspline_surface
 from modules.fitting.postprocessing import CameraObject, compute_camera_consistent_normals, \
     compute_observation_weights
 
@@ -105,19 +106,19 @@ class SurfaceConfig:
 
 
     # --- Camera-Aware Fitting (NEW) ---
-    use_camera_weights: bool = True
-    use_camera_normals: bool = True
+    use_camera_weights: bool = False
+    use_camera_normals: bool = False
 
     # --- Post-Fit Optimization (NEW) ---
     post_fit_enabled: bool = False
     post_fit_iterations: int = 2000
-    post_fit_lr: float = 1e-4
+    post_fit_lr: float = 1e-3
     post_fit_chamfer_weight: float = .5
     post_fit_smoothness_weight: float = 0.25
     post_fit_normal_weight: float = 0.25
-    post_fit_num_samples: int = 8192
-    post_fit_convergence_threshold: float = 1e-6
-    post_fit_patience: int = 20
+    post_fit_num_samples: int = 2048
+    post_fit_convergence_threshold: float = 1e-8
+    post_fit_patience: int = 200
 
 @dataclass
 class AdaptiveSamplingResult:
@@ -664,6 +665,26 @@ class NURBSSurfaceData:
             )
         return result
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a serializable dictionary."""
+        return {
+            "control_points": self.control_points.tolist(),
+            "control_colors": self.control_colors.tolist(),
+            "knots_u": self.knots_u.tolist(),
+            "knots_v": self.knots_v.tolist(),
+            "degree_u": self.degree_u,
+            "degree_v": self.degree_v,
+            "label": self.label,
+            "point_indices": self.point_indices.tolist() if self.point_indices is not None else None,
+            "bounds": {k: v.tolist() for k, v in self.bounds.items()} if self.bounds is not None else None,
+            "sampling_u_1D": self.sampling_u_1D.tolist() if self.sampling_u_1D is not None else None,
+            "sampling_v_1D": self.sampling_v_1D.tolist() if self.sampling_v_1D is not None else None,
+            "grid_samplings_u": self.grid_samplings_u.tolist() if self.grid_samplings_u is not None else None,
+            "grid_samplings_v": self.grid_samplings_v.tolist() if self.grid_samplings_v is not None else None,
+            "complexity_map": self.complexity_map.tolist() if self.complexity_map is not None else None,
+            "sampling_density_map": self.sampling_density_map.tolist() if self.sampling_density_map is not None else None,
+        }
+
 
 @dataclass
 class AdaptiveSamplingConfig:
@@ -684,7 +705,7 @@ class AdaptiveSamplingConfig:
 
     # Monotonicity enforcement
     enforce_monotonic: bool = True
-    min_spacing_ratio: float = 0.1
+    min_spacing_ratio: float = 0.01
 
 
 @dataclass
@@ -1362,8 +1383,132 @@ class NURBSSurfaceFitter:
         )
 
     # In NURBSSurfaceFitter, modify fit_surface signature and grid creation:
+    # In NURBSSurfaceFitter class, add this import at the top of the file:
+    from modules.fitting.mesh_patch import least_squares_bspline_surface
+
+    # Then modify fit_surface to add a new path:
 
     def fit_surface(
+            self,
+            points: np.ndarray,
+            colors: Optional[np.ndarray] = None,
+            label: str = "surface",
+            complexity: Optional[np.ndarray] = None,
+            sampling_resolution: Optional[Tuple[int, int]] = None,
+            override_resolution: Optional[Tuple[int, int]] = None,
+            parameterization: Optional[str] = None,
+            point_weights: Optional[np.ndarray] = None,
+            cameras: Optional[List['CameraObject']] = None,
+            normals: Optional[np.ndarray] = None,
+            faces: Optional[np.ndarray] = None,  # NEW: triangle faces for mesh input
+            use_least_squares: bool = True,  # NEW: toggle LS fitting
+    ) -> NURBSSurfaceData:
+        if len(points) < 16:
+            raise ValueError(f"Need at least 16 points, got {len(points)}")
+
+        # --- Determine resolution ---
+        if override_resolution is not None:
+            res_u = int(np.clip(override_resolution[0],
+                                self.config.min_resolution, self.config.max_resolution))
+            res_v = int(np.clip(override_resolution[1],
+                                self.config.min_resolution, self.config.max_resolution))
+        else:
+            res_u, res_v = self.res_calculator.calculate(points, complexity)
+
+        method = parameterization if parameterization else self.config.parameterization
+
+        print(f"[Fit] Label: {label}, Res: {res_u}x{res_v}, Method: {method}")
+
+        # ================================================================
+        # NEW PATH: Least-Squares B-Spline Approximation
+        # ================================================================
+        if use_least_squares:
+            # --- Step 1: Parameterize ---
+            if faces is not None and len(faces) > 0:
+                # Mesh input → harmonic parameterization (exploits topology)
+                from modules.fitting.mesh_patch import harmonic_parameterization
+                try:
+                    uv_coords = harmonic_parameterization(points, faces)
+                    print(f"[Fit] Using harmonic parameterization from mesh ({len(faces)} faces)")
+                except (ValueError, Exception) as e:
+                    print(f"[Fit] Harmonic param failed ({e}), falling back to spherical")
+                    uv_coords = self._parameterize_spherical(points)
+            else:
+                # Point cloud → existing parameterization methods
+                if method == "spherical":
+                    uv_coords = self._parameterize_spherical(points)
+                elif method == "geodesic":
+                    uv_coords = self._parameterize_geodesic(points)
+                else:
+                    uv_coords = self._parameterize_pca(points)
+
+            # --- Step 2: Least-Squares B-Spline Fit ---
+            degree = min(self.config.degree_u, res_u - 1, res_v - 1)
+
+            ctrl_pts, ctrl_colors, knots_u, knots_v = least_squares_bspline_surface(
+                points=points,
+                uv=uv_coords,
+                n_ctrl_u=res_u,
+                n_ctrl_v=res_v,
+                degree=degree,
+                smoothing=self.config.smoothing,
+                colors=colors,
+            )
+
+            surface_data = NURBSSurfaceData(
+                control_points=ctrl_pts.astype(np.float32),
+                control_colors=np.clip(ctrl_colors, 0, 1).astype(np.float32)
+                if ctrl_colors is not None
+                else np.full((res_u, res_v, 3), 0.5, dtype=np.float32),
+                knots_u=knots_u.astype(np.float32),
+                knots_v=knots_v.astype(np.float32),
+                degree_u=degree,
+                degree_v=degree,
+                label=label,
+            )
+
+        # ================================================================
+        # LEGACY PATH: Grid scatter + Gaussian blur (existing behavior)
+        # ================================================================
+        else:
+            if method == "pca" and self.config.use_geodesic_uv and len(points) > 12:
+                method = "geodesic"
+            if method == "spherical":
+                uv_coords = self._parameterize_spherical(points)
+            elif method == "geodesic":
+                uv_coords = self._parameterize_geodesic(points)
+            else:
+                uv_coords = self._parameterize_pca(points)
+
+            grid_xyz, grid_rgb = self._create_grid_samples(
+                points, colors, uv_coords, res_u, res_v,
+                point_weights=point_weights,
+            )
+            is_spherical = method == "spherical"
+            surface_data = self._fit_bspline_to_grid(
+                grid_xyz, grid_rgb, label, res_u, res_v, is_spherical
+            )
+
+        # --- Common post-processing ---
+        surface_data.bounds = {
+            "min": points.min(axis=0),
+            "max": points.max(axis=0),
+            "center": points.mean(axis=0),
+        }
+
+        if self.config.generate_adaptive_samples:
+            sampling_result = self._generate_adaptive_samples(
+                surface_data, sampling_resolution
+            )
+            surface_data.sampling_u_1D = sampling_result.intervals_u
+            surface_data.sampling_v_1D = sampling_result.intervals_v
+            surface_data.grid_samplings_u = sampling_result.grid_u
+            surface_data.grid_samplings_v = sampling_result.grid_v
+            surface_data.complexity_map = sampling_result.complexity_map
+
+        return surface_data
+
+    def fit_surface2(
             self,
             points: np.ndarray,
             colors: Optional[np.ndarray] = None,
@@ -1418,6 +1563,10 @@ class NURBSSurfaceFitter:
 
         if method == "spherical":
             uv_coords = self._parameterize_spherical(points)
+        elif method == "conformal":
+            from modules.fitting.parametrization.conformal_uv import conformal_parameterize
+            uv_coords = conformal_parameterize(points)
+
         elif method == "geodesic":
             uv_coords = self._parameterize_geodesic(points)
         else:
@@ -1748,7 +1897,7 @@ class NURBSSurfaceFitter:
 
         return filled
 
-    def _fit_bspline_to_grid(
+    def _fit_bspline_to_gridd(
             self,
             grid_xyz: np.ndarray,
             grid_rgb: np.ndarray,
@@ -1796,6 +1945,606 @@ class NURBSSurfaceFitter:
             label=label,
         )
 
+    def _fit_bspline_to_grid(
+        self,
+        grid_xyz: np.ndarray,
+        grid_rgb: np.ndarray,
+        label: str,
+        res_u: int,
+        res_v: int,
+        is_spherical: bool = False,
+        ) -> NURBSSurfaceData:
+        # """Fit a proper B-spline surface to the resampled grid."""
+        from modules.fitting.bspline_fitting import BSplineSurfaceFitter
+        from scipy.ndimage import median_filter
+
+        degree_u = min(self.config.degree_u, res_u - 1)
+        degree_v = min(self.config.degree_v, res_v - 1)
+
+        # Pre-filter to remove outlier spikes (keep this — it's preprocessing)
+        if self.config.smoothing > 0:
+            for c in range(3):
+                grid_xyz[..., c] = median_filter(grid_xyz[..., c], size=3)
+                grid_rgb[..., c] = median_filter(grid_rgb[..., c], size=3)
+
+        # === THE KEY CHANGE: Solve for control points via least-squares ===
+        # The grid samples are DATA, not control points.
+        # The smoothing parameter λ replaces the Gaussian blur.
+        fitter = BSplineSurfaceFitter(
+            n_ctrl_u=res_u,
+            n_ctrl_v=res_v,
+            degree_u=degree_u,
+            degree_v=degree_v,
+            smoothing=self.config.smoothing,  # λ in the regularized normal equations
+            data_dependent_knots=False,  # Grid is uniform → uniform knots are fine
+        )
+
+        result = fitter.fit_from_grid(grid_xyz, grid_rgb)
+
+        print(f"[BSpline Fit] {label}: RMS residual = {result.residual_rms:.6f}")
+
+        return NURBSSurfaceData(
+            control_points=result.control_points,
+            control_colors=result.control_colors,
+            knots_u=result.knots_u,
+            knots_v=result.knots_v,
+            degree_u=result.degree_u,
+            degree_v=result.degree_v,
+            label=label,
+        )
+
+"""
+BSpline Surface Fitting from Point Clouds via Least-Squares Approximation.
+
+Implements the classical surface approximation algorithm from:
+  Piegl & Tiller, "The NURBS Book" (2nd ed.), Chapter 9.
+
+Given N scattered 3D points and their UV parameterization,
+solves for the (m+1)×(n+1) control points P_{ij} that minimize:
+
+    min_{P} || A·P - D ||² + λ·|| L·P ||²
+
+where:
+    A  = [N_i(u_k) · N_j(v_k)]  is the (N × m·n) collocation matrix
+    D  = [x_k]                   is the data vector
+    L  = discrete Laplacian      regularization on the control grid
+    λ  = smoothing weight
+
+This is the CORRECT way to compute BSpline control points from data,
+as opposed to treating grid-interpolated samples as control points.
+"""
+
+import warnings
+import numpy as np
+from typing import Tuple, Optional
+from dataclasses import dataclass
+
+from scipy.sparse import csr_matrix, vstack as sparse_vstack, diags
+from scipy.sparse.linalg import lsqr
+
+
+# ---------------------------------------------------------------------------
+#  Result container
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BSplineFitResult:
+    """Result of BSpline surface fitting."""
+    control_points: np.ndarray    # [H, W, 3]
+    control_colors: np.ndarray    # [H, W, 3]
+    knots_u: np.ndarray           # [H + degree_u + 1]
+    knots_v: np.ndarray           # [W + degree_v + 1]
+    degree_u: int
+    degree_v: int
+    residual_rms: float           # RMS fitting error
+    parameterization: np.ndarray  # [N, 2] UV coords used
+
+
+# ---------------------------------------------------------------------------
+#  B-spline basis function evaluator (NumPy)
+# ---------------------------------------------------------------------------
+
+class BSplineBasis:
+    """
+    Vectorized Cox-de Boor B-spline basis evaluation in NumPy.
+
+    The recursion structure mirrors the PyTorch implementation in
+    ``modules/utils/BSpline.py :: cox_de_boor_basis_and_derivative``
+    so that basis values agree to floating-point precision.
+    """
+
+    @staticmethod
+    def evaluate(
+        params: np.ndarray,
+        knots: np.ndarray,
+        degree: int,
+        n_ctrl: int,
+    ) -> np.ndarray:
+        """
+        Evaluate all B-spline basis functions at given parameter values.
+
+        Parameters
+        ----------
+        params : (M,) parameter values, typically in [0, 1].
+        knots  : (n_ctrl + degree + 1,) clamped knot vector.
+        degree : polynomial degree (usually 3).
+        n_ctrl : number of control points.
+
+        Returns
+        -------
+        B : (M, n_ctrl) basis matrix, B[k, i] = N_{i,p}(params[k]).
+        """
+        eps = 1e-12
+        M = len(params)
+        u_col = params[:, None]                             # (M, 1)
+
+        # -- degree 0: indicator on half-open knot spans ----------------
+        n_spans = n_ctrl + degree                           # = len(knots) - 1
+        left = knots[:n_spans]                              # (n_spans,)
+        right = knots[1 : n_spans + 1]                     # (n_spans,)
+        N = ((u_col >= left) & (u_col < right)).astype(np.float64)
+
+        # include right endpoint u == knots[-1]
+        N[params == knots[-1], -1] = 1.0
+
+        # -- recursion: degree 1 … p -----------------------------------
+        for d in range(1, degree + 1):
+            n_basis = n_ctrl + degree - d
+            left_denom = np.maximum(knots[d : d + n_basis] - knots[:n_basis], eps)
+            right_denom = np.maximum(
+                knots[d + 1 : d + 1 + n_basis] - knots[1 : 1 + n_basis], eps
+            )
+            left_coeff = (u_col - knots[:n_basis]) / left_denom
+            right_coeff = (knots[d + 1 : d + 1 + n_basis] - u_col) / right_denom
+
+            N_shifted = np.zeros((M, n_basis))
+            N_shifted[:, : min(n_basis, N.shape[1] - 1)] = N[:, 1 : 1 + n_basis]
+            N = left_coeff * N[:, :n_basis] + right_coeff * N_shifted
+
+        assert N.shape == (M, n_ctrl), (
+            f"Basis shape mismatch: expected ({M}, {n_ctrl}), got {N.shape}"
+        )
+        return N
+
+    # ---------------------------------------------------------------
+
+    @staticmethod
+    def create_knot_vector(
+        n_ctrl: int,
+        degree: int,
+        params: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """
+        Build a clamped knot vector.
+
+        When *params* is provided the internal knots are placed via
+        the averaging method (Piegl & Tiller, Eq. 9.68).  The parameter
+        array is automatically sub-sampled to ≤ 1 000 values to avoid
+        artefacts from clustered distributions (e.g. spherical UV).
+
+        Parameters
+        ----------
+        n_ctrl : number of control points.
+        degree : polynomial degree.
+        params : (N,) optional sorted parameter values in [0, 1].
+
+        Returns
+        -------
+        knots : (n_ctrl + degree + 1,) clamped, non-decreasing.
+        """
+        n_knots = n_ctrl + degree + 1
+        knots = np.zeros(n_knots, dtype=np.float64)
+        knots[-degree - 1 :] = 1.0
+
+        n_internal = n_ctrl - degree - 1
+        if n_internal <= 0:
+            return knots
+
+        if params is not None and len(params) > 1:
+            # Sub-sample to avoid clustering artefacts
+            p_sorted = np.sort(params)
+            max_samples = 1000
+            if len(p_sorted) > max_samples:
+                idx = np.linspace(0, len(p_sorted) - 1, max_samples).astype(int)
+                p_sorted = p_sorted[idx]
+            N_p = len(p_sorted)
+            d_step = (N_p + 1) / (n_internal + 1)
+            for j in range(1, n_internal + 1):
+                fval = j * d_step
+                i = int(fval)
+                alpha = fval - i
+                i = min(i, N_p - 2)
+                knots[degree + j] = (1 - alpha) * p_sorted[i] + alpha * p_sorted[i + 1]
+        else:
+            knots[degree + 1 : degree + 1 + n_internal] = np.linspace(
+                0, 1, n_internal + 2
+            )[1:-1]
+
+        # Enforce clamping invariants
+        knots[: degree + 1] = 0.0
+        knots[-degree - 1 :] = 1.0
+        assert np.all(np.diff(knots) >= -1e-10), "Knot vector not non-decreasing"
+        return knots
+
+
+
+# ---------------------------------------------------------------------------
+#  Surface fitter
+# ---------------------------------------------------------------------------
+
+class BSplineSurfaceFitter:
+    """
+    Regularised least-squares B-spline surface fitting.
+
+    Two entry points:
+
+    * ``fit()``           – scattered 3-D points with UV parameterisation.
+    * ``fit_from_grid()`` – data already on a regular UV grid (fast
+                            separable solver).
+
+    Both solve for control points P that minimise
+
+        Σ_k ‖S(u_k, v_k) − Q_k‖² + λ · ‖L P‖²
+
+    where *L* is a discrete thin-plate regulariser.
+    """
+
+    def __init__(
+        self,
+        n_ctrl_u: int = 32,
+        n_ctrl_v: int = 32,
+        degree_u: int = 3,
+        degree_v: int = 3,
+        smoothing: float = 0.01,
+        data_dependent_knots: bool = True,
+    ):
+        self.n_ctrl_u = n_ctrl_u
+        self.n_ctrl_v = n_ctrl_v
+        self.degree_u = degree_u
+        self.degree_v = degree_v
+        self.smoothing = smoothing
+        self.data_dependent_knots = data_dependent_knots
+
+    # ===================================================================
+    #  PUBLIC: scattered data
+    # ===================================================================
+
+    def fit(
+        self,
+        points: np.ndarray,
+        uv_params: np.ndarray,
+        colors: Optional[np.ndarray] = None,
+        point_weights: Optional[np.ndarray] = None,
+    ) -> BSplineFitResult:
+        """
+        Fit a B-spline surface to **scattered** 3-D points.
+
+        Parameters
+        ----------
+        points        : (N, 3) world-space positions.
+        uv_params     : (N, 2) parameter values in [0, 1]².
+        colors        : (N, 3) optional RGB.
+        point_weights : (N,)   optional per-point importance weights.
+        """
+        N = len(points)
+        Hu, Wv = self.n_ctrl_u, self.n_ctrl_v
+        du = min(self.degree_u, Hu - 1)
+        dv = min(self.degree_v, Wv - 1)
+
+        # --- Knot vectors -------------------------------------------------
+        if self.data_dependent_knots:
+            knots_u = BSplineBasis.create_knot_vector(Hu, du, uv_params[:, 0])
+            knots_v = BSplineBasis.create_knot_vector(Wv, dv, uv_params[:, 1])
+        else:
+            knots_u = BSplineBasis.create_knot_vector(Hu, du)
+            knots_v = BSplineBasis.create_knot_vector(Wv, dv)
+
+        # --- Basis matrices -----------------------------------------------
+        Bu = BSplineBasis.evaluate(uv_params[:, 0], knots_u, du, Hu)  # (N, Hu)
+        Bv = BSplineBasis.evaluate(uv_params[:, 1], knots_v, dv, Wv)  # (N, Wv)
+
+        # --- Sparse collocation matrix (vectorised chunks) ----------------
+        A = self._build_collocation_sparse(Bu, Bv, Hu, Wv)
+
+        # --- Normal equations LHS -----------------------------------------
+        if point_weights is not None:
+            W_diag = diags(point_weights.astype(np.float64))
+            AtWA = A.T @ W_diag @ A
+        else:
+            AtWA = A.T @ A
+            W_diag = None
+
+        L = self._build_regularization_matrix_full(Hu, Wv)
+        lhs = AtWA + self.smoothing * (L.T @ L)
+
+        # --- Solve per coordinate -----------------------------------------
+        n_total = Hu * Wv
+        ctrl_pts = np.zeros((n_total, 3))
+        for dim in range(3):
+            d_vec = points[:, dim]
+            rhs = (A.T @ (W_diag @ d_vec)) if W_diag is not None else (A.T @ d_vec)
+            result = lsqr(lhs, rhs, atol=1e-10, btol=1e-10)
+            ctrl_pts[:, dim] = result[0]
+
+        ctrl_grid = ctrl_pts.reshape(Hu, Wv, 3)
+
+        # --- Colours (same system) ----------------------------------------
+        if colors is not None:
+            ctrl_colors = np.zeros((n_total, 3))
+            for dim in range(3):
+                d_vec = colors[:, dim]
+                rhs = (A.T @ (W_diag @ d_vec)) if W_diag is not None else (A.T @ d_vec)
+                result = lsqr(lhs, rhs, atol=1e-10, btol=1e-10)
+                ctrl_colors[:, dim] = result[0]
+            ctrl_colors_grid = np.clip(ctrl_colors.reshape(Hu, Wv, 3), 0, 1)
+        else:
+            ctrl_colors_grid = np.full((Hu, Wv, 3), 0.5)
+
+        # --- Residual -----------------------------------------------------
+        fitted = A @ ctrl_pts
+        residual = float(np.sqrt(np.mean(np.sum((fitted - points) ** 2, axis=1))))
+
+        return BSplineFitResult(
+            control_points=ctrl_grid.astype(np.float32),
+            control_colors=ctrl_colors_grid.astype(np.float32),
+            knots_u=knots_u.astype(np.float32),
+            knots_v=knots_v.astype(np.float32),
+            degree_u=du,
+            degree_v=dv,
+            residual_rms=residual,
+            parameterization=uv_params,
+        )
+
+    # ===================================================================
+    #  PUBLIC: gridded data (fast separable solver)
+    # ===================================================================
+
+    def fit_from_grid(
+        self,
+        grid_xyz: np.ndarray,
+        grid_rgb: np.ndarray,
+        n_ctrl_u: Optional[int] = None,
+        n_ctrl_v: Optional[int] = None,
+    ) -> BSplineFitResult:
+        """
+        Fit a B-spline surface to **regularly-gridded** data.
+
+        Exploits the tensor-product structure for an O(res · n²) separable
+        solve instead of the O(res² · n²) general case.
+
+        NOTE: uses axis-aligned regularisation only (no cross-derivative)
+        because the separable solver requires L = L_u ⊗ I + I ⊗ L_v.
+
+        Parameters
+        ----------
+        grid_xyz : (res_u, res_v, 3) gridded 3-D positions.
+        grid_rgb : (res_u, res_v, 3) gridded RGB colours.
+        n_ctrl_u : control points in U (defaults to ``self.n_ctrl_u``).
+        n_ctrl_v : control points in V (defaults to ``self.n_ctrl_v``).
+        """
+        res_u, res_v, _ = grid_xyz.shape
+        Hu = n_ctrl_u if n_ctrl_u is not None else min(self.n_ctrl_u, res_u)
+        Wv = n_ctrl_v if n_ctrl_v is not None else min(self.n_ctrl_v, res_v)
+        du = min(self.degree_u, Hu - 1)
+        dv = min(self.degree_v, Wv - 1)
+
+        # Uniform parameterisation on the grid
+        u_params = np.linspace(0.0, 1.0, res_u)
+        v_params = np.linspace(0.0, 1.0, res_v)
+
+        knots_u = BSplineBasis.create_knot_vector(Hu, du, u_params)
+        knots_v = BSplineBasis.create_knot_vector(Wv, dv, v_params)
+
+        Bu = BSplineBasis.evaluate(u_params, knots_u, du, Hu)  # (res_u, Hu)
+        Bv = BSplineBasis.evaluate(v_params, knots_v, dv, Wv)  # (res_v, Wv)
+
+        # 1-D second-difference regularisation matrices
+        D2u = self._second_diff_1d(Hu)
+        D2v = self._second_diff_1d(Wv)
+
+        lhs_u = Bu.T @ Bu + self.smoothing * (D2u.T @ D2u)  # (Hu, Hu)
+        lhs_v = Bv.T @ Bv + self.smoothing * (D2v.T @ D2v)  # (Wv, Wv)
+
+        ctrl_xyz = np.zeros((Hu, Wv, 3))
+        ctrl_rgb = np.zeros((Hu, Wv, 3))
+
+        for dim in range(3):
+            # Position
+            rhs = Bu.T @ grid_xyz[:, :, dim] @ Bv          # (Hu, Wv)
+            Z = np.linalg.solve(lhs_u, rhs)                # lhs_u Z = rhs
+            ctrl_xyz[:, :, dim] = np.linalg.solve(lhs_v, Z.T).T
+
+            # Colour
+            rhs_c = Bu.T @ grid_rgb[:, :, dim] @ Bv
+            Z_c = np.linalg.solve(lhs_u, rhs_c)
+            ctrl_rgb[:, :, dim] = np.linalg.solve(lhs_v, Z_c.T).T
+
+        ctrl_rgb = np.clip(ctrl_rgb, 0.0, 1.0)
+
+        # Residual
+        residual = self._compute_grid_residual(grid_xyz, ctrl_xyz, Bu, Bv)
+
+        # Parameterisation grid for the result container
+        uu, vv = np.meshgrid(u_params, v_params, indexing="ij")
+        uv_grid = np.stack([uu, vv], axis=-1).reshape(-1, 2)
+
+        return BSplineFitResult(
+            control_points=ctrl_xyz.astype(np.float32),
+            control_colors=ctrl_rgb.astype(np.float32),
+            knots_u=knots_u.astype(np.float32),
+            knots_v=knots_v.astype(np.float32),
+            degree_u=du,
+            degree_v=dv,
+            residual_rms=residual,
+            parameterization=uv_grid,
+        )
+
+    # ===================================================================
+    #  PUBLIC: verify NumPy ↔ PyTorch basis consistency
+    # ===================================================================
+
+    def verify_basis_consistency(
+        self,
+        knots_u: np.ndarray,
+        knots_v: np.ndarray,
+        Hu: int,
+        Wv: int,
+        du: int,
+        dv: int,
+        n_test: int = 50,
+        atol: float = 1e-5,
+    ) -> bool:
+        """
+        Check that the NumPy basis agrees with the PyTorch backend.
+
+        Returns True if they match, False (with a warning) otherwise.
+        """
+        try:
+            import torch
+            from modules.utils.BSpline import cox_de_boor_basis_and_derivative
+        except ImportError:
+            return True  # cannot verify without PyTorch / project on path
+
+        u_test = np.linspace(0.01, 0.99, n_test)
+        Bu_np = BSplineBasis.evaluate(u_test, knots_u, du, Hu)
+        Bv_np = BSplineBasis.evaluate(
+            np.linspace(0.01, 0.99, n_test), knots_v, dv, Wv
+        )
+
+        ku_t = torch.tensor(knots_u, dtype=torch.float64)
+        kv_t = torch.tensor(knots_v, dtype=torch.float64)
+        Bu_pt, _, _ = cox_de_boor_basis_and_derivative(
+            torch.tensor(u_test, dtype=torch.float64), du, ku_t
+        )
+        Bv_pt, _, _ = cox_de_boor_basis_and_derivative(
+            torch.tensor(np.linspace(0.01, 0.99, n_test), dtype=torch.float64),
+            dv, kv_t,
+        )
+
+        ok_u = np.allclose(Bu_np, Bu_pt.numpy(), atol=atol)
+        ok_v = np.allclose(Bv_np, Bv_pt.numpy(), atol=atol)
+        if not (ok_u and ok_v):
+            diff_u = np.max(np.abs(Bu_np - Bu_pt.numpy()))
+            diff_v = np.max(np.abs(Bv_np - Bv_pt.numpy()))
+            warnings.warn(
+                f"[BSplineFitter] Basis mismatch! max|Δu|={diff_u:.2e}, "
+                f"max|Δv|={diff_v:.2e}. Fitting ↔ rendering will diverge."
+            )
+            return False
+        return True
+
+    # ===================================================================
+    #  PRIVATE helpers
+    # ===================================================================
+
+    @staticmethod
+    def _build_collocation_sparse(
+        Bu: np.ndarray,
+        Bv: np.ndarray,
+        Hu: int,
+        Wv: int,
+        chunk_size: int = 8192,
+        threshold: float = 1e-15,
+    ) -> csr_matrix:
+        """
+        Chunked, vectorised construction of the sparse tensor-product
+        collocation matrix A[k, i*Wv + j] = Bu[k,i] · Bv[k,j].
+        """
+        N = Bu.shape[0]
+        n_total = Hu * Wv
+        all_rows, all_cols, all_vals = [], [], []
+
+        for s in range(0, N, chunk_size):
+            e = min(s + chunk_size, N)
+            outer = Bu[s:e, :, None] * Bv[s:e, None, :]   # (C, Hu, Wv)
+            flat = outer.reshape(e - s, -1)                 # (C, Hu*Wv)
+            nz_k, nz_ij = np.nonzero(np.abs(flat) > threshold)
+            all_rows.append(nz_k + s)
+            all_cols.append(nz_ij)
+            all_vals.append(flat[nz_k, nz_ij])
+
+        rows = np.concatenate(all_rows)
+        cols = np.concatenate(all_cols)
+        vals = np.concatenate(all_vals)
+        return csr_matrix((vals, (rows, cols)), shape=(N, n_total))
+
+    @staticmethod
+    def _build_regularization_matrix_full(Hu: int, Wv: int) -> csr_matrix:
+        """
+        Full 2-D thin-plate regularisation:
+
+            ‖d²P/du²‖² + ‖d²P/dv²‖² + 2·‖d²P/dudv‖²
+
+        Includes the cross-derivative term that penalises diagonal
+        oscillations — critical when UV axes don't align with principal
+        curvature directions.
+        """
+        n = Hu * Wv
+        _idx = lambda i, j: i * Wv + j  # noqa: E731
+
+        # --- d²P/du² --------------------------------------------------
+        ru, cu, vu = [], [], []
+        eq = 0
+        for i in range(1, Hu - 1):
+            for j in range(Wv):
+                ru.extend([eq, eq, eq])
+                cu.extend([_idx(i - 1, j), _idx(i, j), _idx(i + 1, j)])
+                vu.extend([1.0, -2.0, 1.0])
+                eq += 1
+        D2u = csr_matrix((vu, (ru, cu)), shape=(eq, n))
+
+        # --- d²P/dv² --------------------------------------------------
+        rv, cv, vv = [], [], []
+        eq = 0
+        for i in range(Hu):
+            for j in range(1, Wv - 1):
+                rv.extend([eq, eq, eq])
+                cv.extend([_idx(i, j - 1), _idx(i, j), _idx(i, j + 1)])
+                vv.extend([1.0, -2.0, 1.0])
+                eq += 1
+        D2v = csr_matrix((vv, (rv, cv)), shape=(eq, n))
+
+        # --- d²P/dudv  (√2 weight because we square via LᵀL) ----------
+        ruv, cuv, vuv = [], [], []
+        eq = 0
+        w = np.sqrt(2.0)
+        for i in range(Hu - 1):
+            for j in range(Wv - 1):
+                ruv.extend([eq, eq, eq, eq])
+                cuv.extend([
+                    _idx(i, j), _idx(i, j + 1),
+                    _idx(i + 1, j), _idx(i + 1, j + 1),
+                ])
+                vuv.extend([w, -w, -w, w])
+                eq += 1
+        D2uv = csr_matrix((vuv, (ruv, cuv)), shape=(eq, n))
+
+        return sparse_vstack([D2u, D2v, D2uv], format="csr")
+
+    @staticmethod
+    def _second_diff_1d(n: int) -> np.ndarray:
+        """1-D second-difference matrix  (n-2, n)."""
+        if n < 3:
+            return np.zeros((0, n))
+        D = np.zeros((n - 2, n))
+        for i in range(n - 2):
+            D[i, i] = 1.0
+            D[i, i + 1] = -2.0
+            D[i, i + 2] = 1.0
+        return D
+
+    @staticmethod
+    def _compute_grid_residual(
+        grid_xyz: np.ndarray,
+        ctrl_pts: np.ndarray,
+        Bu: np.ndarray,
+        Bv: np.ndarray,
+    ) -> float:
+        """RMS fitting error on gridded data:  ‖Bu P Bv^T − Grid‖."""
+        fitted = np.zeros_like(grid_xyz)
+        for dim in range(3):
+            fitted[:, :, dim] = Bu @ ctrl_pts[:, :, dim] @ Bv.T
+        return float(np.sqrt(np.mean(np.sum((fitted - grid_xyz) ** 2, axis=-1))))
 # =============================================================================
 # Adaptive Sampling Generator
 # =============================================================================
@@ -2085,7 +2834,22 @@ class AdaptiveSamplingGenerator:
     # Main Interface
     # =============================================================================
 
-
+def extract_component_faces(faces, component_indices):
+    """Extract faces where all 3 vertices belong to the component."""
+    if faces is None:
+        return None
+    index_set = set(component_indices.tolist())
+    # Remap global vertex indices to local [0..len(component_indices))
+    global_to_local = {g: l for l, g in enumerate(component_indices)}
+    local_faces = []
+    for f in faces:
+        if f[0] in index_set and f[1] in index_set and f[2] in index_set:
+            local_faces.append([global_to_local[f[0]],
+                                global_to_local[f[1]],
+                                global_to_local[f[2]]])
+    if len(local_faces) == 0:
+        return None
+    return np.array(local_faces, dtype=np.int64)
 class NURBSFromPointCloud:
     """Main interface for creating NURBS surfaces from point clouds."""
 
@@ -2514,7 +3278,9 @@ def create_nurbs_from_pointcloud(
         bg_resolution_scale: float = 0.5,
         object_resolution_scale: float = 2.0,
         parameterization: str = "spherical",
-        cameras: Optional[List] = None,  # NEW
+        faces=None,
+        use_least_squares=True,
+        cameras: Optional[List] = None,
         **kwargs,
 ) -> MultiSurfaceResult:
     """Convenience function to create NURBS surface(s) from point cloud.
@@ -2547,12 +3313,13 @@ def create_nurbs_from_pointcloud(
         **{k: v for k, v in kwargs.items() if hasattr(SurfaceConfig, k)},
     )
 
+
     creator = NURBSFromPointCloud(config)
     return creator.create_surfaces(
-        points,
-        colors,
-        mode,
+        points, colors, mode,
         cameras=cameras,
+        faces=faces,
+        use_least_squares=use_least_squares,
         generate_adaptive_samples=generate_adaptive_samples,
     )
 

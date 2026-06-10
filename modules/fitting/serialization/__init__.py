@@ -129,7 +129,7 @@ def restore_spline_model(model, state_dict: Dict, train_mode: bool = False, devi
     state_config = state_dict['state']
 
     # Reconstruct opt
-    from arguments import NurbsOptimizationParams
+    from arguments.nurbs_params import NurbsOptimizationParams
     opt = NurbsOptimizationParams()
     if 'opt_dict' in state_config:
         for k, v in state_config['opt_dict'].items():
@@ -330,7 +330,6 @@ def load_model(path: str, eval_mode: bool = True, device: str = 'cuda'):
     state_dict, i = torch.load(path,
                weights_only=False,
                map_location='cuda')
-    ##, map_location='cpu')
 
     # Handle tuple format (iteration, state_dict)
     if isinstance(state_dict, tuple):
@@ -340,10 +339,6 @@ def load_model(path: str, eval_mode: bool = True, device: str = 'cuda'):
     for surf_state in state_dict['surfaces']:
         model = SplineModel(late_init=True)
         model.restore(surf_state, train_model=not eval_mode)
-
-        # === CRITICAL:  Initialize basis and caches ===
-        # _initialize_surface_after_restore(model, device)
-
         surfaces.append(model)
 
     multi_model = MultiSurfaceSplineModel(
@@ -361,8 +356,8 @@ def load_model(path: str, eval_mode: bool = True, device: str = 'cuda'):
     # Update surface offsets
     multi_model._update_surface_offsets()
 
-    if eval_mode:
-        multi_model.eval()
+    if not eval_mode:
+        multi_model.training_setup()
 
     return multi_model
 

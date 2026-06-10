@@ -35,7 +35,8 @@ def erode(bin_img, ksize=5):
     return out
 
 
-def plot_render_outputs(render_dict, nurbs_prop_dict, gt_image, nurbs: 'MultiSurfaceSplineModel', uid=None, title=None):
+def plot_render_outputs(render_dict, nurbs_prop_dict, gt_image, nurbs: 'MultiSurfaceSplineModel', uid=None, title=None,
+                        save_path=None, show=True):
     """
     Side-by-side visualization:
     - Left (50%): High-res renders (GT, RGB, normals, depth) → stacked vertically
@@ -244,5 +245,10 @@ def plot_render_outputs(render_dict, nurbs_prop_dict, gt_image, nurbs: 'MultiSur
     # ------------------------------------------------------------------ #
     suptitle = title + " — Renders (left) | Grid Fields (right)" if title else "Render vs Grid Diagnostics"
     fig.suptitle(suptitle, fontsize=18, y=0.98)
-    # plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.show()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=120, bbox_inches='tight')
+    if show:
+        plt.show()
+    # Always release the figure: repeated calls in the training loop
+    # otherwise accumulate matplotlib state and leak memory.
+    plt.close(fig)

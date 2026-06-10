@@ -3,8 +3,8 @@ from typing import Tuple, Optional
 
 import torch
 
-from arguments import NurbsOptimizationParams
-MAX_DENSITY = 1.0
+from arguments.nurbs_params import NurbsOptimizationParams
+MAX_DENSITY = 8.0
 import opt_einsum as oe
 
 
@@ -51,8 +51,7 @@ class ModelState:
         self.surf_uid = surf_uid
         self.is_background = kwargs.get('is_background', False)
         self.label = kwargs.get('label', f'surface_{surf_uid}')
-        sampling_density = opt.sampling_density if sampling_density is None else sampling_density
-        self.resolution = sampling_density
+        sampling_density = opt.sampling_density# if sampling_density is None else sampling_density
         self.sampling_density = int(sampling_density) if opt.random_sampling else sampling_density
         self.max_sampling_density = 1. if self.is_background else MAX_DENSITY
         self._H = H
@@ -312,7 +311,7 @@ class ModelState:
 
     @property
     def use_bmm(self):
-        return False
+        return True
     @property
     def full_basis(self):
         return self._use_full_grid

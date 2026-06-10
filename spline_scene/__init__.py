@@ -14,7 +14,8 @@ import random
 import os
 
 
-from arguments import ModelParams, NurbsOptimizationParams
+from arguments.nurbs_params import NurbsOptimizationParams
+from arguments import ModelParams
 from modules.multisurf import MultiSurfaceSplineModel
 from modules.fitting.nurbs_from_pointcloud import DecompositionMode
 # from modules.uv_consistency import MultiViewPrecomputedUVLoss, PrecomputedCorrespondences, get_neighbor_cameras, \
@@ -153,19 +154,13 @@ def visualize_unprojection(camera_points, cam_centers):
     plt.show()
 
 class SplineScene:
-    gaussians: GaussianModel
-
-    def __init__(self, args: ModelParams, config: NurbsOptimizationParams, load_iteration=None, resolution_scales=[1.0], shuffle=True,
-                 late_init=False, **kwargs):
+    def __init__(self, args, config, load_iteration=None, resolution_scales=[1.0],
+                 shuffle=True, late_init=False, **kwargs):
 
         """b
         :param late_init:
         :param path: Path to colmap scene main folder.
         """
-
-        # === NEW:  Correspondence storage ===
-        # self.correspondences: PrecomputedCorrespondences = None
-        # self.uv_consistency_loss: MultiViewPrecomputedUVLoss = None
 
         self.train_cameras = {}
         self.test_cameras = {}
@@ -212,10 +207,12 @@ class SplineScene:
         self.multi_view_num = args.multi_view_num
         for resolution_scale in resolution_scales:
             print("Loading Training Cameras")
-            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
-            # self.train_cameras[resolution_scale] = train_cams[::2]
+            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale,
+                                                                            args)
             print("Loading Test Cameras")
-            self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
+            self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale,
+                                                                           args)
+
             print("computing nearest_id")
             self.world_view_transforms = []
             camera_centers = []
@@ -253,318 +250,77 @@ class SplineScene:
                     json_str = json.dumps(json_d, separators=(',', ':'))
                     file.write(json_str)
                     file.write('\n')
+                    #
 
-        DECOMPOSITIONS = {
-            "single": DecompositionMode.SINGLE,
-            "kcc": DecompositionMode.K_COMPONENTS,
-            # "adaptive": DecompositionMode.ADAPTIVE,
-            "background": DecompositionMode.BACKGROUND_OBJECT
-        }
-        # Get point cloud data
-        # pcd = self.pcd.points  # ndarray (N,3)
-        # pcd_rgb = self.pcd.colors  # ndarray (N,3)
+
         pcd = self.pcd.points
-        rgb = self.pcd.colors
-        # dists = distCUDA2(torch.from_numpy(np.asarray(pcd)).float().cuda())
-
-        # lower = np.percentile(dists.cpu().numpy(), q=.)
-        # upper = np.percentile(dists.cpu().numpy(), q=99)
-
-        # density_mask = (dists.cpu() < upper) #& (dists.cpu() > lower)
-        # pcd = pcd[density_mask.numpy()]
-        # Filter outliers out of nerf normalization radius:
-        # center = torch.from_numpy(np.asarray(scene_info.nerf_normalization['translate'])).float().cuda()
-        # pcd_tensor = torch.from_numpy(pcd).float().cuda()
-        # dist_to_center = torch.norm(pcd_tensor - center, dim=-1)
-        # radius_mask = dist_to_center < self.cameras_extent * 3
-        # pcd = pcd[radius_mask.cpu().numpy()]
-        # rgb = rgb[radius_mask.cpu().numpy()]
-
-
-
-        decomposition_mode = DECOMPOSITIONS[config.decomposition_mode]
+        pcd_rgb = self.pcd.colors
         pcd, pcd_rgb, inlier_mask = remove_outliers_for_nurbs(
             pcd,
-            rgb,
-            decomposition_mode=decomposition_mode,
-            k_neighbors=8,
-            std_ratio=2.0,
-            min_cluster_size=64,
-        )
-
-        # decomposition_mode = DECOMPOSITIONS[config.decomposition_mode]
-        connectivity_radius = 0.005
-        n_components = 4
-        smoothing = 0.01
-        base_res=  config.base_res
-
-        DOWN_FACTOR = {
-            "single": 1,
-            "kcc": 2,
-            "adaptive": 1,
-            "background": 2
-        }
-        down_factor = DOWN_FACTOR[config.decomposition_mode]
-        res_u, res_v = int(base_res/down_factor), int(base_res/down_factor)
-        # --- Scene Scale Awareness (NEW) ---
-        print(f"Decomposition Mode: {config.decomposition_mode}")
-        self.splines = MultiSurfaceSplineModel.from_pointcloud(
-            pcd,
             pcd_rgb,
-            config,  # NurbsOptimizationParams
-            args,  # Training args
-            resolution=(res_u, res_v),
-            decomposition_mode=decomposition_mode,
-            nerf_radius=self.cameras_extent,
-            nerf_translate=scene_info.nerf_normalization['translate'],
-            train_cam_uids=list(set([cam.uid for cam in self.getTrainCameras()])),
-            cameras=self.getTrainCameras().copy(),
-            n_components=n_components,
-            connectivity_radius=connectivity_radius,
-            smoothing=smoothing,
-            sampling_factor=config.sampling_density,
-            base_resolution=128,
-            min_resolution=64,
-            target_density_per_unit=config.target_density_per_unit,
-            max_resolution=config.max_res,
-            parameterization=config.encode_points,
-            post_fit_iterations=config.post_fit_iterations,
-            post_fit_enabled=config.post_fit_enabled,
-
+            k_neighbors=8,
+            std_ratio=1.5,
+            min_cluster_size=128,
         )
+
+        smoothing = 0.01
+
+
+        if not late_init:
+            self.splines = MultiSurfaceSplineModel.from_pointcloud(
+                points=pcd,
+                colors=pcd_rgb,
+                config=config,  # NurbsOptimizationParams
+                args=args,  # Training args
+                # resolution=(128, 128),
+                nerf_radius=self.cameras_extent,
+                nerf_translate=scene_info.nerf_normalization['translate'],
+                train_cam_uids=list(set([cam.uid for cam in self.getTrainCameras()])),
+                cameras=self.getTrainCameras().copy(),
+                smoothing=smoothing,
+                sampling_resolution_factor=config.sampling_density,
+                base_resolution=config.base_res,
+                min_resolution=config.min_res,
+                max_resolution=config.max_res,
+                target_density_per_unit=config.target_density_per_unit,
+                parameterization=config.encode_points,
+                post_fit_iterations=config.post_fit_iterations,
+                post_fit_enabled=config.post_fit_enabled,
+
+            )
+        else:
+            # Late init: create minimal model, caller will inject control points
+            self.splines = None
+            self._pcd = pcd
+            self._pcd_rgb = pcd_rgb
+            self._init_kwargs = {
+                "config": config,
+                "args": args,
+                # "resolution": (res_u, res_v),
+                "point": pcd,
+                "colors": pcd_rgb,
+                "config": config,  # NurbsOptimizationParams
+                "args": args,  # Training args
+                # "resolution": (res_u, res_v),
+                # "decomposition_mode": decomposition_mode,
+                "nerf_radius": self.cameras_extent,
+                "nerf_translate": scene_info.nerf_normalization['translate'],
+                "train_cam_uids": list(set([cam.uid for cam in self.getTrainCameras()])),
+                "cameras": self.getTrainCameras().copy(),
+                "smoothing": smoothing,
+                "sampling_resolution_factor": config.sampling_density,
+                "base_resolution": config.base_res,
+                "min_resolution": config.min_res,
+                "max_resolution": config.max_res,
+                # "target_density_per_unit": config.target_density_per_unit,
+                "parameterization": config.encode_points,
+                "post_fit_iterations": config.post_fit_iterations,
+                "post_fit_enabled": config.post_fit_enabled,
+            }
+
         gc.collect()
         torch.cuda.empty_cache()
 
-    # =========================================================================
-    # NEW: UV Consistency Setup
-    # =========================================================================
-    #
-    # def _setup_uv_consistency(self, config):
-    #     """
-    #     Setup UV consistency loss using precomputed correspondences.
-    #
-    #     Workflow:
-    #     1. Check if correspondences file exists
-    #     2. If not, precompute and save
-    #     3. Load correspondences
-    #     4. Create loss module
-    #     """
-    #     # In SplineScene._setup_uv_consistency:
-    #     correspondences_path = os.path.join(self.model_path, "correspondences.pt")
-    #
-    #     # Delete old cache to force reprocessing
-    #     if os.path.exists(correspondences_path):
-    #         os.remove(correspondences_path)
-    #         print("[UV Consistency] Deleted old cache - will reprocess")
-    #
-    #     # Reprocess with ALL neighbors
-    #     self._precompute_correspondences(correspondences_path, config)
-    #
-    #     # Load correspondences
-    #     self.correspondences = CorrespondencePreprocessor.load(correspondences_path)
-    #
-    #     print(f"[UV Consistency] Loaded {self.correspondences.num_correspondences} correspondences "
-    #           f"across {self.correspondences.num_views} views")
-    #
-    #     # Create loss module
-    #     self.uv_consistency_loss = MultiViewPrecomputedUVLoss(
-    #         correspondences=self.correspondences,
-    #         max_neighbors=config.uv_consistency_max_neighbors,
-    #         loss_weight=config.uv_consistency_weight,
-    #         compute_every_n_iters=config.uv_consistency_interval,
-    #         device='cuda'
-    #     )
-
-
-    #
-    #
-    # def _precompute_correspondences(self, save_path: str, config):
-    #     """
-    #     Precompute feature correspondences from GT images.
-    #
-    #     This is run ONCE and cached for future training runs.
-    #     """
-    #     # Get training cameras
-    #     train_cams = self.getTrainCameras()
-    #
-    #     # Extract GT images
-    #     print(f"[Preprocessing] Extracting {len(train_cams)} GT images...")
-    #     images = {}
-    #     for cam in train_cams:
-    #         # Get original GT image
-    #         # Assuming cam.original_image is [C, H, W] tensor in [0, 1]
-    #         if hasattr(cam, 'original_image'):
-    #             img = cam.original_image
-    #             if isinstance(img, torch.Tensor):
-    #                 img = img.cpu().numpy()
-    #                 if img.shape[0] == 3:  # [C, H, W] -> [H, W, C]
-    #                     img = img.transpose(1, 2, 0)
-    #                 img = (img * 255).astype(np.uint8)
-    #             images[cam.uid] = img
-    #         else:
-    #             # Load from disk if not cached
-    #             img_path = cam.image_path if hasattr(cam, 'image_path') else None
-    #             if img_path and os.path.exists(img_path):
-    #                 from PIL import Image
-    #                 img = np.array(Image.open(img_path).convert('RGB'))
-    #                 images[cam.uid] = img
-    #             else:
-    #                 print(f"  Warning: Could not load image for camera {cam.uid}")
-    #
-    #     if len(images) < 2:
-    #         print("[Preprocessing] Not enough images for correspondence computation.  Skipping.")
-    #         # Save empty correspondences
-    #         empty_corr = PrecomputedCorrespondences(
-    #             correspondences=[],
-    #             view_to_correspondences={},
-    #             view_pair_to_matches={},
-    #             num_views=len(train_cams),
-    #             num_correspondences=0
-    #         )
-    #         torch.save(self._correspondences_to_dict(empty_corr), save_path)
-    #         return
-    #
-    #     # # Create preprocessor
-    #     # preprocessor = CorrespondencePreprocessor(
-    #     #     feature_type=getattr(config, 'uv_feature_type', 'sift'),
-    #     #     max_features=getattr(config, 'uv_max_features', 2000),
-    #     #     match_ratio_threshold=getattr(config, 'uv_match_ratio', 0.75),
-    #     #     min_matches=getattr(config, 'uv_min_matches', 20),
-    #     #     triangulation_reproj_threshold=4.0,
-    #     # use_fundamental_filter = True
-    #     # )
-    #     #
-    #     # # Process dataset
-    #     # self.correspondences = preprocessor.process_dataset(
-    #     #     images=images,
-    #     #     cameras=train_cams,
-    #     #     max_neighbors=getattr(config, 'uv_preprocess_max_neighbors', 3),
-    #     #     verbose=True
-    #     # )
-    #
-    #     # Save
-    #     preprocessor.save(self.correspondences, save_path)
-    #     print(f"[Preprocessing] Saved correspondences to {save_path}")
-    #
-    # def _correspondences_to_dict(self, corr: PrecomputedCorrespondences) -> dict:
-    #     """Helper to convert empty correspondences to saveable dict."""
-    #     return {
-    #         'correspondences': [],
-    #         'view_to_correspondences': {},
-    #         'view_pair_matches': {},
-    #         'num_views': corr.num_views,
-    #         'num_correspondences': 0
-    #     }
-    #
-    # # =========================================================================
-    # # NEW:  Methods for training integration
-    # # =========================================================================
-    #
-    # def compute_uv_consistency_loss(
-    #         self,
-    #         surface,  # SplineModel
-    #         current_cam,
-    #         neighbor_cams: list = None
-    # ):
-    #     """
-    #     Compute UV consistency loss for a view.
-    #
-    #     Call this in your training loop after forward pass.
-    #
-    #     Args:
-    #         surface: The SplineModel surface
-    #         current_cam: Current viewpoint camera
-    #         neighbor_cams: Optional list of neighbor cameras (uses cam.nearest_id if None)
-    #
-    #     Returns:
-    #         loss: Scalar tensor
-    #         stats: Dict with debugging info
-    #     """
-    #     if self.uv_consistency_loss is None:
-    #         return torch.tensor(0.0, device='cuda', requires_grad=True), {'skipped': True}
-    #
-    #     # Get neighbors if not provided
-    #     if neighbor_cams is None:
-    #         neighbor_cams = get_neighbor_cameras(
-    #             current_cam,
-    #             self.getTrainCameras(),
-    #             max_neighbors=2
-    #         )
-    #
-    #     return self.uv_consistency_loss(
-    #         surface=surface,
-    #         current_cam=current_cam,
-    #         neighbor_cams=neighbor_cams
-    #     )
-    #
-    # def get_uv_consistency_stats(self) -> dict:
-    #     """Get statistics about the precomputed correspondences."""
-    #     if self.correspondences is None:
-    #         return {'status': 'not_initialized'}
-    #
-    #     return {
-    #         'num_correspondences': self.correspondences.num_correspondences,
-    #         'num_views': self.correspondences.num_views,
-    #         'num_view_pairs': len(self.correspondences.view_pair_to_matches),
-    #         'avg_matches_per_pair': (
-    #                 sum(len(m.pixels_1) for m in self.correspondences.view_pair_to_matches.values())
-    #                 / max(1, len(self.correspondences.view_pair_to_matches))
-    #         )
-    #     }
-    # def update_camera_neighbors_by_visibility(self, visibility_system, num_neighbors=10):
-    #     """
-    #     Updates the 'nearest_id' for each camera based on the similarity of
-    #     their visibility vectors from the VisibilityMapper.
-    #
-    #     Args:
-    #         visibility_system (VisibilityMapper): The mapper containing the visibility matrix.
-    #         num_neighbors (int): The number of nearest neighbors to store for each camera.
-    #     """
-    #
-    #     # Get the visibility matrix [num_cameras, num_points]
-    #     visibility_matrix = visibility_system.visibility_matrix.float()
-    #     num_cameras = visibility_matrix.shape[0]
-    #
-    #     # Calculate pairwise intersection and union
-    #     # Intersection: (A & B) = A * B
-    #     intersection = visibility_matrix @ visibility_matrix.T
-    #
-    #     # Union: (A | B) = |A| + |B| - (A & B)
-    #     # We can calculate the size of each visibility vector first
-    #     visibility_counts = visibility_matrix.sum(dim=1, keepdim=True)
-    #     # Union is calculated using broadcasting
-    #     union = visibility_counts + visibility_counts.T - intersection
-    #
-    #     # Jaccard Similarity = Intersection / Union
-    #     jaccard_similarity = intersection / (union + 1e-6)  # Add epsilon to avoid division by zero
-    #
-    #     # Exclude self-similarity
-    #     jaccard_similarity.fill_diagonal_(0)
-    #
-    #     # Find the top K most similar cameras for each camera
-    #     top_k_similarities, top_k_indices = torch.topk(
-    #         jaccard_similarity, k=min(num_neighbors, num_cameras - 1), dim=1
-    #     )
-    #
-    #     # Update the nearest_id for each camera object
-    #     all_cameras = self.getTrainCameras()
-    #     for i, cam in enumerate(all_cameras):
-    #         # Filter out neighbors with zero similarity
-    #         valid_mask = top_k_similarities[i] > 0
-    #         cam.nearest_id = top_k_indices[i][valid_mask].tolist()
-    #
-    # def update_camera_neighbors_by_visibility_by_grid(self, visibility_grids, num_neighbors=None):
-    #     num_neighbors = self.multi_view_num if num_neighbors is None else num_neighbors
-    #     for cam in self.getTrainCameras():
-    #         vis_ref = visibility_grids[cam.uid]
-    #         ious = []
-    #         for other_uid, vis_other in visibility_grids.items():
-    #             if other_uid == cam.uid: continue
-    #             intersection = (vis_ref & vis_other).sum().float()
-    #             union = (vis_ref | vis_other).sum().float()
-    #             iou = intersection / (union + 1e-8)
-    #             ious.append((other_uid, iou))
-    #         cam.nearest_id = [uid for uid, _ in sorted(ious, key=lambda x: x[1], reverse=True)[:num_neighbors]]
     def get_splines(self) -> MultiSurfaceSplineModel:
         return self.splines
 
@@ -1184,22 +940,16 @@ def remove_outliers_for_nurbs(
     at potential surface boundaries to avoid removing valid edge points.
     """
 
-    if decomposition_mode == DecompositionMode.SINGLE:
-        # Standard filtering for single surface
-        return remove_sparse_outliers_advanced(
-            pcd, pcd_rgb,
-            **kwargs
-        )
+    # if decomposition_mode == DecompositionMode.SINGLE:
+    # # Standard filtering for single surface
+    # return remove_sparse_outliers_advanced(
+    #     pcd, pcd_rgb,
+    #     **kwargs
+    # )
 
-    elif decomposition_mode in [DecompositionMode.BACKGROUND_OBJECT, DecompositionMode.K_COMPONENTS]:
-        # More conservative filtering for multi-surface
-        # First pass: remove obvious outliers
-        pcd_clean, rgb_clean, mask1 = remove_sparse_outliers_advanced(
-            pcd, pcd_rgb,
-            **kwargs
-        )
+    pcd_clean, rgb_clean, mask1 = remove_sparse_outliers_advanced(
+        pcd, pcd_rgb,
+        **kwargs
+    )
 
-        return pcd_clean, rgb_clean, mask1
-
-    else:
-        raise ValueError(f"Unknown decomposition mode: {decomposition_mode}")
+    return pcd_clean, rgb_clean, mask1

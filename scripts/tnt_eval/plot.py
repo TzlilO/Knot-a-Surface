@@ -72,7 +72,7 @@ def plot_graph(
         linewidth=2.0,
     )
 
-    ax.sampling_grid(True)
+    ax.grid(True)
     plt.rcParams["figure.figsize"] = plt_size
     plt.rc("axes", prop_cycle=cycler("color", ["r", "g", "b", "y"]))
     plt.title("Precision and Recall: " + scene + ", " + "%02.2f f-score" %
