@@ -94,15 +94,15 @@ class ControlFeature(nn.Module):
     ):
         # === PE Configuration (kept for backward compat, rarely used) ===
         self.use_pe = kwargs.get('use_pe', False)
-        self.pe_type = kwargs.get('pe_type', 'improved')
+        self.pe_type = kwargs.get('pe_type', None)#'improved')
         self.pe_levels = kwargs.get('pe_levels', 4)
-        self.pe_include_input = kwargs.get('pe_include_input', True)
-        self.pe_log_sampling = kwargs.get('pe_log_sampling', True)
+        self.pe_include_input = kwargs.get('pe_include_input', False)
+        self.pe_log_sampling = kwargs.get('pe_log_sampling', False)
         self.pe_learnable_freqs = kwargs.get('pe_learnable_freqs', False)
-        self.pe_use_residual = kwargs.get('pe_use_residual', True)
+        self.pe_use_residual = kwargs.get('pe_use_residual', False)
         self.pe_freq_scale = kwargs.get('pe_freq_scale', 0.5)
         self.pe_max_freq = kwargs.get('pe_max_freq', None)
-        self.pe_num_features = kwargs.get('pe_num_features', 128)
+        self.pe_num_features = kwargs.get('pe_num_features', 1)
         self.pe_sigma = kwargs.get('pe_sigma', 1.0)
 
         super().__init__()
@@ -195,8 +195,8 @@ class ControlFeature(nn.Module):
         if fused_available(self.state, self.basis, grid):
             # Fused local-support CUDA kernel; [0] = value contraction.
             raw = fused_contract(grid, self.basis, self.state.H, self.state.W)[0]
-        elif self.state.use_bmm:
-            raw = self._interpolate_bmm(self.basis.bu, self.basis.bv, grid)
+        # elif self.state.use_bmm:
+        #     raw = self._interpolate_bmm(self.basis.bu, self.basis.bv, grid)
         else:
             raw = oe.contract(
                 self.basis.contract_path,
@@ -207,22 +207,22 @@ class ControlFeature(nn.Module):
 
         prod = self.activation(raw.contiguous())
         return prod.reshape(-1, self.feature_channels)
-
-    def _interpolate_bmm(
-        self,
-        Bu: torch.Tensor,
-        Bv: torch.Tensor,
-        ctrl_points: torch.Tensor,
-    ) -> torch.Tensor:
-        """BMM-based separable interpolation: Bu @ P @ Bv^T."""
-        H, W, C = ctrl_points.shape
-        Us = Bu.shape[0]
-
-        P_2d = ctrl_points.reshape(H, W * C)
-        step1 = torch.mm(Bu, P_2d)                          # [Us, W*C]
-        step1 = step1.reshape(Us, W, C).permute(0, 2, 1).reshape(Us * C, W)
-        step2 = torch.mm(step1, Bv.T)                       # [Us*C, Vs]
-        return step2.reshape(Us, C, -1).permute(0, 2, 1).contiguous()
+    #
+    # def _interpolate_bmm(
+    #     self,
+    #     Bu: torch.Tensor,
+    #     Bv: torch.Tensor,
+    #     ctrl_points: torch.Tensor,
+    # ) -> torch.Tensor:
+    #     """BMM-based separable interpolation: Bu @ P @ Bv^T."""
+    #     H, W, C = ctrl_points.shape
+    #     Us = Bu.shape[0]
+    #
+    #     P_2d = ctrl_points.reshape(H, W * C)
+    #     step1 = torch.mm(Bu, P_2d)                          # [Us, W*C]
+    #     step1 = step1.reshape(Us, W, C).permute(0, 2, 1).reshape(Us * C, W)
+    #     step2 = torch.mm(step1, Bv.T)                       # [Us*C, Vs]
+    #     return step2.reshape(Us, C, -1).permute(0, 2, 1).contiguous()
 
     # ------------------------------------------------------------------
     # Blending (alpha for temporal smoothing after subdivision)

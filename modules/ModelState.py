@@ -311,7 +311,7 @@ class ModelState:
 
     @property
     def use_bmm(self):
-        return True
+        return False
     @property
     def full_basis(self):
         return self._use_full_grid

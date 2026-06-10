@@ -36,8 +36,8 @@ class NurbsOptimizationParams(OptimizationParams):
         self.quat_smooth_from = 0
         self.normal_smooth_from = 0
         self.normal_dev_from = 0
-        self.local_planar_deviation_weight = 0.1
-        self.local_planar_deviation_from = 7000
+        self.local_planar_deviation_weight = 0.
+        self.local_planar_deviation_from = 70000
 
 
         self.use_pe_sampling = False
@@ -48,7 +48,7 @@ class NurbsOptimizationParams(OptimizationParams):
         self.pe_log_sampling = False
         self.pe_max_freq = 8  # Enable PE mode
         self.pe_levels = 4  # Number of frequency levels
-        self.pe_include_input = True  # Include identity term
+        self.pe_include_input = False  # Include identity term
         self.pe_learnable_freqs = False  # Make frequencies learnable
         self.discrepancy_from_iter = 70_000
         self.lambda_uv_consistency = 0.0
@@ -63,9 +63,9 @@ class NurbsOptimizationParams(OptimizationParams):
         self.sampling_strategy = 'static' #'hybrid'
         self.decomposition_mode = 'single'
         # self.encode_points = 'pca' # 'geodesic' #'spherical' 'geodesic', 'pca
-        self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
+        # self.encode_points = 'geodesic' # 'geodesic' #'spherical' 'geodesic', 'pca
         # self.encode_points = 'conformal' # 'geodesic' #'spherical' 'geodesic', 'pca
-        # self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
+        self.encode_points = 'spherical' # 'geodesic' #'spherical' 'geodesic', 'pca
         # Chamfer post-fit of the initial control grid: refines the LS fit
         # against the SfM point cloud before training starts (much better
         # convergence starting point).
@@ -85,7 +85,7 @@ class NurbsOptimizationParams(OptimizationParams):
         self.refine_scales = True
         self.refine_rotations = True
         self.refine_opacities = True
-        self.refine_weights = True
+        self.refine_weights = False
         self.optimize_intervals = False
         self.optimize_knots = False
 

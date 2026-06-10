@@ -62,7 +62,7 @@ class ScalingControl(ControlFeature):
             )
             scales = torch.cat([scales, scaling_n], dim=-1)
 
-        return self._apply_density_correction(scales)
+        return scales#self._apply_density_correction(scales)
 
     def _apply_density_correction(self, scales: torch.Tensor) -> torch.Tensor:
         """

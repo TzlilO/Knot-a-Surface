@@ -610,7 +610,7 @@ def process_view(scene, nurbs, viewpoint_cam, pipe, background, app_model, opt, 
     """
     Handles rendering and loss calculation for a single viewpoint.
     """
-    skip = False
+    skip = True
     total_loss = torch.tensor(0.0, device=device)
     log_dict = {}
 
