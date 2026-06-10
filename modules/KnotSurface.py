@@ -286,8 +286,12 @@ class SplineModel(nn.Module):
             weights_init = None
             if self.refine_weights_active:
                 # 1. Generate Noise
-                noise = torch.rand(H * W, 1, device=self.device) * 0.05 #- 0.025  # Small noise in [-0.025, 0.025]
-                weights_init = torch.full((H * W, 1), fill_value=0.95, device=self.device) + noise  # Base value + noise
+                # Keep strictly below 1.0: inverse_sigmoid(1) = inf.
+                noise = torch.rand(H * W, 1, device=self.device) * 0.04
+                weights_init = (
+                    torch.full((H * W, 1), fill_value=0.93, device=self.device)
+                    + noise
+                ).clamp(0.05, 0.99)
                 weights_init = self.inverse_weights_activation(weights_init)  # Inverse activation to get initial params
 
             scaling_ch = self.state.scaling_dims
@@ -380,11 +384,25 @@ class SplineModel(nn.Module):
             # scale_v = self.position.dSv.reshape(self.state.H, self.state.W, 3).norm(
             #     dim=-1) * self.uv_sampler.delta_v / 2
             # with torch.no_grad():
-            dist = distCUDA2(self.position.control_features.float().cuda())
-            scales = torch.log(dist)[..., None].repeat(1, 3)
+            # distCUDA2 returns SQUARED mean 3-NN distance: take sqrt
+            # (3DGS convention), clamp away log(0) from duplicate points,
+            # and keep the normal axis tiny so splats start surface-aligned.
+            dist = torch.sqrt(
+                distCUDA2(self.position.control_features.float().cuda())
+                .clamp_min(1e-12)
+            ).clamp(1e-6, 5e-1)
+            scales = torch.log(torch.stack(
+                [dist, dist, torch.full_like(dist, 1e-6)], dim=-1
+            ))
             # scaling_init = torch.log((torch.stack([dist, , torch.ones(scale_v.shape, device=dist.device) * 1e-9], dim=-1)))#.reshape(self.state.H * self.state.W, scaling_ch)))#.detach().clone()
 
-            self.scaling = ScalingControl(self.state, scales, self.basis, name='scaling', position=self.position)
+            scaling_name = (
+                f"scaling_{self.surf_uid}" if self.surf_uid is not None else "scaling"
+            )
+            self.scaling = ScalingControl(
+                self.state, scales, self.basis,
+                name=scaling_name, position=self.position,
+            )
 
     def _init_rots(self, dSu, dSv, H, W, rotation_name=None, **kwargs):
         rotation_init = None
@@ -665,6 +683,37 @@ class SplineModel(nn.Module):
         changed = self.total_gaussians != start_count
         self.state.init_grad_accumulators()
         return changed
+
+    # ------------------------------------------------------------------
+    # Adaptive tessellation: spend the sampling budget where it is seen
+    # ------------------------------------------------------------------
+
+    def accumulate_visibility(self, out_observe):
+        """Accumulate per-sample visibility counts from render output."""
+        flat = (out_observe.view(-1) > 0).float()
+        if (getattr(self, '_vis_accum', None) is None
+                or self._vis_accum.numel() != flat.numel()):
+            self._vis_accum = torch.zeros_like(flat)
+        self._vis_accum += flat
+
+    @torch.no_grad()
+    def redistribute_samples_by_visibility(self, floor: float = 0.2,
+                                           verbose: bool = False) -> bool:
+        """Re-place UV samples by accumulated visibility (same budget)."""
+        vis = getattr(self, '_vis_accum', None)
+        if vis is None or vis.sum() == 0:
+            return False
+        grid = vis.view(self.state.Us, self.state.Vs)
+        if verbose:
+            frac = (vis > 0).float().mean().item()
+            print(f"[AdaptiveSampling] visible fraction {frac:.1%} -> redistributing")
+        self.uv_sampler.redistribute_by_visibility(
+            grid.mean(dim=1), grid.mean(dim=0), floor=floor,
+        )
+        self._vis_accum = None
+        self.basis.recompute()
+        self.invalidate_all_caches(force=True)
+        return True
 
     def multi_view_trim_all(
             self,
@@ -1214,8 +1263,10 @@ class SplineModel(nn.Module):
         #     else:
         #         self.sampling_mode = SamplingMode.EVALUATION
     def clip_grad(self, norm=1.0):
+        # Match by the feature's registered name (groups are uid-suffixed,
+        # e.g. 'opacity_0' — a literal 'opacity' never matches).
         for group in self.optimizer.param_groups:
-            if group['name'] == 'opacity':
+            if group['name'] == self.opacity.name:
                 torch.nn.utils.clip_grad_norm_(group["params"][0], norm)
 
     def background_coverage_loss(self, render_pkg, gt_image, background_mask):

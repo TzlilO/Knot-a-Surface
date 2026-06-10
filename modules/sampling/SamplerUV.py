@@ -164,6 +164,52 @@ class SamplerUV(nn.Module):
         self._interval_v_global = torch.sort(new_v)[0]
         self.update_intervals(new_u, new_v)
 
+    @torch.no_grad()
+    def redistribute_by_visibility(self, vis_u, vis_v, floor: float = 0.2):
+        """
+        Adaptive tessellation: re-place the SAME number of samples so their
+        density follows observed visibility (frustum + occlusion stats),
+        with a density floor so currently-unseen regions are never starved
+        (they may become visible from other views).
+
+        vis_u: [Us] mean visibility per u-row; vis_v: [Vs] per v-column.
+        """
+        def _redistribute(vis, positions, n_out, margin):
+            w = vis.float().clamp(min=0)
+            w = w / w.max().clamp(min=1e-12)
+            w = floor + (1.0 - floor) * w                     # density floor
+            device = positions.device
+            # Piecewise-constant density over segments around current samples
+            edges = torch.cat([
+                torch.zeros(1, device=device),
+                (positions[1:] + positions[:-1]) / 2,
+                torch.ones(1, device=device),
+            ])
+            seg = (edges[1:] - edges[:-1]).clamp(min=1e-12) * w
+            cdf = torch.cumsum(seg, 0)
+            cdf = cdf / cdf[-1]
+            q = torch.linspace(0, 1, n_out + 2, device=device)[1:-1]
+            idx = torch.searchsorted(cdf, q).clamp(0, len(positions) - 1)
+            cdf_lo = torch.cat([torch.zeros(1, device=device), cdf])[idx]
+            t = (q - cdf_lo) / (cdf[idx] - cdf_lo).clamp(min=1e-12)
+            new = edges[idx] + t * (edges[idx + 1] - edges[idx])
+            return new.clamp(margin, 1.0 - margin).sort()[0]
+
+        cur_u = self.interval_u.detach()
+        cur_v = self.interval_v.detach()
+        new_u = _redistribute(vis_u, cur_u, self._interval_u.shape[0], self._MARGIN)
+        new_v = _redistribute(vis_v, cur_v, self._interval_v.shape[0], self._MARGIN)
+
+        # Write back IN PLACE (same element count -> no optimizer surgery).
+        raw_u = self.inverse_activation(new_u)
+        raw_v = self.inverse_activation(new_v)
+        if isinstance(self._interval_u, nn.Parameter):
+            self._interval_u.data.copy_(raw_u)
+            self._interval_v.data.copy_(raw_v)
+        else:
+            self._interval_u = raw_u.to(self._interval_u.device)
+            self._interval_v = raw_v.to(self._interval_v.device)
+
     def invalidate(self):
         if self.state.sampling_mode == 'adaptive':
             if self.state.full_basis:

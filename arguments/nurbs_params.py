@@ -54,6 +54,11 @@ class NurbsOptimizationParams(OptimizationParams):
         self.set_uv_adaptive_from = 1000000
         self.set_uv_optimizable_from = inf
         self.random_sampling = False
+        # Adaptive tessellation: periodically re-place UV samples by
+        # accumulated visibility (same sample budget, no optimizer surgery).
+        self.adaptive_sampling = True
+        self.resample_start = 1000
+        self.resample_every = 500
 
         # self.sampling_strategy = None
         self.freeze_uv_iter = 160_000

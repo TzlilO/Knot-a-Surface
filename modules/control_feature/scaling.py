@@ -106,9 +106,12 @@ class ScalingControl(ControlFeature):
             distCUDA2(new_slice_pos.reshape(-1, 3)).clamp_min(1e-20)) * 0.5
         # print(f"new scale {torch.quantile(dist, 0.1)}")
         # scaling_init = (dist)
+        # dist covers all (degree+1)*W inserted points: reshape to rows —
+        # do NOT re-index by insert_idx (that grabbed 4 arbitrary points and
+        # broadcast one scale across each whole row).
         scaling_init = torch.log(
-            (torch.stack([dist, dist, torch.ones_like(dist) * 1e-6], dim=-1)))[insert_idx: insert_idx + degree + 1].reshape(degree+1, -1,
-                                                                                       3).detach().clone().contiguous()
+            torch.stack([dist, dist, torch.ones_like(dist) * 1e-6], dim=-1)
+        ).reshape(degree + 1, -1, 3).detach().clone().contiguous()
 
         new_grid[insert_idx: insert_idx + degree + 1] = scaling_init.contiguous()
 

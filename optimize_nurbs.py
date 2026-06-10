@@ -1355,6 +1355,15 @@ def training(dataset, opt, pipe, args, **kwargs) -> None:
                     nurbs.reset_opacity()
 
             # ── 8. Model state updates ────────────────────────────────────
+            # ── Adaptive tessellation: reallocate the fixed UV sampling
+            #    budget toward observed (in-frustum, unoccluded) regions ──
+            if getattr(opt, 'adaptive_sampling', False):
+                if "out_observe" in render_pkg:
+                    nurbs.accumulate_visibility(render_pkg["out_observe"])
+                if (iteration >= getattr(opt, 'resample_start', 1000)
+                        and iteration % getattr(opt, 'resample_every', 500) == 0):
+                    nurbs.redistribute_samples_by_visibility(verbose=True)
+
             nurbs.update_parameters(iteration)
             nurbs._invalidate_cache()
 
