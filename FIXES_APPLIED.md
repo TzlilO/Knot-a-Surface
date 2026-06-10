@@ -141,7 +141,8 @@ touched module with CUDA extensions stubbed (`tests/conftest_stubs.py`).
   `batch_size > 1`.
 - `modules/tessellation/chhugani_v2.py` imports nonexistent
   `model.modules.basis` (dead module; v1 is the live one).
-- Cluster smoke test: 200–500 iterations on one DTU scan to confirm losses
-  decrease and no NaNs — CUDA rasterizer not available locally.
+- ~~GPU smoke test~~ **DONE 2026-06-10**: 7,200 iterations on DTU scan24
+  (RTX 3090 server, ~2.4 it/s): loss 0.35 → ~0.11, no NaNs, densification
+  working (28k → 137k points). Full 30k run ≈ 3.5 h. Setup: `deploy_remote.md`.
 - The custom CUDA rasterizer with B-spline forward/backward: now unblocked —
   the exact basis/derivative functions these Jacobians need are tested.
