@@ -76,7 +76,7 @@ def render(viewpoint_camera, nurbs: 'SplineModel', pipe, bg_color : torch.Tensor
 
     if override_color is None:
         if pipe.convert_SHs_python:
-            shs_view = nurbs.get_features.transpose(1, 2).view(-1, 3, (nurbs.max_sh_degree + 1) ** 2)
+            shs_view = nurbs.get_features.transpose(1, 2).reshape(-1, 3, (nurbs.max_sh_degree + 1) ** 2)
             dir_pp = (nurbs.get_xyz - viewpoint_camera.camera_center.repeat(nurbs.get_features.shape[0], 1))
             dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
             sh2rgb = eval_sh(nurbs.active_sh_degree, shs_view, dir_pp_normalized)
