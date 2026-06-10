@@ -24,11 +24,11 @@ import numpy as np
 import torch
 
 QUALITY_PRESETS = {
-    #          res_cap  post_fit_iters
-    'raw':      (144,    0),       # LS fit only, no Chamfer refinement
-    'fast':     (96,     300),
-    'balanced': (144,    1500),
-    'fine':     (192,    3000),
+    #          target_res  post_fit_iters
+    'raw':      (128,       0),      # MBA fit only, no Chamfer refinement
+    'fast':     (128,       300),
+    'balanced': (192,       1500),
+    'fine':     (256,       3000),
 }
 
 
@@ -96,28 +96,75 @@ def fit_initial_surface(
         raise ValueError(
             f"quality must be one of {list(QUALITY_PRESETS)}, got {quality!r}"
         )
-    res_cap, post_iters = QUALITY_PRESETS[quality]
+    target_res, post_iters = QUALITY_PRESETS[quality]
 
-    H, W = _auto_resolution(points, res_cap)
-    smoothing = _auto_smoothing(points)
+    from modules.fitting.nurbs_from_pointcloud import (
+        NURBSSurfaceFitter, SurfaceConfig, NURBSSurfaceData,
+        MultiSurfaceResult, DecompositionMode, BSplinePostFitter,
+        PostFitConfig, PointCloudProcessor,
+    )
+    from modules.fitting.mba import mba_fit_surface
+
+    # --- parameterize (reuse the tested parameterizations) ---
+    fitter = NURBSSurfaceFitter(SurfaceConfig())
+    if parameterization == 'spherical':
+        uv = fitter._parameterize_spherical(points)
+    elif parameterization == 'geodesic':
+        uv = fitter._parameterize_geodesic(points)
+    else:
+        uv = fitter._parameterize_pca(points)
+
+    # --- resolution: preset target, split by cloud anisotropy ---
+    # (MBA needs no points-per-coefficient floor: sparse cells inherit
+    # from coarser levels by construction.)
+    centered = points - points.mean(axis=0)
+    eig = np.sort(np.linalg.eigvalsh(centered.T @ centered))[::-1]
+    aspect = float(np.clip(np.sqrt(max(eig[0], 1e-12) / max(eig[1], 1e-12)), 1.0, 1.5))
+    H = int(np.clip(target_res * np.sqrt(aspect), 32, 256))
+    W = int(np.clip(target_res / np.sqrt(aspect), 32, 256))
+
+    # --- Multilevel B-spline Approximation (coarse-to-fine residuals) ---
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    vals = np.concatenate(
+        [points, colors if colors is not None else np.full_like(points, 0.5)],
+        axis=1,
+    )
+    ctrl, ku, kv = mba_fit_surface(
+        torch.tensor(uv, dtype=torch.float32),
+        torch.tensor(vals, dtype=torch.float32),
+        H, W, device=device,
+    )
+    ctrl = ctrl.cpu().numpy()
     print(
-        f"[SimpleInit] quality={quality}: grid {H}x{W}, "
-        f"smoothing {smoothing:.4f}, post-fit {post_iters} iters"
+        f"[SimpleInit] quality={quality}: MBA grid {H}x{W} "
+        f"({len(points)} pts), post-fit {post_iters} iters"
     )
 
-    return create_nurbs_from_pointcloud(
-        points, colors,
-        mode=DecompositionMode.SINGLE,
-        generate_adaptive_samples=False,
-        cameras=cameras,
-        smoothing=smoothing,
-        parameterization=parameterization,
-        # pin the auto resolution (bypass the internal calculator)
-        bg_resolution=None,
-        object_resolution=None,
-        min_resolution=min(H, W),
-        max_resolution=max(H, W),
-        resolution=(H, W),
-        post_fit_enabled=post_iters > 0,
-        post_fit_iterations=post_iters,
+    surface = NURBSSurfaceData(
+        control_points=ctrl[..., :3].astype(np.float32),
+        control_colors=np.clip(ctrl[..., 3:6], 0, 1).astype(np.float32),
+        knots_u=ku.cpu().numpy().astype(np.float32),
+        knots_v=kv.cpu().numpy().astype(np.float32),
+        degree_u=3, degree_v=3,
+        label='main',
+    )
+    surface.point_indices = np.arange(len(points))
+    surface.bounds = {
+        'min': points.min(axis=0), 'max': points.max(axis=0),
+        'center': points.mean(axis=0),
+    }
+
+    # --- optional Chamfer post-fit (self-guarding: no-harm check) ---
+    if post_iters > 0:
+        proc = PointCloudProcessor(points, colors)
+        normals = proc.estimate_normals()
+        surface = BSplinePostFitter(PostFitConfig(
+            num_iterations=post_iters, verbose=True,
+        )).refine(surface, target_points=points, target_normals=normals)
+
+    labels = np.zeros(len(points), dtype=np.int32)
+    return MultiSurfaceResult(
+        surfaces=[surface],
+        decomposition_mode=DecompositionMode.SINGLE,
+        labels=labels,
     )
