@@ -36,8 +36,43 @@ class PositionControl(ControlFeature):
     # Evaluation: one fused call -> (S, Su, Sv, Suu, Svv)
     # ------------------------------------------------------------------
 
+    _eval_memo = None  # (key, (S, Su, Sv, Suu, Svv))
+
+    def _eval_key(self):
+        """
+        Memo key that changes whenever the evaluation inputs change:
+        Adam's in-place step bumps `_version`, subdivision/pruning swaps
+        the parameter tensor (`data_ptr`), basis recompute swaps bu/bv,
+        and the rational weights are keyed the same way.
+        """
+        cf = self.control_features
+        bu, bv = self.basis.bu, self.basis.bv
+        # grad-mode is part of the key: a no_grad evaluation (logging,
+        # densify stats) must never be reused where gradients are needed.
+        key = (torch.is_grad_enabled(), cf._version, cf.data_ptr(),
+               bu.data_ptr(), bv.data_ptr())
+        wf = getattr(self.weights, 'control_features', None)
+        if wf is not None:
+            key += (wf._version, wf.data_ptr())
+        return key
+
     def evaluate(self):
-        """Return (S, Su, Sv, Suu, Svv), each [Us, Vs, 3]."""
+        """Return (S, Su, Sv, Suu, Svv), each [Us, Vs, 3].
+
+        Memoized per parameter/basis version: within one training
+        iteration get_xyz / derive_scale / derive_rotation / get_normal
+        all reuse ONE evaluation graph instead of rebuilding it (~8x
+        per render before). Any in-place update or tensor swap changes
+        the key, so staleness is impossible by construction.
+        """
+        key = self._eval_key()
+        if self._eval_memo is not None and self._eval_memo[0] == key:
+            return self._eval_memo[1]
+        out = self._evaluate_impl()
+        self._eval_memo = (key, out)
+        return out
+
+    def _evaluate_impl(self):
         cpts = self.features
         rational = self.weights is not None
 
@@ -92,23 +127,8 @@ class PositionControl(ControlFeature):
         return S, Su, Sv, Suu, Svv
 
     def forward(self) -> torch.Tensor:
-        """Surface points [Us*Vs, 3]."""
-        cpts = self.features
-        rational = self.weights is not None
-        if fused_available(self.state, self.basis, cpts):
-            return self.evaluate()[0].reshape(-1, self.feature_channels)
-        prod = (
-            self._contract(self.basis.bu, self.basis.bv, cpts)
-            if not rational else None
-        )
-        if rational:
-            w = self.weights.features
-            if w.dim() == 2:
-                w = w.unsqueeze(-1)
-            num = self._contract(self.basis.bu, self.basis.bv, cpts * w)
-            den = self._contract(self.basis.bu, self.basis.bv, w).clamp(min=1e-6)
-            prod = num / den
-        return prod.reshape(-1, self.feature_channels)
+        """Surface points [Us*Vs, 3] (shares the memoized evaluation)."""
+        return self.evaluate()[0].reshape(-1, self.feature_channels)
 
     @property
     def dSu(self):
@@ -199,6 +219,7 @@ class PositionControl(ControlFeature):
     # ------------------------------------------------------------------
 
     def invalidate(self, hard=False):
+        self._eval_memo = None
         self.basis.recompute()
 
     # ------------------------------------------------------------------

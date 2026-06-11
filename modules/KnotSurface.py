@@ -1503,10 +1503,10 @@ class SplineModel(nn.Module):
                 if stored_state is not None:
                     stored_state["exp_avg"] = torch.zeros_like(tensor)
                     stored_state["exp_avg_sq"] = torch.zeros_like(tensor)
-                del optimizer.state[group['params'][uid]]
+                    del optimizer.state[group['params'][uid]]
                 group["params"][uid] = nn.Parameter(tensor.contiguous().requires_grad_(True))
-                # optimizer.state[group['params'][uid]] = stored_state
-                optimizer.state[group["params"][0]] = stored_state
+                if stored_state is not None:
+                    optimizer.state[group["params"][uid]] = stored_state
 
                 optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors[name]
