@@ -63,8 +63,13 @@ else
     if ! command -v docker >/dev/null; then
         info "installing Docker"
         curl -fsSL https://get.docker.com | $SUDO sh
-        $SUDO usermod -aG docker "$USER" || true
     fi
+    # rootless docker access (group may not exist on provider images)
+    getent group docker >/dev/null || $SUDO groupadd docker
+    id -nG "$USER" | grep -qw docker || {
+        $SUDO usermod -aG docker "$USER"
+        warn "added $USER to the docker group — takes effect on next login (sudo used meanwhile)"
+    }
     if ! docker info 2>/dev/null | grep -qi nvidia && ! [ -f /etc/docker/daemon.json ] || \
        ! grep -q nvidia /etc/docker/daemon.json 2>/dev/null; then
         info "installing NVIDIA container toolkit"
@@ -79,13 +84,21 @@ else
         $SUDO systemctl restart docker
     fi
 
+    # Pick the GPU flag: CDI-configured toolkits reject the legacy --gpus hook
+    if $SUDO docker info 2>/dev/null | grep -q "Runtimes:.*nvidia"; then
+        GPU_FLAG="--runtime=nvidia"
+    else
+        GPU_FLAG="--gpus all"
+    fi
+    info "GPU flag: $GPU_FLAG"
+
     # ── 4. build the image for THIS machine's GPU ───────────────────────────
     ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
     info "building knots:latest for compute capability ${ARCH}"
     $SUDO docker build -t knots:latest \
         --build-arg TORCH_CUDA_ARCH_LIST="$ARCH" \
         -f "$REPO_DIR/deploy/Dockerfile" "$REPO_DIR"
-    RUN_PREFIX="$SUDO docker run --gpus all --rm -v $DATA_DIR:/datasets -v $OUT_DIR:/output -v $REPO_DIR:/workspace/Knots knots:latest"
+    RUN_PREFIX="$SUDO docker run $GPU_FLAG --rm -v $DATA_DIR:/datasets -v $OUT_DIR:/output -v $REPO_DIR:/workspace/Knots knots:latest"
 fi
 
 # ── 5. DTU dataset ───────────────────────────────────────────────────────────
@@ -107,7 +120,7 @@ distCUDA2(torch.rand(512,3,device='cuda'))
 import diff_plane_rasterization, bspline_eval
 print('smoke test OK on', torch.cuda.get_device_name(0))"
 else
-    $SUDO docker run --gpus all --rm knots:latest python -c "
+    $SUDO docker run $GPU_FLAG --rm knots:latest python -c "
 import torch; from simple_knn._C import distCUDA2
 distCUDA2(torch.rand(512,3,device='cuda'))
 import diff_plane_rasterization, bspline_eval
@@ -119,6 +132,6 @@ if [ "${NO_DOCKER:-0}" = "1" ]; then
     echo "  conda activate knots"
     echo "  SCAN_ID=scan24 python optimize_nurbs.py -s $DATA_DIR/DTU -m $OUT_DIR/run1 -r 2 --ncc_scale 0.5"
 else
-    echo "  docker run --gpus all -it -v $DATA_DIR:/datasets -v $OUT_DIR:/output knots:latest \\"
+    echo "  docker run $GPU_FLAG -it -v $DATA_DIR:/datasets -v $OUT_DIR:/output knots:latest \\"
     echo "    bash -c 'SCAN_ID=scan24 python optimize_nurbs.py -s /datasets/DTU -m /output/run1 -r 2 --ncc_scale 0.5'"
 fi

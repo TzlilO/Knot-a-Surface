@@ -72,6 +72,15 @@ docker build -t knots:latest --build-arg TORCH_CUDA_ARCH_LIST="9.0" \
 
 ## Running
 
+> **GPU flag:** examples use `--gpus all`. If your server's NVIDIA toolkit is
+> configured in CDI mode you'll get *"invoking the NVIDIA Container Runtime
+> Hook directly ... is not supported"* — use `--runtime=nvidia` (or
+> `--device nvidia.com/gpu=all`) instead. `bootstrap_server.sh` detects this
+> automatically and prints the right flag.
+>
+> **Socket permission denied:** `sudo groupadd docker; sudo usermod -aG docker $USER`,
+> then log out/in (or prefix commands with `sudo`).
+
 ```bash
 # interactive shell (entrypoint runs the GPU smoke test first)
 docker run --gpus all -it \
