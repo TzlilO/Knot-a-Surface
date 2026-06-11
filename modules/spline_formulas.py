@@ -61,9 +61,18 @@ def n2q(sample_normals):
         # )
 
     # Fill NaN holes with nearest-neighbor
-    nan_mask = torch.isnan(grid_normals).any(axis=1)
-    if nan_mask.any():
-        raise ValueError("NaN values found in grid_normals after interpolation. Consider using a different interpolation method or filling strategy.")
+    # Repair degenerate rows (NaN/Inf from corrupted inputs, or zero-norm
+    # cross products of parallel tangents) with a safe default normal —
+    # raising here killed training at the first degenerate insertion.
+    bad = (~torch.isfinite(grid_normals)).any(dim=-1) | (
+        grid_normals.norm(dim=-1) < 1e-12
+    )
+    if bad.any():
+        print(f"[n2q] repaired {int(bad.sum())} degenerate normals")
+        grid_normals = grid_normals.clone()
+        grid_normals[bad] = torch.tensor(
+            [0.0, 0.0, 1.0], device=grid_normals.device, dtype=grid_normals.dtype
+        )
     #     for dim in range(3):
     #         grid_normals[nan_mask, dim] = griddata(
     #             uv, sample_normals[:, dim], grid_uv[nan_mask],

@@ -82,8 +82,14 @@ class RotationControl(ControlFeature):
             if direction == 'v':
                 tan_u, tan_v = tan_u.permute(1, 0, 2), tan_v.permute(1, 0, 2)
 
-            # target_rots = uv_tangent(tan_u, tan_v).reshape(H, W, 4)#.reshape(4, -1, 4) #angent.reshape(-1, 3))
-            target_rots = n2q(torch.cross(tan_u, tan_v, dim=-1)).reshape(H, W, 4) #.reshape(4, -1, 4) #angent.reshape(-1, 3))
+            normals = torch.cross(tan_u, tan_v, dim=-1)
+            # Degenerate FD tangents (coincident/boundary ctrl points) give
+            # zero or non-finite normals — substitute a safe default.
+            bad = (~torch.isfinite(normals)).any(dim=-1) | (normals.norm(dim=-1) < 1e-12)
+            if bad.any():
+                normals = normals.clone()
+                normals[bad] = torch.tensor([0.0, 0.0, 1.0], device=normals.device)
+            target_rots = n2q(normals).reshape(H, W, 4)
 
             new_grid[insert_idx: insert_idx + degree + 1] = target_rots[insert_idx: insert_idx + degree + 1]
             # for i in range(new_slice.shape[0]):

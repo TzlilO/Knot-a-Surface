@@ -72,7 +72,7 @@ class NurbsOptimizationParams(OptimizationParams):
         # modules/fitting/simple_init.py. The legacy post_fit_* knobs below
         # no longer drive the live init path.
         self.post_fit_iterations = 500
-        self.post_fit_enabled = True
+        self.post_fit_enabled = False
         self.base_res = 256
         self.max_res = 512
         self.min_res = 128
@@ -87,7 +87,7 @@ class NurbsOptimizationParams(OptimizationParams):
         self.refine_scales = True
         self.refine_rotations = True
         self.refine_opacities = True
-        self.refine_weights = False
+        self.refine_weights = True
         self.optimize_intervals = False
         self.optimize_knots = False
 

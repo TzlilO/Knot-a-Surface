@@ -652,6 +652,7 @@ class BasisFunction(nn.Module):
     def basis_layout_u(self):
         if self.state.full_basis:
             UV = (self.state.Us * self.state.Vs, ) if self.state.flatten_uv else (self.state.Us, self.state.Vs)
+            UV = (self.state.Us * self.state.Vs, ) if self.state.flatten_uv else (self.state.Us, self.state.Vs)
             return (*UV, self.state.H) if self.state.full_basis else (self.state.Us, self.state.H)
         else:
             return self.state.Us, self.state.H
@@ -798,10 +799,10 @@ class BasisFunction(nn.Module):
         # u = torch.linspace(0.0, 1.0, self.state.Us, device=self.state.device)
         # v = torch.linspace(0.0, 1.0, self.state.Vs, device=self.state.device)
         basis_data = compute(
-            self.uv_sampler.interval_u,
-            self.uv_sampler.interval_v,
-            self.knot_u(),
-            self.knot_v(),
+            self.uv_sampler.interval_u.detach(),
+            self.uv_sampler.interval_v.detach(),
+            self.knot_u().detach(),
+            self.knot_v().detach(),
             self.state.H,
             self.state.W,
             degree=3,

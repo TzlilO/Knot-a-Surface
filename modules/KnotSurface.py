@@ -665,10 +665,21 @@ class SplineModel(nn.Module):
                 use_partitioning=self.state.opt.use_spatial_partitioning,
                 num_partitions=self.state.opt.num_partitions,
             )
+            # Knot-multiplicity guard: never insert a value that (nearly)
+            # coincides with an existing knot or another selected candidate.
+            min_gap = 1e-4
+            ku = self.knot_u.forward().detach()
+            kv = self.knot_v.forward().detach()
+            seen_u, seen_v = ku.tolist(), kv.tolist()
+            filtered = []
+            for c in sorted(candidates, key=lambda x: x['score'], reverse=True):
+                seen = seen_u if c['type'] == 'u' else seen_v
+                if all(abs(c['val'] - k) > min_gap for k in seen):
+                    filtered.append(c)
+                    seen.append(c['val'])
             min_k = max(min(0, int(0.5 * min(self.state.H, self.state.W))), 8)
             top_k = max(int(top_k_rate_subd * min(self.state.H, self.state.W)), min_k)
-            candidates.sort(key=lambda x: x['score'], reverse=True)
-            self.apply_subdivision(cands=candidates[:top_k], optimizer=self.optimizer)
+            self.apply_subdivision(cands=filtered[:top_k], optimizer=self.optimizer)
 
         if max_prune_rate > 0 and pruning_candidates:
             min_k = max(min(0, int(0.5 * min(self.state.H, self.state.W))), 8)
@@ -2644,6 +2655,19 @@ class SplineModel(nn.Module):
                     old_H=old_H,
                     old_W=old_W,
                 )
+
+                if not torch.isfinite(new_grid).all():
+                    n_bad = int((~torch.isfinite(new_grid)).sum())
+                    print(f"[Subdivision] WARNING: {n_bad} non-finite values "
+                          f"in '{module.name}' inserted grid — repaired by "
+                          f"neighbor average")
+                    new_grid = new_grid.clone()
+                    bad = ~torch.isfinite(new_grid)
+                    repaired = torch.nan_to_num(new_grid, nan=0.0,
+                                                posinf=0.0, neginf=0.0)
+                    above = torch.roll(repaired, 1, dims=0)
+                    below = torch.roll(repaired, -1, dims=0)
+                    new_grid[bad] = ((above + below) / 2.0)[bad]
 
                 tensors_dict[module.name] = (new_grid, insert_idx)
 
