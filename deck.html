@@ -1316,6 +1316,20 @@ window.KnotSwarmSim = (function () {
             -1.5 * f3 + 2 * f2 + 0.5 * f, 0.5 * f3 - 0.5 * f2];
   }
   function bicubic(ctrl, n, u, v) {
+    if (BASIS_DEG === 'nurbs') {                  // rational: Σ wᵢⱼNᵢNⱼPᵢⱼ / Σ wᵢⱼNᵢNⱼ
+      const p = 3, N = n + 3;
+      const bu = bsW(N, p, u), bv = bsW(N, p, v);
+      let s = 0, w = 0;
+      for (let b = 0; b <= p; b++) {
+        const row = (bv.s - p + b) * N, wb = bv.w[b];
+        for (let a = 0; a <= p; a++) {
+          const bw = bu.w[a] * wb * 1.0;          // unit weight grid (extensible)
+          s += bw * ctrl[row + (bu.s - p + a)];
+          w += bw;
+        }
+      }
+      return w > 1e-9 ? s / w : 0;
+    }
     if (BASIS_DEG === 'cr') {
       const gu = Math.min(u * n, n - 1e-6), gv = Math.min(v * n, n - 1e-6);
       const iu = Math.floor(gu), iv = Math.floor(gv);
@@ -1386,8 +1400,8 @@ window.KnotSwarmSim = (function () {
       '<div class="kss-menus">' +
         '<div class="kss-menu" data-menu="mode">' +
           '<span class="kss-lb">Mode</span>' +
-          '<button class="kss-btn kss-on" data-mode="auto">AUTO</button>' +
-          '<button class="kss-btn" data-mode="manual">MANUAL</button>' +
+          '<button class="kss-btn" data-mode="auto">AUTO</button>' +
+          '<button class="kss-btn kss-on" data-mode="manual">MANUAL</button>' +
           '<span class="kss-lb">Swarm view</span>' +
           '<button class="kss-btn kss-pitch kss-on" data-p="0">nadir</button>' +
           '<button class="kss-btn kss-pitch" data-p="25">25°</button>' +
@@ -1412,16 +1426,27 @@ window.KnotSwarmSim = (function () {
           '<span class="kss-ovl-val" style="font-size:11px;color:#4fc3f7;min-width:34px">100%</span></div>' +
         '<div class="kss-menu" data-menu="model">' +
           '<span class="kss-lb">Basis</span>' +
-          '<button class="kss-btn kss-degc kss-on" data-deg="cr">CR (default)</button>' +
+          '<button class="kss-btn kss-degc kss-on" data-deg="nurbs">NURBS</button>' +
+          '<button class="kss-btn kss-degc" data-deg="cr">CR</button>' +
           '<button class="kss-btn kss-degc" data-deg="2">B2</button>' +
           '<button class="kss-btn kss-degc" data-deg="3">B3</button>' +
           '<button class="kss-btn kss-degc" data-deg="4">B4</button>' +
           '<button class="kss-btn kss-degc" data-deg="5">B5</button>' +
-          '<span class="kss-lb">Ctrl density</span>' +
-          '<button class="kss-btn kss-denc" data-den="0.7">coarse</button>' +
-          '<button class="kss-btn kss-denc kss-on" data-den="1">default</button>' +
-          '<button class="kss-btn kss-denc" data-den="1.4">fine</button>' +
+          '<span class="kss-lb">Params</span>' +
+          '<button class="kss-btn kss-denc" data-den="1">×1</button>' +
+          '<button class="kss-btn kss-denc kss-on" data-den="2">×2</button>' +
+          '<button class="kss-btn kss-denc" data-den="4">×4</button>' +
+          '<button class="kss-btn kss-denc" data-den="8">×8</button>' +
+          '<button class="kss-btn kss-denc" data-den="16">×16</button>' +
           '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div>' +
+        '<div class="kss-menu" data-menu="export">' +
+          '<span class="kss-lb">Upsample α</span>' +
+          '<button class="kss-btn kss-alpha" data-a="1">1×</button>' +
+          '<button class="kss-btn kss-alpha kss-on" data-a="2">2×</button>' +
+          '<button class="kss-btn kss-alpha" data-a="4">4×</button>' +
+          '<button class="kss-btn kss-alpha" data-a="8">8×</button>' +
+          '<button class="kss-btn kss-export" style="color:#69f0ae;border-color:rgba(105,240,174,.5)">⬇ EXPORT PLY</button>' +
+          '<span class="kss-lb" style="opacity:.7">UV-trick tessellation: slide a 2×2 window over the sampling domain</span></div>' +
         '<div class="kss-menu" data-menu="show">' +
           '<button class="kss-btn kss-tg kss-on" data-tg="splats">splats</button>' +
           '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
@@ -1435,6 +1460,7 @@ window.KnotSwarmSim = (function () {
         '<button class="kss-dbtn" data-open="swarm">DRONES</button>' +
         '<button class="kss-dbtn" data-open="show">LAYERS</button>' +
         '<button class="kss-dbtn" data-open="model">MODEL</button>' +
+        '<button class="kss-dbtn" data-open="export">EXPORT</button>' +
         '<button class="kss-dbtn kss-force" title="burst of optimization steps">⚡</button>' +
         '<button class="kss-dbtn kss-zen" title="zen: scene + commander only">◐ ZEN</button>' +
         '<div class="kss-knob"><input class="kss-zoom" type="range" min="0" max="1" step="0.002" value="0">' +
@@ -1468,7 +1494,7 @@ window.KnotSwarmSim = (function () {
 
     /* ---------- state ---------- */
     const st = {
-      env: 'urban', mode: 'auto', budget: 4096, zoom: 0,
+      env: 'urban', mode: 'manual', budget: 4096, zoom: 0,
       roi: { x: SITE.x, z: SITE.z },
       show: { splats: true, net: false, frustum: true, cmdr: true },
       swapped: false, linked: true, tool: 'nav', heat: false,
@@ -1481,20 +1507,23 @@ window.KnotSwarmSim = (function () {
     };
     const SPREAD_G = 42, ALT = 46;
     const CROP_G = 84, CROP_MIN = 7;
-    st.deg = 'cr'; st.den = 1; st.chan = 'rgb';   // model config + commander channel
+    st.deg = 'nurbs'; st.den = 2; st.chan = 'rgb'; // NURBS default · ×2 parameter group
     st.ovl = 1.0;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
-    let WARM_LEVELS = [4, 6, 9, 14], CN_BASE = 14, CN_MAX = 34;
+    let WARM_LEVELS = [4, 6, 9, 14, 20], CN_BASE = 14, CN_MAX = 34;
     function applyDensity() {
-      WARM_LEVELS = [4, 6, 9, 14].map(x => Math.max(3, Math.round(x * st.den)));
-      CN_BASE = Math.max(6, Math.round(14 * st.den));
-      CN_MAX = Math.max(10, Math.round(34 * st.den));
+      const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
+      WARM_LEVELS = [4, 6, 9, 14, 20].map(x => Math.max(3, Math.round(x * ax)));
+      CN_BASE = Math.max(6, Math.round(14 * ax));
+      CN_MAX = Math.max(10, Math.min(90, Math.round(34 * ax)));
     }
+    applyDensity();
+    BASIS_DEG = st.deg;
     function reWarm() {                          // model config changed → global re-optimization
       BASIS_DEG = st.deg;
       applyDensity();
       _knotCache && Object.keys(_knotCache).forEach(k => delete _knotCache[k]);
       st.warm = { active: true, level: 0, t0: st.t };
-      st.zoom = 0;
+      st.zoom = 0; fit.extra = 0;
       setFitDomain(WARM_LEVELS[0], st.roi.x - CROP_G / 2, st.roi.z - CROP_G / 2, CROP_G, false);
       reconDirty = true;
     }
@@ -1530,14 +1559,21 @@ window.KnotSwarmSim = (function () {
     setFitDomain(WARM_LEVELS[0], SITE.x - CROP_G / 2, SITE.z - CROP_G / 2, CROP_G, false);
 
     function optimStep(rate) {
+      // data term + regularizer: the SAME 2nd-order (truncation-error) metric shown
+      // in the confidence map, applied as a discrete-Laplacian smoothness prior
+      const REG = 0.3;
+      const cg = fit.cur, g = fit.tgt, N = fit.CN + 3;
       let res = 0;
-      const c = fit.cur, g = fit.tgt;
-      for (let i = 0; i < c.length; i++) {
-        const d = g[i] - c[i];
-        c[i] += d * rate;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const k = j * N + i;
+        const d = g[k] - cg[k];
+        let lap = 0;
+        if (i > 0 && i < N - 1 && j > 0 && j < N - 1)
+          lap = (cg[k - 1] + cg[k + 1] + cg[k - N] + cg[k + N]) / 4 - cg[k];
+        cg[k] += d * rate + lap * rate * REG;
         res += Math.abs(d);
       }
-      fit.res = res / c.length;
+      fit.res = res / cg.length;
     }
     function reconH(x, z) {                     // reconstruction height query (world)
       const u = (x - fit.x0) / fit.crop, v = (z - fit.z0) / fit.crop;
@@ -2283,11 +2319,25 @@ window.KnotSwarmSim = (function () {
     }
 
     /* ---------- domain control ---------- */
+    fit.extra = 0;                                // error-driven subdivision surplus
+    let _subT = 0, _subFlash = -9;
     function desiredDomain() {
       const crop = st.warm.active ? CROP_G : CROP_G + (CROP_MIN - CROP_G) * st.zoom;
       const CN = st.warm.active ? WARM_LEVELS[st.warm.level]
-               : Math.round(CN_BASE + (CN_MAX - CN_BASE) * Math.pow(st.zoom, 0.8));
+               : Math.min(CN_MAX, Math.round(CN_BASE + (CN_MAX - CN_BASE) * Math.pow(st.zoom, 0.8)) + fit.extra);
       return { crop, CN };
+    }
+    function truncSubdivStep() {
+      // converged, but truncation error stays high → the domain lacks expressivity: subdivide
+      if (st.warm.active || fit.res > 0.02 || st.t - _subT < 1.5 || fit.CN >= CN_MAX) return;
+      let s = 0; const n = S * S;
+      for (let i = 0; i < n; i++) s += errArr[i];
+      const mt = s / n;
+      if (mt > 0.10 * Math.max(0.25, fit.crop / CROP_G)) {
+        fit.extra = Math.min(fit.extra + 4, CN_MAX);
+        _subT = st.t; _subFlash = st.t;
+        reconDirty = true;
+      } else _subT = st.t;
     }
     let _resampleT = 0;
     function domainStep(dt) {
@@ -2297,22 +2347,23 @@ window.KnotSwarmSim = (function () {
                     Math.abs(x0 - fit.x0) > 0.15 || Math.abs(z0 - fit.z0) > 0.15;
       const resized = want.CN !== fit.CN;
       if (moved || resized) { setFitDomain(want.CN, x0, z0, want.crop, true); reconDirty = true; }
-      else if (ENVS[st.env].animated && st.t - _resampleT > 0.07) {
+      else if (ENVS[st.env].animated && st.t - _resampleT > (fit.CN > 40 ? 0.45 : 0.07)) {
         _resampleT = st.t;
         fit.tgt = sampleTarget(fit.CN, fit.x0, fit.z0, fit.crop, st.t);
         reconDirty = true;
       }
       // time-based optimization: convergence independent of frame rate
-      let K = st.warm.active ? 6 : (st.zoom > 0.05 ? 9 : 4);
+      let K = st.warm.active ? 4 : (st.zoom > 0.05 ? 7 : 3);   // longer, richer optimization
       if (st.boost > 0) { K = 28; st.boost -= dt; }
       const prevRes = fit.res;
       optimStep(1 - Math.exp(-K * dt));
       if (Math.abs(prevRes - fit.res) > 1e-4) reconDirty = true;
+      truncSubdivStep();
     }
     function warmStep(now) {
       const W = st.warm;
       if (!W.active) return;
-      if ((fit.res < 0.06 && (now - W.t0) > 1.0) || (now - W.t0) > 5.5) {
+      if ((fit.res < 0.035 && (now - W.t0) > 1.6) || (now - W.t0) > 7.0) {
         if (W.level < WARM_LEVELS.length - 1) { W.level++; W.t0 = now; }
         else { W.active = false; st.auto.t0 = now; }
       }
@@ -2440,6 +2491,78 @@ window.KnotSwarmSim = (function () {
       cmdrRead.innerHTML = '◎ marker ' + markers.length + ' @ GRID <b>' + gridRef(P.x, P.z) + '</b> · elev ' + P.y.toFixed(1) + ' m';
     }
 
+    /* ---------- mesh export: UV 2×2 kernel sweep → triangle mesh → PLY ---------- */
+    const exp_ = { active: false, cell: 0, total: 0, alpha: 2, saved: null, done: -9 };
+    function buildPLY() {
+      const M = Math.min(512, Math.round(S * exp_.alpha));       // upsampled α× grid
+      const wu = win.u1 - win.u0, wv = win.v1 - win.v0;
+      const E = ENVS[st.env];
+      const nV = M * M, nF = 2 * (M - 1) * (M - 1);
+      const head = 'ply\nformat binary_little_endian 1.0\ncomment Knot-a-Surface swarm reconstruction\n' +
+        'element vertex ' + nV + '\nproperty float x\nproperty float y\nproperty float z\n' +
+        'property uchar red\nproperty uchar green\nproperty uchar blue\n' +
+        'element face ' + nF + '\nproperty list uchar int vertex_indices\nend_header\n';
+      const hb = new TextEncoder().encode(head);
+      const buf = new ArrayBuffer(hb.length + nV * 15 + nF * 13);
+      new Uint8Array(buf).set(hb, 0);
+      const dv = new DataView(buf);
+      let o = hb.length;
+      for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
+        const u = win.u0 + (i + 0.5) / M * wu, v = win.v0 + (j + 0.5) / M * wv;
+        const x = fit.x0 + u * fit.crop, z = fit.z0 + v * fit.crop;
+        const h = bicubic(fit.cur, fit.CN, u, v);
+        const cc = E.col(x, z, h, st.t) || [0.5, 0.5, 0.5];
+        dv.setFloat32(o, x, true); dv.setFloat32(o + 4, h, true); dv.setFloat32(o + 8, z, true);
+        dv.setUint8(o + 12, clamp01(cc[0]) * 255); dv.setUint8(o + 13, clamp01(cc[1]) * 255); dv.setUint8(o + 14, clamp01(cc[2]) * 255);
+        o += 15;
+      }
+      for (let j = 0; j < M - 1; j++) for (let i = 0; i < M - 1; i++) {
+        const a = j * M + i, b = a + 1, cIdx = a + M, d = cIdx + 1;   // the 2×2 window
+        dv.setUint8(o, 3); dv.setInt32(o + 1, a, true); dv.setInt32(o + 5, b, true); dv.setInt32(o + 9, d, true); o += 13;
+        dv.setUint8(o, 3); dv.setInt32(o + 1, a, true); dv.setInt32(o + 5, d, true); dv.setInt32(o + 9, cIdx, true); o += 13;
+      }
+      const blob = new Blob([buf], { type: 'application/octet-stream' });
+      const a2 = document.createElement('a');
+      a2.href = URL.createObjectURL(blob);
+      a2.download = 'knot_a_surface_' + st.env + '_' + M + 'x' + M + '.ply';
+      a2.click();
+      setTimeout(() => URL.revokeObjectURL(a2.href), 4000);
+    }
+    function startExport() {
+      if (exp_.active) return;
+      exp_.active = true; exp_.cell = 0; exp_.total = (S - 1) * (S - 1);
+      exp_.saved = new Float32Array(splats.instanceColor.array);
+    }
+    function exportStep(dt) {
+      if (!exp_.active) return;
+      // the 2×2 kernel sweeps the UV domain scanline-wise — world-space propagation,
+      // 4 gaussians enhanced per tick (as in the slides' tessellation animation)
+      const speed = Math.max(2, Math.ceil(exp_.total * dt / 2.5)); // 2.5 s wall-clock sweep
+      const colA = splats.instanceColor.array;
+      for (let n = 0; n < speed && exp_.cell < exp_.total; n++, exp_.cell++) {
+        const ci = exp_.cell % (S - 1), cj = (exp_.cell / (S - 1)) | 0;
+        for (const [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+          const k = (cj + dj) * S + (ci + di);
+          colA[k * 3] = 0.35; colA[k * 3 + 1] = 1.0; colA[k * 3 + 2] = 1.0;   // enhance 4 gaussians
+        }
+        if (exp_.cell > S * 2) {                                  // trail fades to a done-tint
+          const back = exp_.cell - S * 2;
+          const bi = back % (S - 1), bj = (back / (S - 1)) | 0;
+          const k = bj * S + bi;
+          colA[k * 3] = exp_.saved[k * 3] * 0.7 + 0.09;
+          colA[k * 3 + 1] = exp_.saved[k * 3 + 1] * 0.7 + 0.24;
+          colA[k * 3 + 2] = exp_.saved[k * 3 + 2] * 0.7 + 0.24;
+        }
+      }
+      splats.instanceColor.needsUpdate = true;
+      if (exp_.cell >= exp_.total) {
+        splats.instanceColor.array.set(exp_.saved);
+        splats.instanceColor.needsUpdate = true;
+        exp_.active = false; exp_.done = st.t;
+        buildPLY();
+      }
+    }
+
     /* ---------- HUD ---------- */
     const fmt = (x, d) => x.toFixed(d !== undefined ? d : 1);
     function updateHUD(crop) {
@@ -2465,6 +2588,15 @@ window.KnotSwarmSim = (function () {
       } else if (st.boost > 0) {
         phaseEl.style.display = 'block';
         phaseEl.innerHTML = '⚡ FORCED OPTIMIZATION · rate ×5 · residual ' + fmt(fit.res, 3);
+      } else if (exp_.active) {
+        phaseEl.style.display = 'block';
+        phaseEl.innerHTML = '◱ TESSELLATING · 2×2 UV kernel sweep · ' + Math.round(exp_.cell / exp_.total * 100) + '% · α=' + exp_.alpha + '×';
+      } else if (st.t - exp_.done < 2.5) {
+        phaseEl.style.display = 'block';
+        phaseEl.innerHTML = '✓ MESH EXPORTED · ' + Math.min(512, Math.round(S * exp_.alpha)) + '² vertices · PLY downloaded';
+      } else if (st.t - _subFlash < 2.2) {
+        phaseEl.style.display = 'block';
+        phaseEl.innerHTML = '⊞ ERROR-DRIVEN SUBDIVISION · truncation error persisted → domain ' + fit.CN + '×' + fit.CN;
       } else if (st.zoom > 0.35) {
         phaseEl.style.display = 'block';
         phaseEl.innerHTML = '◎ LOCAL FINE-TUNE · crop-domain subdivision ' + fit.CN + '×' + fit.CN + ' · residual ' + fmt(fit.res, 3);
@@ -2783,6 +2915,11 @@ window.KnotSwarmSim = (function () {
       e.stopPropagation();
       applyFit();                                    // frozen, exact image-plane framing
     });
+    bar.querySelectorAll('.kss-alpha').forEach(b => b.addEventListener('click', () => {
+      exp_.alpha = +b.dataset.a;
+      bar.querySelectorAll('.kss-alpha').forEach(x => x.classList.toggle('kss-on', x === b));
+    }));
+    bar.querySelector('.kss-export').addEventListener('click', () => { closeMenus(); startExport(); });
     const chanBtn = cmdrBox.querySelector('.kss-chan');
     const CHANS = ['rgb', 'depth', 'normal', 'conf'];
     chanBtn.addEventListener('click', e => {
@@ -2848,8 +2985,9 @@ window.KnotSwarmSim = (function () {
       zval.textContent = st.warm.active ? 'WARM-UP' :
         st.zoom < 0.03 ? 'GLOBAL' : st.zoom > 0.97 ? 'MAX DETAIL' :
         ('×' + (CROP_G / fit.crop).toFixed(1));
-      // throttled recon rebuild: every frame while changing, every 6th when settled
-      if (reconDirty || frame % 6 === 0) { updateRecon(st.t); reconDirty = false; }
+      // throttled recon rebuild (frozen during the export sweep animation)
+      if (!exp_.active && (reconDirty || frame % 6 === 0)) { updateRecon(st.t); reconDirty = false; }
+      exportStep(dt);
       updateSwarm(fit.crop, st.t);
       // patrol mesh follows its h() footprint
       if (patrolMesh && st.env === 'urban') {
