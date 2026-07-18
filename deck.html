@@ -1280,20 +1280,59 @@ window.KnotSwarmSim = (function () {
     return [0.72 + 0.10 * g, 0.58 + 0.09 * g, 0.38 + 0.06 * g];
   }
 
-  /* ── Catmull-Rom bicubic over a control grid ───────────────────────── */
+  /* ── switchable surface basis: CR (default) or clamped B-spline p∈{2..5} ── */
+  let BASIS_DEG = 'cr';
+  const _knotCache = {};
+  function bsW(N, p, u) {                       // sparse basis: span + p+1 weights
+    const key = N + '|' + p;
+    let K = _knotCache[key];
+    if (!K) {
+      K = [];
+      for (let i = 0; i <= p; i++) K.push(0);
+      const inner = N - p - 1;
+      for (let i = 1; i <= inner; i++) K.push(i / (inner + 1));
+      for (let i = 0; i <= p; i++) K.push(1);
+      _knotCache[key] = K;
+    }
+    if (u >= 1) u = 1 - 1e-9; if (u < 0) u = 0;
+    let s = p;
+    while (s < N - 1 && u >= K[s + 1]) s++;
+    const left = [], right = [], w = [1];
+    for (let j = 1; j <= p; j++) {
+      left[j] = u - K[s + 1 - j]; right[j] = K[s + j] - u;
+      let saved = 0;
+      for (let r = 0; r < j; r++) {
+        const t = w[r] / (right[r + 1] + left[j - r]);
+        w[r] = saved + right[r + 1] * t;
+        saved = left[j - r] * t;
+      }
+      w[j] = saved;
+    }
+    return { s, w };
+  }
   function crWeights(f) {
     const f2 = f * f, f3 = f2 * f;
     return [-0.5 * f3 + f2 - 0.5 * f, 1.5 * f3 - 2.5 * f2 + 1,
             -1.5 * f3 + 2 * f2 + 0.5 * f, 0.5 * f3 - 0.5 * f2];
   }
   function bicubic(ctrl, n, u, v) {
-    const gu = Math.min(u * n, n - 1e-6), gv = Math.min(v * n, n - 1e-6);
-    const iu = Math.floor(gu), iv = Math.floor(gv);
-    const wu = crWeights(gu - iu), wv = crWeights(gv - iv);
+    if (BASIS_DEG === 'cr') {
+      const gu = Math.min(u * n, n - 1e-6), gv = Math.min(v * n, n - 1e-6);
+      const iu = Math.floor(gu), iv = Math.floor(gv);
+      const wu = crWeights(gu - iu), wv = crWeights(gv - iv);
+      let s = 0;
+      for (let a = 0; a < 4; a++)
+        for (let b = 0; b < 4; b++)
+          s += wu[a] * wv[b] * ctrl[(iv + b) * (n + 3) + (iu + a)];
+      return s;
+    }
+    const p = +BASIS_DEG, N = n + 3;             // same control grid, B-spline weights
+    const bu = bsW(N, p, u), bv = bsW(N, p, v);
     let s = 0;
-    for (let a = 0; a < 4; a++)
-      for (let b = 0; b < 4; b++)
-        s += wu[a] * wv[b] * ctrl[(iv + b) * (n + 3) + (iu + a)];
+    for (let b = 0; b <= p; b++) {
+      const row = (bv.s - p + b) * N, wb = bv.w[b];
+      for (let a = 0; a <= p; a++) s += bu.w[a] * wb * ctrl[row + (bu.s - p + a)];
+    }
     return s;
   }
 
@@ -1315,6 +1354,8 @@ window.KnotSwarmSim = (function () {
             '<button class="kss-cbtn" data-tool="ruler" title="ruler + line-of-sight">📏</button>' +
             '<button class="kss-cbtn" data-tool="mark" title="drop tactical marker">◎</button>' +
             '<button class="kss-cbtn" data-tool="heat" title="residual heatmap (change detection)">▦</button>' +
+            '<button class="kss-cbtn kss-fit" title="fit-to-screen: frame the crop exactly">FIT</button>' +
+            '<button class="kss-cbtn kss-chan" title="render channel: RGB / depth / normal / confidence">RGB</button>' +
             '<button class="kss-cbtn kss-link kss-on" title="tether commander to swarm">LINK</button>' +
             '<button class="kss-cmdr-swap" title="swap views">⇆</button>' +
           '</div>' +
@@ -1366,6 +1407,18 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-dr kss-on" data-dr="5">25</button>' +
           '<button class="kss-btn kss-dr" data-dr="7">49</button>' +
           '<button class="kss-btn kss-dr" data-dr="0">ADAPT</button></div>' +
+        '<div class="kss-menu" data-menu="model">' +
+          '<span class="kss-lb">Basis</span>' +
+          '<button class="kss-btn kss-degc kss-on" data-deg="cr">CR (default)</button>' +
+          '<button class="kss-btn kss-degc" data-deg="2">B2</button>' +
+          '<button class="kss-btn kss-degc" data-deg="3">B3</button>' +
+          '<button class="kss-btn kss-degc" data-deg="4">B4</button>' +
+          '<button class="kss-btn kss-degc" data-deg="5">B5</button>' +
+          '<span class="kss-lb">Ctrl density</span>' +
+          '<button class="kss-btn kss-denc" data-den="0.7">coarse</button>' +
+          '<button class="kss-btn kss-denc kss-on" data-den="1">default</button>' +
+          '<button class="kss-btn kss-denc" data-den="1.4">fine</button>' +
+          '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div>' +
         '<div class="kss-menu" data-menu="show">' +
           '<button class="kss-btn kss-tg kss-on" data-tg="splats">splats</button>' +
           '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
@@ -1378,6 +1431,7 @@ window.KnotSwarmSim = (function () {
         '<button class="kss-dbtn" data-open="budget">SPLATS</button>' +
         '<button class="kss-dbtn" data-open="swarm">DRONES</button>' +
         '<button class="kss-dbtn" data-open="show">LAYERS</button>' +
+        '<button class="kss-dbtn" data-open="model">MODEL</button>' +
         '<button class="kss-dbtn kss-force" title="burst of optimization steps">⚡</button>' +
         '<button class="kss-dbtn kss-zen" title="zen: scene + commander only">◐ ZEN</button>' +
         '<div class="kss-knob"><input class="kss-zoom" type="range" min="0" max="1" step="0.002" value="0">' +
@@ -1424,8 +1478,22 @@ window.KnotSwarmSim = (function () {
     };
     const SPREAD_G = 42, ALT = 46;
     const CROP_G = 84, CROP_MIN = 7;
-    const WARM_LEVELS = [4, 6, 9, 14];
-    const CN_BASE = 14, CN_MAX = 34;
+    st.deg = 'cr'; st.den = 1; st.chan = 'rgb';   // model config + commander channel
+    let WARM_LEVELS = [4, 6, 9, 14], CN_BASE = 14, CN_MAX = 34;
+    function applyDensity() {
+      WARM_LEVELS = [4, 6, 9, 14].map(x => Math.max(3, Math.round(x * st.den)));
+      CN_BASE = Math.max(6, Math.round(14 * st.den));
+      CN_MAX = Math.max(10, Math.round(34 * st.den));
+    }
+    function reWarm() {                          // model config changed → global re-optimization
+      BASIS_DEG = st.deg;
+      applyDensity();
+      _knotCache && Object.keys(_knotCache).forEach(k => delete _knotCache[k]);
+      st.warm = { active: true, level: 0, t0: st.t };
+      st.zoom = 0;
+      setFitDomain(WARM_LEVELS[0], st.roi.x - CROP_G / 2, st.roi.z - CROP_G / 2, CROP_G, false);
+      reconDirty = true;
+    }
 
     /* ---------- fit model ---------- */
     const fit = { CN: WARM_LEVELS[0], cur: null, tgt: null, res: 1, crop: CROP_G, x0: SITE.x - CROP_G / 2, z0: SITE.z - CROP_G / 2 };
@@ -1838,6 +1906,34 @@ window.KnotSwarmSim = (function () {
       scene.add(frusLines);
     }
 
+    // World-view visualization of the commander's frustum crop (layer 0 only)
+    const cvizGeo = new T.BufferGeometry();
+    cvizGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(16 * 3), 3));
+    const cmdrViz = new T.LineSegments(cvizGeo,
+      new T.LineBasicMaterial({ color: 0xce93d8, transparent: true, opacity: 0.75 }));
+    scene.add(cmdrViz);
+    function updateCmdrViz() {
+      const ap = cvizGeo.attributes.position.array;
+      const cs = [[win.u0, win.v0], [win.u1, win.v0], [win.u1, win.v1], [win.u0, win.v1]];
+      const pts = cs.map(([u, v]) => [
+        fit.x0 + u * fit.crop,
+        bicubic(fit.cur, fit.CN, u, v) + 0.6,
+        fit.z0 + v * fit.crop]);
+      let w = 0;
+      const cp = cmdrCam.position;
+      for (let i = 0; i < 4; i++) {              // window rectangle
+        const a = pts[i], b = pts[(i + 1) % 4];
+        ap[w++] = a[0]; ap[w++] = a[1]; ap[w++] = a[2];
+        ap[w++] = b[0]; ap[w++] = b[1]; ap[w++] = b[2];
+      }
+      for (let i = 0; i < 4; i++) {              // rays from commander camera
+        ap[w++] = cp.x; ap[w++] = cp.y; ap[w++] = cp.z;
+        ap[w++] = pts[i][0]; ap[w++] = pts[i][1]; ap[w++] = pts[i][2];
+      }
+      cvizGeo.attributes.position.needsUpdate = true;
+      cmdrViz.visible = win.locked && !st.swapped;
+    }
+
     const roiRing = new T.Mesh(new T.RingGeometry(0.9, 1.0, 48),
       new T.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.9, side: T.DoubleSide, depthWrite: false }));
     roiRing.rotation.x = -Math.PI / 2;
@@ -1869,6 +1965,10 @@ window.KnotSwarmSim = (function () {
       };
       splats = mk(S * S);
       wallSplats = mk(wallCap);
+      posArr = new Float32Array(S * S * 3); nrmArr = new Float32Array(S * S * 3);
+      errArr = new Float32Array(S * S); chanArr = new Float32Array(S * S * 3);
+      wPosArr = new Float32Array(wallCap * 3); wNrmArr = new Float32Array(wallCap * 3);
+      wErrArr = new Float32Array(wallCap); wChanArr = new Float32Array(wallCap * 3);
       const CNm = CN_MAX;
       const ng = new T.BufferGeometry();
       ng.setAttribute('position', new T.BufferAttribute(new Float32Array(2 * CNm * (CNm + 1) * 2 * 3), 3));
@@ -1913,6 +2013,8 @@ window.KnotSwarmSim = (function () {
     }
 
     let reconDirty = true;
+    let posArr = null, nrmArr = null, errArr = null,
+        wPosArr = null, wNrmArr = null, wErrArr = null, chanArr = null, wChanArr = null;
     const _m = new T.Matrix4(), _q = new T.Quaternion(), _p = new T.Vector3(),
           _s = new T.Vector3(), _n = new T.Vector3(), _up = new T.Vector3(0, 0, 1);
 
@@ -1922,7 +2024,7 @@ window.KnotSwarmSim = (function () {
     const _frus = new T.Frustum(), _fm = new T.Matrix4();
     const win = { u0: 0, v0: 0, u1: 1, v1: 1, locked: false };
     function frustumWindow() {
-      const idle = !st.warm.active && st.boost <= 0 && fit.res < 0.03;
+      const idle = true;                         // allocation is view-driven, always
       let tu0 = 0, tv0 = 0, tu1 = 1, tv1 = 1, locked = false;
       if (idle && st.show.cmdr) {
         cmdrCam.updateMatrixWorld();
@@ -1975,12 +2077,20 @@ window.KnotSwarmSim = (function () {
         const ev = Math.max(1e-4, wv / S);
         const hu = bicubic(fit.cur, CN, Math.min(1, u + e), v) - h;
         const hv = bicubic(fit.cur, CN, u, Math.min(1, v + ev)) - h;
+        // per-Gaussian truncation error: 2nd-order residual of the tangent-plane
+        // approximation over the splat footprint → shrinks to 0 as splats shrink
+        const hb = bicubic(fit.cur, CN, Math.max(0, u - e), v);
+        const hvb = bicubic(fit.cur, CN, u, Math.max(0, v - ev));
+        errArr[k] = (Math.abs((bicubic(fit.cur, CN, Math.min(1, u + e), v) + hb) / 2 - h) +
+                     Math.abs((bicubic(fit.cur, CN, u, Math.min(1, v + ev)) + hvb) / 2 - h));
         _n.set(-hu / (crop * e * wu), 1, -hv / (crop * e * wv)).normalize();
         _p.set(x, h + lift, z);
         _q.setFromUnitVectors(_up, _n);
         _s.set(cellU * 1.35, cellV * 1.35, 1);
         _m.compose(_p, _q, _s);
         splats.setMatrixAt(k, _m);
+        posArr[k * 3] = _p.x; posArr[k * 3 + 1] = _p.y; posArr[k * 3 + 2] = _p.z;
+        nrmArr[k * 3] = _n.x; nrmArr[k * 3 + 1] = _n.y; nrmArr[k * 3 + 2] = _n.z;
         HH[j * S + i] = h;
         if (st.heat) {
           const r = Math.abs(bicubic(fit.tgt, CN, u, v) - h);
@@ -2027,6 +2137,9 @@ window.KnotSwarmSim = (function () {
             _s.set(cell * 1.35, (hi - lo) / nSteps * 1.35, 1);
             _m.compose(_p, _q, _s);
             wallSplats.setMatrixAt(wk, _m);
+            wPosArr[wk * 3] = _p.x; wPosArr[wk * 3 + 1] = _p.y; wPosArr[wk * 3 + 2] = _p.z;
+            wNrmArr[wk * 3] = _n.x; wNrmArr[wk * 3 + 1] = _n.y; wNrmArr[wk * 3 + 2] = _n.z;
+            wErrArr[wk] = (hi - lo) / nSteps * 0.4;
             if (st.heat) {
               const u = clamp01((x - x0) / crop), v = clamp01((z - z0) / crop);
               const r = Math.abs(bicubic(fit.tgt, CN, u, v) - bicubic(fit.cur, CN, u, v));
@@ -2061,6 +2174,58 @@ window.KnotSwarmSim = (function () {
         netLines.geometry.setDrawRange(0, w / 3);
         netLines.geometry.attributes.position.needsUpdate = true;
       }
+    }
+
+    /* ---------- commander render channels: depth / normal / confidence ---------- */
+    function fillChannels() {
+      if (st.chan === 'rgb') return;
+      const n1 = S * S, n2 = wallUsed;
+      if (st.chan === 'depth') {
+        const cp = cmdrCam.position;
+        let mn = 1e9, mx = -1e9;
+        for (let i = 0; i < n1; i += 7) {
+          const d = Math.hypot(posArr[i * 3] - cp.x, posArr[i * 3 + 1] - cp.y, posArr[i * 3 + 2] - cp.z);
+          if (d < mn) mn = d; if (d > mx) mx = d;
+        }
+        const rng = Math.max(1, mx - mn);
+        const put = (arr, src, cnt) => {
+          for (let i = 0; i < cnt; i++) {
+            const d = Math.hypot(src[i * 3] - cp.x, src[i * 3 + 1] - cp.y, src[i * 3 + 2] - cp.z);
+            const g = 1 - clamp01((d - mn) / rng);
+            arr[i * 3] = g; arr[i * 3 + 1] = g; arr[i * 3 + 2] = g;
+          }
+        };
+        put(chanArr, posArr, n1); put(wChanArr, wPosArr, n2);
+      } else if (st.chan === 'normal') {
+        const put = (arr, src, cnt) => {
+          for (let i = 0; i < cnt; i++) {
+            arr[i * 3] = src[i * 3] * 0.5 + 0.5;
+            arr[i * 3 + 1] = src[i * 3 + 1] * 0.5 + 0.5;
+            arr[i * 3 + 2] = src[i * 3 + 2] * 0.5 + 0.5;
+          }
+        };
+        put(chanArr, nrmArr, n1); put(wChanArr, wNrmArr, n2);
+      } else {                                   // confidence: green=converged, red=high error
+        const put = (arr, src, cnt) => {
+          for (let i = 0; i < cnt; i++) {
+            const x = clamp01(src[i] / 0.5);
+            arr[i * 3] = clamp01(2 * x); arr[i * 3 + 1] = clamp01(2 * (1 - x)); arr[i * 3 + 2] = 0.12;
+          }
+        };
+        put(chanArr, errArr, n1); put(wChanArr, wErrArr, n2);
+      }
+    }
+    let _rgbA = null, _rgbWA = null;
+    function pushChannel() {
+      if (st.chan === 'rgb') return;
+      _rgbA = splats.instanceColor.array; _rgbWA = wallSplats.instanceColor.array;
+      splats.instanceColor.array = chanArr; splats.instanceColor.needsUpdate = true;
+      wallSplats.instanceColor.array = wChanArr; wallSplats.instanceColor.needsUpdate = true;
+    }
+    function popChannel() {
+      if (st.chan === 'rgb' || !_rgbA) return;
+      splats.instanceColor.array = _rgbA; splats.instanceColor.needsUpdate = true;
+      wallSplats.instanceColor.array = _rgbWA; wallSplats.instanceColor.needsUpdate = true;
     }
 
     /* ---------- swarm pose (nadir or oblique) ---------- */
@@ -2271,7 +2436,7 @@ window.KnotSwarmSim = (function () {
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
         (st.boost > 0 ? ' · <b style="color:#ffe14d">⚡BOOST</b>' : '') +
-        (win.locked ? ' · <b style="color:#69f0ae">⊞ frustum-locked ' + Math.round((win.u1 - win.u0) * (win.v1 - win.v0) * 100) + '%</b>' : '') + '</div>';
+        (win.locked ? ' · <b style="color:#69f0ae">⊞ view-driven ' + Math.round((win.u1 - win.u0) * (win.v1 - win.v0) * 100) + '%</b>' : '') + '</div>';
       hudTR.innerHTML =
         '<div class="kss-mode">' + st.mode.toUpperCase() +
         (st.mode === 'auto' && !st.warm.active ? ' · ' + st.auto.phase : '') + '</div>' +
@@ -2393,6 +2558,14 @@ window.KnotSwarmSim = (function () {
     window.addEventListener('pointermove', cMove);
     window.addEventListener('pointerup', cUp);
     cmdrCanvas.addEventListener('wheel', cWheel, { passive: false });
+    /* fit-to-screen: distance at which the commander frustum exactly frames the crop */
+    function fitDistance() {
+      const vf = cmdrCam.fov * Math.PI / 180;
+      const hf = 2 * Math.atan(Math.tan(vf / 2) * Math.max(0.6, cmdrCam.aspect));
+      const f = Math.min(vf, hf);
+      const R = fit.crop * 0.5 * Math.SQRT2 * 1.03;   // bounding sphere of the crop
+      return clamp(R / Math.sin(f / 2), 8, 300);
+    }
     /* pitch slider — fully adjustable commander pitch */
     const pitchSlider = cmdrBox.querySelector('.kss-cpitch');
     const pitchVal = cmdrBox.querySelector('.kss-cpitch-val');
@@ -2557,6 +2730,30 @@ window.KnotSwarmSim = (function () {
       bar.querySelectorAll('.kss-pitch').forEach(x => x.classList.toggle('kss-on', x === b));
       allocRecon();                                // re-split budget: oblique → bigger facade pool
     }));
+    bar.querySelectorAll('.kss-degc').forEach(b => b.addEventListener('click', () => {
+      st.deg = b.dataset.deg;
+      bar.querySelectorAll('.kss-degc').forEach(x => x.classList.toggle('kss-on', x === b));
+      reWarm();
+    }));
+    bar.querySelectorAll('.kss-denc').forEach(b => b.addEventListener('click', () => {
+      st.den = +b.dataset.den;
+      bar.querySelectorAll('.kss-denc').forEach(x => x.classList.toggle('kss-on', x === b));
+      reWarm();
+    }));
+    cmdrBox.querySelector('.kss-fit').addEventListener('click', e => {
+      e.stopPropagation();
+      cOrbit.r = fitDistance();
+      if (st.linked) cOrbit.auto = true;             // resume preset framing when tethered
+    });
+    const chanBtn = cmdrBox.querySelector('.kss-chan');
+    const CHANS = ['rgb', 'depth', 'normal', 'conf'];
+    chanBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      st.chan = CHANS[(CHANS.indexOf(st.chan) + 1) % CHANS.length];
+      chanBtn.textContent = st.chan.toUpperCase();
+      chanBtn.classList.toggle('kss-on', st.chan !== 'rgb');
+      reconDirty = true;
+    });
     bar.querySelector('.kss-force').addEventListener('click', () => {
       st.boost = 2.5;
       fit.tgt = sampleTarget(fit.CN, fit.x0, fit.z0, fit.crop, st.t);
@@ -2646,8 +2843,8 @@ window.KnotSwarmSim = (function () {
       if (st.linked) {
         if (cOrbit.auto) {
           cOrbit.th += dt * 0.12;
-          const wantR = clamp(fit.crop * 1.5, 14, 95);
-          cOrbit.r += (wantR - cOrbit.r) * Math.min(1, dt * 2);
+          const wantR = fitDistance();               // preset: fit-to-screen
+          cOrbit.r += (wantR - cOrbit.r) * Math.min(1, dt * 2.5);
         }
         cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z;
         cOrbit.ty = st.env === 'ocean' ? 2 : bicubic(fit.cur, fit.CN, 0.5, 0.5);
@@ -2659,17 +2856,23 @@ window.KnotSwarmSim = (function () {
       cmdrCam.position.set(cOrbit.tx + crr * Math.cos(cOrbit.th), cOrbit.ty + cy, cOrbit.tz + crr * Math.sin(cOrbit.th));
       cmdrCam.lookAt(cOrbit.tx, cOrbit.ty, cOrbit.tz);
 
+      updateCmdrViz();
+      fillChannels();
       const bgFull = scene.background, fogFull = scene.fog;
       if (!st.swapped) {
         renderer.render(scene, cam);
         if (st.show.cmdr) {
           scene.background = _cmdrBg; scene.fog = null;
+          pushChannel();
           cmdrRenderer.render(scene, cmdrCam);
+          popChannel();
           scene.background = bgFull; scene.fog = fogFull;
         }
       } else {
         scene.background = _cmdrBg; scene.fog = null;
+        pushChannel();
         renderer.render(scene, cmdrCam);
+        popChannel();
         scene.background = bgFull; scene.fog = fogFull;
         if (st.show.cmdr) cmdrRenderer.render(scene, cam);
       }
