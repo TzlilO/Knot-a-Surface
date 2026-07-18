@@ -1412,10 +1412,17 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-env" data-env="ocean">ocean</button>' +
           '<button class="kss-btn kss-env" data-env="dust">dust</button></div>' +
         '<div class="kss-menu" data-menu="budget">' +
-          '<button class="kss-btn kss-bud" data-b="576">576</button>' +
+          '<button class="kss-btn kss-bud" data-b="1024">1k</button>' +
+          '<button class="kss-btn kss-bud" data-b="2048">2k</button>' +
           '<button class="kss-btn kss-bud kss-on" data-b="4096">4k</button>' +
+          '<button class="kss-btn kss-bud" data-b="8192">8k</button>' +
           '<button class="kss-btn kss-bud" data-b="16384">16k</button>' +
-          '<button class="kss-btn kss-bud" data-b="32768">32k</button></div>' +
+          '<button class="kss-btn kss-bud" data-b="32768">32k</button>' +
+          '<button class="kss-btn kss-bud" data-b="65536">64k</button>' +
+          '<button class="kss-btn kss-bud" data-b="131072">128k</button>' +
+          '<button class="kss-btn kss-bud" data-b="262144">256k</button>' +
+          '<button class="kss-btn kss-bud" data-b="524288">512k</button>' +
+          '<span class="kss-lb" style="opacity:.7">≥128k is a stress test — heavy on CPU/GPU</span></div>' +
         '<div class="kss-menu" data-menu="swarm">' +
           '<button class="kss-btn kss-dr" data-dr="3">9</button>' +
           '<button class="kss-btn kss-dr kss-on" data-dr="5">25</button>' +
@@ -1990,7 +1997,7 @@ window.KnotSwarmSim = (function () {
       wallCap = Math.max(128, st.budget - S * S);
       HH = new Float32Array(S * S);
       const mk = cap => {
-        const g = new T.CircleGeometry(0.5, S > 100 ? 6 : 10);
+        const g = new T.CircleGeometry(0.5, S > 300 ? 4 : S > 100 ? 6 : 10);
         const m = new T.MeshBasicMaterial({
           transparent: true, opacity: 0.92, side: T.DoubleSide, depthWrite: false,
           polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
