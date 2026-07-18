@@ -137,13 +137,18 @@ section.cover .chip.b{color:#4fc3f7}
   pointer-events:none;max-width:75%}
 .kss-cmdr-read:empty{display:none}
 .kss-cmdr-read b{color:#ffe14d}
+.kss-cpitch-wrap{position:absolute;bottom:42px;right:9px;display:flex;align-items:center;gap:5px;
+  background:rgba(4,7,13,.75);border:1px solid #22314e;border-radius:8px;padding:3px 8px}
+.kss-cpitch-wrap span{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0}
+.kss-cpitch-wrap .kss-cpitch-val{color:#4fc3f7;min-width:24px;text-align:right;font-size:10px}
+.kss-cpitch{width:74px;accent-color:#4fc3f7;cursor:pointer}
 .kss-force{color:#ffe14d;border-color:rgba(255,225,77,.45)}
 .kss-force:hover{background:rgba(255,225,77,.12);border-color:#ffe14d;color:#ffe14d}
-.kss-root{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;
+.kss-root{position:relative;width:100%;height:100%;min-height:0;
   font-family:'Inter',ui-sans-serif,system-ui,sans-serif;background:#07090f;
   border:1px solid #1b2a42;border-radius:12px;overflow:hidden}
-.kss-stage{position:relative;flex:1 1 auto;min-height:0}
-.kss-canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block;cursor:grab}
+.kss-stage{position:absolute;inset:0}
+.kss-canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block;cursor:grab;touch-action:none}
 .kss-canvas:active{cursor:grabbing}
 .kss-hud{position:absolute;top:10px;font-size:12px;line-height:1.55;color:#8fa4c0;
   background:rgba(7,9,15,.72);border:1px solid #1b2a42;border-radius:8px;padding:8px 12px;
@@ -157,7 +162,38 @@ section.cover .chip.b{color:#4fc3f7}
 .kss-hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
   font-size:11px;color:#5c6f8a;background:rgba(7,9,15,.6);padding:3px 10px;border-radius:10px;
   pointer-events:none;white-space:nowrap}
-.kss-bar{flex:none;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+/* ── dock bar: overlay, foldable, popup menus ── */
+.kss-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
+  transition:transform .28s cubic-bezier(.4,0,.2,1)}
+.kss-bar.kss-folded{transform:translateY(calc(100% - 17px))}
+.kss-bar-handle{height:17px;display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:800;letter-spacing:.18em;color:#5c6f8a;cursor:pointer;
+  background:rgba(13,18,32,.85);border-top:1px solid #1b2a42;backdrop-filter:blur(6px)}
+.kss-bar.kss-folded .kss-bar-handle{color:#4fc3f7}
+.kss-dock{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;
+  padding:7px 10px;background:rgba(13,18,32,.92);backdrop-filter:blur(6px);scrollbar-width:none}
+.kss-dock::-webkit-scrollbar{display:none}
+.kss-dbtn{flex:none;font-family:inherit;font-size:10.5px;font-weight:800;letter-spacing:.08em;
+  color:#8fa4c0;background:#121b2e;border:1px solid #1b2a42;border-radius:8px;
+  padding:6px 11px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.kss-dbtn:hover{border-color:#4fc3f766;color:#dde5f0}
+.kss-dbtn.kss-on{color:#4fc3f7;border-color:#4fc3f788;background:rgba(79,195,247,.12)}
+.kss-dbtn.kss-zen{color:#ce93d8;border-color:rgba(206,147,216,.4)}
+.kss-menus{position:absolute;bottom:100%;left:8px;right:8px;pointer-events:none;margin-bottom:6px}
+.kss-menu{display:none}
+.kss-menu.kss-open{display:flex;pointer-events:auto;gap:6px;flex-wrap:wrap;align-items:center;
+  background:rgba(13,18,32,.96);border:1px solid #22314e;border-radius:10px;
+  padding:9px 12px;box-shadow:0 -10px 34px rgba(0,0,0,.5);backdrop-filter:blur(8px)}
+/* zen mode: scene + commander only */
+.kss-zenmode .kss-hud,.kss-zenmode .kss-phase,.kss-zenmode .kss-hint{display:none!important}
+.kss-zenmode .kss-bar{transform:translateY(110%)}
+.kss-zen-exit{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;
+  font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.14em;color:#ce93d8;
+  background:rgba(7,9,15,.55);border:1px solid rgba(206,147,216,.35);border-radius:14px;
+  padding:5px 14px;cursor:pointer;opacity:.6}
+.kss-zen-exit:hover{opacity:1}
+.kss-zenmode .kss-zen-exit{display:block}
+.kss-oldbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
   padding:8px 12px;background:#0d1220;border-top:1px solid #1b2a42}
 .kss-grp{display:flex;align-items:center;gap:5px}
 .kss-lb{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#5c6f8a;margin-right:2px}
@@ -165,10 +201,34 @@ section.cover .chip.b{color:#4fc3f7}
   border:1px solid #1b2a42;border-radius:14px;padding:3px 12px;cursor:pointer;transition:all .15s}
 .kss-btn:hover{border-color:#4fc3f766;color:#dde5f0}
 .kss-btn.kss-on{color:#4fc3f7;border-color:#4fc3f788;background:rgba(79,195,247,.12)}
-.kss-knob{flex:1 1 200px;min-width:180px}
+.kss-knob{flex:1 1 150px;min-width:130px;display:flex;align-items:center;gap:6px}
 .kss-zoom{flex:1;accent-color:#ffa726;cursor:pointer;min-width:90px}
 .kss-zval{font-size:11px;font-weight:700;color:#ffa726;min-width:74px;text-align:right;
   font-variant-numeric:tabular-nums;letter-spacing:.04em}
+
+/* ── mobile (Chrome/Safari, coarse pointers) ── */
+@media (max-width:840px), (pointer:coarse) and (max-width:1100px){
+  .kss-hud{font-size:9.5px;padding:5px 8px;line-height:1.45;max-width:46%}
+  .kss-big{font-size:13px}
+  .kss-big span{font-size:8.5px}
+  .kss-hint{display:none}
+  .kss-phase{font-size:9px;top:6px;padding:4px 10px;max-width:94%;white-space:normal;text-align:center}
+  .kss-cmdr{width:46%;max-width:none;left:6px;bottom:6px;border-radius:8px}
+  .kss-cmdr-label{font-size:7.5px;top:4px;left:5px;padding:2px 6px}
+  .kss-cmdr-tools{top:3px;right:3px;gap:3px}
+  .kss-cbtn{font-size:9.5px;padding:3px 5px;border-radius:5px}
+  .kss-cmdr-swap{font-size:10px;padding:3px 6px}
+  .kss-compass{width:22px;height:22px;font-size:9px;bottom:5px;right:6px}
+  .kss-compass span{font-size:6px}
+  .kss-cpitch-wrap{bottom:32px;right:6px;padding:2px 6px}
+  .kss-cpitch{width:56px}
+  .kss-cmdr-read{font-size:9px;padding:3px 7px;bottom:5px;left:6px;max-width:60%}
+  .kss-dbtn{font-size:9.5px;padding:5px 8px}
+  .kss-knob{min-width:96px}
+  .kss-zval{min-width:56px;font-size:9.5px}
+  .kss-btn{font-size:11px;padding:3px 9px}
+  .kss-lb{font-size:8.5px}
+}
 
 </style>
 </head>
@@ -876,6 +936,42 @@ window.KnotSwarmSim = (function () {
     [-16.0, 4.0, 3.0, 0.7, 1.0, 'sandbag']
   ];
   const CRATERS = [[-9, 5, 2.6], [-25, 1.5, 2.0], [-7, 15, 1.8]];
+  // fine site clutter — sub-meter features, resolvable only at fine sampling
+  const SITE_FINE = [
+    [-15.8, 13.0, 0.8, 0.8, 0.9, 'crate'], [-14.9, 12.6, 0.8, 0.8, 0.9, 'crate'],
+    [-15.4, 12.2, 0.7, 0.7, 1.6, 'crate'], [-20.6, 5.6, 0.6, 0.6, 0.9, 'barrel'],
+    [-20.1, 5.9, 0.6, 0.6, 0.9, 'barrel'], [-22.5, 4.5, 0.35, 0.35, 14.5, 'antenna']
+  ];
+
+  /* ── FINE micro-features: shared rules for the field h()/col() AND 3D props.
+     Grid-hash based → deterministic; too small for a coarse control net, they
+     emerge in the reconstruction only at high LOD. ── */
+  const CARCOLS = [[0.72, 0.70, 0.72], [0.55, 0.12, 0.12], [0.16, 0.25, 0.45], [0.15, 0.15, 0.17], [0.62, 0.55, 0.30]];
+  const FINE = {
+    car(x, z) {
+      const s = 3.4, i = Math.floor(x / s), j = Math.floor(z / s);
+      if (hash2(i * 7 + 3, j * 9 + 1) <= 0.74) return null;
+      const cx = (i + 0.5) * s, cz = (j + 0.5) * s;
+      const rot = hash2(i, j * 3) > 0.5;
+      const w = rot ? 0.95 : 1.9, d = rot ? 1.9 : 0.95;
+      return { hit: Math.abs(x - cx) < w / 2 && Math.abs(z - cz) < d / 2,
+               cx, cz, rot, col: CARCOLS[Math.floor(hash2(i * 3, j * 5) * CARCOLS.length)] };
+    },
+    ac(x, z) {
+      const s = 2.1, i = Math.floor(x / s), j = Math.floor(z / s);
+      if (hash2(i * 11 + 5, j * 13 + 2) <= 0.80) return null;
+      const cx = (i + 0.5) * s, cz = (j + 0.5) * s;
+      return { hit: Math.abs(x - cx) < 0.5 && Math.abs(z - cz) < 0.5, cx, cz };
+    },
+    log(x, z) {
+      const s = 5.0, i = Math.floor(x / s), j = Math.floor(z / s);
+      if (hash2(i * 17 + 9, j * 19 + 4) <= 0.85) return null;
+      const cx = (i + 0.5) * s, cz = (j + 0.5) * s;
+      const rot = hash2(i * 5, j * 7) > 0.5;
+      const w = rot ? 0.55 : 2.6, d = rot ? 2.6 : 0.55;
+      return { hit: Math.abs(x - cx) < w / 2 && Math.abs(z - cz) < d / 2, cx, cz, rot };
+    }
+  };
   function siteWall(x, z) {                     // square perimeter wall
     const dx = Math.abs(x - SITE.x), dz = Math.abs(z - SITE.z), half = 15;
     const gate = Math.abs(x - SITE.x) < 2.6 && z < SITE.z;   // south gate opening
@@ -894,6 +990,8 @@ window.KnotSwarmSim = (function () {
     }
     if (siteWall(x, z)) h = Math.max(h, 2.6);
     for (const [bx, bz, w, d, bh] of SITE_BOXES)
+      if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) h = Math.max(h, bh);
+    for (const [bx, bz, w, d, bh] of SITE_FINE)
       if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) h = Math.max(h, bh);
     // helipad
     const hd2 = (x + 12.5) * (x + 12.5) + (z - 4) * (z - 4);
@@ -915,6 +1013,12 @@ window.KnotSwarmSim = (function () {
         if (kind === 'apc') return [0.28, 0.32, 0.22];
         if (kind === 'truck') return [0.30, 0.28, 0.22];
         if (kind === 'sandbag') return [0.55, 0.48, 0.32];
+      }
+    for (const [bx, bz, w, d, bh, kind] of SITE_FINE)
+      if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) {
+        if (kind === 'crate') return [0.55, 0.42, 0.24];
+        if (kind === 'barrel') return [0.30, 0.42, 0.28];
+        return [0.70, 0.72, 0.75];               // antenna mast
       }
     if (siteWall(x, z)) return [0.48, 0.46, 0.42];
     const hd2 = (x + 12.5) * (x + 12.5) + (z - 4) * (z - 4);
@@ -947,13 +1051,20 @@ window.KnotSwarmSim = (function () {
         const I = urbanInfo(x, z);
         if (I.t === 'site') return siteH(x, z, t);
         if (I.t === 'water') return 0.15;
-        if (I.t === 'road') return 0.3 + 0.15 * fbm(x * 0.2, z * 0.2, 2);
+        if (I.t === 'road') {
+          let h = 0.3 + 0.15 * fbm(x * 0.2, z * 0.2, 2);
+          const car = FINE.car(x, z);
+          if (car && car.hit) h += 1.15;         // parked cars — fine LOD only
+          return h;
+        }
         if (I.t === 'park') return 0.5 + 1.6 * Math.pow(fbm(x * 0.55 + 9, z * 0.55 + 9, 4), 2);
         let h = I.h + 0.7 * fbm(x * 0.5, z * 0.5, 3);
         if (I.t === 'tower') {
           const core = Math.abs(I.fx - 0.5) < 0.14 && Math.abs(I.fz - 0.5) < 0.14;
           h += core ? 6 : 0;
         }
+        const ac = FINE.ac(x, z);
+        if (ac && ac.hit) h += 0.9;              // rooftop AC units — fine LOD only
         return h;
       },
       col(x, z, h, t) {
@@ -964,6 +1075,8 @@ window.KnotSwarmSim = (function () {
           return [0.05 + g, 0.32 + g, 0.55 + g];
         }
         if (I.t === 'road') {
+          const car = FINE.car(x, z);
+          if (car && car.hit) return car.col;
           const lane = Math.abs(I.fx - 0.5) < 0.018 || Math.abs(I.fz - 0.5) < 0.018;
           const g = 0.13 + 0.05 * fbm(x * 1.3, z * 1.3, 3);
           return lane ? [0.75, 0.62, 0.10] : [g, g + 0.01, g + 0.03];
@@ -973,6 +1086,8 @@ window.KnotSwarmSim = (function () {
           const gr = 0.5 + 0.4 * fbm(x * 2.0, z * 2.0, 4);
           return path ? [0.62, 0.55, 0.38] : [0.10 + 0.10 * gr, 0.38 + 0.30 * gr, 0.10 + 0.06 * gr];
         }
+        const acc = FINE.ac(x, z);
+        if (acc && acc.hit) return [0.62, 0.62, 0.66];   // AC unit sheet metal
         const panel = 0.05 * ((Math.floor(x * 1.5) + Math.floor(z * 1.5)) % 2);
         const spek = fbm(x * 2.6, z * 2.6, 3) > 0.64 ? 0.13 : 0;
         if (I.t === 'low')   return [0.62 + panel + spek, 0.30 + panel, 0.20 + panel];
@@ -992,13 +1107,26 @@ window.KnotSwarmSim = (function () {
       canopy(x, z) {
         const rx = riverX(z, 12, -8);
         if (Math.abs(x - rx) < 5) return 0;
+        if (inCamp(x, z)) return 0;                 // concealed camp clearing
         if (fbm(x * 0.05 + 21, z * 0.05 + 21, 2) < 0.36) return 0;
         return 6.5 * Math.pow(fbm(x * 0.16 + 40, z * 0.16 + 40, 5), 2.2);
       },
       h(x, z) {
         const rx = riverX(z, 12, -8);
         if (Math.abs(x - rx) < 3.4) return 1.0;
-        return ENVS.forest.terra(x, z) + ENVS.forest.canopy(x, z);
+        let h = ENVS.forest.terra(x, z) + ENVS.forest.canopy(x, z);
+        if (inCamp(x, z)) {
+          const base = ENVS.forest.terra(x, z);
+          if (inTrench(x, z)) return Math.max(0.2, base - 0.9);   // trench line
+          for (const [bx, bz, w, d, bh] of CAMP_BOXES)
+            if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) return base + bh;
+          return base;
+        }
+        if (ENVS.forest.canopy(x, z) < 0.9) {
+          const lg = FINE.log(x, z);
+          if (lg && lg.hit) h += 0.55;           // fallen logs — fine LOD only
+        }
+        return h;
       },
       col(x, z, h) {
         const rx = riverX(z, 12, -8);
@@ -1013,6 +1141,19 @@ window.KnotSwarmSim = (function () {
           if (autumn) return [0.70 + 0.2 * leaf, 0.38 + 0.15 * leaf, 0.06];
           return [0.05 + 0.09 * leaf, 0.30 + 0.34 * leaf, 0.08 + 0.07 * leaf];
         }
+        if (inCamp(x, z)) {
+          if (inTrench(x, z)) return [0.22, 0.16, 0.10];
+          for (const [bx, bz, w, d, bh, kind] of CAMP_BOXES)
+            if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) {
+              if (kind === 'tent') return [0.30, 0.36, 0.24];
+              if (kind === 'truck') return [0.30, 0.28, 0.22];
+              if (kind === 'aa') return [0.26, 0.28, 0.24];
+              return [0.55, 0.42, 0.24];
+            }
+          return [0.40, 0.34, 0.22];              // trampled dirt
+        }
+        const lg = FINE.log(x, z);
+        if (lg && lg.hit) return [0.38, 0.26, 0.15];
         const t = ENVS.forest.terra(x, z);
         const gr = fbm(x * 1.4, z * 1.4, 3);
         if (t < 2.2) return [0.24 + 0.14 * gr, 0.48 + 0.22 * gr, 0.16];
@@ -1025,6 +1166,8 @@ window.KnotSwarmSim = (function () {
       sky: 0x061018, fog: 0x061018, animated: true,
       h(x, z, t) {
         t = t || 0;
+        const nh = navalH(x, z, t);
+        if (nh !== null) return nh + 0.15 * Math.sin(t * 1.2);
         return 1.1 * Math.sin(0.25 * x + 1.3 * t) +
                0.8 * Math.sin(0.31 * z - 1.0 * t + 1.7) +
                0.5 * Math.sin(0.13 * (x + z) + 0.6 * t) +
@@ -1033,13 +1176,109 @@ window.KnotSwarmSim = (function () {
       },
       col(x, z, h, t) {
         t = t || 0;
+        const nc = navalCol(x, z, t);
+        if (nc) return nc;
         const f = clamp01((h + 2) / 6);
         const foam = fbm(x * 1.1 + t * 0.4, z * 1.1, 4) > 0.66 && h > 1.8 ? 0.35 : 0;
         const glint = 0.10 * fbm(x * 3 - t, z * 3, 3);
         return [0.04 + 0.22 * f + foam + glint, 0.22 + 0.38 * f + foam + glint, 0.42 + 0.38 * f + foam * 0.8 + glint];
       }
+    },
+    dust: {
+      sky: 0x2a1f14, fog: 0x2a1f14, animated: false,
+      h(x, z) { return dustH(x, z); },
+      col(x, z, h) { return dustCol(x, z); }
     }
   };
+
+  /* ── per-env home positions (ROI reset / autopilot bias) ── */
+  const ENV_HOME = { urban: { x: -18, z: 9 }, forest: { x: 14, z: 16 }, ocean: { x: 8, z: -4 }, dust: { x: 7, z: 6 } };
+
+  /* ── OCEAN warfare: destroyer + moving patrol boats (in the field!) ── */
+  const SHIP = { x: 8, z: -4, w: 34, d: 7 };
+  function boatPos(t, ph) {
+    const R = 24 + 6 * Math.sin(ph * 7), w = 0.11 + 0.03 * Math.sin(ph * 3);
+    const a = t * w + ph * 4;
+    return { x: SHIP.x + R * Math.cos(a), z: SHIP.z + R * 0.7 * Math.sin(a), hd: a + Math.PI / 2 };
+  }
+  function navalH(x, z, t) {
+    let h = null;
+    const lx = x - SHIP.x, lz = z - SHIP.z;
+    if (Math.abs(lx) < SHIP.w / 2 && Math.abs(lz) < SHIP.d / 2) {
+      h = 3.2;
+      if (Math.abs(lx - 2) < 6 && Math.abs(lz) < 2.4) h = 7.5;      // superstructure
+      if (Math.abs(lx - 13) < 1.4 && Math.abs(lz) < 1.2) h = 4.6;   // forward gun
+      if (Math.abs(lx + 11) < 2.0 && Math.abs(lz) < 2.0) h = 5.4;   // aft radar block
+    }
+    for (const ph of [0.9, 2.2]) {
+      const b = boatPos(t, ph);
+      if (Math.abs(x - b.x) < 3.2 && Math.abs(z - b.z) < 1.5) h = Math.max(h || 0, 2.0);
+    }
+    return h;
+  }
+  function navalCol(x, z, t) {
+    const lx = x - SHIP.x, lz = z - SHIP.z;
+    if (Math.abs(lx) < SHIP.w / 2 && Math.abs(lz) < SHIP.d / 2) {
+      if (Math.abs(lx - 2) < 6 && Math.abs(lz) < 2.4) return [0.55, 0.57, 0.60];
+      if (Math.abs(lz) < 0.25) return [0.72, 0.72, 0.75];            // deck line
+      return [0.42, 0.44, 0.47];
+    }
+    for (const ph of [0.9, 2.2]) {
+      const b = boatPos(t, ph);
+      if (Math.abs(x - b.x) < 3.2 && Math.abs(z - b.z) < 1.5) return [0.33, 0.36, 0.32];
+      const d2 = (x - b.x) * (x - b.x) + (z - b.z) * (z - b.z);
+      if (d2 < 30 && fbm(x * 1.5 + t, z * 1.5, 3) > 0.5) return [0.85, 0.90, 0.95];  // wake foam
+    }
+    return null;
+  }
+
+  /* ── FOREST warfare: concealed camp in a clearing ── */
+  const CAMP = { x: 14, z: 16, r: 12 };
+  const CAMP_BOXES = [
+    [10, 13, 3.0, 2.6, 2.2, 'tent'], [13.5, 11, 3.0, 2.6, 2.2, 'tent'], [17.5, 14, 3.0, 2.6, 2.2, 'tent'],
+    [19, 18.5, 2.6, 1.7, 2.3, 'truck'], [14, 20.5, 2.2, 2.2, 2.8, 'aa'],
+    [11.4, 17, 1.0, 1.0, 1.0, 'crate'], [12.4, 17.3, 1.0, 1.0, 1.0, 'crate']
+  ];
+  function inCamp(x, z) { const dx = x - CAMP.x, dz = z - CAMP.z; return dx * dx + dz * dz < CAMP.r * CAMP.r; }
+  function inTrench(x, z) { return x > 6 && x < 22 && Math.abs(z - 9.2) < 0.8; }
+
+  /* ── DUST canyon: long corridor, double-door pillars, pit, crates ── */
+  const DUST_WALLS = [                              // [x,z,w,d,h]
+    [0, -44, 92, 1.4, 5], [0, 44, 92, 1.4, 5], [-44, 0, 1.4, 92, 5], [44, 0, 1.4, 92, 5],
+    [0, -10, 3.0, 58, 5.5],                         // Long-A west wall
+    [14, -10, 3.0, 58, 5.5],                        // Long-A east wall
+    [3.8, 20, 2.0, 1.6, 5.5], [10.2, 20, 2.0, 1.6, 5.5],   // double-door pillars
+    [-20, 24, 26, 1.4, 4.5], [-24, 6, 1.4, 30, 4.5]        // site B-ish walls
+  ];
+  const DUST_CRATES = [
+    [7, 34, 1.3, 1.3, 1.3], [8.5, 34.3, 1.3, 1.3, 1.3], [7.7, 34.1, 1.2, 1.2, 2.5],
+    [5.5, -30, 1.3, 1.3, 1.3], [7, -30.5, 1.3, 1.3, 2.5],
+    [-16, 18, 1.3, 1.3, 1.3], [-16.8, 19, 1.3, 1.3, 2.5]
+  ];
+  function dustDune(x, z) { return 1.6 * fbm(x * 0.05 + 3, z * 0.05 + 3, 3) + 0.35 * fbm(x * 0.3, z * 0.3, 4); }
+  function dustH(x, z) {
+    let h = dustDune(x, z);
+    const pd2 = (x - 7) * (x - 7) + (z - 27) * (z - 27);
+    if (pd2 < 22) h -= 2.0 * (1 - pd2 / 22);        // the pit
+    for (const [bx, bz, w, d, bh] of DUST_WALLS)
+      if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) h = Math.max(h, bh);
+    for (const [bx, bz, w, d, bh] of DUST_CRATES)
+      if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) h = Math.max(h, dustDune(bx, bz) + bh);
+    return h;
+  }
+  function dustCol(x, z) {
+    for (const [bx, bz, w, d] of DUST_CRATES)
+      if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) return [0.55, 0.40, 0.22];
+    for (const [bx, bz, w, d] of DUST_WALLS)
+      if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) {
+        const band = 0.06 * ((Math.floor((x + z) * 1.2)) % 2);
+        return [0.70 + band, 0.53 + band, 0.32];
+      }
+    const pd2 = (x - 7) * (x - 7) + (z - 27) * (z - 27);
+    if (pd2 < 22) return [0.45, 0.33, 0.20];
+    const g = fbm(x * 0.8, z * 0.8, 4);
+    return [0.72 + 0.10 * g, 0.58 + 0.09 * g, 0.38 + 0.06 * g];
+  }
 
   /* ── Catmull-Rom bicubic over a control grid ───────────────────────── */
   function crWeights(f) {
@@ -1080,12 +1319,14 @@ window.KnotSwarmSim = (function () {
             '<button class="kss-cmdr-swap" title="swap views">⇆</button>' +
           '</div>' +
           '<div class="kss-compass">▲<span>N</span></div>' +
+          '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
           '<div class="kss-cmdr-read"></div>' +
         '</div>' +
         '<div class="kss-hud kss-hud-tl"></div>' +
         '<div class="kss-hud kss-hud-tr"></div>' +
         '<div class="kss-phase"></div>' +
-        '<div class="kss-hint">WASD move swarm · R/F zoom knob · click ground: ROI · drag: orbit · in commander: ruler / markers / detach</div>' +
+        '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
+        '<div class="kss-hint">WASD move swarm · R/F knob · T/G commander pitch · click ground: ROI · in commander: ruler / markers / detach</div>' +
       '</div>' +
       '<div class="kss-bar"></div>';
     const stage = container.querySelector('.kss-stage');
@@ -1100,37 +1341,48 @@ window.KnotSwarmSim = (function () {
     const bar = container.querySelector('.kss-bar');
 
     bar.innerHTML =
-      '<div class="kss-grp"><span class="kss-lb">Mode</span>' +
-        '<button class="kss-btn kss-on" data-mode="auto">AUTO</button>' +
-        '<button class="kss-btn" data-mode="manual">MANUAL</button></div>' +
-      '<div class="kss-grp"><span class="kss-lb">Env</span>' +
-        '<button class="kss-btn kss-env kss-on" data-env="urban">urban</button>' +
-        '<button class="kss-btn kss-env" data-env="forest">forest</button>' +
-        '<button class="kss-btn kss-env" data-env="ocean">ocean</button></div>' +
-      '<div class="kss-grp"><span class="kss-lb">Budget</span>' +
-        '<button class="kss-btn kss-bud" data-b="576">576</button>' +
-        '<button class="kss-btn kss-bud kss-on" data-b="4096">4k</button>' +
-        '<button class="kss-btn kss-bud" data-b="16384">16k</button>' +
-        '<button class="kss-btn kss-bud" data-b="32768">32k</button></div>' +
-      '<div class="kss-grp"><span class="kss-lb">Drones</span>' +
-        '<button class="kss-btn kss-dr" data-dr="3">9</button>' +
-        '<button class="kss-btn kss-dr kss-on" data-dr="5">25</button>' +
-        '<button class="kss-btn kss-dr" data-dr="7">49</button>' +
-        '<button class="kss-btn kss-dr" data-dr="0">ADAPT</button></div>' +
-      '<div class="kss-grp"><span class="kss-lb">View</span>' +
-        '<button class="kss-btn kss-pitch kss-on" data-p="0">nadir</button>' +
-        '<button class="kss-btn kss-pitch" data-p="25">25°</button>' +
-        '<button class="kss-btn kss-pitch" data-p="45">45°</button></div>' +
-      '<div class="kss-grp kss-knob"><span class="kss-lb">Resolution knob</span>' +
-        '<input class="kss-zoom" type="range" min="0" max="1" step="0.002" value="0">' +
+      '<div class="kss-bar-handle">⌃ CONTROLS</div>' +
+      '<div class="kss-menus">' +
+        '<div class="kss-menu" data-menu="mode">' +
+          '<span class="kss-lb">Mode</span>' +
+          '<button class="kss-btn kss-on" data-mode="auto">AUTO</button>' +
+          '<button class="kss-btn" data-mode="manual">MANUAL</button>' +
+          '<span class="kss-lb">Swarm view</span>' +
+          '<button class="kss-btn kss-pitch kss-on" data-p="0">nadir</button>' +
+          '<button class="kss-btn kss-pitch" data-p="25">25°</button>' +
+          '<button class="kss-btn kss-pitch" data-p="45">45°</button></div>' +
+        '<div class="kss-menu" data-menu="env">' +
+          '<button class="kss-btn kss-env kss-on" data-env="urban">urban</button>' +
+          '<button class="kss-btn kss-env" data-env="forest">forest</button>' +
+          '<button class="kss-btn kss-env" data-env="ocean">ocean</button>' +
+          '<button class="kss-btn kss-env" data-env="dust">dust</button></div>' +
+        '<div class="kss-menu" data-menu="budget">' +
+          '<button class="kss-btn kss-bud" data-b="576">576</button>' +
+          '<button class="kss-btn kss-bud kss-on" data-b="4096">4k</button>' +
+          '<button class="kss-btn kss-bud" data-b="16384">16k</button>' +
+          '<button class="kss-btn kss-bud" data-b="32768">32k</button></div>' +
+        '<div class="kss-menu" data-menu="swarm">' +
+          '<button class="kss-btn kss-dr" data-dr="3">9</button>' +
+          '<button class="kss-btn kss-dr kss-on" data-dr="5">25</button>' +
+          '<button class="kss-btn kss-dr" data-dr="7">49</button>' +
+          '<button class="kss-btn kss-dr" data-dr="0">ADAPT</button></div>' +
+        '<div class="kss-menu" data-menu="show">' +
+          '<button class="kss-btn kss-tg kss-on" data-tg="splats">splats</button>' +
+          '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
+          '<button class="kss-btn kss-tg kss-on" data-tg="frustum">frustums</button>' +
+          '<button class="kss-btn kss-tg kss-on" data-tg="cmdr">commander</button></div>' +
+      '</div>' +
+      '<div class="kss-dock">' +
+        '<button class="kss-dbtn" data-open="mode">MODE</button>' +
+        '<button class="kss-dbtn" data-open="env">ENV</button>' +
+        '<button class="kss-dbtn" data-open="budget">SPLATS</button>' +
+        '<button class="kss-dbtn" data-open="swarm">DRONES</button>' +
+        '<button class="kss-dbtn" data-open="show">LAYERS</button>' +
+        '<button class="kss-dbtn kss-force" title="burst of optimization steps">⚡</button>' +
+        '<button class="kss-dbtn kss-zen" title="zen: scene + commander only">◐ ZEN</button>' +
+        '<div class="kss-knob"><input class="kss-zoom" type="range" min="0" max="1" step="0.002" value="0">' +
         '<span class="kss-zval">GLOBAL</span></div>' +
-      '<div class="kss-grp">' +
-        '<button class="kss-btn kss-force" title="burst of optimization steps">⚡ FORCE OPT</button></div>' +
-      '<div class="kss-grp"><span class="kss-lb">Show</span>' +
-        '<button class="kss-btn kss-tg kss-on" data-tg="splats">splats</button>' +
-        '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
-        '<button class="kss-btn kss-tg kss-on" data-tg="frustum">frustums</button>' +
-        '<button class="kss-btn kss-tg kss-on" data-tg="cmdr">commander</button></div>';
+      '</div>';
 
     /* ---------- three.js ---------- */
     const renderer = new T.WebGLRenderer({ canvas, antialias: true });
@@ -1237,7 +1489,9 @@ window.KnotSwarmSim = (function () {
       const terra = st.env === 'urban'
         ? ((x, z) => { const I = urbanInfo(x, z); return (I.t === 'site') ? Math.min(siteH(x, z, 0), 0.6) : (I.t === 'water') ? 0.15 : (I.t === 'road') ? 0.3 : (I.t === 'park') ? ENVS.urban.h(x, z, 0) : 0.3; })
         : st.env === 'forest'
-        ? ((x, z) => { const rx = riverX(z, 12, -8); return Math.abs(x - rx) < 3.4 ? 1.0 : ENVS.forest.terra(x, z); })
+        ? ((x, z) => { const rx = riverX(z, 12, -8); return Math.abs(x - rx) < 3.4 ? 1.0 : (inTrench(x, z) && inCamp(x, z)) ? ENVS.forest.terra(x, z) - 0.9 : ENVS.forest.terra(x, z); })
+        : st.env === 'dust'
+        ? ((x, z) => { const pd2 = (x - 7) * (x - 7) + (z - 27) * (z - 27); return dustDune(x, z) - (pd2 < 22 ? 2.0 * (1 - pd2 / 22) : 0); })
         : ((x, z) => E.h(x, z, 0));
       for (let i = 0; i < pos.count; i++) {
         const x = pos.getX(i), z = pos.getZ(i);
@@ -1254,6 +1508,8 @@ window.KnotSwarmSim = (function () {
 
       if (st.env === 'urban') buildUrbanProps();
       if (st.env === 'forest') buildForestProps();
+      if (st.env === 'ocean') buildOceanProps();
+      if (st.env === 'dust') buildDustProps();
       scene.add(envGroup);
     }
 
@@ -1361,6 +1617,72 @@ window.KnotSwarmSim = (function () {
         new T.MeshLambertMaterial({ color: 0x2a2c2e }));
       pad.position.set(-12.5, 0.35, 4);
       envGroup.add(pad);
+      // fine clutter: crates, barrels, antenna mast (matches SITE_FINE field rules)
+      const crateM = new T.MeshLambertMaterial({ color: 0x8a6a3c });
+      const barrelM = new T.MeshLambertMaterial({ color: 0x4a6a48 });
+      for (const [bx, bz, w, d, bh, kind] of SITE_FINE) {
+        if (kind === 'antenna') {
+          const mast = new T.Mesh(new T.CylinderGeometry(0.09, 0.14, bh, 6),
+            new T.MeshLambertMaterial({ color: 0xb0b4bc }));
+          mast.position.set(bx, bh / 2, bz);
+          envGroup.add(mast);
+        } else {
+          box(kind === 'crate' ? crateM : barrelM, w, bh, d, bx, bh / 2, bz);
+        }
+      }
+      // parked cars (instanced, mirrors FINE.car grid rule)
+      {
+        const carG = new T.BoxGeometry(1, 1, 1);
+        const carM = new T.MeshLambertMaterial();
+        const items = [];
+        const s = 3.4;
+        for (let i = Math.floor(-WORLD / s); i * s < WORLD; i++)
+          for (let j = Math.floor(-WORLD / s); j * s < WORLD; j++) {
+            const cx = (i + 0.5) * s, cz = (j + 0.5) * s;
+            const car = FINE.car(cx, cz);
+            if (!car) continue;
+            const I = urbanInfo(cx, cz);
+            if (I.t !== 'road') continue;
+            items.push(car);
+          }
+        const im = new T.InstancedMesh(carG, carM, items.length);
+        im.instanceColor = new T.InstancedBufferAttribute(new Float32Array(items.length * 3), 3);
+        const M = new T.Matrix4(), Q = new T.Quaternion(), P = new T.Vector3(), Sc = new T.Vector3();
+        items.forEach((car, k) => {
+          Sc.set(car.rot ? 0.95 : 1.9, 1.1, car.rot ? 1.9 : 0.95);
+          P.set(car.cx, 0.85, car.cz);
+          M.compose(P, Q, Sc);
+          im.setMatrixAt(k, M);
+          im.instanceColor.setXYZ(k, car.col[0], car.col[1], car.col[2]);
+        });
+        envGroup.add(im);
+      }
+      // rooftop AC units (instanced, mirrors FINE.ac rule; central blocks only)
+      {
+        const acG = new T.BoxGeometry(1, 1, 1);
+        const acM = new T.MeshLambertMaterial({ color: 0x9ea2aa });
+        const items = [];
+        const s = 2.1;
+        for (let i = Math.floor(-70 / s); i * s < 70; i++)
+          for (let j = Math.floor(-70 / s); j * s < 70; j++) {
+            const cx = (i + 0.5) * s, cz = (j + 0.5) * s;
+            const ac = FINE.ac(cx, cz);
+            if (!ac) continue;
+            const I = urbanInfo(cx, cz);
+            if (I.t !== 'low' && I.t !== 'mid' && I.t !== 'tower') continue;
+            let roof = I.h + 0.7 * fbm(cx * 0.5, cz * 0.5, 3);
+            if (I.t === 'tower' && Math.abs(I.fx - 0.5) < 0.14 && Math.abs(I.fz - 0.5) < 0.14) roof += 6;
+            items.push([cx, roof, cz]);
+          }
+        const im = new T.InstancedMesh(acG, acM, items.length);
+        const M = new T.Matrix4(), Q = new T.Quaternion(), P = new T.Vector3(), Sc = new T.Vector3(1.0, 0.9, 1.0);
+        items.forEach(([cx, ry, cz], k) => {
+          P.set(cx, ry + 0.45, cz);
+          M.compose(P, Q, Sc);
+          im.setMatrixAt(k, M);
+        });
+        envGroup.add(im);
+      }
       // patrol APC (animated)
       patrolMesh = new T.Group();
       const ph1 = new T.Mesh(box._g, olive2M); ph1.scale.set(3.2, 1.3, 2.2);
@@ -1369,7 +1691,64 @@ window.KnotSwarmSim = (function () {
       patrolMesh.position.y = 1.0;
       envGroup.add(patrolMesh);
     }
+    function buildCampProps() {
+      const tentM = new T.MeshLambertMaterial({ color: 0x4a5c38 });
+      const oliveM = new T.MeshLambertMaterial({ color: 0x49573a });
+      const crateM = new T.MeshLambertMaterial({ color: 0x8a6a3c });
+      for (const [bx, bz, w, d, bh, kind] of CAMP_BOXES) {
+        const base = ENVS.forest.terra(bx, bz);
+        if (kind === 'tent') {
+          const tent = new T.Mesh(new T.CylinderGeometry(0.01, w * 0.62, bh, 4, 1),
+            tentM);
+          tent.rotation.y = Math.PI / 4;
+          tent.position.set(bx, base + bh / 2, bz);
+          envGroup.add(tent);
+        } else if (kind === 'aa') {
+          box(oliveM, w, 1.2, d, bx, base + 0.6, bz);
+          const barrel = new T.Mesh(new T.CylinderGeometry(0.09, 0.09, 3.2, 6), oliveM);
+          barrel.rotation.z = Math.PI / 3.2;
+          barrel.position.set(bx + 0.8, base + 2.1, bz);
+          envGroup.add(barrel);
+        } else {
+          box(kind === 'crate' ? crateM : oliveM, w, bh, d, bx, base + bh / 2, bz);
+        }
+      }
+    }
+    function buildOceanProps() {
+      const hullM = new T.MeshLambertMaterial({ color: 0x5a6068 });
+      const supM = new T.MeshLambertMaterial({ color: 0x788088 });
+      const boatM = new T.MeshLambertMaterial({ color: 0x4a5544 });
+      box(hullM, SHIP.w, 3.2, SHIP.d, SHIP.x, 1.6, SHIP.z);
+      box(supM, 12, 4.3, 4.8, SHIP.x + 2, 3.2 + 2.15, SHIP.z);
+      box(supM, 2.8, 1.4, 2.4, SHIP.x + 13, 3.2 + 0.7, SHIP.z);
+      box(supM, 4, 2.2, 4, SHIP.x - 11, 3.2 + 1.1, SHIP.z);
+      const mast = new T.Mesh(new T.CylinderGeometry(0.12, 0.2, 6, 6), supM);
+      mast.position.set(SHIP.x + 2, 10.4, SHIP.z);
+      envGroup.add(mast);
+      envGroup.userData.boats = [0.9, 2.2].map(ph => {
+        const g = new T.Group();
+        const hull = new T.Mesh(box._g || (box._g = new T.BoxGeometry(1, 1, 1)), boatM);
+        hull.scale.set(6.2, 1.4, 2.6);
+        const cab = new T.Mesh(box._g, hullM); cab.scale.set(2.0, 1.0, 1.8); cab.position.set(-0.6, 1.1, 0);
+        g.add(hull, cab);
+        g.userData.ph = ph;
+        envGroup.add(g);
+        return g;
+      });
+    }
+    function buildDustProps() {
+      const wallM = new T.MeshLambertMaterial({ color: 0xb08a54 });
+      const crateM = new T.MeshLambertMaterial({ color: 0x8a6a3c });
+      for (const [bx, bz, w, d, bh] of DUST_WALLS) box(wallM, w, bh, d, bx, bh / 2 + 0.3, bz);
+      // double-door lintel (visual only — a heightfield can't represent overhangs)
+      box(wallM, 8.4, 1.1, 1.6, 7, 5.1, 20);
+      for (const [bx, bz, w, d, bh] of DUST_CRATES) {
+        const base = dustDune(bx, bz);
+        box(crateM, w, bh, d, bx, base + bh / 2, bz);
+      }
+    }
     function buildForestProps() {
+      buildCampProps();
       const trunkM = new T.MeshLambertMaterial({ color: 0x4a3423 });
       const pineM = new T.MeshLambertMaterial({ color: 0x1c5230 });
       const leafM = new T.MeshLambertMaterial({ color: 0x3d8a2f });
@@ -1380,6 +1759,16 @@ window.KnotSwarmSim = (function () {
       for (let i = 0; i < 300; i++) {
         const x = (hash2(i, 7) - 0.5) * WORLD * 1.9, z = (hash2(i, 13) - 0.5) * WORLD * 1.9;
         if (ENVS.forest.canopy(x, z) < 0.9) {
+          const lg = FINE.log(x, z);
+          if (lg && Math.abs(lg.cx) < WORLD && Math.abs(lg.cz) < WORLD && ENVS.forest.canopy(lg.cx, lg.cz) < 0.9) {
+            const base = ENVS.forest.terra(lg.cx, lg.cz);
+            const logM = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 2.5, 6),
+              new T.MeshLambertMaterial({ color: 0x5e4226 }));
+            logM.rotation.z = Math.PI / 2;
+            if (lg.rot) logM.rotation.y = Math.PI / 2;
+            logM.position.set(lg.cx, base + 0.28, lg.cz);
+            envGroup.add(logM);
+          }
           if (hash2(i, 41) > 0.86) {
             const base = ENVS.forest.terra(x, z);
             const rk = new T.Mesh(rockG, rockM);
@@ -1495,6 +1884,10 @@ window.KnotSwarmSim = (function () {
         const g = 0.3 + 0.2 * fbm(x * 1.3 + y, z * 1.3, 3);
         return [g + 0.08, g + 0.04, g - 0.02];
       }
+      if (st.env === 'dust') {
+        const band = 0.05 * (Math.floor(y * 1.4) % 2);
+        return [0.66 + band, 0.50 + band, 0.30];
+      }
       if (st.env === 'ocean') {                    // steep wave faces
         const g = 0.15 * fbm(x + y, z, 3);
         return [0.06 + g, 0.30 + g, 0.50 + g];
@@ -1522,6 +1915,46 @@ window.KnotSwarmSim = (function () {
     let reconDirty = true;
     const _m = new T.Matrix4(), _q = new T.Quaternion(), _p = new T.Vector3(),
           _s = new T.Vector3(), _n = new T.Vector3(), _up = new T.Vector3(0, 0, 1);
+
+    /* ── frustum-constrained sampling: when optimization is idle, the fixed
+       budget collapses into the commander camera's visible footprint —
+       visibility-driven UV sampling, exactly the thesis mechanism ── */
+    const _frus = new T.Frustum(), _fm = new T.Matrix4();
+    const win = { u0: 0, v0: 0, u1: 1, v1: 1, locked: false };
+    function frustumWindow() {
+      const idle = !st.warm.active && st.boost <= 0 && fit.res < 0.03;
+      let tu0 = 0, tv0 = 0, tu1 = 1, tv1 = 1, locked = false;
+      if (idle && st.show.cmdr) {
+        cmdrCam.updateMatrixWorld();
+        _fm.multiplyMatrices(cmdrCam.projectionMatrix, cmdrCam.matrixWorldInverse);
+        _frus.setFromProjectionMatrix(_fm);
+        let found = false, mu0 = 1, mv0 = 1, mu1 = 0, mv1 = 0;
+        const G = 15;
+        for (let j = 0; j <= G; j++) for (let i = 0; i <= G; i++) {
+          const u = i / G, v = j / G;
+          _p.set(fit.x0 + u * fit.crop, bicubic(fit.cur, fit.CN, u, v), fit.z0 + v * fit.crop);
+          if (_frus.containsPoint(_p)) {
+            found = true;
+            if (u < mu0) mu0 = u; if (v < mv0) mv0 = v;
+            if (u > mu1) mu1 = u; if (v > mv1) mv1 = v;
+          }
+        }
+        if (found) {
+          const mrg = 0.05;
+          tu0 = clamp01(mu0 - mrg); tv0 = clamp01(mv0 - mrg);
+          tu1 = clamp01(mu1 + mrg); tv1 = clamp01(mv1 + mrg);
+          if (tu1 - tu0 < 0.10) { const m = (tu0 + tu1) / 2; tu0 = clamp01(m - 0.05); tu1 = clamp01(m + 0.05); }
+          if (tv1 - tv0 < 0.10) { const m = (tv0 + tv1) / 2; tv0 = clamp01(m - 0.05); tv1 = clamp01(m + 0.05); }
+          locked = (tu1 - tu0) * (tv1 - tv0) < 0.96;
+        }
+      }
+      const a = 0.10;
+      const d = Math.abs(tu0 - win.u0) + Math.abs(tv0 - win.v0) + Math.abs(tu1 - win.u1) + Math.abs(tv1 - win.v1);
+      win.u0 += (tu0 - win.u0) * a; win.v0 += (tv0 - win.v0) * a;
+      win.u1 += (tu1 - win.u1) * a; win.v1 += (tv1 - win.v1) * a;
+      win.locked = locked;
+      if (d > 0.004) reconDirty = true;
+    }
     function heatColor(r01) {
       const x = clamp01(r01);
       return [clamp01(0.15 + 2.2 * x), clamp01(0.9 - 1.6 * Math.abs(x - 0.35)), clamp01(0.9 - 2.2 * x)];
@@ -1529,20 +1962,23 @@ window.KnotSwarmSim = (function () {
     function updateRecon(time) {
       const E = ENVS[st.env];
       const crop = fit.crop, x0 = fit.x0, z0 = fit.z0, CN = fit.CN;
-      const cell = crop / S;
+      const wu = win.u1 - win.u0, wv = win.v1 - win.v0;
+      const cellU = crop * wu / S, cellV = crop * wv / S;
+      const cell = (cellU + cellV) / 2;
       const lift = 0.35 + 0.012 * crop;
       let k = 0;
       for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
-        const u = (i + 0.5) / S, v = (j + 0.5) / S;
+        const u = win.u0 + (i + 0.5) / S * wu, v = win.v0 + (j + 0.5) / S * wv;
         const x = x0 + u * crop, z = z0 + v * crop;
         const h = bicubic(fit.cur, CN, u, v);
-        const e = 1 / S;
+        const e = Math.max(1e-4, wu / S);
+        const ev = Math.max(1e-4, wv / S);
         const hu = bicubic(fit.cur, CN, Math.min(1, u + e), v) - h;
-        const hv = bicubic(fit.cur, CN, u, Math.min(1, v + e)) - h;
-        _n.set(-hu / (crop * e), 1, -hv / (crop * e)).normalize();
+        const hv = bicubic(fit.cur, CN, u, Math.min(1, v + ev)) - h;
+        _n.set(-hu / (crop * e * wu), 1, -hv / (crop * e * wv)).normalize();
         _p.set(x, h + lift, z);
         _q.setFromUnitVectors(_up, _n);
-        _s.setScalar(cell * 1.35);
+        _s.set(cellU * 1.35, cellV * 1.35, 1);
         _m.compose(_p, _q, _s);
         splats.setMatrixAt(k, _m);
         HH[j * S + i] = h;
@@ -1577,8 +2013,8 @@ window.KnotSwarmSim = (function () {
           const dh = h2 - h1;
           if (Math.abs(dh) < thr) continue;
           const lo = Math.min(h1, h2), hi = Math.max(h1, h2);
-          const x = x0 + ((i + i2) / 2 + 0.5) / S * crop;
-          const z = z0 + ((j + j2) / 2 + 0.5) / S * crop;
+          const x = x0 + (win.u0 + ((i + i2) / 2 + 0.5) / S * wu) * crop;
+          const z = z0 + (win.v0 + ((j + j2) / 2 + 0.5) / S * wv) * crop;
           // wall normal: horizontal, pointing toward the LOW side
           const sgn = dh > 0 ? -1 : 1;
           _n.set(di * sgn, 0, dj * sgn);
@@ -1704,8 +2140,9 @@ window.KnotSwarmSim = (function () {
 
     /* ---------- auto pilot ---------- */
     function pickROI() {
-      if (st.env === 'urban' && Math.random() < 0.6) {       // bias to the warzone
-        return { x: SITE.x + (Math.random() - 0.5) * 16, z: SITE.z + (Math.random() - 0.5) * 16 };
+      if (Math.random() < 0.6) {                  // bias to each env's warzone
+        const H = ENV_HOME[st.env];
+        return { x: H.x + (Math.random() - 0.5) * 16, z: H.z + (Math.random() - 0.5) * 16 };
       }
       for (let tries = 0; tries < 30; tries++) {
         const x = (Math.random() - 0.5) * 70, z = (Math.random() - 0.5) * 70;
@@ -1732,7 +2169,7 @@ window.KnotSwarmSim = (function () {
         case 'zoomOut': {
           const f = Math.min(1, dt / 4);
           st.zoom = 1 - ease(f);
-          const hx = st.env === 'urban' ? SITE.x : 0, hz = st.env === 'urban' ? SITE.z : 0;
+          const hx = ENV_HOME[st.env].x, hz = ENV_HOME[st.env].z;
           st.roi.x = A.from.x + (hx - A.from.x) * ease(f);
           st.roi.z = A.from.z + (hz - A.from.z) * ease(f);
           if (f >= 1) { A.phase = 'dwellG'; A.t0 = now; }
@@ -1826,14 +2263,15 @@ window.KnotSwarmSim = (function () {
     /* ---------- HUD ---------- */
     const fmt = (x, d) => x.toFixed(d !== undefined ? d : 1);
     function updateHUD(crop) {
-      const foot = crop / S;
+      const foot = crop * ((win.u1 - win.u0) + (win.v1 - win.v0)) / 2 / S;
       hudTL.innerHTML =
         '<div class="kss-big">' + (S * S + wallUsed).toLocaleString() + ' <span>splats · budget ' + st.budget.toLocaleString() + '</span></div>' +
         '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b></div>' +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
-        (st.boost > 0 ? ' · <b style="color:#ffe14d">⚡BOOST</b>' : '') + '</div>';
+        (st.boost > 0 ? ' · <b style="color:#ffe14d">⚡BOOST</b>' : '') +
+        (win.locked ? ' · <b style="color:#69f0ae">⊞ frustum-locked ' + Math.round((win.u1 - win.u0) * (win.v1 - win.v0) * 100) + '%</b>' : '') + '</div>';
       hudTR.innerHTML =
         '<div class="kss-mode">' + st.mode.toUpperCase() +
         (st.mode === 'auto' && !st.warm.active ? ' · ' + st.auto.phase : '') + '</div>' +
@@ -1856,8 +2294,27 @@ window.KnotSwarmSim = (function () {
     /* ---------- interaction: main view ---------- */
     const ray = new T.Raycaster(); const ndc = new T.Vector2();
     let dragging = false, moved = 0, px = 0, py = 0;
-    function onDown(e) { stage.focus({ preventScroll: true }); dragging = true; moved = 0; px = e.clientX; py = e.clientY; }
+    const _tp = new Map(); let _pinch0 = 0, _pinchR0 = 0;
+    function onDown(e) {
+      stage.focus({ preventScroll: true }); showUI();
+      _tp.set(e.pointerId, [e.clientX, e.clientY]);
+      if (_tp.size === 2) {
+        const a = [..._tp.values()];
+        _pinch0 = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]);
+        _pinchR0 = (st.swapped ? cOrbit : orbit).r;
+      }
+      dragging = true; moved = 0; px = e.clientX; py = e.clientY;
+    }
     function onMove(e) {
+      if (_tp.has(e.pointerId)) _tp.set(e.pointerId, [e.clientX, e.clientY]);
+      if (_tp.size === 2) {                        // pinch → dolly (mobile)
+        const a = [..._tp.values()];
+        const d = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]);
+        const o = st.swapped ? cOrbit : orbit;
+        o.r = clamp(_pinchR0 * _pinch0 / Math.max(24, d), 10, 300);
+        applyCam();
+        return;
+      }
       if (!dragging) return;
       const dx = e.clientX - px, dy = e.clientY - py;
       moved += Math.abs(dx) + Math.abs(dy);
@@ -1868,6 +2325,7 @@ window.KnotSwarmSim = (function () {
       applyCam();
     }
     function onUp(e) {
+      _tp.delete(e.pointerId);
       dragging = false;
       if (moved < 6 && st.mode === 'manual' && !st.swapped) {
         const r = canvas.getBoundingClientRect();
@@ -1902,9 +2360,9 @@ window.KnotSwarmSim = (function () {
       cMoved += Math.abs(e.clientX - cpx) + Math.abs(e.clientY - cpy);
       const o = st.swapped ? orbit : cOrbit;
       o.th += (e.clientX - cpx) * 0.006;
-      o.ph = clamp(o.ph + (e.clientY - cpy) * 0.005, 0.1, 1.4);
+      o.ph = clamp(o.ph + (e.clientY - cpy) * 0.005, 0.05, 1.52);   // full pitch range
       cpx = e.clientX; cpy = e.clientY;
-      if (!st.swapped) cOrbit.auto = false;
+      if (!st.swapped) { cOrbit.auto = false; syncPitchUI(); }
       applyCam();
     }
     function cUp(e) {
@@ -1935,6 +2393,21 @@ window.KnotSwarmSim = (function () {
     window.addEventListener('pointermove', cMove);
     window.addEventListener('pointerup', cUp);
     cmdrCanvas.addEventListener('wheel', cWheel, { passive: false });
+    /* pitch slider — fully adjustable commander pitch */
+    const pitchSlider = cmdrBox.querySelector('.kss-cpitch');
+    const pitchVal = cmdrBox.querySelector('.kss-cpitch-val');
+    function syncPitchUI() {
+      const deg = Math.round(cOrbit.ph * 180 / Math.PI);
+      pitchSlider.value = clamp(deg, 3, 87);
+      pitchVal.textContent = deg + '°';
+    }
+    pitchSlider.addEventListener('pointerdown', e => e.stopPropagation());
+    pitchSlider.addEventListener('input', e => {
+      cOrbit.ph = (+pitchSlider.value) * Math.PI / 180;
+      pitchVal.textContent = pitchSlider.value + '°';
+      applyCam();
+    });
+    syncPitchUI();
 
     /* commander toolbar */
     const toolBtns = cmdrBox.querySelectorAll('.kss-cbtn[data-tool]');
@@ -1964,8 +2437,9 @@ window.KnotSwarmSim = (function () {
     /* ---------- MMORPG keys: WASD / QE / RF ---------- */
     const keys = {};
     function kDown(e) {
+      showUI();
       const k = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 'shift'].includes(k)) {
+      if (['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 't', 'g', 'shift'].includes(k)) {
         keys[k] = true;
         e.preventDefault(); e.stopPropagation();
       }
@@ -2003,7 +2477,45 @@ window.KnotSwarmSim = (function () {
         st.zoom = clamp01(st.zoom + (keys['r'] ? 1 : -1) * 0.55 * fast * dt);
         zoomSlider.value = st.zoom;
       }
+      if (keys['t'] || keys['g']) {               // commander pitch keys
+        cOrbit.ph = clamp(cOrbit.ph + (keys['t'] ? 1 : -1) * 0.9 * dt, 0.05, 1.52);
+        syncPitchUI();
+      }
     }
+
+    /* ---------- UI: popup menus, auto-fold, zen ---------- */
+    let _uiLast = performance.now();
+    st.zen = false;
+    const menus = bar.querySelectorAll('.kss-menu');
+    const dockBtns = bar.querySelectorAll('.kss-dbtn[data-open]');
+    function closeMenus() {
+      menus.forEach(m => m.classList.remove('kss-open'));
+      dockBtns.forEach(x => x.classList.remove('kss-on'));
+    }
+    function showUI() {
+      _uiLast = performance.now();
+      if (!st.zen) bar.classList.remove('kss-folded');
+    }
+    dockBtns.forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = b.dataset.open;
+      const target = bar.querySelector('.kss-menu[data-menu="' + name + '"]');
+      const willOpen = !target.classList.contains('kss-open');
+      closeMenus();
+      if (willOpen) { target.classList.add('kss-open'); b.classList.add('kss-on'); }
+      showUI();
+    }));
+    bar.addEventListener('pointerdown', showUI);
+    bar.addEventListener('click', showUI);
+    const zenExit = stage.querySelector('.kss-zen-exit');
+    function setZen(on) {
+      st.zen = on;
+      container.classList.toggle('kss-zenmode', on);
+      if (on) { closeMenus(); bar.classList.add('kss-folded'); }
+      else showUI();
+    }
+    bar.querySelector('.kss-zen').addEventListener('click', e => { e.stopPropagation(); setZen(true); });
+    zenExit.addEventListener('click', () => setZen(false));
 
     /* ---------- bar wiring ---------- */
     const zoomSlider = bar.querySelector('.kss-zoom');
@@ -2024,8 +2536,8 @@ window.KnotSwarmSim = (function () {
       buildEnv();
       st.warm = { active: true, level: 0, t0: st.t };
       st.zoom = 0;
-      st.roi.x = st.env === 'urban' ? SITE.x : 0;
-      st.roi.z = st.env === 'urban' ? SITE.z : 0;
+      st.roi.x = ENV_HOME[st.env].x;
+      st.roi.z = ENV_HOME[st.env].z;
       setFitDomain(WARM_LEVELS[0], st.roi.x - CROP_G / 2, st.roi.z - CROP_G / 2, CROP_G, false);
       clearRuler(); reconDirty = true;
     }));
@@ -2091,6 +2603,7 @@ window.KnotSwarmSim = (function () {
       else if (st.mode === 'auto') autoStep(st.t);
       keyStep(dt);
       domainStep(dt);
+      frustumWindow();
       // adaptive swarm size: more drones as detail demand rises
       if (st.drAdapt) {
         adaptCooldown -= dt;
@@ -2109,6 +2622,13 @@ window.KnotSwarmSim = (function () {
         patrolMesh.position.set(P.x, 1.0, P.z);
         patrolMesh.rotation.y = -P.hd;
       }
+      if (st.env === 'ocean' && envGroup.userData.boats) {
+        for (const g of envGroup.userData.boats) {
+          const b = boatPos(st.t, g.userData.ph);
+          g.position.set(b.x, 1.2 + 0.2 * Math.sin(st.t * 2 + g.userData.ph), b.z);
+          g.rotation.y = -b.hd;
+        }
+      }
       if (st.env === 'ocean' && frame % 3 === 0) {
         const gm = envGroup.userData.ground;
         const pos = gm.geometry.attributes.position;
@@ -2117,6 +2637,10 @@ window.KnotSwarmSim = (function () {
         pos.needsUpdate = true;
       }
       updateHUD(fit.crop);
+      if (!st.zen && performance.now() - _uiLast > 3000 && !bar.classList.contains('kss-folded')) {
+        bar.classList.add('kss-folded');
+        closeMenus();
+      }
 
       // commander camera
       if (st.linked) {
