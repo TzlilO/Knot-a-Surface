@@ -11,6 +11,8 @@
 ═══════════════════════════════════════════════════════════════════════════ */
 window.KnotSwarmSim = (function () {
   'use strict';
+  const SIM_VERSION = 'v18';
+  const SIM_BUILT = '/*__BUILD_TIME__*/';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -655,6 +657,7 @@ window.KnotSwarmSim = (function () {
         '<div class="kss-phase"></div>' +
         '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
         '<div class="kss-hint">WASD move swarm · R/F knob · T/G commander pitch · click ground: ROI · in commander: ruler / markers / detach</div>' +
+        '<div class="kss-version">' + SIM_VERSION + ' · ' + SIM_BUILT + '</div>' +
       '</div>' +
       '<div class="kss-bar"></div>';
     const stage = container.querySelector('.kss-stage');
@@ -1337,7 +1340,10 @@ window.KnotSwarmSim = (function () {
       _splatAlpha = new T.CanvasTexture(cv);
       return _splatAlpha;
     }
-    function wallFrac() { return 0.12 + 0.28 * (st.pitch / 45); }   // oblique → more facade budget
+    function wallFrac() {                                          // oblique → more facade budget
+      const base = 0.12 + 0.28 * (st.pitch / 45);
+      return st.env === 'forest' ? Math.min(0.5, base + 0.10) : base;   // stems share this pool too
+    }
     function allocRecon() {
       for (const o of [splats, wallSplats]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
       if (netLines) { scene.remove(netLines); netLines.geometry.dispose(); netLines.material.dispose(); }
@@ -1598,6 +1604,48 @@ window.KnotSwarmSim = (function () {
           }
         }
       }
+      // forest stem pass: oblique swarm angle reveals trunks under the canopy —
+      // reuse the SAME wall/facade splat pool (wk, wallCap), no new arrays.
+      if (st.env === 'forest') {
+        const obliq = clamp01((st.pitch - 4) / 20);       // nadir ⇒ ~0 (under-canopy hidden); oblique reveals it
+        if (obliq > 0.02) {
+          const ci0 = Math.floor(x0 / TREE_CELL) - 1, ci1 = Math.ceil((x0 + crop) / TREE_CELL) + 1;
+          const cj0 = Math.floor(z0 / TREE_CELL) - 1, cj1 = Math.ceil((z0 + crop) / TREE_CELL) + 1;
+          const trunkCol = [0.29, 0.20, 0.14];             // same as buildForestProps' trunkM (0x4a3423)
+          for (let cj = cj0; cj <= cj1 && wk < wallCap; cj++) for (let ci = ci0; ci <= ci1 && wk < wallCap; ci++) {
+            const t = forestTree(ci, cj);
+            if (!t || treeClear(t.x, t.z)) continue;
+            if (t.x < x0 || t.x > x0 + crop || t.z < z0 || t.z > z0 + crop) continue;
+            // a trunk facing away from the commander spends nothing (same rule as the facade pass)
+            const toCamX = cmdrCam.position.x - t.x, toCamZ = cmdrCam.position.z - t.z;
+            const base = ENVS.forest.terra(t.x, t.z);
+            const topY = base + t.hh * 0.5, botY = base;
+            const nSteps = Math.min(10, Math.max(2, Math.ceil((topY - botY) / Math.max(0.3, cell * 0.5))));
+            for (let s = 0; s < nSteps && wk < wallCap; s++) {
+              const f = (s + 0.5) / nSteps;                // 0 = root flare, 1 = canopy attach
+              const y = botY + f * (topY - botY);
+              const r = 0.2 + (0.14 - 0.2) * f;             // world-radius taper, matches the trunk mesh exactly
+              // camera-facing billboard ring: normal points at the commander, tangent is horizontal
+              const nlen = Math.hypot(toCamX, toCamZ) || 1;
+              _n.set(toCamX / nlen, 0, toCamZ / nlen);
+              _t1.set(-_n.z, 0, _n.x).multiplyScalar(r * 1.7);
+              _t2.set(0, (topY - botY) / nSteps * 1.3, 0);
+              _p.set(t.x + _n.x * r * 0.3, y, t.z + _n.z * r * 0.3);
+              _m.makeBasis(_t1, _t2, _n);
+              _m.setPosition(_p);
+              wallSplats.setMatrixAt(wk, _m);
+              wPosArr[wk * 3] = _p.x; wPosArr[wk * 3 + 1] = _p.y; wPosArr[wk * 3 + 2] = _p.z;
+              wNrmArr[wk * 3] = _n.x; wNrmArr[wk * 3 + 1] = _n.y; wNrmArr[wk * 3 + 2] = _n.z;
+              wErrArr[wk] = r * 0.4;
+              wConfA.array[wk] = clamp(obliq, 0.15, 1);     // faint at low obliquity, solid once well-observed
+              const shade = 0.55 + 0.45 * obliq;
+              wallSplats.instanceColor.setXYZ(wk, trunkCol[0] * shade, trunkCol[1] * shade, trunkCol[2] * shade);
+              wk++;
+            }
+          }
+        }
+      }
+
       wallUsed = wk;
       wallSplats.count = wk;
       wallSplats.instanceMatrix.needsUpdate = true;
@@ -2089,25 +2137,28 @@ window.KnotSwarmSim = (function () {
     function autoStep(now) {
       const A = st.auto, dt = now - A.t0;
       switch (A.phase) {
-        case 'dwellG': if (dt > 3.5) { A.phase = 'zoomIn'; A.t0 = now; A.from = { ...st.roi }; A.to = pickROI(); } break;
+        case 'dwellG': if (dt > 3.5) { A.phase = 'zoomIn'; A.t0 = now; A.from = { ...st.roi }; A.to = pickROI(); bar.querySelectorAll('.kss-pitch').forEach(x => x.classList.remove('kss-on')); } break;
         case 'zoomIn': {
           const f = Math.min(1, dt / 5);
           st.zoom = ease(f);
+          st.pitch = 22 * ease(f);
           st.roi.x = A.from.x + (A.to.x - A.from.x) * ease(Math.min(1, f * 1.4));
           st.roi.z = A.from.z + (A.to.z - A.from.z) * ease(Math.min(1, f * 1.4));
           if (f >= 1) { A.phase = 'dwellL'; A.t0 = now; }
           break;
         }
         case 'dwellL':
+          st.pitch = 22;
           if (dt > 6) { A.phase = 'zoomOut'; A.t0 = now; A.from = { ...st.roi }; }
           break;
         case 'zoomOut': {
           const f = Math.min(1, dt / 4);
           st.zoom = 1 - ease(f);
+          st.pitch = 22 * (1 - ease(f));
           const hx = ENV_HOME[st.env].x, hz = ENV_HOME[st.env].z;
           st.roi.x = A.from.x + (hx - A.from.x) * ease(f);
           st.roi.z = A.from.z + (hz - A.from.z) * ease(f);
-          if (f >= 1) { A.phase = 'dwellG'; A.t0 = now; }
+          if (f >= 1) { A.phase = 'dwellG'; A.t0 = now; const nb = bar.querySelector('.kss-pitch[data-p="0"]'); if (nb) nb.classList.add('kss-on'); }
           break;
         }
       }
