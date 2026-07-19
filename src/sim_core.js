@@ -635,28 +635,35 @@ window.KnotSwarmSim = (function () {
       '<div class="kss-stage" tabindex="0">' +
         '<canvas class="kss-canvas"></canvas>' +
         '<div class="kss-cmdr"><canvas class="kss-cmdr-canvas"></canvas>' +
-          '<div class="kss-cmdr-label">COMMANDER · reconstruction only</div>' +
-          '<div class="kss-cmdr-tools">' +
-            '<button class="kss-cbtn kss-on" data-tool="nav" title="navigate">✥</button>' +
-            '<button class="kss-cbtn" data-tool="ruler" title="ruler + line-of-sight">📏</button>' +
-            '<button class="kss-cbtn" data-tool="mark" title="drop tactical marker">◎</button>' +
-            '<button class="kss-cbtn" data-tool="topo" title="topo probe: drop a sphere, it rolls down the gradient">⚫</button>' +
-            '<button class="kss-cbtn" data-tool="heat" title="residual heatmap (change detection)">▦</button>' +
-            '<button class="kss-cbtn kss-fit" title="fit-to-screen: frame the crop exactly">FIT</button>' +
-            '<button class="kss-cbtn kss-chan" title="render channel: RGB / depth / normal / confidence">RGB</button>' +
-            '<button class="kss-cbtn kss-link kss-on" title="tether commander to swarm">LINK</button>' +
-            '<button class="kss-cmdr-swap" title="swap views">⇆</button>' +
-          '</div>' +
-          '<div class="kss-compass">▲<span>N</span></div>' +
-          '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
-          '<div class="kss-cpitch-wrap kss-topo-wrap" style="display:none;bottom:74px"><span>⚫ R</span><input class="kss-topo-r kss-cpitch" type="range" min="0.5" max="6" step="0.1" value="2"><span class="kss-cpitch-val kss-topo-val">2.0 m</span></div>' +
-          '<div class="kss-cmdr-read"></div>' +
+          '<div class="kss-cmdr-label">REAL SCENE</div>' +
+          '<button class="kss-cmdr-swap" title="swap main / inset views">⇆</button>' +
         '</div>' +
         '<div class="kss-hud kss-hud-tl"></div>' +
         '<div class="kss-hud kss-hud-tr"></div>' +
         '<div class="kss-phase"></div>' +
         '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
-        '<div class="kss-hint">WASD move swarm · R/F knob · T/G commander pitch · click ground: ROI · in commander: ruler / markers / detach</div>' +
+        '<div class="kss-tools">' +
+          '<button class="kss-cbtn kss-on" data-tool="nav" title="navigate — drag orbit · right-drag pan · wheel zoom">✥</button>' +
+          '<button class="kss-cbtn" data-tool="ruler" title="ruler + line-of-sight">📏</button>' +
+          '<button class="kss-cbtn" data-tool="mark" title="drop tactical marker">◎</button>' +
+          '<button class="kss-cbtn" data-tool="topo" title="topo probe: drop a sphere, it rolls down the gradient">⚫</button>' +
+          '<button class="kss-cbtn" data-tool="heat" title="residual heatmap (change detection)">▦</button>' +
+          '<button class="kss-cbtn kss-fit" title="fit-to-screen: frame the crop exactly">FIT</button>' +
+          '<button class="kss-cbtn kss-chan" title="render channel: RGB / depth / normal / confidence">RGB</button>' +
+        '</div>' +
+        '<div class="kss-compass">▲<span>N</span></div>' +
+        '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
+        '<div class="kss-cpitch-wrap kss-topo-wrap" style="display:none"><span>⚫ R</span><input class="kss-topo-r kss-cpitch" type="range" min="0.5" max="6" step="0.1" value="2"><span class="kss-cpitch-val kss-topo-val">2.0 m</span></div>' +
+        '<div class="kss-cmdr-read"></div>' +
+        '<button class="kss-info-btn" title="about this simulator">i</button>' +
+        '<div class="kss-info">' +
+          '<button class="kss-info-x" title="close">✕</button>' +
+          '<h4>Swarm Resolution-Knob Simulator</h4>' +
+          '<p>A drone swarm reconstructs the scene as a spline-coupled Gaussian-splat surface under a <b>fixed splat budget</b>. Warm-up subdivides the parameter domain onto the true geometry; the resolution knob converges every frustum on one region and triggers <b>localized fine-tuning</b> at the same budget. The <b>commander</b> is a free-flying camera — the reconstruction re-optimizes wherever it looks.</p>' +
+          '<h5>Controls</h5>' +
+          '<p><b>Drag</b> orbit · <b>right-drag</b> (or Shift-drag) pan · <b>wheel</b> zoom · <b>WASD</b> fly (Shift sprint) · <b>R/F</b> resolution knob · <b>T/G</b> pitch · <b>⇆</b> swap main / inset.</p>' +
+          '<p><b>Tools:</b> 📏 ruler + line-of-sight · ◎ marker · ⚫ topo probe · ▦ residual heatmap · FIT frame-to-screen · RGB render channel (depth / normal / confidence).</p>' +
+        '</div>' +
         '<div class="kss-version">' + SIM_VERSION + ' · ' + SIM_BUILT + '</div>' +
       '</div>' +
       '<div class="kss-bar"></div>';
@@ -772,7 +779,7 @@ window.KnotSwarmSim = (function () {
       (() => { const L = new T.DirectionalLight(0xbfd8ff, 1.1); L.position.copy(SUN).multiplyScalar(100); return L; })());
 
     const orbit = { th: -0.7, ph: 0.52, r: 118, cx: 0, cz: 0 };
-    const cOrbit = { th: 0.6, ph: 0.62, r: 60, auto: true, tx: 0, ty: 0, tz: 0 };  // t* used when detached
+    const cOrbit = { th: 0.6, ph: 0.62, r: 60, auto: true, tx: ENV_HOME.forest.x, ty: 0, tz: ENV_HOME.forest.z };  // free camera: target = crop centre
     function applyCam() {
       const y = orbit.r * Math.sin(orbit.ph), rr = orbit.r * Math.cos(orbit.ph);
       cam.position.set(orbit.cx + rr * Math.cos(orbit.th), y, orbit.cz + rr * Math.sin(orbit.th));
@@ -784,7 +791,7 @@ window.KnotSwarmSim = (function () {
       env: 'forest', mode: 'manual', budget: 65536, zoom: 0,
       roi: { x: ENV_HOME.forest.x, z: ENV_HOME.forest.z },
       show: { splats: true, net: false, frustum: true, cmdr: true },
-      swapped: true, linked: true, tool: 'nav', heat: false,
+      swapped: true, tool: 'nav', heat: false,
       drGrid: 5, drAdapt: false,
       pitch: 0,                                  // oblique view angle (deg): 0 = nadir
       boost: 0,
@@ -794,6 +801,7 @@ window.KnotSwarmSim = (function () {
     };
     const SPREAD_G = 42, ALT = 46;
     const CROP_G = 84, CROP_MIN = 7;
+    const ROI_CAP = 70;                            // commander/ROI travel envelope (world edge = end of scene)
     st.deg = 'nurbs'; st.den = 2; st.chan = 'rgb'; // NURBS default · ×2 parameter group
     st.adaptive = true;                            // curvature/texture/residual-aware sampling
     st.fluid = false;                              // fluid-particle sampling mode
@@ -2479,7 +2487,7 @@ window.KnotSwarmSim = (function () {
         (st.mode === 'auto' && !st.warm.active ? ' · ' + st.auto.phase : '') + '</div>' +
         '<div>' + (DR * DR) + ' drones' + (st.drAdapt ? ' (adaptive)' : '') + ' · alt ' + fmt(ALT * (1 - 0.35 * st.zoom), 0) + ' m</div>' +
         '<div>overlap <b>' + Math.round(st.ovl * 100) + '%</b> · drone footprint <b>' + fmt(footF, 0) + ' m</b></div>' +
-        '<div>' + (st.linked ? '🔗 cmdr tethered' : '✈ cmdr detached') + (st.heat ? ' · ▦ residual view' : '') + '</div>';
+        '<div>✈ commander @ GRID <b>' + gridRef(cOrbit.tx, cOrbit.tz) + '</b>' + (st.heat ? ' · ▦ residual view' : '') + '</div>';
       if (st.warm.active) {
         phaseEl.style.display = 'block';
         phaseEl.innerHTML = '⚙ WARM-UP · adapting parameter domain · level ' +
@@ -2505,7 +2513,16 @@ window.KnotSwarmSim = (function () {
 
     /* ---------- interaction: main view ---------- */
     const ray = new T.Raycaster(); const ndc = new T.Vector2();
-    let dragging = false, moved = 0, px = 0, py = 0;
+    const _panF = new T.Vector3();
+    /* right-drag / shift-drag → pan the orbit target across the ground plane */
+    function panTarget(o, cammm, cap, ax, az, dx, dy) {
+      cammm.getWorldDirection(_panF); _panF.y = 0; _panF.normalize();
+      const rx = _panF.z, rz = -_panF.x;             // screen-right on the ground
+      const k = o.r * 0.0016;
+      o[ax] = clamp(o[ax] + (-dx * rx - dy * _panF.x) * k, -cap, cap);
+      o[az] = clamp(o[az] + (-dx * rz - dy * _panF.z) * k, -cap, cap);
+    }
+    let dragging = false, panning = false, moved = 0, px = 0, py = 0;
     const _tp = new Map(); let _pinch0 = 0, _pinchR0 = 0;
     function onDown(e) {
       stage.focus({ preventScroll: true }); showUI();
@@ -2515,7 +2532,7 @@ window.KnotSwarmSim = (function () {
         _pinch0 = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]);
         _pinchR0 = (st.swapped ? cOrbit : orbit).r;
       }
-      dragging = true; moved = 0; px = e.clientX; py = e.clientY;
+      dragging = true; panning = (e.button === 2 || e.shiftKey); moved = 0; px = e.clientX; py = e.clientY;
     }
     function onMove(e) {
       if (_tp.has(e.pointerId)) _tp.set(e.pointerId, [e.clientX, e.clientY]);
@@ -2532,13 +2549,18 @@ window.KnotSwarmSim = (function () {
       moved += Math.abs(dx) + Math.abs(dy);
       px = e.clientX; py = e.clientY;
       const o = st.swapped ? cOrbit : orbit;
-      o.th += dx * 0.005; o.ph = clamp(o.ph + dy * 0.004, 0.12, 1.35);
+      if (panning) {
+        if (st.swapped) panTarget(cOrbit, cmdrCam, ROI_CAP, 'tx', 'tz', dx, dy);
+        else panTarget(orbit, cam, WORLD, 'cx', 'cz', dx, dy);
+      } else {
+        o.th += dx * 0.005; o.ph = clamp(o.ph + dy * 0.004, 0.12, 1.35);
+      }
       if (st.swapped) cOrbit.auto = false;
       applyCam();
     }
     function onUp(e) {
       _tp.delete(e.pointerId);
-      dragging = false;
+      dragging = false; panning = false;
       if (moved < 6 && st.swapped && (st.tool === 'ruler' || st.tool === 'mark' || st.tool === 'topo')) {
         const P = surfacePickFrom(e.clientX, e.clientY, canvas, cmdrCam);
         if (P) {
@@ -2551,14 +2573,15 @@ window.KnotSwarmSim = (function () {
         }
         return;
       }
-      if (moved < 6 && st.mode === 'manual' && !st.swapped) {
+      if (moved < 6 && st.mode === 'manual' && !st.swapped) {   // main = world → click flies the commander there
         const r = canvas.getBoundingClientRect();
         ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, cam);
         const hit = ray.intersectObject(envGroup.userData.ground, false)[0];
         if (hit) {
-          st.roi.x = clamp(hit.point.x, -70, 70);
-          st.roi.z = clamp(hit.point.z, -70, 70);
+          cOrbit.tx = clamp(hit.point.x, -ROI_CAP, ROI_CAP);
+          cOrbit.tz = clamp(hit.point.z, -ROI_CAP, ROI_CAP);
+          cOrbit.auto = false;
         }
       }
     }
@@ -2573,33 +2596,39 @@ window.KnotSwarmSim = (function () {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());   // right-drag = pan
 
     /* ---------- interaction: commander inset ---------- */
-    let cDrag = false, cMoved = 0, cpx = 0, cpy = 0, overCmdr = false;
-    cmdrBox.addEventListener('pointerenter', () => overCmdr = true);
-    cmdrBox.addEventListener('pointerleave', () => overCmdr = false);
-    function cDown(e) { stage.focus({ preventScroll: true }); cDrag = true; cMoved = 0; cpx = e.clientX; cpy = e.clientY; e.stopPropagation(); }
+    let cDrag = false, cPan = false, cMoved = 0, cpx = 0, cpy = 0;
+    function cDown(e) { stage.focus({ preventScroll: true }); cDrag = true; cPan = (e.button === 2 || e.shiftKey); cMoved = 0; cpx = e.clientX; cpy = e.clientY; e.stopPropagation(); }
     function cMove(e) {
       if (!cDrag) return;
-      cMoved += Math.abs(e.clientX - cpx) + Math.abs(e.clientY - cpy);
-      const o = st.swapped ? orbit : cOrbit;
-      o.th += (e.clientX - cpx) * 0.006;
-      o.ph = clamp(o.ph + (e.clientY - cpy) * 0.005, 0.05, 1.52);   // full pitch range
+      const dx = e.clientX - cpx, dy = e.clientY - cpy;
+      cMoved += Math.abs(dx) + Math.abs(dy);
       cpx = e.clientX; cpy = e.clientY;
+      const o = st.swapped ? orbit : cOrbit;
+      if (cPan) {
+        if (st.swapped) panTarget(orbit, cam, WORLD, 'cx', 'cz', dx, dy);
+        else panTarget(cOrbit, cmdrCam, ROI_CAP, 'tx', 'tz', dx, dy);
+      } else {
+        o.th += dx * 0.006;
+        o.ph = clamp(o.ph + dy * 0.005, 0.05, 1.52);   // full pitch range
+      }
       if (!st.swapped) { cOrbit.auto = false; syncPitchUI(); }
       applyCam();
     }
     function cUp(e) {
       if (!cDrag) return;
-      cDrag = false;
-      if (cMoved < 6 && st.swapped && st.mode === 'manual') {   // inset = world map → click sets ROI
+      cDrag = false; cPan = false;
+      if (cMoved < 6 && st.swapped && st.mode === 'manual') {   // inset = world map → click flies the commander there
         const r = cmdrCanvas.getBoundingClientRect();
         ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, cam);
         const hit = ray.intersectObject(envGroup.userData.ground, false)[0];
         if (hit) {
-          st.roi.x = clamp(hit.point.x, -70, 70);
-          st.roi.z = clamp(hit.point.z, -70, 70);
+          cOrbit.tx = clamp(hit.point.x, -ROI_CAP, ROI_CAP);
+          cOrbit.tz = clamp(hit.point.z, -ROI_CAP, ROI_CAP);
+          cOrbit.auto = false;
         }
       }
       if (cMoved < 6 && !st.swapped) {           // click → tool action
@@ -2630,6 +2659,7 @@ window.KnotSwarmSim = (function () {
     window.addEventListener('pointermove', cMove);
     window.addEventListener('pointerup', cUp);
     cmdrCanvas.addEventListener('wheel', cWheel, { passive: false });
+    cmdrCanvas.addEventListener('contextmenu', e => e.preventDefault());   // right-drag = pan
     /* FIT: the commander view becomes the image plane the 3DGS are splatted onto —
        viewpoint frozen (rotation off), distance binary-searched so the crop's
        corners exactly fill the frustum at the current heading & pitch. */
@@ -2657,8 +2687,8 @@ window.KnotSwarmSim = (function () {
       cOrbit.r = hi * 1.01;
     }
     /* pitch slider — fully adjustable commander pitch */
-    const pitchSlider = cmdrBox.querySelector('.kss-cpitch');
-    const pitchVal = cmdrBox.querySelector('.kss-cpitch-val');
+    const pitchSlider = container.querySelector('.kss-cpitch');
+    const pitchVal = container.querySelector('.kss-cpitch-val');
     function syncPitchUI() {
       const deg = Math.round(cOrbit.ph * 180 / Math.PI);
       pitchSlider.value = clamp(deg, 3, 87);
@@ -2672,11 +2702,11 @@ window.KnotSwarmSim = (function () {
     });
     syncPitchUI();
 
-    /* commander toolbar */
-    const toolBtns = cmdrBox.querySelectorAll('.kss-cbtn[data-tool]');
-    const topoWrap = cmdrBox.querySelector('.kss-topo-wrap');
-    const topoSlider = cmdrBox.querySelector('.kss-topo-r');
-    const topoVal = cmdrBox.querySelector('.kss-topo-val');
+    /* commander toolbar (now on the main stage) */
+    const toolBtns = container.querySelectorAll('.kss-cbtn[data-tool]');
+    const topoWrap = container.querySelector('.kss-topo-wrap');
+    const topoSlider = container.querySelector('.kss-topo-r');
+    const topoVal = container.querySelector('.kss-topo-val');
     topoSlider.addEventListener('pointerdown', e => e.stopPropagation());
     topoSlider.addEventListener('input', () => {
       topo.R = +topoSlider.value;
@@ -2694,18 +2724,24 @@ window.KnotSwarmSim = (function () {
       if (tl !== 'ruler') clearRuler();
       if (tl !== 'topo') topoClear();
     }));
-    const linkBtn = cmdrBox.querySelector('.kss-link');
-    linkBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      st.linked = !st.linked;
-      linkBtn.classList.toggle('kss-on', st.linked);
-      linkBtn.textContent = st.linked ? 'LINK' : 'FREE';
-      if (!st.linked) { cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z; cOrbit.ty = 0; cOrbit.auto = false; }
-      else cOrbit.auto = true;
-    });
+    /* info popup */
+    const infoBtn = container.querySelector('.kss-info-btn');
+    const infoPanel = container.querySelector('.kss-info');
+    const infoClose = () => infoPanel.classList.remove('kss-open');
+    infoBtn.addEventListener('click', e => { e.stopPropagation(); infoPanel.classList.toggle('kss-open'); });
+    container.querySelector('.kss-info-x').addEventListener('click', e => { e.stopPropagation(); infoClose(); });
+    infoPanel.addEventListener('pointerdown', e => e.stopPropagation());
+    stage.addEventListener('pointerdown', infoClose);   // click-away closes
+
     cmdrBox.classList.add('kss-swapped');          // commander main · world inset (default)
     const swapBtn = container.querySelector('.kss-cmdr-swap');
-    const onSwap = e => { e.stopPropagation(); st.swapped = !st.swapped; cmdrBox.classList.toggle('kss-swapped', st.swapped); };
+    const cmdrLabel = cmdrBox.querySelector('.kss-cmdr-label');
+    const onSwap = e => {
+      e.stopPropagation();
+      st.swapped = !st.swapped;
+      cmdrBox.classList.toggle('kss-swapped', st.swapped);
+      cmdrLabel.textContent = st.swapped ? 'REAL SCENE' : 'COMMANDER';   // inset shows the other view
+    };
     swapBtn.addEventListener('click', onSwap);
 
     /* ---------- MMORPG keys: WASD / QE / RF ---------- */
@@ -2724,7 +2760,7 @@ window.KnotSwarmSim = (function () {
     stage.addEventListener('pointerenter', () => stage.focus({ preventScroll: true }));
     function keyStep(dt) {
       const fast = keys['shift'] ? 2.6 : 1;
-      const camForCtl = (overCmdr && !st.linked) || st.swapped ? cmdrCam : cam;
+      const camForCtl = st.swapped ? cmdrCam : cam;   // move relative to the view on screen
       const fwd = new T.Vector3(); camForCtl.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
       const rgt = new T.Vector3(fwd.z, 0, -fwd.x);
       let mx = 0, mz = 0;
@@ -2732,20 +2768,15 @@ window.KnotSwarmSim = (function () {
       if (keys['s']) { mx -= fwd.x; mz -= fwd.z; }
       if (keys['a']) { mx += rgt.x; mz += rgt.z; }
       if (keys['d']) { mx -= rgt.x; mz -= rgt.z; }
-      const movingCmdr = !st.linked && (overCmdr || st.swapped);
-      if (mx || mz) {
-        const sp = (movingCmdr ? 26 : 18) * fast * dt;
-        if (movingCmdr) {                       // detached: fly the commander target
-          cOrbit.tx = clamp(cOrbit.tx + mx * sp, -WORLD, WORLD);
-          cOrbit.tz = clamp(cOrbit.tz + mz * sp, -WORLD, WORLD);
-        } else if (!st.warm.active) {           // move the swarm
-          if (st.mode !== 'manual') setMode('manual');
-          st.roi.x = clamp(st.roi.x + mx * sp, -70, 70);
-          st.roi.z = clamp(st.roi.z + mz * sp, -70, 70);
-        }
+      if (mx || mz) {                           // WASD flies the commander; crop + swarm follow it
+        if (st.mode !== 'manual') setMode('manual');
+        const sp = 24 * fast * dt;
+        cOrbit.tx = clamp(cOrbit.tx + mx * sp, -ROI_CAP, ROI_CAP);
+        cOrbit.tz = clamp(cOrbit.tz + mz * sp, -ROI_CAP, ROI_CAP);
+        cOrbit.auto = false;
       }
-      if (keys['q']) { (movingCmdr || st.swapped ? cOrbit : cOrbit).th -= 1.6 * dt; cOrbit.auto = false; }
-      if (keys['e']) { (movingCmdr || st.swapped ? cOrbit : cOrbit).th += 1.6 * dt; cOrbit.auto = false; }
+      if (keys['q']) { cOrbit.th -= 1.6 * dt; cOrbit.auto = false; }
+      if (keys['e']) { cOrbit.th += 1.6 * dt; cOrbit.auto = false; }
       if (keys['r'] || keys['f']) {
         if (st.mode !== 'manual') setMode('manual');
         st.zoom = clamp01(st.zoom + (keys['r'] ? 1 : -1) * 0.55 * fast * dt);
@@ -2819,8 +2850,8 @@ window.KnotSwarmSim = (function () {
       if (st.fluid) initFluid();                   // fresh particle sheet for the new env
       st.warm = { active: true, level: 0, t0: st.t };
       st.zoom = 0;
-      st.roi.x = ENV_HOME[st.env].x;
-      st.roi.z = ENV_HOME[st.env].z;
+      st.roi.x = cOrbit.tx = ENV_HOME[st.env].x;
+      st.roi.z = cOrbit.tz = ENV_HOME[st.env].z;   // commander re-centres on the new env
       setFitDomain(WARM_LEVELS[0], st.roi.x - CROP_G / 2, st.roi.z - CROP_G / 2, CROP_G, false);
       reconDirty = true;
     }));
@@ -2855,7 +2886,7 @@ window.KnotSwarmSim = (function () {
       bar.querySelectorAll('.kss-denc').forEach(x => x.classList.toggle('kss-on', x === b));
       reWarm();
     }));
-    cmdrBox.querySelector('.kss-fit').addEventListener('click', e => {
+    container.querySelector('.kss-fit').addEventListener('click', e => {
       e.stopPropagation();
       applyFit();                                    // frozen, exact image-plane framing
     });
@@ -2870,7 +2901,7 @@ window.KnotSwarmSim = (function () {
       bar.querySelectorAll('.kss-samp').forEach(x => x.classList.toggle('kss-on', x === b));
       IMP.t = -9; if (st.fluid) initFluid(); reconDirty = true;
     }));
-    const chanBtn = cmdrBox.querySelector('.kss-chan');
+    const chanBtn = container.querySelector('.kss-chan');
     const CHANS = ['rgb', 'depth', 'normal', 'conf'];
     chanBtn.addEventListener('click', e => {
       e.stopPropagation();
@@ -2991,15 +3022,13 @@ window.KnotSwarmSim = (function () {
         closeMenus();
       }
 
-      // commander camera
-      if (st.linked) {
-        if (cOrbit.auto) cOrbit.th += dt * 0.12;     // ambient orbit (FIT freezes it)
-        cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z;
-        cOrbit.ty = st.env === 'ocean' ? 2 : bicubic(fit.cur, fit.CN, 0.5, 0.5);
-      } else {
-        const sh = reconH(cOrbit.tx, cOrbit.tz);
-        cOrbit.ty += (((sh === null ? 2 : sh)) - cOrbit.ty) * Math.min(1, dt * 3);
-      }
+      // commander camera — free-flying; crop + swarm follow its look-at (no LINK)
+      if (cOrbit.auto) cOrbit.th += dt * 0.12;       // ambient orbit until the user drives it (FIT freezes it)
+      if (st.mode === 'manual') { st.roi.x = cOrbit.tx; st.roi.z = cOrbit.tz; }   // commander drives the ROI
+      else { cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z; }                        // auto tour drives the commander
+      const sh = reconH(cOrbit.tx, cOrbit.tz);
+      const tgtY = sh === null ? (st.env === 'ocean' ? 2 : bicubic(fit.cur, fit.CN, 0.5, 0.5)) : sh;
+      cOrbit.ty += (tgtY - cOrbit.ty) * Math.min(1, dt * 3);
       const cy = cOrbit.r * Math.sin(cOrbit.ph), crr = cOrbit.r * Math.cos(cOrbit.ph);
       cmdrCam.position.set(cOrbit.tx + crr * Math.cos(cOrbit.th), cOrbit.ty + cy, cOrbit.tz + crr * Math.sin(cOrbit.th));
       cmdrCam.lookAt(cOrbit.tx, cOrbit.ty, cOrbit.tz);
