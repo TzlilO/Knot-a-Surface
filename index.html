@@ -898,7 +898,7 @@ window.KnotSwarmSim = (function () {
       env: 'forest', mode: 'manual', budget: 65536, zoom: 0,
       roi: { x: ENV_HOME.forest.x, z: ENV_HOME.forest.z },
       show: { splats: true, net: false, frustum: true, cmdr: true },
-      swapped: false, linked: true, tool: 'nav', heat: false,
+      swapped: true, linked: true, tool: 'nav', heat: false,
       drGrid: 5, drAdapt: false,
       pitch: 0,                                  // oblique view angle (deg): 0 = nadir
       boost: 0,
@@ -2389,6 +2389,17 @@ window.KnotSwarmSim = (function () {
     function onUp(e) {
       _tp.delete(e.pointerId);
       dragging = false;
+      if (moved < 6 && st.swapped && (st.tool === 'ruler' || st.tool === 'mark')) {
+        const P = surfacePickFrom(e.clientX, e.clientY, canvas, cmdrCam);
+        if (P) {
+          if (st.tool === 'ruler') {
+            if (!rulerState.a || rulerState.b) { clearRuler(); rulerState.a = P; }
+            else rulerState.b = P;
+            updateRulerViz();
+          } else dropMarker(P);
+        }
+        return;
+      }
       if (moved < 6 && st.mode === 'manual' && !st.swapped) {
         const r = canvas.getBoundingClientRect();
         ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -2430,6 +2441,16 @@ window.KnotSwarmSim = (function () {
     function cUp(e) {
       if (!cDrag) return;
       cDrag = false;
+      if (cMoved < 6 && st.swapped && st.mode === 'manual') {   // inset = world map → click sets ROI
+        const r = cmdrCanvas.getBoundingClientRect();
+        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        ray.setFromCamera(ndc, cam);
+        const hit = ray.intersectObject(envGroup.userData.ground, false)[0];
+        if (hit) {
+          st.roi.x = clamp(hit.point.x, -70, 70);
+          st.roi.z = clamp(hit.point.z, -70, 70);
+        }
+      }
       if (cMoved < 6 && !st.swapped) {           // click → tool action
         if (st.tool === 'ruler') {
           const P = surfacePick(e.clientX, e.clientY);
@@ -2518,6 +2539,7 @@ window.KnotSwarmSim = (function () {
       if (!st.linked) { cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z; cOrbit.ty = 0; cOrbit.auto = false; }
       else cOrbit.auto = true;
     });
+    cmdrBox.classList.add('kss-swapped');          // commander main · world inset (default)
     const swapBtn = container.querySelector('.kss-cmdr-swap');
     const onSwap = e => { e.stopPropagation(); st.swapped = !st.swapped; cmdrBox.classList.toggle('kss-swapped', st.swapped); };
     swapBtn.addEventListener('click', onSwap);

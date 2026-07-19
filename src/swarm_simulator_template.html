@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Knot-a-Surface — Swarm Resolution-Knob Simulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#07090f;color:#dde5f0;
+  font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%;padding:14px;gap:10px}
+header{flex:none;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-size:19px;font-weight:700;letter-spacing:-.02em}
+header .sub{font-size:13px;color:#5c6f8a}
+header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  color:#4fc3f7;background:#121b2e;border:1.5px solid #1b2a42;border-radius:14px;padding:4px 12px;margin-left:auto}
+#sim{flex:1 1 auto;min-height:0}
+footer{flex:none;font-size:12px;color:#5c6f8a;line-height:1.6}
+footer b{color:#8fa4c0}
+/*__SIM_CSS__*/
+@media (max-width:840px){
+  footer{display:none}
+  header h1{font-size:15px}
+  header .sub{display:none}
+  header .badge{font-size:8px;padding:3px 8px}
+  #app{padding:8px;gap:6px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Swarm Resolution-Knob Simulator</h1>
+    <span class="sub">fixed 3DGS budget · B-spline-coupled surface · infinite-resolution zoom</span>
+    <span class="badge">Knot-a-Surface</span>
+  </header>
+  <div id="sim"></div>
+  <footer>
+    <b>Pipeline:</b> warm-up subdivides the parameter domain onto true scene geometry; the resolution knob converges all frustums on one ROI and triggers <b>localized
+    fine-tuning</b> at the <b>same fixed Gaussian budget</b> (up to 32,768 splats carrying material texture). The urban map centers on a <b>forward operating base</b> —
+    walls, HQ, tank, APCs, and a moving patrol that the model must keep re-fitting (watch it in ▦ residual view). <b>Commander view</b> renders the reconstruction only:
+    <b>LINK/FREE</b> tethers or detaches it from the swarm, <b>WASD</b> (Shift = sprint) moves the swarm — or flies the commander when detached — <b>R/F</b> works the knob,
+    <b>📏</b> measures distance + line-of-sight over the model, <b>◎</b> drops grid-referenced markers, <b>⚡ FORCE OPT</b> bursts optimization, <b>⇆</b> swaps views.
+  </footer>
+</div>
+<script>
+/*__SIM_CORE__*/
+</script>
+<script>
+  KnotSwarmSim.create(document.getElementById('sim'), { embed: false });
+</script>
+</body>
+</html>

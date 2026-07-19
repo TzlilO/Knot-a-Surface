@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Knot-a-Surface — Tzlil Ovadia</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<style>
+/* ═══════════ Knot-a-Surface v2 — "field notebook": warm paper + dark instrument panels ═══════════ */
+:root{
+  --bg:#f4f1e9; --bg2:#eae5d8; --card:#fffdf7;
+  --panel:#0c1322; --panel2:#101a2e;
+  --accent:#155fd4; --amber:#b26a00; --green:#0d7d56; --purple:#6d3fc4; --red:#c03530;
+  --text:#151d2c; --dim:#4d5a6e; --dim2:#8a94a5; --border:#d9d1bd;
+  --laccent:#4fc3f7; --lamber:#ffa726; --lgreen:#69f0ae; --lpurple:#ce93d8;
+}
+html,body,.reveal-viewport,.reveal{background:var(--bg) !important}
+.reveal{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;font-size:17px;color:var(--text)}
+.reveal .slides section{text-align:left;padding:0 10px;height:100%}
+.reveal h1,.reveal h2,.reveal h3{font-family:'Space Grotesk','Inter',sans-serif;text-transform:none;letter-spacing:-.015em;color:var(--text)}
+.reveal h2{font-size:32px;font-weight:700;line-height:1.1;margin:0 0 6px;
+  border-bottom:3px solid var(--accent);display:inline-block;padding-bottom:5px}
+.reveal h3{font-size:16px;font-weight:600;color:var(--accent);margin:0 0 6px}
+.reveal p{font-size:15px;line-height:1.6;color:var(--dim);margin:0}
+.reveal strong{color:var(--text);font-weight:650}
+.reveal .katex{font-size:1.02em}
+.reveal a{color:var(--accent)}
+.reveal em{color:var(--text)}
+
+/* chrome */
+.tag{position:absolute;top:-2px;right:6px;font-size:11px;font-weight:800;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--bg);background:var(--accent);padding:5px 14px;
+  border-radius:3px}
+.lead{font-size:14.5px;color:var(--dim);font-style:italic;margin:0 0 12px}
+
+/* layout */
+.cols{display:grid;gap:18px;align-items:stretch}
+.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:1fr 1fr 1fr}.c4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:4px;padding:13px 16px;
+  box-shadow:0 1px 3px rgba(21,29,44,.06)}
+.card h3{font-size:15px;margin-bottom:5px}
+.card p{font-size:13.5px;line-height:1.55}
+.eq{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:0 4px 4px 0;padding:9px 16px;font-size:15px;box-shadow:0 1px 3px rgba(21,29,44,.06)}
+.eq .lab{font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--dim2);margin-bottom:3px}
+.chip{display:inline-block;font-size:11.5px;font-weight:600;color:var(--dim);background:var(--card);
+  border:1px solid var(--border);border-radius:3px;padding:3px 11px}
+.chip.g{color:var(--green)} .chip.a{color:var(--amber)} .chip.b{color:var(--accent)} .chip.p{color:var(--purple)}
+ul.b{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+ul.b li{display:grid;grid-template-columns:16px 1fr;gap:9px;font-size:14.5px;line-height:1.55;color:var(--dim)}
+ul.b li::before{content:"▸";color:var(--accent);font-size:13px;margin-top:1px}
+ul.b li.g::before{color:var(--green)} ul.b li.a::before{color:var(--amber)}
+table.t{width:100%;border-collapse:collapse;font-size:13.5px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--card)}
+table.t th{background:var(--text);color:var(--bg);font-weight:600;font-size:11px;text-transform:uppercase;
+  letter-spacing:.06em;padding:7px 11px;border-bottom:1px solid var(--border);text-align:center}
+table.t th:first-child{text-align:left}
+table.t td{padding:6.5px 11px;text-align:center;border-bottom:1px solid var(--border);color:var(--text)}
+table.t td:first-child{text-align:left}
+table.t tr.ours{background:#e4f4ea}
+
+/* dark instrument panels: canvases + diagram SVGs */
+.wcanvas{width:100%;border-radius:6px;background:var(--panel);display:block;border:1px solid #202c44}
+svg.panel{background:var(--panel);border-radius:6px;border:1px solid #202c44;padding:8px;box-sizing:border-box}
+.widget-ui{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.wbtn{font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:var(--dim);background:var(--card);
+  border:1px solid var(--border);border-radius:3px;padding:4px 13px;cursor:pointer;transition:all .15s}
+.wbtn:hover{border-color:var(--accent);color:var(--accent)}
+.wbtn.on{color:#fff;border-color:var(--accent);background:var(--accent)}
+.wlab{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim2)}
+.big{font-size:46px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;color:var(--accent);font-family:'Space Grotesk',sans-serif}
+.big.a{color:var(--amber)} .big.g{color:var(--green)}
+.tl-row{display:grid;grid-template-columns:46px 1fr;gap:9px;align-items:center;padding:7px 11px;
+  background:var(--card);border-radius:3px;border:1px solid var(--border);border-left:3px solid var(--dim2)}
+.tl-row .y{font-size:11px;color:var(--dim2);font-weight:700}
+.tl-row .n{font-size:13.5px} .tl-row .d{font-size:12px;color:var(--dim2)}
+.callout{border-left:3px solid var(--green);background:var(--card);border:1px solid var(--border);
+  border-left-width:3px;border-left-color:var(--green);
+  border-radius:0 4px 4px 0;padding:9px 16px;font-size:14.5px;color:var(--dim)}
+.imgph{display:flex;align-items:center;justify-content:center;min-height:110px;border:1.5px dashed var(--border);
+  border-radius:6px;color:var(--dim2);font-size:12px;text-align:center;padding:10px;margin:8px 0;background:var(--bg2)}
+
+/* dark cover slides (title) keep their own colors */
+section.cover{color:#dde5f0}
+section.cover p{color:#9fb0c8}
+#title-bg{position:absolute;inset:0;z-index:0}
+.title-inner{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;text-align:center;gap:0}
+section.cover .chip{background:rgba(18,27,46,.9);border-color:#22314e;color:#8fa4c0}
+section.cover .chip.b{color:#4fc3f7}
+
+/* reveal tweaks */
+.reveal .progress{height:3px;color:var(--accent)}
+.reveal .controls{color:var(--accent)}
+.reveal .slide-number{background:transparent;color:var(--dim2);font-size:13px;right:14px;bottom:10px}
+
+/*__SIM_CSS__*/
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- ═══ 1 · TITLE ═══════════════════════════════════════════════════════ -->
+<section data-widget="title" class="cover" data-background-color="#070b14">
+  <canvas id="title-bg"></canvas>
+  <div class="title-inner">
+    <span class="chip b" style="letter-spacing:.14em;font-weight:800">MSC THESIS · HEBREW UNIVERSITY OF JERUSALEM · 2026</span>
+    <h1 style="font-size:74px;font-weight:800;margin:20px 0 10px;letter-spacing:-.03em">Knot-a-Surface</h1>
+    <p style="font-size:21px;color:#b9c9de">Learning B-Spline Surfaces for 3D Gaussian Splatting</p>
+    <div style="margin-top:38px;font-size:15px;color:#8fa4c0">
+      <strong style="color:var(--text)">Tzlil Ovadia</strong> &nbsp;·&nbsp; Supervisor: Prof. Sagie Benaim
+    </div>
+    <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center">
+      <span class="chip">3D Gaussian Splatting</span><span class="chip">NURBS Surfaces</span>
+      <span class="chip">Differential Geometry</span><span class="chip">Novel View Synthesis</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 2 · LANDSCAPE ═══════════════════════════════════════════════════ -->
+<section>
+  <span class="tag">Introduction</span>
+  <h2>3D scene reconstruction: the landscape</h2>
+  <div class="eq" style="text-align:center;margin:8px 0 14px;background:transparent">
+    Given $N$ calibrated images → learn a compact 3D representation → render any novel viewpoint
+  </div>
+  <div class="cols" style="grid-template-columns:1fr 1.5fr">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <span class="wlab">Evolution of representations</span>
+      <div class="tl-row" style="border-left-color:var(--purple)"><span class="y">2020</span>
+        <div><span class="n" style="color:var(--purple);font-weight:600">NeRF</span> <span class="d">· Mildenhall et al.</span><div class="d">Neural implicit field · minutes per view</div></div></div>
+      <div class="tl-row" style="border-left-color:var(--amber)"><span class="y">2022</span>
+        <div><span class="n" style="color:var(--amber);font-weight:600">Instant-NGP</span> <span class="d">· Müller et al.</span><div class="d">Hash grids · seconds instead of hours</div></div></div>
+      <div class="tl-row" style="border-left-color:var(--accent)"><span class="y">2023</span>
+        <div><span class="n" style="color:var(--accent);font-weight:600">3D Gaussian Splatting</span> <span class="d">· Kerbl et al.</span><div class="d">Explicit particles · real-time 30–200 fps</div></div></div>
+      <div class="tl-row"><span class="y">2024</span>
+        <div><span class="n" style="font-weight:600">Surface-GS variants</span> <span class="d">· 2DGS, SuGaR, PGSR, GOF</span><div class="d">Binding Gaussians to geometry — post-hoc</div></div></div>
+      <div class="tl-row" style="border-left-color:var(--green);background:#e4f4ea"><span class="y" style="color:var(--green)">2025</span>
+        <div><span class="n" style="color:var(--green);font-weight:700">Knot-a-Surface</span><div class="d">The surface IS the representation — Gaussians derived analytically</div></div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span class="wlab">Representation trade-offs</span>
+      <table class="t">
+        <thead><tr><th>Method</th><th>Quality</th><th>Real-time</th><th>Surface</th><th>Editable</th><th>Params</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--purple);font-weight:600">NeRF</td><td style="color:var(--green)">★★★★</td><td style="color:var(--red)">✗</td><td style="color:var(--red)">✗</td><td style="color:var(--red)">✗</td><td style="color:var(--dim2)">MLP</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">3DGS</td><td style="color:var(--green)">★★★★</td><td style="color:var(--green)">✓</td><td style="color:var(--red)">✗</td><td style="color:var(--red)">✗</td><td style="color:var(--amber)">~60 M</td></tr>
+          <tr><td>2DGS / PGSR</td><td style="color:var(--amber)">★★★½</td><td style="color:var(--green)">✓</td><td style="color:var(--amber)">local</td><td style="color:var(--red)">✗</td><td style="color:var(--amber)">~60 M</td></tr>
+          <tr><td>SuGaR / GOF</td><td style="color:var(--amber)">★★★</td><td style="color:var(--green)">✓</td><td style="color:var(--amber)">post-hoc</td><td style="color:var(--amber)">~</td><td style="color:var(--amber)">60 M + mesh</td></tr>
+          <tr class="ours"><td style="color:var(--green);font-weight:700">Ours</td><td style="color:var(--green)">★★★+</td><td style="color:var(--green)">✓</td><td style="color:var(--green)">by construction</td><td style="color:var(--green)">✓</td><td style="color:var(--green)">n×m ctrl pts</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>Open question:</strong> can we keep 3DGS rendering quality <em>and</em> get a globally structured, editable surface — without the 60 M-parameter blowup?</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 3 · 3DGS IN 90 SECONDS ═════════════════════════════════════════ -->
+<section>
+  <span class="tag">Background</span>
+  <h2>3D Gaussian Splatting, in 90 seconds</h2>
+  <div class="eq" style="text-align:center;margin:10px 0 14px;padding:12px 30px">
+    <div class="lab">Alpha-composited splatting</div>
+    $$C=\sum_{i=1}^{N} c_i\,\alpha_i \prod_{j<i}(1-\alpha_j)$$
+  </div>
+  <div class="cols c3">
+    <div class="card"><h3 style="color:var(--accent)">Gaussian primitive</h3>
+      <p>Each element is ~60 floats: position $\boldsymbol{\mu}$, covariance $\boldsymbol{\Sigma}=\mathbf{RSS}^\top\mathbf{R}^\top$, opacity $\alpha$, SH color. 1 M Gaussians ≈ <strong>60 M free parameters</strong>, no topology.</p></div>
+    <div class="card"><h3 style="color:var(--amber)">Differentiable rasterizer</h3>
+      <p>16×16 tiles, front-to-back sort, exact alpha compositing. Gradients flow end-to-end — this is the engine we keep.</p></div>
+    <div class="card"><h3 style="color:var(--green)">Heuristic densification</h3>
+      <p>Every 100 iters: clone, split, prune by view-space gradient statistics. Empirical, per-particle, no geometric guarantee.</p></div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px">
+    <span class="chip g">✓ photorealistic</span><span class="chip g">✓ real-time</span><span class="chip g">✓ end-to-end gradients</span>
+    <span class="chip a">✗ no surface</span><span class="chip a">✗ not editable</span><span class="chip a">✗ floaters</span>
+  </div>
+  <p class="lead" style="margin-top:14px;text-align:center">Splats are only ever correlated inside the rasterizer's 2D tile crop — a proxy for true geodesic proximity that fails at edges.</p>
+</section>
+
+<!-- ═══ 4 · WHAT 3DGS CANNOT DO ════════════════════════════════════════ -->
+<section>
+  <span class="tag">Problem</span>
+  <h2>What 3DGS structurally cannot do</h2>
+  <div class="cols c3" style="margin-top:14px">
+    <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">No topology</h3>
+      <p>No mesh, no normals, no inside/outside. Collision, simulation, CAD export all need post-hoc extraction against noisy unstructured normals.</p></div>
+    <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">Not editable</h3>
+      <p>No structural coupling between particles. Bending a wall means finding and moving thousands of Gaussians — then re-optimizing.</p></div>
+    <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">No resolution adaptation</h3>
+      <p>Once trained, the particle count is frozen. A 3DGS model cannot meaningfully densify or coarsen at inference without retraining.</p></div>
+  </div>
+  <div class="cols c2" style="margin-top:16px">
+    <div class="eq" style="border-left-color:var(--amber)">
+      <div class="lab">Prior work asks</div>
+      "Given optimized Gaussians, how do we <strong>constrain</strong> them to approximate a surface?"
+    </div>
+    <div class="eq" style="border-left-color:var(--green)">
+      <div class="lab">We invert the question</div>
+      "Given a $C^2$ parametric surface, can we <strong>derive</strong> every splat attribute from its differential geometry?"
+    </div>
+  </div>
+  <div class="callout" style="margin-top:16px;text-align:center"><strong>Key insight:</strong> real surfaces are smooth. One parametric surface replaces millions of correlated particles — and the result is editable, compact, and resolution-free.</div>
+</section>
+
+<!-- ═══ 5 · RELATED WORK / POSITIONING ═════════════════════════════════ -->
+<section>
+  <span class="tag">Related work</span>
+  <h2>Prior work binds Gaussians to surfaces — we derive Gaussians from surfaces</h2>
+  <div class="cols" style="grid-template-columns:.9fr 1.4fr;margin-top:10px">
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <span class="wlab">Surface-aware methods</span>
+      <div class="card" style="padding:10px 14px"><h3 style="color:var(--text);font-size:14px">SuGaR <span class="chip a" style="float:right">mesh = artifact</span></h3>
+        <p>Regularizes splats toward a post-hoc mesh; editing the mesh doesn't move the splats.</p></div>
+      <div class="card" style="padding:10px 14px"><h3 style="color:var(--text);font-size:14px">2DGS <span class="chip a" style="float:right">local only</span></h3>
+        <p>Flat discs enforce per-splat planarity — no global surface couples them.</p></div>
+      <div class="card" style="padding:10px 14px"><h3 style="color:var(--text);font-size:14px">GOF <span class="chip a" style="float:right">read-out</span></h3>
+        <p>Surface extracted after training; never differentiably in the loop.</p></div>
+      <div class="card" style="padding:10px 14px"><h3 style="color:var(--text);font-size:14px">PGSR <span class="chip b" style="float:right">our baseline</span></h3>
+        <p>Planar splats + multi-view photometric consistency. Strong geometry; still unstructured.</p></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;justify-content:center">
+      <svg class="panel" viewBox="0 0 540 214" style="width:100%">
+        <text x="270" y="16" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#ffa72688" font-family="Inter">ALL PRIOR WORK</text>
+        <rect x="20" y="26" width="160" height="58" rx="8" fill="#1a1f2e" stroke="#ffa72644" stroke-width="1.5"/>
+        <text x="100" y="51" text-anchor="middle" font-size="15" font-weight="600" fill="#ffa726" font-family="Inter">Gaussians</text>
+        <text x="100" y="70" text-anchor="middle" font-size="10.5" fill="#ffa72688" font-family="Inter">(optimized directly)</text>
+        <line x1="182" y1="55" x2="342" y2="55" stroke="#ffa72644" stroke-width="2"/><polygon points="338,48 352,55 338,62" fill="#ffa72644"/>
+        <text x="267" y="76" text-anchor="middle" font-size="10.5" fill="#5c6f8a" font-family="Inter">bind / extract</text>
+        <rect x="354" y="26" width="160" height="58" rx="8" fill="#111827" stroke="#2d3a50" stroke-width="1.5"/>
+        <text x="434" y="51" text-anchor="middle" font-size="15" font-weight="600" fill="#4a5568" font-family="Inter">Surface</text>
+        <text x="434" y="70" text-anchor="middle" font-size="10.5" fill="#374151" font-family="Inter">(artifact / post-hoc)</text>
+        <line x1="0" y1="106" x2="540" y2="106" stroke="#1e2d42" stroke-width="1.5"/>
+        <text x="270" y="126" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#69f0ae99" font-family="Inter">KNOT-A-SURFACE</text>
+        <rect x="20" y="136" width="160" height="58" rx="8" fill="#0a1a12" stroke="#69f0ae88" stroke-width="2"/>
+        <text x="100" y="160" text-anchor="middle" font-size="15" font-weight="600" fill="#69f0ae" font-family="Inter">NURBS S(u,v)</text>
+        <text x="100" y="179" text-anchor="middle" font-size="10.5" fill="#69f0ae88" font-family="Inter">(primary parameter)</text>
+        <line x1="182" y1="165" x2="342" y2="165" stroke="#69f0ae" stroke-width="2.5"/><polygon points="338,158 352,165 338,172" fill="#69f0ae"/>
+        <text x="267" y="187" text-anchor="middle" font-size="10.5" font-weight="600" fill="#69f0ae" font-family="Inter">derive via calculus</text>
+        <rect x="354" y="136" width="160" height="58" rx="8" fill="#0b1629" stroke="#4fc3f788" stroke-width="2"/>
+        <text x="434" y="160" text-anchor="middle" font-size="15" font-weight="600" fill="#4fc3f7" font-family="Inter">Gaussians</text>
+        <text x="434" y="179" text-anchor="middle" font-size="10.5" fill="#4fc3f788" font-family="Inter">(analytical byproduct)</text>
+      </svg>
+      <div class="eq"><p style="font-size:14px">$S(u,v)$ is the <strong style="color:var(--green)">primary learnable object</strong>. Position, rotation, scale of every Gaussian are consequences of surface differential geometry — no regularizer, no extraction, no post-hoc mesh.</p></div>
+      <p style="text-align:center;font-size:14px">Structure is not a <em>constraint</em> imposed on Gaussians — it is the <strong style="color:var(--accent)">representation itself</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 6 · B-SPLINE PLAYGROUND (interactive) ══════════════════════════ -->
+<section data-widget="bspline">
+  <span class="tag">Background</span>
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h2>B-spline surfaces — hands on</h2>
+    <span style="font-size:13px;color:var(--dim2)">drag CPs · <b>double-click a CP</b> to edit weight / color / splat-scale · orbit · wheel</span>
+  </div>
+  <div style="display:flex;flex-direction:column;height:calc(100% - 56px);position:relative">
+    <div id="bs-cp-panel" style="display:none;position:absolute;top:8px;right:8px;z-index:30;background:var(--panel);border:1.5px solid rgba(79,195,247,.5);border-radius:8px;padding:12px 14px;width:210px;box-shadow:0 12px 32px rgba(0,0,0,.45)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span id="bs-cp-title" style="font-size:12.5px;font-weight:700;color:#4fc3f7">CP</span>
+        <button id="bs-cp-close" style="background:none;border:none;color:#8fa4c0;font-size:15px;cursor:pointer;padding:0 4px">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#8fa4c0">
+        <label>NURBS weight w<input id="bs-cp-w" type="range" min="0.1" max="5" step="0.05" value="1" style="width:100%;accent-color:#ffa726"></label>
+        <label>Splat scale<input id="bs-cp-s" type="range" min="0.3" max="3" step="0.05" value="1" style="width:100%;accent-color:#4fc3f7"></label>
+        <label>Control color<input id="bs-cp-color" type="color" value="#4fc3f7" style="width:100%;height:24px;padding:0;border:none;background:none;cursor:pointer"></label>
+        <span style="font-size:10.5px;color:#5c6f8a">weight & color interpolate through the same basis — this IS the control-feature idea</span>
+      </div>
+    </div>
+    <canvas id="bspline-canvas" class="wcanvas" style="flex:1;min-height:0;cursor:grab"></canvas>
+    <div class="widget-ui">
+      <span class="wlab">Shape</span>
+      <button class="wbtn bs-shape on" data-s="wave">wave</button>
+      <button class="wbtn bs-shape" data-s="dome">dome</button>
+      <button class="wbtn bs-shape" data-s="saddle">saddle</button>
+      <button class="wbtn bs-shape" data-s="terrain">terrain</button>
+      <span class="wlab" style="margin-left:8px">Degree</span>
+      <button class="wbtn bs-deg" data-d="2">2</button>
+      <button class="wbtn bs-deg on" data-d="3">3</button>
+      <button class="wbtn bs-deg" data-d="4">4</button>
+      <button class="wbtn bs-deg" data-d="5">5</button>
+      <span class="wlab" style="margin-left:8px">Splats</span>
+      <button class="wbtn bs-n" data-n="4">16</button>
+      <button class="wbtn bs-n on" data-n="10">100</button>
+      <button class="wbtn bs-n" data-n="20">400</button>
+      <button class="wbtn" id="bs-subdiv" style="margin-left:8px">⊞ insert knots ×2</button>
+      <button class="wbtn" id="bs-shuffle">⟳ shuffle</button>
+      <span id="bs-grid-label" style="font-size:12.5px;color:var(--dim2)">6×6 CPs · degree 3</span>
+    </div>
+    <div class="cols c3" style="margin-top:8px">
+      <div class="eq" style="padding:7px 13px;font-size:13px"><div class="lab">Surface</div>$S(u,v)=\sum_{i,j}N_{i,p}(u)N_{j,q}(v)P_{ij}$</div>
+      <div class="eq" style="padding:7px 13px;font-size:13px"><div class="lab">Local support</div>one CP moves ≤ $(p{+}1)(q{+}1)$ patches — the rest is invariant</div>
+      <div class="eq" style="padding:7px 13px;font-size:13px"><div class="lab">$C^{p-1}$ continuity</div>cubic ⇒ $C^2$: normals globally smooth, for free</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 7 · CORE IDEA (interactive tangent frame) ══════════════════════ -->
+<section data-widget="frame">
+  <span class="tag">Our method</span>
+  <h2>The core idea: splats as differential geometry</h2>
+  <div class="cols" style="grid-template-columns:1fr 1.1fr;margin-top:8px;height:calc(100% - 70px)">
+    <div style="display:flex;flex-direction:column;gap:10px;justify-content:center">
+      <div class="eq"><div class="lab">Position — eval</div>$$\boldsymbol{\mu}(u,v)=S(u,v)$$</div>
+      <div class="eq"><div class="lab">Rotation — tangent frame</div>$$\mathbf{R}=[\,\hat t_u \mid \hat t_v^{\perp} \mid \hat n\,],\qquad \hat n=\tfrac{\mathbf{S}_u\times \mathbf{S}_v}{\lVert \mathbf{S}_u\times \mathbf{S}_v\rVert}$$</div>
+      <div class="eq"><div class="lab">Scale — first derivatives</div>$$\sigma_u=\lVert\mathbf{S}_u\rVert\,\Delta u,\quad \sigma_v=\lVert\mathbf{S}_v\rVert\,\Delta v,\quad \sigma_n=\epsilon$$</div>
+      <p style="font-size:14px">Learn <strong>one surface</strong>; position, orientation and footprint of every splat come free from $\partial S/\partial u,\ \partial S/\partial v$. Appearance (SH, opacity) is interpolated from <strong>control features</strong> with the same basis: $a(u,v)=\sum_{i,j}N_{i,p}N_{j,q}\,\varphi(\tilde a_{ij})$.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;min-height:0">
+      <canvas id="frame-canvas" class="wcanvas" style="flex:1;min-height:0"></canvas>
+      <div style="display:flex;gap:16px;justify-content:center;font-size:13px">
+        <span style="color:var(--amber)">● t̂ᵤ</span><span style="color:var(--purple)">● t̂ᵥ⊥</span>
+        <span style="color:var(--green)">● n̂</span><span style="color:var(--accent)">◔ derived splat</span>
+      </div>
+      <p style="text-align:center;font-size:13px">The splat rides the surface — orientation is never a free parameter</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 8 · FULL FORMULATION ═══════════════════════════════════════════ -->
+<section>
+  <span class="tag">Method</span>
+  <h2>What is learned, what is derived</h2>
+  <div class="cols c2" style="margin-top:12px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="eq"><div class="lab">NURBS surface</div>
+        $$S(u,v)=\frac{\sum_{i,j} w_{ij}N_{i,p}(u)N_{j,q}(v)P_{ij}}{\sum_{i,j} w_{ij}N_{i,p}(u)N_{j,q}(v)}$$</div>
+      <div class="eq"><div class="lab">Cox–de Boor basis</div>
+        $$N_{i,p}=\tfrac{u-u_i}{u_{i+p}-u_i}N_{i,p-1}+\tfrac{u_{i+p+1}-u}{u_{i+p+1}-u_{i+1}}N_{i+1,p-1}$$</div>
+      <div class="eq"><div class="lab">Attribute field — activate-then-interpolate</div>
+        $$a(u,v)=\sum_{i,j}N_{i,p}(u)N_{j,q}(v)\,\varphi(\tilde a_{ij})$$</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card"><div class="wlab" style="color:var(--green);margin-bottom:8px">Trainable</div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px">
+          <span>Control points</span><span style="color:var(--green)">$P_{ij}\in\mathbb{R}^3$ — grid $n\times m$</span>
+          <span>Knot vectors</span><span style="color:var(--green)">bounded sigmoid re-param</span>
+          <span>NURBS weights</span><span style="color:var(--green)">$w_{ij}>0$ (optional)</span>
+          <span>SH &amp; opacity</span><span style="color:var(--green)">$\tilde a_{ij}$ per control point</span>
+        </div></div>
+      <div class="card" style="border-color:rgba(79,195,247,.3)"><div class="wlab" style="color:var(--accent);margin-bottom:8px">Derived — zero parameters</div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px">
+          <span style="color:var(--accent);font-weight:600">Position</span><span>$S(u,v)$</span>
+          <span style="color:var(--accent);font-weight:600">Rotation</span><span>$[\hat t_u\mid \hat t_v^\perp\mid \hat n]$</span>
+          <span style="color:var(--accent);font-weight:600">Scale</span><span>$\lVert\mathbf S_u\rVert\Delta u,\ \lVert\mathbf S_v\rVert\Delta v$</span>
+        </div></div>
+      <div class="callout">SH degree 1 suffices — view-dependent effects arise from correct geometry, not from 48 SH floats compensating for wrong geometry. <strong>≈50× fewer optimized parameters.</strong></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 9 · PIPELINE ═══════════════════════════════════════════════════ -->
+<section>
+  <span class="tag">Method</span>
+  <h2>The pipeline, end to end</h2>
+  <svg class="panel" viewBox="0 0 900 92" style="width:100%;margin:16px 0 10px;overflow:visible">
+    <g font-family="Inter">
+      <rect x="0" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#ffa72644" stroke-width="1.5"/>
+      <text x="61" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">INPUT</text>
+      <text x="61" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#ffa726">Images + COLMAP</text>
+      <text x="61" y="65" text-anchor="middle" font-size="10.5" fill="#ffa72688">poses · sparse PCD</text>
+      <line x1="124" y1="44" x2="150" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="148,40 156,44 148,48" fill="#5c6f8a"/>
+      <rect x="157" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#ce93d844" stroke-width="1.5"/>
+      <text x="218" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">INIT</text>
+      <text x="218" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#ce93d8">MBA fit</text>
+      <text x="218" y="65" text-anchor="middle" font-size="10.5" fill="#ce93d888">coarse→fine S(u,v)</text>
+      <line x1="281" y1="44" x2="307" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="305,40 313,44 305,48" fill="#5c6f8a"/>
+      <rect x="314" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#4fc3f744" stroke-width="1.5"/>
+      <text x="375" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">SAMPLE</text>
+      <text x="375" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#4fc3f7">UV grid</text>
+      <text x="375" y="65" text-anchor="middle" font-size="10.5" fill="#4fc3f788">visibility-adaptive</text>
+      <line x1="438" y1="44" x2="464" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="462,40 470,44 462,48" fill="#5c6f8a"/>
+      <rect x="471" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#4fc3f744" stroke-width="1.5"/>
+      <text x="532" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">DERIVE</text>
+      <text x="532" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#4fc3f7">μ · R · σ · a</text>
+      <text x="532" y="65" text-anchor="middle" font-size="10.5" fill="#4fc3f788">∂S/∂u, ∂S/∂v · CUDA</text>
+      <line x1="595" y1="44" x2="621" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="619,40 627,44 619,48" fill="#5c6f8a"/>
+      <rect x="628" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#69f0ae44" stroke-width="1.5"/>
+      <text x="689" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">RENDER</text>
+      <text x="689" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#69f0ae">PGSR rasterizer</text>
+      <text x="689" y="65" text-anchor="middle" font-size="10.5" fill="#69f0ae88">differentiable</text>
+      <line x1="752" y1="44" x2="778" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="776,40 784,44 776,48" fill="#5c6f8a"/>
+      <rect x="785" y="16" width="115" height="56" rx="8" fill="#121b2e" stroke="#69f0ae44" stroke-width="1.5"/>
+      <text x="842" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">LOSS</text>
+      <text x="842" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#69f0ae">Photo + Geo</text>
+      <text x="842" y="65" text-anchor="middle" font-size="10.5" fill="#69f0ae88">L1·SSIM·NCC·normal</text>
+      <path d="M900,74 Q900,90 450,90 Q0,90 0,74" fill="none" stroke="#1b2a42" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="450" y="88" text-anchor="middle" font-size="9.5" fill="#5c6f8a">↺ gradients → P_ij · w_ij · knots · control features</text>
+    </g>
+  </svg>
+  <div class="cols c4" style="margin-top:10px">
+    <div class="card"><h3 style="color:var(--amber)">Photometric</h3><p>$\mathcal{L}_{ph}=\lambda_1\mathcal{L}_1+\lambda_s\mathcal{L}_{\text{D-SSIM}}$</p></div>
+    <div class="card"><h3 style="color:var(--accent)">Normal consistency</h3><p>$\mathcal{L}_n=\lVert 1-\hat n_r\cdot\hat n_g\rVert_1$ — meaningful because $\hat n$ is analytic</p></div>
+    <div class="card"><h3 style="color:var(--green)">Multi-view NCC</h3><p>patch-level geometric consistency across views (from PGSR)</p></div>
+    <div class="card" style="border-color:rgba(79,195,247,.35);background:var(--bg2)"><h3 style="color:var(--accent)">Fused CUDA kernel</h3><p>$S,\mathbf S_u,\mathbf S_v,\mathbf S_{uu},\mathbf S_{vv}$ in one pass — <strong style="color:var(--accent)">~30× faster</strong> than einsum</p></div>
+  </div>
+</section>
+
+<!-- ═══ 10 · INITIALIZATION (interactive 3D) ═══════════════════════════ -->
+<section data-widget="init">
+  <span class="tag">Method</span>
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h2>Initialization: points &amp; cameras → surface</h2>
+    <span style="font-size:13px;color:var(--dim2)">MBA — each level fits only what the previous one missed</span>
+  </div>
+  <div class="cols" style="grid-template-columns:1.55fr 1fr;height:calc(100% - 60px);margin-top:6px">
+    <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+      <canvas id="init-canvas" class="wcanvas" style="flex:1;min-height:0"></canvas>
+      <div class="widget-ui" style="margin-top:0">
+        <button class="wbtn init-ph on" data-p="0">① points + cameras</button>
+        <button class="wbtn init-ph" data-p="1">② coarse fit 4×4</button>
+        <button class="wbtn init-ph" data-p="2">③ refine 8×8</button>
+        <button class="wbtn init-ph" data-p="3">④ refine 16×16</button>
+        <span id="init-status" style="margin-left:auto;font-size:12.5px;color:var(--dim2);font-variant-numeric:tabular-nums"></span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="card"><h3 style="color:var(--purple)">MBA — Lee, Wolberg &amp; Shin '97</h3>
+        <p>Multilevel B-spline Approximation: closed-form fit at each level, residuals cascade to the next. No iterative solver, milliseconds on the COLMAP cloud.</p></div>
+      <div class="cols c2" style="gap:10px">
+        <div class="card" style="text-align:center;border-color:rgba(255,167,38,.35)">
+          <div style="font-size:11px;color:var(--dim2);text-transform:uppercase;margin-bottom:4px">3DGS random init</div>
+          <div class="big a" style="font-size:34px">7,000</div>
+          <p style="font-size:11.5px;margin-top:4px">iters before geometry losses activate</p></div>
+        <div class="card" style="text-align:center;border-color:rgba(105,240,174,.35)">
+          <div style="font-size:11px;color:var(--dim2);text-transform:uppercase;margin-bottom:4px">Ours — MBA prior</div>
+          <div class="big g" style="font-size:34px">150</div>
+          <p style="font-size:11.5px;margin-top:4px">geometry supervision from the start</p></div>
+      </div>
+      <div class="callout">Normal + NCC losses only produce useful gradients on a <strong>geometrically plausible</strong> surface. MBA makes them meaningful <strong style="color:var(--green)">50× earlier</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 11 · SUBDIVISION (interactive) ═════════════════════════════════ -->
+<section data-widget="subdiv">
+  <span class="tag">Densification</span>
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h2>Densification = knot insertion, not particle cloning</h2>
+    <span style="font-size:13px;color:var(--dim2)">step through insertions — watch error collapse</span>
+  </div>
+  <div class="cols" style="grid-template-columns:1.5fr 1fr;height:calc(100% - 60px);margin-top:6px">
+    <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+      <canvas id="subdiv-canvas" class="wcanvas" style="flex:1;min-height:0"></canvas>
+      <div class="widget-ui" style="margin-top:0">
+        <button class="wbtn" id="sd-step">insert knot at max-error span →</button>
+        <button class="wbtn" id="sd-reset">reset</button>
+        <span id="sd-label" style="font-size:12.5px;color:var(--dim2)"></span>
+        <span style="margin-left:auto;font-size:12px;color:var(--dim2)">
+          <span style="color:var(--green)">—</span> ground truth · <span style="color:var(--red)">—</span> B-spline · <span style="color:var(--amber)">●</span> control points</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="card"><h3>Where 3DGS clones particles…</h3>
+        <p>…we refine the <strong>underlying surface</strong>. Boehm's knot insertion is exact — the surface is unchanged, expressivity grows where the error criterion demands it:</p>
+        <div class="eq" style="margin-top:8px;font-size:13.5px;text-align:center;background:transparent">$\hat k=\arg\max_k \tfrac{1}{|\mathcal G_k|}\sum_{g\in\mathcal G_k}\bar\varepsilon_g$</div></div>
+      <div class="card"><h3 style="color:var(--green)">Structure preserved by construction</h3>
+        <p>New control points arrive as convex combinations of old ones (Boehm alphas) — no floaters can appear. Adam moments are spliced to the new parameter shape, so optimization never restarts.</p></div>
+      <div class="callout">3DGS densification is a gradient-statistics heuristic. Ours is a <strong>geometric criterion on a coherent manifold</strong>.</div>
+    </div>
+  </div>
+</section>

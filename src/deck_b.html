@@ -1,0 +1,258 @@
+<!-- ═══ 12 · ADAPTIVE SAMPLING + UV STRUCTURE ══════════════════════════ -->
+<section>
+  <span class="tag">Method</span>
+  <h2>The UV grid is the data structure</h2>
+  <div class="cols c2" style="margin-top:12px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card" style="border-color:rgba(79,195,247,.3)"><h3 style="color:var(--accent)">Visibility-driven UV sampling</h3>
+        <p>Per-splat visibility from the rasterizer's <code style="color:var(--accent)">out_observe</code>. Every $K$ iterations, UV samples are re-placed by inverse-CDF of the visibility marginals — dense where cameras look, sparse where occluded. <strong>Constant splat budget, zero overhead.</strong></p>
+        <div class="eq" style="margin-top:8px;font-size:13px"><div class="lab">bounded UV — no boundary degeneracy</div>$u=\epsilon+(1-2\epsilon)\varphi(\tilde u),\ \ \epsilon=0.01$</div></div>
+      <div class="card"><h3 style="color:var(--purple)">Immune to the Swiss-Roll problem</h3>
+        <p>UV adjacency indexes <strong>geodesic</strong> neighbors. Points that are Euclidean-close but manifold-distant never become spurious neighbors — <code style="color:var(--accent)">P[i±1, j]</code> is structurally on-surface. Smoothness and coverage losses collapse to stride-1 array reads.</p></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <span class="wlab">Meshing / neighborhood cost — n = splat count</span>
+      <div class="card" style="border-color:rgba(239,83,80,.25);padding:11px 15px">
+        <span style="font-size:19px;font-weight:700;color:var(--amber)">O(V), V≫n</span>
+        <span style="font-size:13px;color:var(--dim2);margin-left:8px">Marching Cubes / Poisson</span>
+        <p style="font-size:12.5px;margin-top:2px">voxel grid over the whole bounding box · needs normals</p></div>
+      <div class="card" style="border-color:rgba(239,83,80,.25);padding:11px 15px">
+        <span style="font-size:19px;font-weight:700;color:var(--amber)">O(n log n)</span>
+        <span style="font-size:13px;color:var(--dim2);margin-left:8px">Delaunay / Ball-pivoting</span>
+        <p style="font-size:12.5px;margin-top:2px">KD-tree lookups · unstructured output</p></div>
+      <div class="card" style="border-color:rgba(105,240,174,.4);padding:11px 15px">
+        <span style="font-size:19px;font-weight:700;color:var(--green)">O(n) · O(1) neighbors</span>
+        <span style="font-size:13px;color:var(--dim2);margin-left:8px">UV kernel scan (ours)</span>
+        <p style="font-size:12.5px;margin-top:2px">the mesh <em>is</em> the UV grid — no search, no hyperparameter</p></div>
+      <div class="callout">Every mesh, neighbor query, and regularizer is an <strong>array operation on the parametric grid</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 13 · FIXED BUDGET, INFINITE RESOLUTION (concept) ══════════════ -->
+<section>
+  <span class="tag">Resolution</span>
+  <h2>Fixed budget, infinite resolution</h2>
+  <p class="lead">The surface is continuous — splat count is a <strong>render-time sampling choice</strong>, not a property of the model.</p>
+  <div class="cols" style="grid-template-columns:1.25fr 1fr;margin-top:6px">
+    <svg class="panel" viewBox="0 0 560 240" style="width:100%">
+      <g font-family="Inter">
+        <text x="140" y="18" text-anchor="middle" font-size="12" font-weight="600" fill="#ffa726">far — coarse sampling</text>
+        <path d="M20,150 Q80,90 140,120 T260,105" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+        <g opacity=".75">
+          <ellipse cx="50" cy="128" rx="30" ry="9" fill="none" stroke="#4fc3f7" stroke-width="1.3" transform="rotate(-22,50,128)"/>
+          <ellipse cx="140" cy="119" rx="30" ry="9" fill="none" stroke="#4fc3f7" stroke-width="1.3" transform="rotate(4,140,119)"/>
+          <ellipse cx="228" cy="107" rx="30" ry="9" fill="none" stroke="#4fc3f7" stroke-width="1.3" transform="rotate(-6,228,107)"/>
+        </g>
+        <text x="140" y="172" text-anchor="middle" font-size="10.5" fill="#5c6f8a">3 splats · large footprint each</text>
+        <text x="420" y="18" text-anchor="middle" font-size="12" font-weight="600" fill="#69f0ae">near — same budget, finer domain</text>
+        <path d="M320,150 Q360,110 420,128 T540,112" fill="none" stroke="#69f0ae" stroke-width="2"/>
+        <g opacity=".85">
+          <ellipse cx="336" cy="138" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(-30,336,138)"/>
+          <ellipse cx="368" cy="122" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(-14,368,122)"/>
+          <ellipse cx="400" cy="122" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(8,400,122)"/>
+          <ellipse cx="432" cy="128" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(6,432,128)"/>
+          <ellipse cx="464" cy="125" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(-8,464,125)"/>
+          <ellipse cx="496" cy="118" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(-8,496,118)"/>
+          <ellipse cx="526" cy="114" rx="11" ry="4" fill="none" stroke="#69f0ae" stroke-width="1.2" transform="rotate(-4,526,114)"/>
+        </g>
+        <text x="430" y="172" text-anchor="middle" font-size="10.5" fill="#5c6f8a">same model · footprint shrinks as the domain crop shrinks</text>
+        <line x1="280" y1="30" x2="280" y2="185" stroke="#1b2a42" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="280" y="215" text-anchor="middle" font-size="11.5" fill="#7c90ab">like Google Earth: each “pixel” covers less ground as you approach —</text>
+        <text x="280" y="231" text-anchor="middle" font-size="11.5" fill="#7c90ab">resolution is a property of the sampling, not of the world</text>
+      </g>
+    </svg>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="card"><h3 style="color:var(--accent)">Zoom in — subdivide the UV crop</h3>
+        <p>Restrict $(u,v)$ to the region of interest, keep the same $S\times S$ sample grid: each splat's geodesic footprint contracts. Detail rises at <strong>constant cost</strong>.</p></div>
+      <div class="card"><h3 style="color:var(--amber)">Zoom out — coarsen for free</h3>
+        <p>Same surface rendered with fewer, larger splats for far views — a principled LOD ladder with no retraining and no extra storage.</p></div>
+      <div class="callout">A trained 3DGS model can do <strong>neither</strong> — its particle count is baked in at training time.</div>
+      <p style="font-size:13px;color:var(--dim2);text-align:center;margin-top:2px">Next slide: this knob, operated live by a drone swarm ↓</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 14 · SWARM SIMULATOR (application) ═════════════════════════════ -->
+<section data-widget="sim">
+  <span class="tag">Application</span>
+  <div style="display:flex;align-items:baseline;gap:12px">
+    <h2>A swarm with a resolution knob</h2>
+    <span style="font-size:12.5px;color:var(--dim2)">warm-up fits the model to true scene geometry → zoom triggers localized fine-tuning → commander view flies inside the reconstruction</span>
+  </div>
+  <div id="sim-slot" style="height:calc(100% - 58px);margin-top:6px"></div>
+</section>
+
+<!-- ═══ 15 · EMERGENT: SEGMENTATION VIA UV ═════════════════════════════ -->
+<section>
+  <span class="tag">Emergent capability</span>
+  <h2>3D segmentation through the 2D feature domain</h2>
+  <p class="lead">Every Gaussian lives at a UV coordinate — a click in 2D feature space <em>is already</em> a view-independent 3D segment.</p>
+  <div class="cols c3">
+    <div class="card"><span class="chip b">① click in feature space</span>
+      <img src="assets/figures/feature_segmentation/feature_click_similarity.png" style="width:100%;border-radius:8px;margin:8px 0;background:#07090f" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',textContent:'[ figure: feature-space click → similarity mask ]'}))">
+      <p>A distilled feature field (DINO/CLIP) lives on the same UV grid. One click → thresholded similarity mask. No 3D clustering.</p></div>
+    <div class="card" style="border-color:rgba(105,240,174,.3)"><span class="chip g">② lifts to 3D — roof</span>
+      <img src="assets/figures/feature_segmentation/segment_roof_novelview.png" style="width:100%;border-radius:8px;margin:8px 0;background:#07090f" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',textContent:'[ figure: roof segment, novel view ]'}))">
+      <p>The UV mask selects exactly the Gaussians on that surface patch — coherent from views never used for the click.</p></div>
+    <div class="card" style="border-color:rgba(255,167,38,.3)"><span class="chip a">③ complement — walls</span>
+      <img src="assets/figures/feature_segmentation/segment_walls_novelview.png" style="width:100%;border-radius:8px;margin:8px 0;background:#07090f" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',textContent:'[ figure: wall segment, novel view ]'}))">
+      <p>Everything not selected is an equally sharp complementary region — same UV domain, one boundary.</p></div>
+  </div>
+  <div class="callout" style="margin-top:14px;text-align:center"><strong>Why 3DGS can't do this cleanly:</strong> without a shared 2D domain, features must be clustered in ℝ³ — noisy, view-inconsistent, blind to surface adjacency. Here, “segment” and “UV region” are the same object.</div>
+</section>
+
+<!-- ═══ 16 · RESULTS: GEOMETRY (chart) ════════════════════════════════ -->
+<section data-widget="charts">
+  <span class="tag">Results</span>
+  <h2>Geometry — DTU, 15 scans, Chamfer ↓</h2>
+  <div class="cols" style="grid-template-columns:1.7fr 1fr;margin-top:10px">
+    <div>
+      <div class="card" style="padding:14px 18px"><canvas id="chamfer-chart" height="235"></canvas></div>
+      <p style="font-size:12.5px;color:var(--dim2);text-align:center;margin-top:6px">amber = PGSR (Chen &amp; Zhang '24, best results) · green = ours · per-scan Chamfer distance (mm)</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="cols c2" style="gap:10px">
+        <div class="card" style="text-align:center;border-color:rgba(255,167,38,.4)">
+          <div style="font-size:11px;color:var(--dim2)">PGSR mean</div><div class="big a" style="font-size:36px">0.470</div></div>
+        <div class="card" style="text-align:center;border-color:rgba(105,240,174,.4)">
+          <div style="font-size:11px;color:var(--dim2)">Ours mean</div><div class="big g" style="font-size:36px">0.466</div></div>
+      </div>
+      <div class="card"><h3 style="color:var(--accent)">Read it honestly</h3>
+        <ul class="b" style="gap:6px">
+          <li class="g">Wins on 8 / 15 scans, incl. hard large scenes (83: 0.80 vs 0.92)</li>
+          <li class="a">Scan 106 unresolved: 0.82 vs 0.45 — disclosed, not root-caused</li>
+          <li class="a">Chamfer sampling protocol vs PGSR's mesh extraction: not yet independently verified</li>
+        </ul></div>
+      <div class="callout">Competitive geometry at <strong style="color:var(--green)">~1,600× fewer parameters</strong> — with globally coherent normals by construction.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 17 · RESULTS: RENDERING ═══════════════════════════════════════ -->
+<section data-widget="charts">
+  <span class="tag">Results</span>
+  <h2>Rendering — converging, honestly reported</h2>
+  <div class="cols" style="grid-template-columns:1.5fr 1fr;margin-top:10px">
+    <div>
+      <div class="card" style="padding:14px 18px"><canvas id="psnr-chart" height="235"></canvas></div>
+      <p style="font-size:12.5px;color:var(--dim2);text-align:center;margin-top:6px">PSNR vs iteration, scan24 · dashed = converged baselines (30k iters)</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="cols c2" style="gap:10px">
+        <div class="card" style="text-align:center"><div style="font-size:11px;color:var(--dim2)">Ours @ 1,500 iters</div>
+          <div class="big" style="font-size:36px">18.3</div><p style="font-size:11px">dB · still rising</p></div>
+        <div class="card" style="text-align:center"><div style="font-size:11px;color:var(--dim2)">PGSR @ 30k iters</div>
+          <div class="big a" style="font-size:36px">31.2</div><p style="font-size:11px">dB · converged</p></div>
+      </div>
+      <div class="card"><h3 style="color:var(--accent)">Reading the gap correctly</h3>
+        <ul class="b" style="gap:6px">
+          <li><strong>1/20th of training</strong> — stopped at 1.5k of 30k iterations, curve still rising</li>
+          <li><strong>Two features off by design</strong> (residual scaling, weight refinement) to isolate the structural baseline</li>
+          <li class="g"><strong>Geometry already correct</strong> — coherent normals from iter 150, which particle methods never reach</li>
+        </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 18 · WHAT IT LEARNS, MADE VISIBLE ═════════════════════════════ -->
+<section>
+  <span class="tag">Results</span>
+  <h2>The learned representation, made visible</h2>
+  <p class="lead">Every control feature is literally a 2D image — reshape the control grid and look at it.</p>
+  <div class="cols c3">
+    <div class="card"><h3 style="color:var(--accent)">Position (XYZ→RGB)</h3>
+      <img src="assets/figures/results_scan24/feature_position_uv.png" style="width:100%;border-radius:8px;margin:6px 0" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',textContent:'[ figure: position field ]'}))">
+      <p>Smooth gradients — a well-behaved continuous parametrization, no tears.</p></div>
+    <div class="card"><h3 style="color:var(--amber)">Opacity</h3>
+      <img src="assets/figures/results_scan24/feature_opacity_uv.png" style="width:100%;border-radius:8px;margin:6px 0" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',textContent:'[ figure: opacity field ]'}))">
+      <p>Sparse high-contrast pattern tracking true surface detail — edges, window frames.</p></div>
+    <div class="card"><h3 style="color:var(--green)">Color (SH DC)</h3>
+      <img src="assets/figures/results_scan24/feature_color_uv.png" style="width:100%;border-radius:8px;margin:6px 0" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',textContent:'[ figure: color field ]'}))">
+      <p>Recognizably the scene's actual facade — directly in parameter space.</p></div>
+  </div>
+  <div class="cols c2" style="margin-top:12px">
+    <div class="card" style="display:flex;gap:12px;align-items:center">
+      <img src="assets/figures/results_scan24/mesh_render.png" style="width:44%;border-radius:8px" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'imgph',style:'width:44%',textContent:'[ figure: extracted mesh ]'}))">
+      <div><h3>Mesh falls out in one pass</h3><p>TSDF-fuse rendered depth → 1.5 M triangles, single connected cluster. No Poisson, no conflicting normal hypotheses to reconcile.</p></div></div>
+    <div class="callout" style="display:flex;align-items:center">Editability demo: move one control point → surface deforms → every splat's $\mu, R, \sigma$ re-derived analytically → immediate re-render. <strong>Zero re-training.</strong></div>
+  </div>
+</section>
+
+<!-- ═══ 19 · ABLATIONS ════════════════════════════════════════════════ -->
+<section>
+  <span class="tag">Analysis</span>
+  <h2>Each design choice earns its place</h2>
+  <div class="cols c2" style="margin-top:12px">
+    <div class="card" style="border-left:3px solid var(--purple)"><h3 style="color:var(--purple)">MBA initialization</h3>
+      <p>Random init: geometry losses meaningless until ~iter 7k. MBA prior: active at iter 150 — <strong style="color:var(--green)">50× earlier</strong>, and the only reason early normal supervision works at all.</p></div>
+    <div class="card" style="border-left:3px solid var(--accent)"><h3 style="color:var(--accent)">Visibility-driven UV sampling</h3>
+      <p>Uniform grid wastes splat budget on occluded UV regions. Inverse-CDF re-placement keeps the budget where cameras actually look — at zero memory overhead.</p></div>
+    <div class="card" style="border-left:3px solid var(--amber)"><h3 style="color:var(--amber)">Adaptive knot insertion</h3>
+      <p>Fixed knot grid under-resolves high-curvature regions. Error-driven Boehm insertion tracks curvature demand; exactness means densification never destabilizes training.</p></div>
+    <div class="card" style="border-left:3px solid var(--green)"><h3 style="color:var(--green)">NURBS weights + residual scaling</h3>
+      <p><strong>Next experiment.</strong> Both disabled in the 18.3 dB ablation. Full config adds conic precision and per-splat opacity range — the hypothesis: geometry doesn't need them, photometric quality does.</p></div>
+  </div>
+  <div class="callout" style="margin-top:14px;text-align:center">18.3 dB is the <strong style="color:var(--accent)">floor</strong> — 1/20th training, two features off. The ablation order makes explicit what each knob controls.</div>
+</section>
+
+<!-- ═══ 20 · LIMITATIONS ══════════════════════════════════════════════ -->
+<section>
+  <span class="tag">Limitations</span>
+  <h2>What this doesn't do yet — and what's next</h2>
+  <div class="cols c2" style="margin-top:12px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <span class="wlab">Known &amp; disclosed</span>
+      <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">Single-patch topology</h3>
+        <p>One B-spline patch per surface component, fixed before training. A hole, or two touching objects, isn't representable — the multi-surface extension is future work, not solved today.</p></div>
+      <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">Scan 106</h3>
+        <p>0.82 vs PGSR's 0.45 — disclosed, not root-caused. Missing: error heatmap vs GT, MBA-quality check for this scan, COLMAP density comparison.</p></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <span class="wlab">Open — with a named next step</span>
+      <div class="card" style="border-color:rgba(79,195,247,.3)"><h3>Pose-noise sensitivity</h3>
+        <p>MBA's fast convergence trusts near-clean COLMAP poses. <strong>Next:</strong> synthetic pose-noise ablation.</p></div>
+      <div class="card" style="border-color:rgba(79,195,247,.3)"><h3>Joint converged PSNR + Chamfer</h3>
+        <p>Today's two headline numbers come from different regimes. <strong>Next:</strong> one full 30k run, both metrics from the same checkpoint.</p></div>
+      <div class="card" style="border-color:rgba(79,195,247,.3)"><h3>Chamfer protocol parity</h3>
+        <p><strong>Next:</strong> verify matched sampling density against PGSR's mesh-extraction evaluation before citing 0.466 as apples-to-apples.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 21 · SUMMARY ══════════════════════════════════════════════════ -->
+<section>
+  <span class="tag">Conclusion</span>
+  <h2>Summary &amp; future work</h2>
+  <div class="cols c2" style="margin-top:12px">
+    <div>
+      <h3 style="color:var(--green);margin-bottom:10px">Contributions</h3>
+      <ul class="b">
+        <li class="g">One learnable NURBS surface replaces millions of unstructured Gaussians — splats derived, not stored</li>
+        <li class="g">Differential geometry supplies rotation &amp; scale with zero parameters</li>
+        <li class="g">MBA init activates geometric supervision 50× earlier</li>
+        <li class="g">Decoupled densification: exact knot insertion + visibility-driven UV sampling</li>
+        <li class="g">Fused CUDA surface-evaluation kernel — ~30× over einsum</li>
+        <li class="g">Post-training editability, LOD, CAD export — by construction</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="color:var(--amber);margin-bottom:10px">Future work</h3>
+      <ul class="b">
+        <li class="a">Full 30k convergence + sweep on all DTU scans</li>
+        <li class="a">Fold surface evaluation into the rasterizer (end-to-end fusion)</li>
+        <li class="a">Multi-surface scenes; holes and genus &gt; 0</li>
+        <li class="a">NURBS weight optimization for sharp features</li>
+        <li class="a">Swarm-style active-view resolution control (as simulated)</li>
+      </ul>
+      <div class="card" style="margin-top:14px;border-color:rgba(79,195,247,.4)">
+        <p style="font-size:14.5px"><strong style="color:var(--accent)">Core thesis:</strong> structure is not a constraint — it's free information. A surface knows its own normals, scales, and orientations.</p></div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:22px;padding-top:14px;border-top:1px solid var(--border);font-size:13px;color:var(--dim2)">
+    <div><strong style="color:var(--text)">Thank you — questions?</strong></div>
+    <div style="margin-top:6px">Tzlil Ovadia · Advisor: Prof. Sagie Benaim · HUJI · built on 3DGS, PGSR, three.js, KaTeX, Chart.js</div>
+  </div>
+</section>
+
+</div></div>
