@@ -1352,7 +1352,10 @@ window.KnotSwarmSim = (function () {
   /* ── switchable surface basis: CR (default) or clamped B-spline p∈{2..5} ── */
   let BASIS_DEG = 'cr';
   const _knotCache = {};
-  function bsW(N, p, u) {                       // sparse basis: span + p+1 weights
+  // scratch buffers: bsW is called ~10⁵×/rebuild — per-call allocation was pure GC churn
+  const _bsL = new Float64Array(8), _bsR = new Float64Array(8);
+  const _bsA = { s: 0, w: new Float64Array(8) }, _bsB = { s: 0, w: new Float64Array(8) };
+  function bsW(N, p, u, out) {                  // sparse basis: span + p+1 weights
     const key = N + '|' + p;
     let K = _knotCache[key];
     if (!K) {
@@ -1366,18 +1369,20 @@ window.KnotSwarmSim = (function () {
     if (u >= 1) u = 1 - 1e-9; if (u < 0) u = 0;
     let s = p;
     while (s < N - 1 && u >= K[s + 1]) s++;
-    const left = [], right = [], w = [1];
+    const w = out.w;
+    w[0] = 1;
     for (let j = 1; j <= p; j++) {
-      left[j] = u - K[s + 1 - j]; right[j] = K[s + j] - u;
+      _bsL[j] = u - K[s + 1 - j]; _bsR[j] = K[s + j] - u;
       let saved = 0;
       for (let r = 0; r < j; r++) {
-        const t = w[r] / (right[r + 1] + left[j - r]);
-        w[r] = saved + right[r + 1] * t;
-        saved = left[j - r] * t;
+        const t = w[r] / (_bsR[r + 1] + _bsL[j - r]);
+        w[r] = saved + _bsR[r + 1] * t;
+        saved = _bsL[j - r] * t;
       }
       w[j] = saved;
     }
-    return { s, w };
+    out.s = s;
+    return out;
   }
   function crWeights(f) {
     const f2 = f * f, f3 = f2 * f;
@@ -1387,7 +1392,7 @@ window.KnotSwarmSim = (function () {
   function bicubic(ctrl, n, u, v) {
     if (BASIS_DEG === 'nurbs') {                  // rational: Σ wᵢⱼNᵢNⱼPᵢⱼ / Σ wᵢⱼNᵢNⱼ
       const p = 3, N = n + 3;
-      const bu = bsW(N, p, u), bv = bsW(N, p, v);
+      const bu = bsW(N, p, u, _bsA), bv = bsW(N, p, v, _bsB);
       let s = 0, w = 0;
       for (let b = 0; b <= p; b++) {
         const row = (bv.s - p + b) * N, wb = bv.w[b];
@@ -1410,13 +1415,66 @@ window.KnotSwarmSim = (function () {
       return s;
     }
     const p = +BASIS_DEG, N = n + 3;             // same control grid, B-spline weights
-    const bu = bsW(N, p, u), bv = bsW(N, p, v);
+    const bu = bsW(N, p, u, _bsA), bv = bsW(N, p, v, _bsB);
     let s = 0;
     for (let b = 0; b <= p; b++) {
       const row = (bv.s - p + b) * N, wb = bv.w[b];
       for (let a = 0; a <= p; a++) s += bu.w[a] * wb * ctrl[row + (bu.s - p + a)];
     }
     return s;
+  }
+
+  /* separable grid evaluation: basis weights computed once per row/column instead of
+     once per sample (S+S axis solves instead of 2·S²). Same arithmetic per point as
+     bicubic() — bit-identical output, used on every dense rectangular sweep. */
+  function gridEval(ctrl, n, uArr, vArr, out) {
+    const nu = uArr.length, nv = vArr.length, N = n + 3;
+    if (BASIS_DEG === 'cr') {
+      const uS = new Int32Array(nu), vS = new Int32Array(nv);
+      const uW = new Float64Array(nu * 4), vW = new Float64Array(nv * 4);
+      for (let i = 0; i < nu; i++) {
+        const g = Math.min(uArr[i] * n, n - 1e-6), ii = Math.floor(g), w = crWeights(g - ii);
+        uS[i] = ii; uW[i * 4] = w[0]; uW[i * 4 + 1] = w[1]; uW[i * 4 + 2] = w[2]; uW[i * 4 + 3] = w[3];
+      }
+      for (let j = 0; j < nv; j++) {
+        const g = Math.min(vArr[j] * n, n - 1e-6), jj = Math.floor(g), w = crWeights(g - jj);
+        vS[j] = jj; vW[j * 4] = w[0]; vW[j * 4 + 1] = w[1]; vW[j * 4 + 2] = w[2]; vW[j * 4 + 3] = w[3];
+      }
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+        let s = 0;
+        for (let a = 0; a < 4; a++)
+          for (let b = 0; b < 4; b++)
+            s += uW[i * 4 + a] * vW[j * 4 + b] * ctrl[(vS[j] + b) * N + (uS[i] + a)];
+        out[j * nu + i] = s;
+      }
+      return out;
+    }
+    const p = BASIS_DEG === 'nurbs' ? 3 : +BASIS_DEG, rat = BASIS_DEG === 'nurbs';
+    const uS = new Int32Array(nu), vS = new Int32Array(nv);
+    const uW = new Float64Array(nu * (p + 1)), vW = new Float64Array(nv * (p + 1));
+    for (let i = 0; i < nu; i++) {
+      const r = bsW(N, p, uArr[i], _bsA);
+      uS[i] = r.s;
+      for (let a = 0; a <= p; a++) uW[i * (p + 1) + a] = r.w[a];
+    }
+    for (let j = 0; j < nv; j++) {
+      const r = bsW(N, p, vArr[j], _bsA);
+      vS[j] = r.s;
+      for (let b = 0; b <= p; b++) vW[j * (p + 1) + b] = r.w[b];
+    }
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      let s = 0, w = 0;
+      for (let b = 0; b <= p; b++) {
+        const row = (vS[j] - p + b) * N, wb = vW[j * (p + 1) + b];
+        for (let a = 0; a <= p; a++) {
+          const bw = uW[i * (p + 1) + a] * wb;
+          s += bw * ctrl[row + (uS[i] - p + a)];
+          if (rat) w += bw;
+        }
+      }
+      out[j * nu + i] = rat ? (w > 1e-9 ? s / w : 0) : s;
+    }
+    return out;
   }
 
   /* ── main factory ──────────────────────────────────────────────────── */
@@ -1436,6 +1494,7 @@ window.KnotSwarmSim = (function () {
             '<button class="kss-cbtn kss-on" data-tool="nav" title="navigate">✥</button>' +
             '<button class="kss-cbtn" data-tool="ruler" title="ruler + line-of-sight">📏</button>' +
             '<button class="kss-cbtn" data-tool="mark" title="drop tactical marker">◎</button>' +
+            '<button class="kss-cbtn" data-tool="topo" title="topo probe: drop a sphere, it rolls down the gradient">⚫</button>' +
             '<button class="kss-cbtn" data-tool="heat" title="residual heatmap (change detection)">▦</button>' +
             '<button class="kss-cbtn kss-fit" title="fit-to-screen: frame the crop exactly">FIT</button>' +
             '<button class="kss-cbtn kss-chan" title="render channel: RGB / depth / normal / confidence">RGB</button>' +
@@ -1444,6 +1503,7 @@ window.KnotSwarmSim = (function () {
           '</div>' +
           '<div class="kss-compass">▲<span>N</span></div>' +
           '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
+          '<div class="kss-cpitch-wrap kss-topo-wrap" style="display:none;bottom:74px"><span>⚫ R</span><input class="kss-topo-r kss-cpitch" type="range" min="0.5" max="6" step="0.1" value="2"><span class="kss-cpitch-val kss-topo-val">2.0 m</span></div>' +
           '<div class="kss-cmdr-read"></div>' +
         '</div>' +
         '<div class="kss-hud kss-hud-tl"></div>' +
@@ -1629,11 +1689,12 @@ window.KnotSwarmSim = (function () {
       const tgt = sampleTarget(CN, x0, z0, crop, st.t);
       if (keepCur && prev) {
         const tmp = new Float32Array((CN + 3) * (CN + 3));
-        for (let j = -1; j <= CN + 1; j++) for (let i = -1; i <= CN + 1; i++) {
-          const x = x0 + (i / CN) * crop, z = z0 + (j / CN) * crop;
-          const u = clamp01((x - px0) / pcrop), v = clamp01((z - pz0) / pcrop);
-          tmp[(j + 1) * (CN + 3) + (i + 1)] = bicubic(prev, prevCN, u, v);
+        const uA = new Float64Array(CN + 3), vA = new Float64Array(CN + 3);
+        for (let i = -1; i <= CN + 1; i++) {
+          uA[i + 1] = clamp01((x0 + (i / CN) * crop - px0) / pcrop);
+          vA[i + 1] = clamp01((z0 + (i / CN) * crop - pz0) / pcrop);
         }
+        gridEval(prev, prevCN, uA, vA, tmp);
         fit.cur = tmp;
       } else fit.cur = new Float32Array(tgt.length);
       fit.tgt = tgt;
@@ -2118,6 +2179,20 @@ window.KnotSwarmSim = (function () {
     /* ---------- reconstruction: surface pool + facade pool (one budget) ---------- */
     let splats = null, wallSplats = null, netLines = null, S = 0, wallCap = 0, wallUsed = 0;
     let HH = null;                                 // last surface heights S×S (for wall scan)
+    let _splatAlpha = null;                        // shared radial gaussian falloff
+    function splatAlphaTex() {
+      if (_splatAlpha) return _splatAlpha;
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      const cx = cv.getContext('2d');
+      const g = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.5, 'rgba(255,255,255,0.9)');
+      g.addColorStop(0.8, 'rgba(255,255,255,0.42)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.fillStyle = g; cx.fillRect(0, 0, 64, 64);
+      _splatAlpha = new T.CanvasTexture(cv);
+      return _splatAlpha;
+    }
     function wallFrac() { return 0.12 + 0.28 * (st.pitch / 45); }   // oblique → more facade budget
     function allocRecon() {
       for (const o of [splats, wallSplats]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
@@ -2127,14 +2202,28 @@ window.KnotSwarmSim = (function () {
       HH = new Float32Array(S * S);
       const mk = cap => {
         const g = new T.CircleGeometry(0.5, S > 300 ? 4 : S > 100 ? 6 : 10);
+        const conf = new T.InstancedBufferAttribute(new Float32Array(cap).fill(1), 1);
+        conf.setUsage(T.DynamicDrawUsage);
+        g.setAttribute('aConf', conf);
         const m = new T.MeshBasicMaterial({
-          transparent: true, opacity: 0.92, side: T.DoubleSide, depthWrite: false,
+          transparent: true, opacity: 1.0, alphaMap: splatAlphaTex(),   // gaussian falloff → soft blending
+          side: T.DoubleSide, depthWrite: false,
           polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
         });
+        // confidence-driven alpha: converged splats solid, high-error ones translucent
+        m.onBeforeCompile = sh => {
+          sh.vertexShader = sh.vertexShader
+            .replace('#include <common>', '#include <common>\nattribute float aConf;\nvarying float vConf;')
+            .replace('#include <begin_vertex>', 'vConf = aConf;\n#include <begin_vertex>');
+          sh.fragmentShader = sh.fragmentShader
+            .replace('#include <common>', '#include <common>\nvarying float vConf;')
+            .replace('#include <opaque_fragment>', 'diffuseColor.a *= vConf;\n#include <opaque_fragment>');
+        };
         const im = new T.InstancedMesh(g, m, cap);
         im.instanceMatrix.setUsage(T.DynamicDrawUsage);
         im.instanceColor = new T.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
         im.instanceColor.setUsage(T.DynamicDrawUsage);
+        im.userData.conf = conf;
         im.layers.enable(1);
         scene.add(im);
         return im;
@@ -2195,11 +2284,21 @@ window.KnotSwarmSim = (function () {
     let posArr = null, nrmArr = null, errArr = null,
         wPosArr = null, wNrmArr = null, wErrArr = null, chanArr = null, wChanArr = null;
     const _m = new T.Matrix4(), _q = new T.Quaternion(), _p = new T.Vector3(),
-          _s = new T.Vector3(), _n = new T.Vector3(), _up = new T.Vector3(0, 0, 1);
+          _s = new T.Vector3(), _n = new T.Vector3(), _up = new T.Vector3(0, 0, 1),
+          _t1 = new T.Vector3(), _t2 = new T.Vector3();
 
     /* ── frustum-constrained sampling: when optimization is idle, the fixed
        budget collapses into the commander camera's visible footprint —
        visibility-driven UV sampling, exactly the thesis mechanism ── */
+    /* forward-facing weight: gaussians spent on slopes facing away from the
+       commander are invisible (recon renders only through cmdrCam) — importance
+       and fluid potential collapse there, extracting the effective UV sub-space */
+    function facing(x, h, z, dhdx, dhdz) {     // 1 → faces commander · 0 → backface
+      const vx = cmdrCam.position.x - x, vy = cmdrCam.position.y - h, vz = cmdrCam.position.z - z;
+      const d = (-dhdx * vx + vy - dhdz * vz) /
+        (Math.hypot(vx, vy, vz) * Math.hypot(dhdx, 1, dhdz));   // cos(normal, view)
+      return clamp01(0.5 + d / 0.2);           // soft gate around grazing incidence
+    }
     const _frus = new T.Frustum(), _fm = new T.Matrix4();
     const win = { u0: 0, v0: 0, u1: 1, v1: 1, locked: false };
     function frustumWindow() {
@@ -2249,13 +2348,14 @@ window.KnotSwarmSim = (function () {
       const lift = 0.35 + 0.012 * crop;
       if (st.fluid) { reconFluidPass(time); roiRing.position.set(st.roi.x, ENVS[st.env].h(st.roi.x, st.roi.z, time) + 0.4, st.roi.z); roiRing.scale.setScalar(fit.crop / 2); return fit.crop; }
       refreshMaps();
-      // pass 1: sample heights over the (importance-warped) grid
-      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++)
-        HH[j * S + i] = bicubic(fit.cur, CN, uMapA[i], vMapA[j]);
+      // pass 1: sample heights over the (importance-warped) grid — separable basis cache
+      gridEval(fit.cur, CN, uMapA, vMapA, HH);
       // pass 2: place splats — each stretches to its nearest neighbors, so steep
       // slopes and wall bases stay void-free (no gaps where geometry exists)
       let k = 0;
       const _hh = (i, j) => HH[Math.max(0, Math.min(S - 1, j)) * S + Math.max(0, Math.min(S - 1, i))];
+      const jc = Math.max(1.6, cell * 1.2);        // wall-scale jump threshold (same as facade scan)
+      const confA = splats.userData.conf;
       for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
         const u = uMapA[i], v = vMapA[j];
         const x = x0 + u * crop, z = z0 + v * crop;
@@ -2266,15 +2366,22 @@ window.KnotSwarmSim = (function () {
         const cvv = crop * (vMapA[Math.min(S - 1, j + 1)] - vMapA[Math.max(0, j - 1)]) / 2 || cellV;
         // truncation error: 2nd-order residual of the tangent-plane approximation
         errArr[k] = Math.abs((hR + hL) / 2 - h) + Math.abs((hD + hU) / 2 - h);
-        _n.set(-(hR - hL) / (2 * cu), 1, -(hD - hU) / (2 * cvv)).normalize();
+        confA.array[k] = clamp(1.05 - 1.5 * errArr[k], 0.3, 1);   // confidence → opacity
+        // discontinuity guard: across a wall-scale jump the facade pool takes over —
+        // clamp the slope terms so no single huge tilted gaussian smears the corner
+        const dRu = clamp(hR - h, -jc, jc), dLu = clamp(h - hL, -jc, jc);
+        const dDv = clamp(hD - h, -jc, jc), dUv = clamp(h - hU, -jc, jc);
+        _n.set(-(dRu + dLu) / (2 * cu), 1, -(dDv + dUv) / (2 * cvv)).normalize();
         // NN stretch on the warped grid: large gaussians on planar sparse regions,
         // small fine ones where curvature / texture pulled samples dense
-        const su = Math.max(Math.hypot(cu, hR - h), Math.hypot(cu, h - hL));
-        const sv = Math.max(Math.hypot(cvv, hD - h), Math.hypot(cvv, h - hU));
+        const su = Math.max(Math.hypot(cu, dRu), Math.hypot(cu, dLu));
+        const sv = Math.max(Math.hypot(cvv, dDv), Math.hypot(cvv, dUv));
         _p.set(x, h + lift, z);
-        _q.setFromUnitVectors(_up, _n);
-        _s.set(Math.min(su * 1.35, cu * 8), Math.min(sv * 1.35, cvv * 8), 1);
-        _m.compose(_p, _q, _s);
+        // splat plane strictly spans the surface tangents ∂P/∂u, ∂P/∂v at the mean
+        _t1.set(2 * cu, dRu + dLu, 0).normalize().multiplyScalar(Math.min(su * 1.35, cu * 8));
+        _t2.set(0, dDv + dUv, 2 * cvv).normalize().multiplyScalar(Math.min(sv * 1.35, cvv * 8));
+        _m.makeBasis(_t1, _t2, _n);
+        _m.setPosition(_p);
         splats.setMatrixAt(k, _m);
         posArr[k * 3] = _p.x; posArr[k * 3 + 1] = _p.y; posArr[k * 3 + 2] = _p.z;
         nrmArr[k * 3] = _n.x; nrmArr[k * 3 + 1] = _n.y; nrmArr[k * 3 + 2] = _n.z;
@@ -2293,12 +2400,14 @@ window.KnotSwarmSim = (function () {
       }
       splats.instanceMatrix.needsUpdate = true;
       splats.instanceColor.needsUpdate = true;
+      confA.needsUpdate = true;
 
       /* ── facade pool: bind splats to vertical discontinuities of the fit ──
          Wherever adjacent samples jump in height (building edge, cliff, wall),
          stack wall-oriented splats over the vertical span — windows included. */
       let wk = 0;
-      const thr = Math.max(1.6, cell * 1.2);
+      const thr = jc;
+      const wConfA = wallSplats.userData.conf;
       const ws = Math.max(0.9, cell * 1.1);        // vertical splat step
       const wallShade = f => 0.55 + 0.45 * f;
       for (let j = 0; j < S && wk < wallCap; j++) for (let i = 0; i < S && wk < wallCap; i++) {
@@ -2314,18 +2423,23 @@ window.KnotSwarmSim = (function () {
           // wall normal: horizontal, pointing toward the LOW side
           const sgn = dh > 0 ? -1 : 1;
           _n.set(di * sgn, 0, dj * sgn);
+          // a facade facing away from the commander is never visible — spend nothing
+          if (_n.x * (cmdrCam.position.x - x) + _n.z * (cmdrCam.position.z - z) < 0) continue;
           const tx = dj, tz = di;                  // tangent along the wall
-          _q.setFromUnitVectors(_up, _n);
           const nSteps = Math.min(Math.ceil((hi - lo) / ws), 24);
           for (let sIdx = 0; sIdx < nSteps && wk < wallCap; sIdx++) {
             const y = lo + (sIdx + 0.5) * (hi - lo) / nSteps;
             _p.set(x + _n.x * 0.12, y, z + _n.z * 0.12);
-            _s.set(cell * 1.35, (hi - lo) / nSteps * 1.35, 1);
-            _m.compose(_p, _q, _s);
+            // facade basis: wall tangent × vertical — no arbitrary twist
+            _t1.set(tx, 0, tz).multiplyScalar(cell * 1.35);
+            _t2.set(0, (hi - lo) / nSteps * 1.35, 0);
+            _m.makeBasis(_t1, _t2, _n);
+            _m.setPosition(_p);
             wallSplats.setMatrixAt(wk, _m);
             wPosArr[wk * 3] = _p.x; wPosArr[wk * 3 + 1] = _p.y; wPosArr[wk * 3 + 2] = _p.z;
             wNrmArr[wk * 3] = _n.x; wNrmArr[wk * 3 + 1] = _n.y; wNrmArr[wk * 3 + 2] = _n.z;
             wErrArr[wk] = (hi - lo) / nSteps * 0.4;
+            wConfA.array[wk] = clamp(1.05 - 1.5 * wErrArr[wk], 0.3, 1);
             if (st.heat) {
               const u = clamp01((x - x0) / crop), v = clamp01((z - z0) / crop);
               const r = Math.abs(bicubic(fit.tgt, CN, u, v) - bicubic(fit.cur, CN, u, v));
@@ -2344,6 +2458,7 @@ window.KnotSwarmSim = (function () {
       wallSplats.count = wk;
       wallSplats.instanceMatrix.needsUpdate = true;
       wallSplats.instanceColor.needsUpdate = true;
+      wConfA.needsUpdate = true;
 
       if (st.show.net) {
         const ap = netLines.geometry.attributes.position.array;
@@ -2380,14 +2495,39 @@ window.KnotSwarmSim = (function () {
         lum[j * (G + 2) + i] = 0.3 * cc[0] + 0.6 * cc[1] + 0.1 * cc[2];
       }
       const mU = new Float32Array(G), mV = new Float32Array(G);
+      const II = IMP._I || (IMP._I = new Float32Array(G * G));
+      const dwx = wu * fit.crop / G, dwz = wv * fit.crop / G;   // world-space lattice step
+      let fwd = 0;
       for (let j = 1; j <= G; j++) for (let i = 1; i <= G; i++) {
         const k = j * (G + 2) + i;
         const lap = Math.abs((hs[k - 1] + hs[k + 1] + hs[k - G - 2] + hs[k + G + 2]) / 4 - hs[k]);
         const tex = Math.abs(lum[k + 1] - lum[k]) + Math.abs(lum[k + G + 2] - lum[k]);
         const u = win.u0 + ((i - 0.5) / G) * wu, v = win.v0 + ((j - 0.5) / G) * wv;
         const res = Math.abs(bicubic(fit.tgt, fit.CN, clamp01(u), clamp01(v)) - hs[k]);
-        const I = 0.55 * lap + 2.4 * tex + 0.8 * res + 0.05;   // floor keeps planar coverage
-        mU[i - 1] += I; mV[j - 1] += I;
+        // backface gate: even inside the frustum, back-slopes are invisible ⇒
+        // their importance mass drains, warping samples onto forward-facing ROI
+        const fw = facing(fit.x0 + u * fit.crop, hs[k], fit.z0 + v * fit.crop,
+          (hs[k + 1] - hs[k - 1]) / (2 * dwx), (hs[k + G + 2] - hs[k - G - 2]) / (2 * dwz));
+        if (fw > 0.5) fwd++;
+        const I = (0.55 * lap + 2.4 * tex + 0.8 * res + 0.05) * (0.05 + 0.95 * fw);   // floor keeps planar coverage
+        II[(j - 1) * G + (i - 1)] = I;
+      }
+      IMP.fwd = fwd / (G * G);                     // effective forward-facing UV fraction
+      // corner/edge padding: an abrupt spike on a planar fabric must not sit next to
+      // starved cells (one huge gaussian at a building corner). Dilate the field and
+      // keep the peak: density ramps smoothly from low-freq planar to high-detail.
+      const IB = IMP._IB || (IMP._IB = new Float32Array(G * G));
+      const TT = IMP._TT || (IMP._TT = new Float32Array(G * G));
+      IB.set(II);
+      for (let pass = 0; pass < 2; pass++) {       // 2× separable 3-tap ≈ σ of ~1.4 cells
+        for (let j = 0; j < G; j++) for (let i = 0; i < G; i++)
+          TT[j * G + i] = 0.25 * IB[j * G + Math.max(0, i - 1)] + 0.5 * IB[j * G + i] + 0.25 * IB[j * G + Math.min(G - 1, i + 1)];
+        for (let j = 0; j < G; j++) for (let i = 0; i < G; i++)
+          IB[j * G + i] = 0.25 * TT[Math.max(0, j - 1) * G + i] + 0.5 * TT[j * G + i] + 0.25 * TT[Math.min(G - 1, j + 1) * G + i];
+      }
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const Ip = Math.max(II[j * G + i], IB[j * G + i] * 1.35);   // peak kept + padded skirt
+        mU[i] += Ip; mV[j] += Ip;
       }
       const mkCdf = m => {
         const cdf = new Float32Array(G + 1);
@@ -2398,6 +2538,14 @@ window.KnotSwarmSim = (function () {
       };
       IMP.cdfU = mkCdf(mU); IMP.cdfV = mkCdf(mV);
       IMP.t = st.t;
+      // report whether the warp actually moved — a static scene must not force
+      // a full S² splat rebuild every 0.35 s just because the timer fired
+      let moved = !IMP._pu;
+      if (moved) { IMP._pu = new Float32Array(G + 1); IMP._pv = new Float32Array(G + 1); }
+      else for (let i = 0; i <= G; i++)
+        if (Math.abs(IMP.cdfU[i] - IMP._pu[i]) + Math.abs(IMP.cdfV[i] - IMP._pv[i]) > 0.003) { moved = true; break; }
+      IMP._pu.set(IMP.cdfU); IMP._pv.set(IMP.cdfV);
+      return moved;
     }
     function axisSample(t, cdf) {                  // inverse CDF, linear within cells
       const G = IMP.G;
@@ -2434,18 +2582,36 @@ window.KnotSwarmSim = (function () {
       }
       FLU.frozen = false; FLU.calm = 0; FLU.flowT = 0;
       FLU.eT = -9;
+      // contact hash: neighbor-aware repulsion keeps particles touching, never merging.
+      // radius scales with local density (spacing ∝ 1/√ρ): equilibrium spacing in
+      // dense high-error regions is smaller than on planar fabric.
+      FLU.r0 = 0.55 / S;                           // nominal radius at uniform density
+      FLU.r0max = 1.4 / S;                         // sparse-region ceiling
+      FLU.HN = Math.max(1, Math.floor(1 / FLU.r0max));   // cell ≥ r0max so 3×3 covers all contacts
+      FLU.head = new Int32Array(FLU.HN * FLU.HN);
+      FLU.next = new Int32Array(n);
+      FLU.pu = new Float32Array(n); FLU.pv = new Float32Array(n);
+      FLU.nnu = new Float32Array(n).fill(1 / S);   // measured NN spacing along u / v
+      FLU.nnv = new Float32Array(n).fill(1 / S);
     }
     function fluidField() {                        // error potential on a G² lattice
       const G = FLU.G, wu = win.u1 - win.u0, wv = win.v1 - win.v0;
       if (!FLU.E) FLU.E = new Float32Array(G * G);
+      const fwA = FLU._fw || (FLU._fw = new Float32Array(G * G));
       let mean = 0;
       for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
         const u = win.u0 + (i + 0.5) / G * wu, v = win.v0 + (j + 0.5) / G * wv;
         const e = 1 / G;
         const h = bicubic(fit.cur, fit.CN, u, v);
-        const lapU = (bicubic(fit.cur, fit.CN, clamp01(u + e * wu), v) + bicubic(fit.cur, fit.CN, clamp01(u - e * wu), v)) / 2 - h;
-        const lapV = (bicubic(fit.cur, fit.CN, u, clamp01(v + e * wv)) + bicubic(fit.cur, fit.CN, u, clamp01(v - e * wv))) / 2 - h;
+        const hRu = bicubic(fit.cur, fit.CN, clamp01(u + e * wu), v), hLu = bicubic(fit.cur, fit.CN, clamp01(u - e * wu), v);
+        const hDv = bicubic(fit.cur, fit.CN, u, clamp01(v + e * wv)), hUv = bicubic(fit.cur, fit.CN, u, clamp01(v - e * wv));
+        const lapU = (hRu + hLu) / 2 - h, lapV = (hDv + hUv) / 2 - h;
         const err = Math.abs(lapU) + Math.abs(lapV) + 0.4 * Math.abs(bicubic(fit.tgt, fit.CN, u, v) - h);
+        // backfaces are invisible to the commander — the potential vanishes there,
+        // so particles drain toward the forward-facing UV sub-space. Kept OUT of the
+        // wake signal below: the ambient camera orbit must not re-wake a settled fluid.
+        fwA[j * G + i] = 0.05 + 0.95 * facing(fit.x0 + u * fit.crop, h, fit.z0 + v * fit.crop,
+          (hRu - hLu) / (2 * e * wu * fit.crop), (hDv - hUv) / (2 * e * wv * fit.crop));
         FLU.E[j * G + i] = err;
         mean += err;
       }
@@ -2464,6 +2630,8 @@ window.KnotSwarmSim = (function () {
       // a large potential shift only WAKES a frozen fluid; while flowing it simply
       // steers the forces — it must not reset the settle timers
       if (delta > 0.50 && FLU.frozen) { FLU.frozen = false; FLU.calm = 0; FLU.flowT = 0; }
+      // facing gates the force field only — applied after the wake/blend bookkeeping
+      for (let i = 0; i < G * G; i++) FLU.E[i] *= fwA[i];
       FLU.eT = st.t;
     }
     function _blurG(A) {                          // separable 3-tap blur on the lattice
@@ -2502,6 +2670,14 @@ window.KnotSwarmSim = (function () {
       _blurG(FLU.rho);                            // smooth pressure → no binning jitter
       const rhoN = n / (G * G);
       const kE = 0.014, kR = 0.020, damp = Math.exp(-4.5 * dt), vMax = 0.22, dead = 0.0022;
+      // snapshot positions + fill the contact hash (repulsion sees a consistent frame)
+      const HN = FLU.HN, r0max = FLU.r0max, kP = 2.0, nnCap = 1.5 / HN;
+      FLU.pu.set(FLU.u); FLU.pv.set(FLU.v);
+      FLU.head.fill(-1);
+      for (let k = 0; k < n; k++) {
+        const c = ((clamp(FLU.pv[k], 0, 0.9999) * HN) | 0) * HN + ((clamp(FLU.pu[k], 0, 0.9999) * HN) | 0);
+        FLU.next[k] = FLU.head[c]; FLU.head[c] = k;
+      }
       let speed = 0;
       for (let k = 0; k < n; k++) {
         const gE = _bilinG(FLU.E, FLU.u[k], FLU.v[k]);
@@ -2510,6 +2686,30 @@ window.KnotSwarmSim = (function () {
         let fy = kE * gE.gy - kR * gR.gy / rhoN;
         if (Math.abs(fx) < dead) fx = 0;          // force deadband kills limit cycles
         if (Math.abs(fy) < dead) fy = 0;
+        // neighbor contacts: linear spring inside the density-scaled radius —
+        // splats touch and push apart; nearest u/v/diag distances feed splat scale
+        const pu = FLU.pu[k], pv = FLU.pv[k];
+        const rhoRel = Math.max(0.15, FLU.rho[((clamp(pv, 0, 0.999) * G) | 0) * G + ((clamp(pu, 0, 0.999) * G) | 0)] / rhoN);
+        const rC = Math.min(r0max, FLU.r0 / Math.sqrt(rhoRel));
+        let nnu = nnCap, nnv = nnCap;
+        const ci = clamp((pu * HN) | 0, 0, HN - 1), cj = clamp((pv * HN) | 0, 0, HN - 1);
+        for (let oj = Math.max(0, cj - 1); oj <= Math.min(HN - 1, cj + 1); oj++)
+          for (let oi = Math.max(0, ci - 1); oi <= Math.min(HN - 1, ci + 1); oi++)
+            for (let q = FLU.head[oj * HN + oi]; q !== -1; q = FLU.next[q]) {
+              if (q === k) continue;
+              let du = pu - FLU.pu[q], dv2 = pv - FLU.pv[q];
+              let d = Math.hypot(du, dv2);
+              if (Math.abs(du) >= Math.abs(dv2)) { if (d < nnu) nnu = d; }   // u-dominant (incl. diag)
+              else if (d < nnv) nnv = d;                                     // v-dominant
+              if (d >= rC) continue;
+              if (d < 1e-5) {                    // coincident: deterministic split direction
+                const a = k * 2.399963;
+                du = Math.cos(a) * 1e-5; dv2 = Math.sin(a) * 1e-5; d = 1e-5;
+              }
+              const f = kP * (1 - d / rC) / d;   // |force| ≤ kP, always finite
+              fx += f * du; fy += f * dv2;
+            }
+        FLU.nnu[k] = nnu; FLU.nnv[k] = nnv;
         FLU.vu[k] = clamp((FLU.vu[k] + fx * dt) * damp, -vMax, vMax);
         FLU.vv[k] = clamp((FLU.vv[k] + fy * dt) * damp, -vMax, vMax);
         const nu2 = FLU.u[k] + FLU.vu[k] * dt, nv2 = FLU.v[k] + FLU.vv[k] * dt;
@@ -2532,9 +2732,10 @@ window.KnotSwarmSim = (function () {
       const E = ENVS[st.env];
       const crop = fit.crop, x0 = fit.x0, z0 = fit.z0, CN = fit.CN;
       const wu = win.u1 - win.u0, wv = win.v1 - win.v0;
-      const G = FLU.G, rhoN = (S * S) / (G * G);
       const base = crop * (wu + wv) / 2 / S;
+      const ww = crop * (wu + wv) / 2;             // window-UV → world scale
       const eS = Math.max(1e-4, wu / S);
+      const fConfA = splats.userData.conf;
       for (let k = 0; k < S * S; k++) {
         const u = win.u0 + FLU.u[k] * wu, v = win.v0 + FLU.v[k] * wv;
         const x = x0 + u * crop, z = z0 + v * crop;
@@ -2542,16 +2743,20 @@ window.KnotSwarmSim = (function () {
         const hR = bicubic(fit.cur, CN, clamp01(u + eS), v), hL = bicubic(fit.cur, CN, clamp01(u - eS), v);
         const hD = bicubic(fit.cur, CN, u, clamp01(v + eS)), hU = bicubic(fit.cur, CN, u, clamp01(v - eS));
         errArr[k] = Math.abs((hR + hL) / 2 - h) + Math.abs((hD + hU) / 2 - h);
+        fConfA.array[k] = clamp(1.05 - 1.5 * errArr[k], 0.3, 1);
         _n.set(-(hR - hL) / (2 * eS * crop), 1, -(hD - hU) / (2 * eS * crop)).normalize();
-        // size from local particle density: equilibrium tiles the surface
-        const rho = Math.max(0.15, FLU.rho[((clamp(FLU.v[k], 0, 0.999) * FLU.G) | 0) * FLU.G + ((clamp(FLU.u[k], 0, 0.999) * FLU.G) | 0)] / rhoN);
-        const s = clamp(base / Math.sqrt(rho), base * 0.3, base * 4);
-        const su = Math.max(Math.hypot(s, hR - h), Math.hypot(s, h - hL));
-        const sv = Math.max(Math.hypot(s, hD - h), Math.hypot(s, h - hU));
+        // scale from MEASURED nearest neighbors (u / v / diag): half-distance per side
+        // ⇒ splats meet exactly at the midline — geodetic spacing, minimal overlap
+        const suB = clamp(FLU.nnu[k] * ww, base * 0.3, base * 4);
+        const svB = clamp(FLU.nnv[k] * ww, base * 0.3, base * 4);
+        const su = Math.max(Math.hypot(suB, hR - h), Math.hypot(suB, h - hL));
+        const sv = Math.max(Math.hypot(svB, hD - h), Math.hypot(svB, h - hU));
         _p.set(x, h + 0.35 + 0.012 * crop, z);
-        _q.setFromUnitVectors(_up, _n);
-        _s.set(Math.min(su * 1.4, base * 8), Math.min(sv * 1.4, base * 8), 1);
-        _m.compose(_p, _q, _s);
+        // tangent-frame basis: local axes = surface ∂u/∂v at the particle mean
+        _t1.set(2 * eS * crop, hR - hL, 0).normalize().multiplyScalar(Math.min(su * 1.15, base * 8));
+        _t2.set(0, hD - hU, 2 * eS * crop).normalize().multiplyScalar(Math.min(sv * 1.15, base * 8));
+        _m.makeBasis(_t1, _t2, _n);
+        _m.setPosition(_p);
         splats.setMatrixAt(k, _m);
         posArr[k * 3] = _p.x; posArr[k * 3 + 1] = _p.y; posArr[k * 3 + 2] = _p.z;
         nrmArr[k * 3] = _n.x; nrmArr[k * 3 + 1] = _n.y; nrmArr[k * 3 + 2] = _n.z;
@@ -2567,6 +2772,7 @@ window.KnotSwarmSim = (function () {
       }
       splats.instanceMatrix.needsUpdate = true;
       splats.instanceColor.needsUpdate = true;
+      fConfA.needsUpdate = true;
       wallUsed = 0; wallSplats.count = 0;          // facade pool idle in fluid mode
     }
 
@@ -2826,11 +3032,12 @@ window.KnotSwarmSim = (function () {
         new T.LineBasicMaterial({ color: 0xffe14d })));
       if (rulerState.b) {
         const dist = rulerState.a.distanceTo(rulerState.b);
+        const geo = geoDist(rulerState.a, rulerState.b);
         const los = losCheck(rulerState.a, rulerState.b);
         const e1 = rulerState.a.clone(), e2 = rulerState.b.clone(); e1.y += 2.2; e2.y += 2.2;
         rulerState.losLine = ovl(new T.Line(new T.BufferGeometry().setFromPoints([e1, e2]),
           new T.LineBasicMaterial({ color: los ? 0x69f0ae : 0xef5350 })));
-        cmdrRead.innerHTML = '📏 <b>' + dist.toFixed(1) + ' m</b> · LOS: ' +
+        cmdrRead.innerHTML = '📏 <b>' + dist.toFixed(1) + ' m</b> · ⛰ geo <b>' + geo.toFixed(1) + ' m</b> · LOS: ' +
           (los ? '<span style="color:#69f0ae">CLEAR</span>' : '<span style="color:#ef5350">BLOCKED</span>') +
           ' · ' + gridRef(rulerState.b.x, rulerState.b.z);
       } else {
@@ -2844,6 +3051,75 @@ window.KnotSwarmSim = (function () {
       ovl(m);
       markers.push({ mesh: m, p: P.clone() });
       cmdrRead.innerHTML = '◎ marker ' + markers.length + ' @ GRID <b>' + gridRef(P.x, P.z) + '</b> · elev ' + P.y.toFixed(1) + ' m';
+    }
+    function clearMarkers() {
+      for (const m of markers) { overlay.remove(m.mesh); m.mesh.geometry.dispose(); m.mesh.material.dispose(); }
+      markers.length = 0;
+    }
+
+    /* ---------- TOPO probe: a sphere rolls down the reconstruction's gradient ----------
+       Reads local topography the way a commander would: drop, watch it roll, note where
+       it settles. Lives on the RECON surface only; cleared from scene+memory on rest. */
+    const topo = { R: 2, ball: null, vx: 0, vz: 0, calm: 0 };
+    function topoClear() {
+      if (!topo.ball) return;
+      overlay.remove(topo.ball);
+      topo.ball.geometry.dispose(); topo.ball.material.dispose();
+      topo.ball = null;
+    }
+    function topoPlace(P) {
+      topoClear();
+      topo.ball = new T.Mesh(new T.SphereGeometry(1, 18, 14),
+        new T.MeshLambertMaterial({ color: 0xff7043, emissive: 0x431a08 }));
+      topo.ball.scale.setScalar(topo.R);
+      topo.ball.position.set(P.x, P.y + topo.R, P.z);
+      ovl(topo.ball);
+      topo.vx = 0; topo.vz = 0; topo.calm = 0;
+      cmdrRead.innerHTML = '⚫ probe R ' + topo.R.toFixed(1) + ' m rolling · GRID ' + gridRef(P.x, P.z);
+    }
+    function topoStep(dt) {
+      const B = topo.ball;
+      if (!B) return;
+      const x = B.position.x, z = B.position.z;
+      const hC = reconH(x, z);
+      if (hC === null) { topoClear(); cmdrRead.innerHTML = '⚫ probe left the crop · cleared'; return; }
+      const e = Math.max(0.5, topo.R * 0.7);
+      const hAt = (xx, zz) => { const q = reconH(xx, zz); return q === null ? hC : q; };
+      const gx = (hAt(x + e, z) - hAt(x - e, z)) / (2 * e);
+      const gz = (hAt(x, z + e) - hAt(x, z - e)) / (2 * e);
+      const A = 9.8 / (1 + gx * gx + gz * gz);     // gravity along the incline
+      topo.vx = (topo.vx - A * gx * dt) * Math.exp(-1.2 * dt);   // rolling friction (time-based)
+      topo.vz = (topo.vz - A * gz * dt) * Math.exp(-1.2 * dt);
+      B.position.x += topo.vx * dt;
+      B.position.z += topo.vz * dt;
+      const h2 = reconH(B.position.x, B.position.z);
+      if (h2 !== null) B.position.y += ((h2 + topo.R) - B.position.y) * Math.min(1, dt * 10);
+      const sp = Math.hypot(topo.vx, topo.vz);
+      if (sp > 0.01) {                             // visual roll about the axis ⟂ velocity
+        _t1.set(topo.vz, 0, -topo.vx).normalize();
+        B.rotateOnWorldAxis(_t1, -sp * dt / topo.R);
+      }
+      if (sp < 0.12) topo.calm += dt; else topo.calm = 0;
+      if (topo.calm > 1.2) {
+        cmdrRead.innerHTML = '⚫ probe settled @ GRID <b>' + gridRef(B.position.x, B.position.z) +
+          '</b> · elev ' + (B.position.y - topo.R).toFixed(1) + ' m · cleared';
+        topoClear();
+      }
+    }
+
+    /* geodetic distance: project the flat segment onto the recon surface and
+       integrate arc length along the 3D trail */
+    function geoDist(A, B) {
+      const N2 = 96, dx = (B.x - A.x) / N2, dz = (B.z - A.z) / N2;
+      const dpl = Math.hypot(dx, dz);
+      let s = 0, ph = reconH(A.x, A.z);
+      if (ph === null) ph = A.y;
+      for (let i = 1; i <= N2; i++) {
+        let h = reconH(A.x + dx * i, A.z + dz * i);
+        if (h === null) h = ph;
+        s += Math.hypot(dpl, h - ph); ph = h;
+      }
+      return s;
     }
 
     /* ---------- TACREF: double-click a gaussian → military-format grid + confidence ----------
@@ -2996,7 +3272,7 @@ window.KnotSwarmSim = (function () {
       hudTL.innerHTML =
         '<div class="kss-big">' + (S * S + wallUsed).toLocaleString() + ' <span>splats · budget ' + st.budget.toLocaleString() + '</span></div>' +
         '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' +
-        (st.fluid ? (FLU.frozen ? ' · <b style="color:#69f0ae">≈ fluid · settled</b>' : ' · <b style="color:#ce93d8">≈ fluid · flowing</b>') : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive</b>' : '') + '</div>' +
+        (st.fluid ? (FLU.frozen ? ' · <b style="color:#69f0ae">≈ fluid · settled</b>' : ' · <b style="color:#ce93d8">≈ fluid · flowing</b>') : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive · fwd ' + Math.round((IMP.fwd === undefined ? 1 : IMP.fwd) * 100) + '%</b>' : '') + '</div>' +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b></div>' +
@@ -3068,14 +3344,15 @@ window.KnotSwarmSim = (function () {
     function onUp(e) {
       _tp.delete(e.pointerId);
       dragging = false;
-      if (moved < 6 && st.swapped && (st.tool === 'ruler' || st.tool === 'mark')) {
+      if (moved < 6 && st.swapped && (st.tool === 'ruler' || st.tool === 'mark' || st.tool === 'topo')) {
         const P = surfacePickFrom(e.clientX, e.clientY, canvas, cmdrCam);
         if (P) {
           if (st.tool === 'ruler') {
             if (!rulerState.a || rulerState.b) { clearRuler(); rulerState.a = P; }
             else rulerState.b = P;
             updateRulerViz();
-          } else dropMarker(P);
+          } else if (st.tool === 'topo') topoPlace(P);
+          else dropMarker(P);
         }
         return;
       }
@@ -3141,6 +3418,9 @@ window.KnotSwarmSim = (function () {
         } else if (st.tool === 'mark') {
           const P = surfacePick(e.clientX, e.clientY);
           if (P) dropMarker(P);
+        } else if (st.tool === 'topo') {
+          const P = surfacePick(e.clientX, e.clientY);
+          if (P) topoPlace(P);
         }
       }
     }
@@ -3199,6 +3479,14 @@ window.KnotSwarmSim = (function () {
 
     /* commander toolbar */
     const toolBtns = cmdrBox.querySelectorAll('.kss-cbtn[data-tool]');
+    const topoWrap = cmdrBox.querySelector('.kss-topo-wrap');
+    const topoSlider = cmdrBox.querySelector('.kss-topo-r');
+    const topoVal = cmdrBox.querySelector('.kss-topo-val');
+    topoSlider.addEventListener('pointerdown', e => e.stopPropagation());
+    topoSlider.addEventListener('input', () => {
+      topo.R = +topoSlider.value;
+      topoVal.textContent = topo.R.toFixed(1) + ' m';
+    });
     toolBtns.forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
       const tl = b.dataset.tool;
@@ -3207,7 +3495,9 @@ window.KnotSwarmSim = (function () {
       }
       st.tool = tl;
       toolBtns.forEach(x => { if (x.dataset.tool !== 'heat') x.classList.toggle('kss-on', x.dataset.tool === tl); });
+      topoWrap.style.display = tl === 'topo' ? 'flex' : 'none';
       if (tl !== 'ruler') clearRuler();
+      if (tl !== 'topo') topoClear();
     }));
     const linkBtn = cmdrBox.querySelector('.kss-link');
     linkBtn.addEventListener('click', e => {
@@ -3322,13 +3612,22 @@ window.KnotSwarmSim = (function () {
     bar.querySelectorAll('.kss-env').forEach(b => b.addEventListener('click', () => {
       st.env = b.dataset.env;
       bar.querySelectorAll('.kss-env').forEach(x => x.classList.toggle('kss-on', x === b));
-      buildEnv();
+      buildEnv();                                  // old env's meshes removed + disposed
+      /* env isolation: the previous env is fully unloaded from the session —
+         overlays, importance warp, fluid history, view weights, subdivision
+         surplus. The new env starts its own optimization from scratch. */
+      clearRuler(); clearMarkers(); topoClear(); tacRing.visible = false;
+      fit.extra = 0; st.boost = 0;
+      covW = null;                                 // swarm-view weights recomputed fresh
+      IMP.t = -9; IMP._pu = null; IMP.cdfU = IMP.cdfV = null; IMP.fwd = undefined;
+      FLU._prevE = null; FLU.eT = -9;
+      if (st.fluid) initFluid();                   // fresh particle sheet for the new env
       st.warm = { active: true, level: 0, t0: st.t };
       st.zoom = 0;
       st.roi.x = ENV_HOME[st.env].x;
       st.roi.z = ENV_HOME[st.env].z;
       setFitDomain(WARM_LEVELS[0], st.roi.x - CROP_G / 2, st.roi.z - CROP_G / 2, CROP_G, false);
-      clearRuler(); reconDirty = true;
+      reconDirty = true;
     }));
     bar.querySelectorAll('.kss-bud').forEach(b => b.addEventListener('click', () => {
       st.budget = +b.dataset.b;
@@ -3414,7 +3713,7 @@ window.KnotSwarmSim = (function () {
     const ro = new ResizeObserver(resize);
     ro.observe(stage); ro.observe(cmdrBox);
 
-    window.__kss = { fit, swarmFoot: null, st, FLU };   // debug handle
+    window.__kss = { fit, swarmFoot: null, st, FLU, topo };   // debug handle
     window.__kss.swarmFoot = swarmFoot;
     buildEnv();
     buildSwarm(5);
@@ -3422,7 +3721,7 @@ window.KnotSwarmSim = (function () {
     applyCam();
     resize();
 
-    let raf = 0, dead = false, frame = 0, adaptCooldown = 0;
+    let raf = 0, dead = false, frame = 0, adaptCooldown = 0, _hudT = -9;
     const clock = new T.Clock();
     function loop() {
       if (dead) return;
@@ -3446,9 +3745,11 @@ window.KnotSwarmSim = (function () {
       // throttled recon rebuild (frozen during the export sweep animation)
       if (st.t - _wT > 0.3) computeWeights();
       if (st.fluid) fluidStep(dt);
-      else if (st.adaptive && st.t - IMP.t > 0.35) { rebuildImportance(); reconDirty = true; }
-      if (!exp_.active && (reconDirty || frame % 6 === 0)) { updateRecon(st.t); reconDirty = false; }
+      else if (st.adaptive && st.t - IMP.t > 0.35) { if (rebuildImportance()) reconDirty = true; }
+      // periodic rebuild only serves time-varying fields; static envs rebuild on real change
+      if (!exp_.active && (reconDirty || (frame % 6 === 0 && ENVS[st.env].animated))) { updateRecon(st.t); reconDirty = false; }
       exportStep(dt);
+      topoStep(dt);
       updateSwarm(fit.crop, st.t);
       // patrol mesh follows its h() footprint
       if (patrolMesh && st.env === 'urban') {
@@ -3489,7 +3790,7 @@ window.KnotSwarmSim = (function () {
           pos.setY(i, ENVS.ocean.h(pos.getX(i), pos.getZ(i), st.t));
         pos.needsUpdate = true;
       }
-      updateHUD(fit.crop);
+      if (st.t - _hudT > 0.15) { _hudT = st.t; updateHUD(fit.crop); }   // DOM writes at ~7 Hz, not 60
       if (!st.zen && performance.now() - _uiLast > 3000 && !bar.classList.contains('kss-folded')) {
         bar.classList.add('kss-folded');
         closeMenus();
@@ -3554,7 +3855,8 @@ window.KnotSwarmSim = (function () {
     };
   }
 
-  return { create };
+  // _basis: debug/self-check handle — verify gridEval ≡ bicubic per basis mode
+  return { create, _basis: { bicubic, gridEval, deg: d => { BASIS_DEG = d; } } };
 })();
 
 </script>
