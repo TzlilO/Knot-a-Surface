@@ -81,6 +81,8 @@ footer b{color:#8fa4c0}
 .kss-hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
   font-size:11px;color:#5c6f8a;background:rgba(7,9,15,.6);padding:3px 10px;border-radius:10px;
   pointer-events:none;white-space:nowrap}
+.kss-version{position:absolute;bottom:22px;right:10px;font-size:9.5px;color:#4a5b73;
+  pointer-events:none;white-space:nowrap;letter-spacing:.02em;opacity:.7}
 /* ── dock bar: overlay, foldable, popup menus ── */
 .kss-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
   transition:transform .28s cubic-bezier(.4,0,.2,1)}
@@ -104,7 +106,7 @@ footer b{color:#8fa4c0}
   background:rgba(13,18,32,.96);border:1px solid #22314e;border-radius:10px;
   padding:9px 12px;box-shadow:0 -10px 34px rgba(0,0,0,.5);backdrop-filter:blur(8px)}
 /* zen mode: scene + commander only */
-.kss-zenmode .kss-hud,.kss-zenmode .kss-phase,.kss-zenmode .kss-hint{display:none!important}
+.kss-zenmode .kss-hud,.kss-zenmode .kss-phase,.kss-zenmode .kss-hint,.kss-zenmode .kss-version{display:none!important}
 .kss-zenmode .kss-bar{transform:translateY(110%)}
 .kss-zen-exit{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;
   font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.14em;color:#ce93d8;
@@ -131,6 +133,7 @@ footer b{color:#8fa4c0}
   .kss-big{font-size:13px}
   .kss-big span{font-size:8.5px}
   .kss-hint{display:none}
+  .kss-version{font-size:7.5px;bottom:19px}
   .kss-phase{font-size:9px;top:6px;padding:4px 10px;max-width:94%;white-space:normal;text-align:center}
   .kss-cmdr{width:46%;max-width:none;left:6px;bottom:6px;border-radius:8px}
   .kss-cmdr-label{font-size:7.5px;top:4px;left:5px;padding:2px 6px}
@@ -188,6 +191,8 @@ footer b{color:#8fa4c0}
 ═══════════════════════════════════════════════════════════════════════════ */
 window.KnotSwarmSim = (function () {
   'use strict';
+  const SIM_VERSION = 'v18';
+  const SIM_BUILT = '2026-07-19 17:26 UTC';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -832,6 +837,7 @@ window.KnotSwarmSim = (function () {
         '<div class="kss-phase"></div>' +
         '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
         '<div class="kss-hint">WASD move swarm · R/F knob · T/G commander pitch · click ground: ROI · in commander: ruler / markers / detach</div>' +
+        '<div class="kss-version">' + SIM_VERSION + ' · ' + SIM_BUILT + '</div>' +
       '</div>' +
       '<div class="kss-bar"></div>';
     const stage = container.querySelector('.kss-stage');

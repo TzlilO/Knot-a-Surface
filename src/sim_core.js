@@ -11,6 +11,8 @@
 ═══════════════════════════════════════════════════════════════════════════ */
 window.KnotSwarmSim = (function () {
   'use strict';
+  const SIM_VERSION = 'v18';
+  const SIM_BUILT = '/*__BUILD_TIME__*/';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -655,6 +657,7 @@ window.KnotSwarmSim = (function () {
         '<div class="kss-phase"></div>' +
         '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
         '<div class="kss-hint">WASD move swarm · R/F knob · T/G commander pitch · click ground: ROI · in commander: ruler / markers / detach</div>' +
+        '<div class="kss-version">' + SIM_VERSION + ' · ' + SIM_BUILT + '</div>' +
       '</div>' +
       '<div class="kss-bar"></div>';
     const stage = container.querySelector('.kss-stage');
