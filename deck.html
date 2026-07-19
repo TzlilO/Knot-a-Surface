@@ -1476,18 +1476,18 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-pitch" data-p="25">25°</button>' +
           '<button class="kss-btn kss-pitch" data-p="45">45°</button></div>' +
         '<div class="kss-menu" data-menu="env">' +
-          '<button class="kss-btn kss-env kss-on" data-env="urban">urban</button>' +
-          '<button class="kss-btn kss-env" data-env="forest">forest</button>' +
+          '<button class="kss-btn kss-env" data-env="urban">urban</button>' +
+          '<button class="kss-btn kss-env kss-on" data-env="forest">forest</button>' +
           '<button class="kss-btn kss-env" data-env="ocean">ocean</button>' +
           '<button class="kss-btn kss-env" data-env="dust">dust</button></div>' +
         '<div class="kss-menu" data-menu="budget">' +
           '<button class="kss-btn kss-bud" data-b="1024">1k</button>' +
           '<button class="kss-btn kss-bud" data-b="2048">2k</button>' +
-          '<button class="kss-btn kss-bud kss-on" data-b="4096">4k</button>' +
+          '<button class="kss-btn kss-bud" data-b="4096">4k</button>' +
           '<button class="kss-btn kss-bud" data-b="8192">8k</button>' +
           '<button class="kss-btn kss-bud" data-b="16384">16k</button>' +
           '<button class="kss-btn kss-bud" data-b="32768">32k</button>' +
-          '<button class="kss-btn kss-bud" data-b="65536">64k</button>' +
+          '<button class="kss-btn kss-bud kss-on" data-b="65536">64k</button>' +
           '<button class="kss-btn kss-bud" data-b="131072">128k</button>' +
           '<button class="kss-btn kss-bud" data-b="262144">256k</button>' +
           '<button class="kss-btn kss-bud" data-b="524288">512k</button>' +
@@ -1573,8 +1573,8 @@ window.KnotSwarmSim = (function () {
 
     /* ---------- state ---------- */
     const st = {
-      env: 'urban', mode: 'manual', budget: 4096, zoom: 0,
-      roi: { x: SITE.x, z: SITE.z },
+      env: 'forest', mode: 'manual', budget: 65536, zoom: 0,
+      roi: { x: ENV_HOME.forest.x, z: ENV_HOME.forest.z },
       show: { splats: true, net: false, frustum: true, cmdr: true },
       swapped: false, linked: true, tool: 'nav', heat: false,
       drGrid: 5, drAdapt: false,
@@ -1582,7 +1582,7 @@ window.KnotSwarmSim = (function () {
       boost: 0,
       t: 0,
       warm: { active: true, level: 0, t0: 0 },
-      auto: { phase: 'dwellG', t0: 0, from: { x: SITE.x, z: SITE.z }, to: { x: SITE.x, z: SITE.z } }
+      auto: { phase: 'dwellG', t0: 0, from: { x: ENV_HOME.forest.x, z: ENV_HOME.forest.z }, to: { x: ENV_HOME.forest.x, z: ENV_HOME.forest.z } }
     };
     const SPREAD_G = 42, ALT = 46;
     const CROP_G = 84, CROP_MIN = 7;
@@ -1610,7 +1610,7 @@ window.KnotSwarmSim = (function () {
     }
 
     /* ---------- fit model ---------- */
-    const fit = { CN: WARM_LEVELS[0], cur: null, tgt: null, res: 1, crop: CROP_G, x0: SITE.x - CROP_G / 2, z0: SITE.z - CROP_G / 2 };
+    const fit = { CN: WARM_LEVELS[0], cur: null, tgt: null, res: 1, crop: CROP_G, x0: ENV_HOME.forest.x - CROP_G / 2, z0: ENV_HOME.forest.z - CROP_G / 2 };
     function sampleTarget(CN, x0, z0, crop, time) {
       const E = ENVS[st.env];
       const out = new Float32Array((CN + 3) * (CN + 3));
@@ -1637,7 +1637,7 @@ window.KnotSwarmSim = (function () {
       fit.tgt = tgt;
       fit.CN = CN; fit.x0 = x0; fit.z0 = z0; fit.crop = crop;
     }
-    setFitDomain(WARM_LEVELS[0], SITE.x - CROP_G / 2, SITE.z - CROP_G / 2, CROP_G, false);
+    setFitDomain(WARM_LEVELS[0], ENV_HOME.forest.x - CROP_G / 2, ENV_HOME.forest.z - CROP_G / 2, CROP_G, false);
 
     /* per-control-point weights: swarm-view coverage × photometric residual.
        Optimization is w.r.t. the SWARM's views — unobserved regions barely update,
