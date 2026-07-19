@@ -78,6 +78,8 @@
 .kss-mode{font-size:12px;font-weight:800;letter-spacing:.12em;color:#4fc3f7}
 .kss-force{color:#ffe14d;border-color:rgba(255,225,77,.45)}
 .kss-force:hover{background:rgba(255,225,77,.12);border-color:#ffe14d;color:#ffe14d}
+.kss-version{position:absolute;bottom:14px;right:50px;font-size:9.5px;color:#4a5b73;
+  pointer-events:none;white-space:nowrap;letter-spacing:.02em;opacity:.7;z-index:7}   /* left of the compass */
 
 /* ── dock bar: overlay, foldable, popup menus ── */
 .kss-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
@@ -114,7 +116,7 @@
 /* ── zen mode: scene + inset only ── */
 .kss-zenmode .kss-hud,.kss-zenmode .kss-phase,.kss-zenmode .kss-tools,
 .kss-zenmode .kss-compass,.kss-zenmode .kss-cpitch-wrap,.kss-zenmode .kss-cmdr-read,
-.kss-zenmode .kss-info-btn,.kss-zenmode .kss-info{display:none!important}
+.kss-zenmode .kss-info-btn,.kss-zenmode .kss-info,.kss-zenmode .kss-version{display:none!important}
 .kss-zenmode .kss-bar{transform:translateY(110%)}
 .kss-zen-exit{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;
   font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.14em;color:#ce93d8;
@@ -129,6 +131,7 @@
   .kss-hud-tl{max-width:52%}
   .kss-big{font-size:13px}
   .kss-big span{font-size:8.5px}
+  .kss-version{font-size:7.5px;bottom:12px;right:44px}
   .kss-phase{font-size:9px;top:6px;padding:4px 10px;max-width:70%;white-space:normal;text-align:center}
   .kss-tools{top:78px;gap:4px}
   .kss-cbtn{font-size:10px;padding:5px 6px;min-width:26px}
