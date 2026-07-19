@@ -836,8 +836,9 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-denc" data-den="8">×8</button>' +
           '<button class="kss-btn kss-denc" data-den="16">×16</button>' +
           '<span class="kss-lb">Sampling</span>' +
-          '<button class="kss-btn kss-samp kss-on" data-s="1">adaptive</button>' +
-          '<button class="kss-btn kss-samp" data-s="0">uniform</button>' +
+          '<button class="kss-btn kss-samp kss-on" data-s="adaptive">adaptive</button>' +
+          '<button class="kss-btn kss-samp" data-s="uniform">uniform</button>' +
+          '<button class="kss-btn kss-samp" data-s="fluid">fluid</button>' +
           '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div>' +
         '<div class="kss-menu" data-menu="export">' +
           '<span class="kss-lb">Upsample α</span>' +
@@ -909,6 +910,7 @@ window.KnotSwarmSim = (function () {
     const CROP_G = 84, CROP_MIN = 7;
     st.deg = 'nurbs'; st.den = 2; st.chan = 'rgb'; // NURBS default · ×2 parameter group
     st.adaptive = true;                            // curvature/texture/residual-aware sampling
+    st.fluid = false;                              // fluid-particle sampling mode
     st.ovl = 0.4;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
     let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
@@ -1566,6 +1568,7 @@ window.KnotSwarmSim = (function () {
       const cellU = crop * wu / S, cellV = crop * wv / S;
       const cell = (cellU + cellV) / 2;
       const lift = 0.35 + 0.012 * crop;
+      if (st.fluid) { reconFluidPass(time); roiRing.position.set(st.roi.x, ENVS[st.env].h(st.roi.x, st.roi.z, time) + 0.4, st.roi.z); roiRing.scale.setScalar(fit.crop / 2); return fit.crop; }
       refreshMaps();
       // pass 1: sample heights over the (importance-warped) grid
       for (let j = 0; j < S; j++) for (let i = 0; i < S; i++)
@@ -1731,6 +1734,119 @@ window.KnotSwarmSim = (function () {
         uMapA[i] = win.u0 + (st.adaptive && IMP.cdfU ? axisSample(t, IMP.cdfU) : t) * wu;
         vMapA[i] = win.v0 + (st.adaptive && IMP.cdfV ? axisSample(t, IMP.cdfV) : t) * wv;
       }
+    }
+
+    /* ---------- FLUID sampling: gaussians as particles in a potential field ----------
+       Potential = the gaussian approximation error (confidence-map truncation metric)
+       over the crop. Particles feel  +∇error  (drawn to poorly-approximated regions)
+       and  −∇density  (fluid pressure). Equilibrium ⇒ density ∝ error: the placement
+       that minimizes total approximation error under a fixed budget. ---------- */
+    const FLU = { u: null, v: null, vu: null, vv: null, G: 48, E: null, rho: null, eT: -9 };
+    function initFluid() {
+      const n = S * S;
+      FLU.u = new Float32Array(n); FLU.v = new Float32Array(n);
+      FLU.vu = new Float32Array(n); FLU.vv = new Float32Array(n);
+      FLU.rho = new Float32Array(FLU.G * FLU.G);
+      refreshMaps();
+      let k = 0;
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+        FLU.u[k] = uMapA[i]; FLU.v[k] = vMapA[j]; k++;
+      }
+      FLU.eT = -9;
+    }
+    function fluidField() {                        // error potential on a G² lattice
+      const G = FLU.G, wu = win.u1 - win.u0, wv = win.v1 - win.v0;
+      if (!FLU.E) FLU.E = new Float32Array(G * G);
+      let mean = 0;
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const u = win.u0 + (i + 0.5) / G * wu, v = win.v0 + (j + 0.5) / G * wv;
+        const e = 1 / G;
+        const h = bicubic(fit.cur, fit.CN, u, v);
+        const lapU = (bicubic(fit.cur, fit.CN, clamp01(u + e * wu), v) + bicubic(fit.cur, fit.CN, clamp01(u - e * wu), v)) / 2 - h;
+        const lapV = (bicubic(fit.cur, fit.CN, u, clamp01(v + e * wv)) + bicubic(fit.cur, fit.CN, u, clamp01(v - e * wv))) / 2 - h;
+        const err = Math.abs(lapU) + Math.abs(lapV) + 0.4 * Math.abs(bicubic(fit.tgt, fit.CN, u, v) - h);
+        FLU.E[j * G + i] = err;
+        mean += err;
+      }
+      mean = mean / (G * G) || 1;
+      for (let i = 0; i < G * G; i++) FLU.E[i] = FLU.E[i] / mean + 0.03;   // normalized, floored
+      FLU.eT = st.t;
+    }
+    function _bilinG(A, gu, gv) {                  // value + gradient on the G lattice
+      const G = FLU.G;
+      const x = clamp(gu * G - 0.5, 0, G - 1.001), y = clamp(gv * G - 0.5, 0, G - 1.001);
+      const i = x | 0, j = y | 0, fx = x - i, fy = y - j;
+      const i1 = Math.min(G - 1, i + 1), j1 = Math.min(G - 1, j + 1);
+      const a = A[j * G + i], b = A[j * G + i1], d = A[j1 * G + i], e2 = A[j1 * G + i1];
+      return {
+        gx: ((b - a) * (1 - fy) + (e2 - d) * fy) * G,
+        gy: ((d - a) * (1 - fx) + (e2 - b) * fx) * G
+      };
+    }
+    function fluidStep(dt) {
+      if (!FLU.u || FLU.u.length !== S * S) initFluid();
+      if (st.t - FLU.eT > 0.25) fluidField();
+      const G = FLU.G, n = S * S;
+      const wu = win.u1 - win.u0 || 1, wv = win.v1 - win.v0 || 1;
+      FLU.rho.fill(0);
+      for (let k = 0; k < n; k++) {               // bin density
+        const gu = clamp((FLU.u[k] - win.u0) / wu, 0, 0.999), gv = clamp((FLU.v[k] - win.v0) / wv, 0, 0.999);
+        FLU.rho[((gv * G) | 0) * G + ((gu * G) | 0)]++;
+      }
+      const rhoN = n / (G * G);
+      const kE = 0.014, kR = 0.020, damp = Math.exp(-3.5 * dt), vMax = 0.22;
+      for (let k = 0; k < n; k++) {
+        const gu = clamp((FLU.u[k] - win.u0) / wu, 0, 1), gv = clamp((FLU.v[k] - win.v0) / wv, 0, 1);
+        const gE = _bilinG(FLU.E, gu, gv);
+        const gR = _bilinG(FLU.rho, gu, gv);
+        FLU.vu[k] = clamp((FLU.vu[k] + (kE * gE.gx - kR * gR.gx / rhoN) * dt) * damp, -vMax, vMax);
+        FLU.vv[k] = clamp((FLU.vv[k] + (kE * gE.gy - kR * gR.gy / rhoN) * dt) * damp, -vMax, vMax);
+        FLU.u[k] = clamp(FLU.u[k] + FLU.vu[k] * dt * wu, win.u0, win.u1);
+        FLU.v[k] = clamp(FLU.v[k] + FLU.vv[k] * dt * wv, win.v0, win.v1);
+      }
+      reconDirty = true;
+    }
+    function reconFluidPass(time) {
+      const E = ENVS[st.env];
+      const crop = fit.crop, x0 = fit.x0, z0 = fit.z0, CN = fit.CN;
+      const wu = win.u1 - win.u0, wv = win.v1 - win.v0;
+      const G = FLU.G, rhoN = (S * S) / (G * G);
+      const base = crop * (wu + wv) / 2 / S;
+      const eS = Math.max(1e-4, wu / S);
+      for (let k = 0; k < S * S; k++) {
+        const u = FLU.u[k], v = FLU.v[k];
+        const x = x0 + u * crop, z = z0 + v * crop;
+        const h = bicubic(fit.cur, CN, u, v);
+        const hR = bicubic(fit.cur, CN, clamp01(u + eS), v), hL = bicubic(fit.cur, CN, clamp01(u - eS), v);
+        const hD = bicubic(fit.cur, CN, u, clamp01(v + eS)), hU = bicubic(fit.cur, CN, u, clamp01(v - eS));
+        errArr[k] = Math.abs((hR + hL) / 2 - h) + Math.abs((hD + hU) / 2 - h);
+        _n.set(-(hR - hL) / (2 * eS * crop), 1, -(hD - hU) / (2 * eS * crop)).normalize();
+        // size from local particle density: equilibrium tiles the surface
+        const gu = clamp((u - win.u0) / wu, 0, 0.999), gv = clamp((v - win.v0) / wv, 0, 0.999);
+        const rho = Math.max(0.15, FLU.rho[((gv * FLU.G) | 0) * FLU.G + ((gu * FLU.G) | 0)] / rhoN);
+        const s = clamp(base / Math.sqrt(rho), base * 0.3, base * 4);
+        const su = Math.max(Math.hypot(s, hR - h), Math.hypot(s, h - hL));
+        const sv = Math.max(Math.hypot(s, hD - h), Math.hypot(s, h - hU));
+        _p.set(x, h + 0.35 + 0.012 * crop, z);
+        _q.setFromUnitVectors(_up, _n);
+        _s.set(Math.min(su * 1.4, base * 8), Math.min(sv * 1.4, base * 8), 1);
+        _m.compose(_p, _q, _s);
+        splats.setMatrixAt(k, _m);
+        posArr[k * 3] = _p.x; posArr[k * 3 + 1] = _p.y; posArr[k * 3 + 2] = _p.z;
+        nrmArr[k * 3] = _n.x; nrmArr[k * 3 + 1] = _n.y; nrmArr[k * 3 + 2] = _n.z;
+        if (st.heat) {
+          const hc = heatColor(Math.abs(bicubic(fit.tgt, CN, u, v) - h) / 2.2);
+          splats.instanceColor.setXYZ(k, hc[0], hc[1], hc[2]);
+        } else {
+          const cc = E.col(x, z, h, time);
+          const shade = 0.52 + 0.48 * Math.max(0, _n.dot(SUN));
+          const jit = 0.93 + 0.14 * hash2(k * 7 + 1, k * 5 + 3);
+          splats.instanceColor.setXYZ(k, clamp01(cc[0] * shade * jit), clamp01(cc[1] * shade * jit), clamp01(cc[2] * shade * jit));
+        }
+      }
+      splats.instanceMatrix.needsUpdate = true;
+      splats.instanceColor.needsUpdate = true;
+      wallUsed = 0; wallSplats.count = 0;          // facade pool idle in fluid mode
     }
 
     /* ---------- commander render channels: depth / normal / confidence ---------- */
@@ -2159,7 +2275,7 @@ window.KnotSwarmSim = (function () {
       hudTL.innerHTML =
         '<div class="kss-big">' + (S * S + wallUsed).toLocaleString() + ' <span>splats · budget ' + st.budget.toLocaleString() + '</span></div>' +
         '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' +
-        (st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive</b>' : '') + '</div>' +
+        (st.fluid ? ' · <b style="color:#ce93d8">≈ fluid</b>' : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive</b>' : '') + '</div>' +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b></div>' +
@@ -2512,9 +2628,10 @@ window.KnotSwarmSim = (function () {
     }));
     bar.querySelector('.kss-export').addEventListener('click', () => { closeMenus(); startExport(); });
     bar.querySelectorAll('.kss-samp').forEach(b => b.addEventListener('click', () => {
-      st.adaptive = b.dataset.s === '1';
+      const m = b.dataset.s;
+      st.adaptive = m === 'adaptive'; st.fluid = m === 'fluid';
       bar.querySelectorAll('.kss-samp').forEach(x => x.classList.toggle('kss-on', x === b));
-      IMP.t = -9; reconDirty = true;
+      IMP.t = -9; if (st.fluid) initFluid(); reconDirty = true;
     }));
     const chanBtn = cmdrBox.querySelector('.kss-chan');
     const CHANS = ['rgb', 'depth', 'normal', 'conf'];
@@ -2554,7 +2671,7 @@ window.KnotSwarmSim = (function () {
     const ro = new ResizeObserver(resize);
     ro.observe(stage); ro.observe(cmdrBox);
 
-    window.__kss = { fit, swarmFoot: null, st };   // debug handle
+    window.__kss = { fit, swarmFoot: null, st, FLU };   // debug handle
     window.__kss.swarmFoot = swarmFoot;
     buildEnv();
     buildSwarm(5);
@@ -2585,7 +2702,8 @@ window.KnotSwarmSim = (function () {
         ('×' + (CROP_G / fit.crop).toFixed(1));
       // throttled recon rebuild (frozen during the export sweep animation)
       if (st.t - _wT > 0.3) computeWeights();
-      if (st.adaptive && st.t - IMP.t > 0.35) { rebuildImportance(); reconDirty = true; }
+      if (st.fluid) fluidStep(dt);
+      else if (st.adaptive && st.t - IMP.t > 0.35) { rebuildImportance(); reconDirty = true; }
       if (!exp_.active && (reconDirty || frame % 6 === 0)) { updateRecon(st.t); reconDirty = false; }
       exportStep(dt);
       updateSwarm(fit.crop, st.t);
