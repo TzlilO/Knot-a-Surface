@@ -425,13 +425,7 @@ window.KnotSwarmSim = (function () {
         if (d < 9) t = Math.min(t, 0.9 + (d / 9) * (d / 9) * 3.5);
         return t;
       },
-      canopy(x, z) {
-        const rx = riverX(z, 12, -8);
-        if (Math.abs(x - rx) < 5) return 0;
-        if (inCamp(x, z)) return 0;                 // concealed camp clearing
-        if (fbm(x * 0.05 + 21, z * 0.05 + 21, 2) < 0.36) return 0;
-        return 6.5 * Math.pow(fbm(x * 0.16 + 40, z * 0.16 + 40, 5), 2.2);
-      },
+      canopy(x, z) { return canopyAt(x, z); },
       h(x, z) {
         const rx = riverX(z, 12, -8);
         if (Math.abs(x - rx) < 3.4) return 1.0;
@@ -456,11 +450,12 @@ window.KnotSwarmSim = (function () {
           return [0.04 + g, 0.30 + g, 0.50 + g];
         }
         const can = ENVS.forest.canopy(x, z);
-        if (can > 0.9) {
-          const autumn = fbm(x * 0.06 + 55, z * 0.06 + 55, 2) > 0.60;
+        if (can > 0.7) {
+          const t = canopyTree(x, z);
           const leaf = 0.5 + 0.5 * fbm(x * 2.2, z * 2.2, 4);
-          if (autumn) return [0.70 + 0.2 * leaf, 0.38 + 0.15 * leaf, 0.06];
-          return [0.05 + 0.09 * leaf, 0.30 + 0.34 * leaf, 0.08 + 0.07 * leaf];
+          if (t && t.autumn) return [0.70 + 0.2 * leaf, 0.38 + 0.15 * leaf, 0.06];
+          if (t && t.conifer) return [0.04 + 0.07 * leaf, 0.26 + 0.26 * leaf, 0.10 + 0.05 * leaf];
+          return [0.07 + 0.10 * leaf, 0.34 + 0.34 * leaf, 0.08 + 0.07 * leaf];
         }
         if (inCamp(x, z)) {
           if (inTrench(x, z)) return [0.22, 0.16, 0.10];
@@ -506,11 +501,54 @@ window.KnotSwarmSim = (function () {
       }
     },
     dust: {
-      sky: 0x2a1f14, fog: 0x2a1f14, animated: false,
-      h(x, z) { return dustH(x, z); },
-      col(x, z, h) { return dustCol(x, z); }
+      sky: 0x2a1f14, fog: 0x2a1f14, animated: true,
+      h(x, z, t) { return dustH(x, z, t); },
+      col(x, z, h, t) { return dustCol(x, z, t); }
     }
   };
+
+  /* ── forest tree instances: one deterministic rule for field AND props ── */
+  const TREE_CELL = 7;
+  function forestTree(ci, cj) {
+    const r = hash2(ci * 13 + 7, cj * 17 + 3);
+    if (r < 0.42) return null;
+    const x = (ci + 0.2 + 0.6 * hash2(ci, cj * 5)) * TREE_CELL;
+    const z = (cj + 0.2 + 0.6 * hash2(ci * 3, cj)) * TREE_CELL;
+    const hh = 2.5 + 4 * hash2(ci * 7, cj * 11);
+    const rad = 1.3 + 1.2 * hash2(ci * 5, cj * 9);
+    return { x, z, hh, rad,
+      conifer: hash2(ci * 9, cj * 13) > 0.45,
+      autumn: fbm(x * 0.06 + 55, z * 0.06 + 55, 2) > 0.60 };
+  }
+  function treeClear(x, z) {                       // clearings where no trees grow
+    const rx = riverX(z, 12, -8);
+    if (Math.abs(x - rx) < 5) return true;
+    if (inCamp(x, z)) return true;
+    return fbm(x * 0.05 + 21, z * 0.05 + 21, 2) < 0.36;
+  }
+  function canopyAt(x, z) {                        // true occupancy of tree crowns
+    if (treeClear(x, z)) return 0;
+    const ci = Math.floor(x / TREE_CELL), cj = Math.floor(z / TREE_CELL);
+    let best = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const t = forestTree(ci + di, cj + dj);
+      if (!t || treeClear(t.x, t.z)) continue;
+      const d = Math.hypot(x - t.x, z - t.z);
+      if (d >= t.rad) continue;
+      const f = 1 - d / t.rad;
+      const dome = t.conifer ? t.hh * f : t.hh * (0.55 + 0.45 * Math.sqrt(Math.max(0, 1 - (d / t.rad) ** 2)));
+      if (dome > best) best = dome;
+    }
+    return best;
+  }
+  function canopyTree(x, z) {                      // which tree covers (for color)
+    const ci = Math.floor(x / TREE_CELL), cj = Math.floor(z / TREE_CELL);
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const t = forestTree(ci + di, cj + dj);
+      if (t && !treeClear(t.x, t.z) && Math.hypot(x - t.x, z - t.z) < t.rad) return t;
+    }
+    return null;
+  }
 
   /* ── per-env home positions (ROI reset / autopilot bias) ── */
   const ENV_HOME = { urban: { x: -18, z: 9 }, forest: { x: 14, z: 16 }, ocean: { x: 8, z: -4 }, dust: { x: 7, z: 6 } };
@@ -569,16 +607,42 @@ window.KnotSwarmSim = (function () {
     [0, -10, 3.0, 58, 5.5],                         // Long-A west wall
     [14, -10, 3.0, 58, 5.5],                        // Long-A east wall
     [3.8, 20, 2.0, 1.6, 5.5], [10.2, 20, 2.0, 1.6, 5.5],   // double-door pillars
-    [-20, 24, 26, 1.4, 4.5], [-24, 6, 1.4, 30, 4.5]        // site B-ish walls
+    [-20, 24, 26, 1.4, 4.5], [-24, 6, 1.4, 30, 4.5],       // site B-ish walls
+    [0, -34, 3.0, 20, 5.5], [14, -34, 3.0, 20, 5.5],       // Long extends south (spawn ramp)
+    [7, -14, 11, 1.2, 2.6],                                // low mid-wall chokepoint
+    [-6, 34, 14, 1.4, 4.5]                                 // A-site wall
   ];
   const DUST_CRATES = [
     [7, 34, 1.3, 1.3, 1.3], [8.5, 34.3, 1.3, 1.3, 1.3], [7.7, 34.1, 1.2, 1.2, 2.5],
     [5.5, -30, 1.3, 1.3, 1.3], [7, -30.5, 1.3, 1.3, 2.5],
-    [-16, 18, 1.3, 1.3, 1.3], [-16.8, 19, 1.3, 1.3, 2.5]
+    [-16, 18, 1.3, 1.3, 1.3], [-16.8, 19, 1.3, 1.3, 2.5],
+    [9.5, -22, 1.3, 1.3, 1.3], [4.2, -24.5, 1.3, 1.3, 1.3],   // T-side cover
+    [8.8, 26, 1.3, 1.3, 1.3], [4.5, 27.5, 1.3, 1.3, 2.5],     // CT-side cover
+    [11.8, 6, 1.3, 1.3, 1.3], [2.2, -4, 1.3, 1.3, 2.5]        // mid-Long cover
   ];
   function dustDune(x, z) { return 1.6 * fbm(x * 0.05 + 3, z * 0.05 + 3, 3) + 0.35 * fbm(x * 0.3, z * 0.3, 4); }
-  function dustH(x, z) {
+  /* two teams fight down the Long corridor (z axis): T at south, CT at north */
+  const DUST_TROOPS = [
+    { team: 0, x: 5.0, z: -33, mode: 'strafe', ph: 0.0 }, { team: 0, x: 8.5, z: -31, mode: 'cover', ph: 1.1 },
+    { team: 0, x: 6.5, z: -28, mode: 'strafe', ph: 2.3 }, { team: 0, x: 4.0, z: -25, mode: 'push', ph: 3.1 },
+    { team: 0, x: 9.0, z: -23, mode: 'cover', ph: 4.2 }, { team: 0, x: -14.5, z: 16, mode: 'cover', ph: 5.0 },
+    { team: 1, x: 5.5, z: 37, mode: 'strafe', ph: 0.7 }, { team: 1, x: 8.0, z: 35, mode: 'cover', ph: 1.9 },
+    { team: 1, x: 6.8, z: 31, mode: 'push', ph: 2.8 }, { team: 1, x: 4.2, z: 28, mode: 'strafe', ph: 3.9 },
+    { team: 1, x: 9.4, z: 25, mode: 'cover', ph: 4.7 }, { team: 1, x: -18, z: 22, mode: 'strafe', ph: 5.6 }
+  ];
+  function troopPos(tr, t) {
+    let x = tr.x, z = tr.z;
+    if (tr.mode === 'strafe') x += 1.3 * Math.sin(t * 0.9 + tr.ph);
+    if (tr.mode === 'push') z += (tr.team === 0 ? 1 : -1) * 2.2 * (0.5 + 0.5 * Math.sin(t * 0.35 + tr.ph));
+    if (tr.mode === 'cover') { x += 0.4 * Math.sin(t * 1.6 + tr.ph); }   // peeking
+    return { x, z };
+  }
+  function dustH(x, z, t) {
     let h = dustDune(x, z);
+    for (const tr of DUST_TROOPS) {
+      const p = troopPos(tr, t || 0);
+      if (Math.abs(x - p.x) < 0.35 && Math.abs(z - p.z) < 0.35) return dustDune(p.x, p.z) + 1.8;
+    }
     const pd2 = (x - 7) * (x - 7) + (z - 27) * (z - 27);
     if (pd2 < 22) h -= 2.0 * (1 - pd2 / 22);        // the pit
     for (const [bx, bz, w, d, bh] of DUST_WALLS)
@@ -587,7 +651,12 @@ window.KnotSwarmSim = (function () {
       if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) h = Math.max(h, dustDune(bx, bz) + bh);
     return h;
   }
-  function dustCol(x, z) {
+  function dustCol(x, z, t) {
+    for (const tr of DUST_TROOPS) {
+      const p = troopPos(tr, t || 0);
+      if (Math.abs(x - p.x) < 0.35 && Math.abs(z - p.z) < 0.35)
+        return tr.team === 0 ? [0.72, 0.60, 0.30] : [0.22, 0.30, 0.42];   // T tan · CT navy
+    }
     for (const [bx, bz, w, d] of DUST_CRATES)
       if (Math.abs(x - bx) < w / 2 && Math.abs(z - bz) < d / 2) return [0.55, 0.40, 0.22];
     for (const [bx, bz, w, d] of DUST_WALLS)
@@ -750,8 +819,8 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-dr" data-dr="7">49</button>' +
           '<button class="kss-btn kss-dr" data-dr="0">ADAPT</button>' +
           '<span class="kss-lb" style="margin-left:8px">Frustum overlap</span>' +
-          '<input class="kss-ovl" type="range" min="0.2" max="1" step="0.01" value="1" style="width:110px;accent-color:#4fc3f7">' +
-          '<span class="kss-ovl-val" style="font-size:11px;color:#4fc3f7;min-width:34px">100%</span></div>' +
+          '<input class="kss-ovl" type="range" min="0.2" max="1" step="0.01" value="0.4" style="width:110px;accent-color:#4fc3f7">' +
+          '<span class="kss-ovl-val" style="font-size:11px;color:#4fc3f7;min-width:34px">40%</span></div>' +
         '<div class="kss-menu" data-menu="model">' +
           '<span class="kss-lb">Basis</span>' +
           '<button class="kss-btn kss-degc kss-on" data-deg="nurbs">NURBS</button>' +
@@ -840,7 +909,7 @@ window.KnotSwarmSim = (function () {
     const CROP_G = 84, CROP_MIN = 7;
     st.deg = 'nurbs'; st.den = 2; st.chan = 'rgb'; // NURBS default · ×2 parameter group
     st.adaptive = true;                            // curvature/texture/residual-aware sampling
-    st.ovl = 1.0;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
+    st.ovl = 0.4;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
     let WARM_LEVELS = [4, 6, 9, 14, 20], CN_BASE = 14, CN_MAX = 34;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
@@ -890,11 +959,44 @@ window.KnotSwarmSim = (function () {
     }
     setFitDomain(WARM_LEVELS[0], SITE.x - CROP_G / 2, SITE.z - CROP_G / 2, CROP_G, false);
 
+    /* per-control-point weights: swarm-view coverage × photometric residual.
+       Optimization is w.r.t. the SWARM's views — unobserved regions barely update,
+       multi-view redundancy speeds convergence, and a photometric term (gaussian
+       albedo at model height vs the actual world map) drives extra correction. */
+    let covW = null, peW = null, _wT = -9;
+    function computeWeights() {
+      const N = fit.CN + 3;
+      if (!covW || covW.length !== N * N) { covW = new Float32Array(N * N); peW = new Float32Array(N * N); }
+      const E = ENVS[st.env];
+      const half = swarmFoot.F * 0.55;             // 10% margin
+      let covered = 0, peSum = 0;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const k = j * N + i;
+        const x = fit.x0 + ((i - 1) / fit.CN) * fit.crop;
+        const z = fit.z0 + ((j - 1) / fit.CN) * fit.crop;
+        let views = 0;
+        for (let p = 0; p < swarmFoot.pts.length && views < 6; p += 2)
+          if (Math.abs(x - swarmFoot.pts[p]) < half && Math.abs(z - swarmFoot.pts[p + 1]) < half) views++;
+        covW[k] = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved ⇒ ~frozen
+        if (views) covered++;
+        // photometric term: height error ⇒ parallax ⇒ texture misalignment in image space
+        const lum = cc => cc ? 0.3 * cc[0] + 0.6 * cc[1] + 0.1 * cc[2] : 0.5;
+        const dh = fit.tgt[k] - fit.cur[k];
+        const pe = Math.min(1, Math.abs(
+          lum(E.col(x + 0.6 * dh, z + 0.3 * dh, fit.tgt[k], st.t)) -
+          lum(E.col(x, z, fit.tgt[k], st.t))));
+        peW[k] = pe; peSum += pe;
+      }
+      fit.cov = covered / (N * N);
+      fit.pres = peSum / (N * N);
+      _wT = st.t;
+    }
     function optimStep(rate) {
-      // data term + regularizer: the SAME 2nd-order (truncation-error) metric shown
-      // in the confidence map, applied as a discrete-Laplacian smoothness prior
+      // data term (weighted by swarm-view coverage + photometric residual)
+      // + regularizer: the SAME 2nd-order truncation metric as the confidence map
       const REG = 0.3;
       const cg = fit.cur, g = fit.tgt, N = fit.CN + 3;
+      const hasW = covW && covW.length === N * N;
       let res = 0;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i;
@@ -902,7 +1004,8 @@ window.KnotSwarmSim = (function () {
         let lap = 0;
         if (i > 0 && i < N - 1 && j > 0 && j < N - 1)
           lap = (cg[k - 1] + cg[k + 1] + cg[k - N] + cg[k + N]) / 4 - cg[k];
-        cg[k] += d * rate + lap * rate * REG;
+        const w = hasW ? covW[k] * (1 + 2 * peW[k]) : 1;
+        cg[k] += d * rate * w + lap * rate * REG;
         res += Math.abs(d);
       }
       fit.res = res / cg.length;
@@ -1177,6 +1280,29 @@ window.KnotSwarmSim = (function () {
       });
     }
     function buildDustProps() {
+      const tM = new T.MeshLambertMaterial({ color: 0xb8963f });
+      const ctM = new T.MeshLambertMaterial({ color: 0x35486a });
+      const gunM = new T.MeshLambertMaterial({ color: 0x222428 });
+      const headM = new T.MeshLambertMaterial({ color: 0xc9a582 });
+      envGroup.userData.troops = DUST_TROOPS.map(tr => {
+        const g = new T.Group();
+        const body = new T.Mesh(box._g || (box._g = new T.BoxGeometry(1, 1, 1)), tr.team ? ctM : tM);
+        body.scale.set(0.5, 1.1, 0.35); body.position.y = 0.55;
+        const head = new T.Mesh(new T.SphereGeometry(0.17, 8, 6), headM); head.position.y = 1.28;
+        const gun = new T.Mesh(box._g, gunM);
+        gun.scale.set(0.09, 0.09, 0.7); gun.position.set(0.2, 0.95, 0.25);
+        g.add(body, head, gun);
+        g.userData = tr;
+        envGroup.add(g);
+        return g;
+      });
+      const fg = new T.BufferGeometry();
+      fg.setAttribute('position', new T.BufferAttribute(new Float32Array(6), 3));
+      const flash = new T.Line(fg, new T.LineBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.9 }));
+      flash.visible = false;
+      envGroup.add(flash);
+      envGroup.userData.flash = flash;
+      envGroup.userData.flashT = 0;
       const wallM = new T.MeshLambertMaterial({ color: 0xb08a54 });
       const crateM = new T.MeshLambertMaterial({ color: 0x8a6a3c });
       for (const [bx, bz, w, d, bh] of DUST_WALLS) box(wallM, w, bh, d, bx, bh / 2 + 0.3, bz);
@@ -1196,44 +1322,36 @@ window.KnotSwarmSim = (function () {
       const rockM = new T.MeshLambertMaterial({ color: 0x6f6f6d });
       const coneG = new T.ConeGeometry(1, 1, 7), sphG = new T.SphereGeometry(1, 8, 6),
             cylG = new T.CylinderGeometry(0.14, 0.2, 1, 5), rockG = new T.DodecahedronGeometry(1, 0);
-      for (let i = 0; i < 300; i++) {
-        const x = (hash2(i, 7) - 0.5) * WORLD * 1.9, z = (hash2(i, 13) - 0.5) * WORLD * 1.9;
-        if (ENVS.forest.canopy(x, z) < 0.9) {
-          const lg = FINE.log(x, z);
-          if (lg && Math.abs(lg.cx) < WORLD && Math.abs(lg.cz) < WORLD && ENVS.forest.canopy(lg.cx, lg.cz) < 0.9) {
-            const base = ENVS.forest.terra(lg.cx, lg.cz);
-            const logM = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 2.5, 6),
-              new T.MeshLambertMaterial({ color: 0x5e4226 }));
-            logM.rotation.z = Math.PI / 2;
-            if (lg.rot) logM.rotation.y = Math.PI / 2;
-            logM.position.set(lg.cx, base + 0.28, lg.cz);
-            envGroup.add(logM);
-          }
-          if (hash2(i, 41) > 0.86) {
-            const base = ENVS.forest.terra(x, z);
-            const rk = new T.Mesh(rockG, rockM);
-            const s = 0.5 + 1.1 * hash2(i, 43);
-            rk.scale.set(s, s * 0.7, s); rk.position.set(x, base + s * 0.3, z);
-            rk.rotation.y = hash2(i, 47) * 3;
-            envGroup.add(rk);
+      const NC = Math.ceil(WORLD / TREE_CELL);
+      for (let cj = -NC; cj <= NC; cj++) for (let ci = -NC; ci <= NC; ci++) {
+        const t = forestTree(ci, cj);
+        if (!t || treeClear(t.x, t.z) || Math.abs(t.x) > WORLD || Math.abs(t.z) > WORLD) {
+          // clearings: occasional rocks / logs
+          const rr = hash2(ci * 21, cj * 23);
+          if (rr > 0.90) {
+            const rx2 = (ci + 0.5) * TREE_CELL, rz2 = (cj + 0.5) * TREE_CELL;
+            if (Math.abs(rx2) < WORLD && Math.abs(rz2) < WORLD && treeClear(rx2, rz2)) {
+              const base = ENVS.forest.terra(rx2, rz2);
+              const rk = new T.Mesh(rockG, rockM);
+              const s = 0.5 + 1.1 * hash2(ci, cj * 3);
+              rk.scale.set(s, s * 0.7, s); rk.position.set(rx2, base + s * 0.3, rz2);
+              envGroup.add(rk);
+            }
           }
           continue;
         }
-        const base = ENVS.forest.terra(x, z);
-        const hh = 2.5 + 4 * hash2(i, 29);
+        const base = ENVS.forest.terra(t.x, t.z);
         const tr = new T.Mesh(cylG, trunkM);
-        tr.scale.y = hh * 0.5; tr.position.set(x, base + hh * 0.25, z);
-        const autumn = fbm(x * 0.06 + 55, z * 0.06 + 55, 2) > 0.60;
+        tr.scale.y = t.hh * 0.5; tr.position.set(t.x, base + t.hh * 0.25, t.z);
         let lf;
-        if (hash2(i, 31) > 0.45) {
-          lf = new T.Mesh(coneG, autumn ? autumnM : pineM);
-          lf.scale.set(1.0 + hash2(i, 33), hh * 0.85, 1.0 + hash2(i, 33));
-          lf.position.set(x, base + hh * 0.72, z);
+        if (t.conifer) {
+          lf = new T.Mesh(coneG, t.autumn ? autumnM : pineM);
+          lf.scale.set(t.rad, t.hh * 0.85, t.rad);
+          lf.position.set(t.x, base + t.hh * 0.7, t.z);
         } else {
-          lf = new T.Mesh(sphG, autumn ? autumnM : leafM);
-          const s = 1.2 + 0.9 * hash2(i, 37);
-          lf.scale.set(s, s * 0.8, s);
-          lf.position.set(x, base + hh * 0.62, z);
+          lf = new T.Mesh(sphG, t.autumn ? autumnM : leafM);
+          lf.scale.set(t.rad, t.hh * 0.5, t.rad);
+          lf.position.set(t.x, base + t.hh * 0.68, t.z);
         }
         envGroup.add(tr, lf);
       }
@@ -1666,12 +1784,14 @@ window.KnotSwarmSim = (function () {
        overlap o=1 → all frustums coincide (≈ one shared frustum);
        o=0.2 → footprints tile the crop with a 20% shared band (feature-matching floor). */
     let footF = 0;                                 // per-drone footprint edge (HUD)
+    const swarmFoot = { pts: [], F: 0 };           // this frame's drone footprints
     function updateSwarm(crop, time) {
       const alt = ALT * (1 - 0.35 * st.zoom);
       const n1 = Math.max(1, DR - 1);
-      footF = crop / (1 + n1 * (1 - st.ovl));      // coverage: F + n1·s = crop
-      const s = footF * (1 - st.ovl);              // footprint spacing
+      footF = alt * 0.85;                          // physical sensor footprint (FOV × altitude)
+      const s = footF * (1 - st.ovl);              // spacing from the overlap setting
       const bodyS = Math.max(s, 4.2);              // bodies never stack physically
+      swarmFoot.pts.length = 0; swarmFoot.F = footF;
       // oblique offset: swarm stands back and views the ROI diagonally (pitch)
       const pr = st.pitch * Math.PI / 180;
       const back = Math.tan(pr) * alt;
@@ -1684,6 +1804,7 @@ window.KnotSwarmSim = (function () {
         const ui = DR > 1 ? (i / (DR - 1) - 0.5) : 0, uj = DR > 1 ? (j / (DR - 1) - 0.5) : 0;
         // this drone's footprint center on the ground
         const fx = st.roi.x + ui * n1 * s, fz = st.roi.z + uj * n1 * s;
+        swarmFoot.pts.push(fx, fz);
         const gx = ox + ui * n1 * bodyS, gz = oz + uj * n1 * bodyS;
         const bob = 0.5 * Math.sin(time * 1.7 + ph);
         d.position.set(gx, alt + bob, gz);
@@ -2036,6 +2157,7 @@ window.KnotSwarmSim = (function () {
         (st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive</b>' : '') + '</div>' +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
+        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b></div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
         (st.boost > 0 ? ' · <b style="color:#ffe14d">⚡BOOST</b>' : '') +
         (win.locked ? ' · <b style="color:#69f0ae">⊞ view-driven ' + Math.round((win.u1 - win.u0) * (win.v1 - win.v0) * 100) + '%</b>' : '') + '</div>';
@@ -2427,6 +2549,8 @@ window.KnotSwarmSim = (function () {
     const ro = new ResizeObserver(resize);
     ro.observe(stage); ro.observe(cmdrBox);
 
+    window.__kss = { fit, swarmFoot: null, st };   // debug handle
+    window.__kss.swarmFoot = swarmFoot;
     buildEnv();
     buildSwarm(5);
     allocRecon();
@@ -2455,6 +2579,7 @@ window.KnotSwarmSim = (function () {
         st.zoom < 0.03 ? 'GLOBAL' : st.zoom > 0.97 ? 'MAX DETAIL' :
         ('×' + (CROP_G / fit.crop).toFixed(1));
       // throttled recon rebuild (frozen during the export sweep animation)
+      if (st.t - _wT > 0.3) computeWeights();
       if (st.adaptive && st.t - IMP.t > 0.35) { rebuildImportance(); reconDirty = true; }
       if (!exp_.active && (reconDirty || frame % 6 === 0)) { updateRecon(st.t); reconDirty = false; }
       exportStep(dt);
@@ -2464,6 +2589,25 @@ window.KnotSwarmSim = (function () {
         const P = patrolPos(st.t);
         patrolMesh.position.set(P.x, 1.0, P.z);
         patrolMesh.rotation.y = -P.hd;
+      }
+      if (st.env === 'dust' && envGroup.userData.troops) {
+        for (const g of envGroup.userData.troops) {
+          const p = troopPos(g.userData, st.t);
+          g.position.set(p.x, dustDune(p.x, p.z) + 0.28, p.z);
+          g.rotation.y = g.userData.team === 0 ? 0 : Math.PI;   // face the enemy
+        }
+        const fl = envGroup.userData.flash;
+        if (st.t - envGroup.userData.flashT > 0.42) {           // exchange fire
+          envGroup.userData.flashT = st.t;
+          const a = envGroup.userData.troops[(Math.random() * 6) | 0];
+          const b = envGroup.userData.troops[6 + ((Math.random() * 6) | 0)];
+          const pa = a.position, pb = b.position;
+          const ap = fl.geometry.attributes.position.array;
+          ap[0] = pa.x; ap[1] = pa.y + 1.0; ap[2] = pa.z;
+          ap[3] = pb.x; ap[4] = pb.y + 1.0; ap[5] = pb.z;
+          fl.geometry.attributes.position.needsUpdate = true;
+          fl.visible = true;
+        } else if (st.t - envGroup.userData.flashT > 0.10) fl.visible = false;
       }
       if (st.env === 'ocean' && envGroup.userData.boats) {
         for (const g of envGroup.userData.boats) {
