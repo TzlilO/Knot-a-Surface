@@ -910,12 +910,13 @@ window.KnotSwarmSim = (function () {
     st.deg = 'nurbs'; st.den = 2; st.chan = 'rgb'; // NURBS default · ×2 parameter group
     st.adaptive = true;                            // curvature/texture/residual-aware sampling
     st.ovl = 0.4;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
-    let WARM_LEVELS = [4, 6, 9, 14, 20], CN_BASE = 14, CN_MAX = 34;
+    let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
-      WARM_LEVELS = [4, 6, 9, 14, 20].map(x => Math.max(3, Math.round(x * ax)));
-      CN_BASE = Math.max(6, Math.round(14 * ax));
-      CN_MAX = Math.max(10, Math.min(90, Math.round(34 * ax)));
+      WARM_LEVELS = [64, Math.round(80 * ax), Math.round(96 * ax)]
+        .map(x => Math.min(220, Math.max(64, x)));
+      CN_BASE = Math.min(200, Math.max(96, Math.round(96 * ax)));
+      CN_MAX = Math.min(256, Math.max(CN_BASE + 16, Math.round(160 * ax)));
     }
     applyDensity();
     BASIS_DEG = st.deg;
@@ -969,26 +970,30 @@ window.KnotSwarmSim = (function () {
       if (!covW || covW.length !== N * N) { covW = new Float32Array(N * N); peW = new Float32Array(N * N); }
       const E = ENVS[st.env];
       const half = swarmFoot.F * 0.55;             // 10% margin
-      let covered = 0, peSum = 0;
-      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const stride = Math.max(1, Math.ceil(N / 64));   // decimated for dense grids
+      let covered = 0, peSum = 0, cells = 0;
+      const lum = cc => cc ? 0.3 * cc[0] + 0.6 * cc[1] + 0.1 * cc[2] : 0.5;
+      for (let j = 0; j < N; j += stride) for (let i = 0; i < N; i += stride) {
         const k = j * N + i;
         const x = fit.x0 + ((i - 1) / fit.CN) * fit.crop;
         const z = fit.z0 + ((j - 1) / fit.CN) * fit.crop;
         let views = 0;
         for (let p = 0; p < swarmFoot.pts.length && views < 6; p += 2)
           if (Math.abs(x - swarmFoot.pts[p]) < half && Math.abs(z - swarmFoot.pts[p + 1]) < half) views++;
-        covW[k] = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved ⇒ ~frozen
-        if (views) covered++;
-        // photometric term: height error ⇒ parallax ⇒ texture misalignment in image space
-        const lum = cc => cc ? 0.3 * cc[0] + 0.6 * cc[1] + 0.1 * cc[2] : 0.5;
+        const w = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved ⇒ ~frozen
         const dh = fit.tgt[k] - fit.cur[k];
         const pe = Math.min(1, Math.abs(
           lum(E.col(x + 0.6 * dh, z + 0.3 * dh, fit.tgt[k], st.t)) -
           lum(E.col(x, z, fit.tgt[k], st.t))));
-        peW[k] = pe; peSum += pe;
+        for (let bj = j; bj < Math.min(N, j + stride); bj++)
+          for (let bi = i; bi < Math.min(N, i + stride); bi++) {
+            covW[bj * N + bi] = w; peW[bj * N + bi] = pe;
+          }
+        if (views) covered++;
+        peSum += pe; cells++;
       }
-      fit.cov = covered / (N * N);
-      fit.pres = peSum / (N * N);
+      fit.cov = covered / cells;
+      fit.pres = peSum / cells;
       _wT = st.t;
     }
     function optimStep(rate) {
@@ -1859,7 +1864,7 @@ window.KnotSwarmSim = (function () {
                     Math.abs(x0 - fit.x0) > 0.15 || Math.abs(z0 - fit.z0) > 0.15;
       const resized = want.CN !== fit.CN;
       if (moved || resized) { setFitDomain(want.CN, x0, z0, want.crop, true); reconDirty = true; }
-      else if (ENVS[st.env].animated && st.t - _resampleT > (fit.CN > 40 ? 0.45 : 0.07)) {
+      else if (ENVS[st.env].animated && st.t - _resampleT > clamp(fit.CN * fit.CN / 60000, 0.07, 1.2)) {
         _resampleT = st.t;
         fit.tgt = sampleTarget(fit.CN, fit.x0, fit.z0, fit.crop, st.t);
         reconDirty = true;
