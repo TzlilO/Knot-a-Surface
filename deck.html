@@ -2420,17 +2420,19 @@ window.KnotSwarmSim = (function () {
        over the crop. Particles feel  +∇error  (drawn to poorly-approximated regions)
        and  −∇density  (fluid pressure). Equilibrium ⇒ density ∝ error: the placement
        that minimizes total approximation error under a fixed budget. ---------- */
-    const FLU = { u: null, v: null, vu: null, vv: null, G: 48, E: null, rho: null, eT: -9 };
+    const FLU = { u: null, v: null, vu: null, vv: null, G: 48, E: null, rho: null, eT: -9,
+                  frozen: false, calm: 0, w0: 0, w1: 1, w2: 0, w3: 1 };
     function initFluid() {
       const n = S * S;
       FLU.u = new Float32Array(n); FLU.v = new Float32Array(n);
       FLU.vu = new Float32Array(n); FLU.vv = new Float32Array(n);
       FLU.rho = new Float32Array(FLU.G * FLU.G);
-      refreshMaps();
       let k = 0;
       for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
-        FLU.u[k] = uMapA[i]; FLU.v[k] = vMapA[j]; k++;
+        FLU.u[k] = (i + 0.5) / S; FLU.v[k] = (j + 0.5) / S;   // window-relative
+        k++;
       }
+      FLU.frozen = false; FLU.calm = 0; FLU.flowT = 0;
       FLU.eT = -9;
     }
     function fluidField() {                        // error potential on a G² lattice
@@ -2448,8 +2450,32 @@ window.KnotSwarmSim = (function () {
         mean += err;
       }
       mean = mean / (G * G) || 1;
-      for (let i = 0; i < G * G; i++) FLU.E[i] = FLU.E[i] / mean + 0.03;   // normalized, floored
+      // temporal blend + change detection: only a real potential shift wakes the fluid
+      let delta = 0;
+      for (let i = 0; i < G * G; i++) {
+        const nv = FLU.E[i] / mean + 0.03;
+        const ov = FLU._prevE ? FLU._prevE[i] : nv;
+        const bl = ov * 0.6 + nv * 0.4;
+        delta = Math.max(delta, Math.abs(bl - ov));
+        FLU.E[i] = bl;
+      }
+      if (!FLU._prevE) FLU._prevE = new Float32Array(G * G);
+      FLU._prevE.set(FLU.E);
+      // a large potential shift only WAKES a frozen fluid; while flowing it simply
+      // steers the forces — it must not reset the settle timers
+      if (delta > 0.50 && FLU.frozen) { FLU.frozen = false; FLU.calm = 0; FLU.flowT = 0; }
       FLU.eT = st.t;
+    }
+    function _blurG(A) {                          // separable 3-tap blur on the lattice
+      const G = FLU.G, tmp = FLU._blurTmp || (FLU._blurTmp = new Float32Array(G * G));
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const l = A[j * G + Math.max(0, i - 1)], m = A[j * G + i], r = A[j * G + Math.min(G - 1, i + 1)];
+        tmp[j * G + i] = 0.25 * l + 0.5 * m + 0.25 * r;
+      }
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const u2 = tmp[Math.max(0, j - 1) * G + i], m = tmp[j * G + i], d = tmp[Math.min(G - 1, j + 1) * G + i];
+        A[j * G + i] = 0.25 * u2 + 0.5 * m + 0.25 * d;
+      }
     }
     function _bilinG(A, gu, gv) {                  // value + gradient on the G lattice
       const G = FLU.G;
@@ -2464,24 +2490,41 @@ window.KnotSwarmSim = (function () {
     }
     function fluidStep(dt) {
       if (!FLU.u || FLU.u.length !== S * S) initFluid();
+      if (st.boost > 0 && FLU.frozen) { FLU.frozen = false; FLU.calm = 0; FLU.flowT = 0; }
       if (st.t - FLU.eT > 0.25) fluidField();
+      if (FLU.frozen) return;                     // at equilibrium: hold position
       const G = FLU.G, n = S * S;
-      const wu = win.u1 - win.u0 || 1, wv = win.v1 - win.v0 || 1;
       FLU.rho.fill(0);
-      for (let k = 0; k < n; k++) {               // bin density
-        const gu = clamp((FLU.u[k] - win.u0) / wu, 0, 0.999), gv = clamp((FLU.v[k] - win.v0) / wv, 0, 0.999);
+      for (let k = 0; k < n; k++) {               // bin density (window-relative coords)
+        const gu = clamp(FLU.u[k], 0, 0.999), gv = clamp(FLU.v[k], 0, 0.999);
         FLU.rho[((gv * G) | 0) * G + ((gu * G) | 0)]++;
       }
+      _blurG(FLU.rho);                            // smooth pressure → no binning jitter
       const rhoN = n / (G * G);
-      const kE = 0.014, kR = 0.020, damp = Math.exp(-3.5 * dt), vMax = 0.22;
+      const kE = 0.014, kR = 0.020, damp = Math.exp(-4.5 * dt), vMax = 0.22, dead = 0.0022;
+      let speed = 0;
       for (let k = 0; k < n; k++) {
-        const gu = clamp((FLU.u[k] - win.u0) / wu, 0, 1), gv = clamp((FLU.v[k] - win.v0) / wv, 0, 1);
-        const gE = _bilinG(FLU.E, gu, gv);
-        const gR = _bilinG(FLU.rho, gu, gv);
-        FLU.vu[k] = clamp((FLU.vu[k] + (kE * gE.gx - kR * gR.gx / rhoN) * dt) * damp, -vMax, vMax);
-        FLU.vv[k] = clamp((FLU.vv[k] + (kE * gE.gy - kR * gR.gy / rhoN) * dt) * damp, -vMax, vMax);
-        FLU.u[k] = clamp(FLU.u[k] + FLU.vu[k] * dt * wu, win.u0, win.u1);
-        FLU.v[k] = clamp(FLU.v[k] + FLU.vv[k] * dt * wv, win.v0, win.v1);
+        const gE = _bilinG(FLU.E, FLU.u[k], FLU.v[k]);
+        const gR = _bilinG(FLU.rho, FLU.u[k], FLU.v[k]);
+        let fx = kE * gE.gx - kR * gR.gx / rhoN;
+        let fy = kE * gE.gy - kR * gR.gy / rhoN;
+        if (Math.abs(fx) < dead) fx = 0;          // force deadband kills limit cycles
+        if (Math.abs(fy) < dead) fy = 0;
+        FLU.vu[k] = clamp((FLU.vu[k] + fx * dt) * damp, -vMax, vMax);
+        FLU.vv[k] = clamp((FLU.vv[k] + fy * dt) * damp, -vMax, vMax);
+        const nu2 = FLU.u[k] + FLU.vu[k] * dt, nv2 = FLU.v[k] + FLU.vv[k] * dt;
+        if (nu2 <= 0 || nu2 >= 1) FLU.vu[k] = 0;  // pinned at edge: kill velocity
+        if (nv2 <= 0 || nv2 >= 1) FLU.vv[k] = 0;
+        FLU.u[k] = clamp01(nu2);
+        FLU.v[k] = clamp01(nv2);
+        speed += Math.abs(FLU.vu[k]) + Math.abs(FLU.vv[k]);
+      }
+      // settle detection → freeze at equilibrium (or after a bounded flow episode)
+      FLU.flowT = (FLU.flowT || 0) + dt;
+      if (speed / n < 0.008) FLU.calm += dt; else FLU.calm = 0;
+      if (FLU.calm > 0.5 || FLU.flowT > 8) {
+        FLU.frozen = true;
+        FLU.vu.fill(0); FLU.vv.fill(0);
       }
       reconDirty = true;
     }
@@ -2493,7 +2536,7 @@ window.KnotSwarmSim = (function () {
       const base = crop * (wu + wv) / 2 / S;
       const eS = Math.max(1e-4, wu / S);
       for (let k = 0; k < S * S; k++) {
-        const u = FLU.u[k], v = FLU.v[k];
+        const u = win.u0 + FLU.u[k] * wu, v = win.v0 + FLU.v[k] * wv;
         const x = x0 + u * crop, z = z0 + v * crop;
         const h = bicubic(fit.cur, CN, u, v);
         const hR = bicubic(fit.cur, CN, clamp01(u + eS), v), hL = bicubic(fit.cur, CN, clamp01(u - eS), v);
@@ -2501,8 +2544,7 @@ window.KnotSwarmSim = (function () {
         errArr[k] = Math.abs((hR + hL) / 2 - h) + Math.abs((hD + hU) / 2 - h);
         _n.set(-(hR - hL) / (2 * eS * crop), 1, -(hD - hU) / (2 * eS * crop)).normalize();
         // size from local particle density: equilibrium tiles the surface
-        const gu = clamp((u - win.u0) / wu, 0, 0.999), gv = clamp((v - win.v0) / wv, 0, 0.999);
-        const rho = Math.max(0.15, FLU.rho[((gv * FLU.G) | 0) * FLU.G + ((gu * FLU.G) | 0)] / rhoN);
+        const rho = Math.max(0.15, FLU.rho[((clamp(FLU.v[k], 0, 0.999) * FLU.G) | 0) * FLU.G + ((clamp(FLU.u[k], 0, 0.999) * FLU.G) | 0)] / rhoN);
         const s = clamp(base / Math.sqrt(rho), base * 0.3, base * 4);
         const su = Math.max(Math.hypot(s, hR - h), Math.hypot(s, h - hL));
         const sv = Math.max(Math.hypot(s, hD - h), Math.hypot(s, h - hU));
@@ -2954,7 +2996,7 @@ window.KnotSwarmSim = (function () {
       hudTL.innerHTML =
         '<div class="kss-big">' + (S * S + wallUsed).toLocaleString() + ' <span>splats · budget ' + st.budget.toLocaleString() + '</span></div>' +
         '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' +
-        (st.fluid ? ' · <b style="color:#ce93d8">≈ fluid</b>' : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive</b>' : '') + '</div>' +
+        (st.fluid ? (FLU.frozen ? ' · <b style="color:#69f0ae">≈ fluid · settled</b>' : ' · <b style="color:#ce93d8">≈ fluid · flowing</b>') : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive</b>' : '') + '</div>' +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b></div>' +
