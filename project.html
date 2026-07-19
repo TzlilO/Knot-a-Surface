@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Knot-a-Surface — NURBS-Grounded Gaussian Splatting</title>
+<meta name="description" content="Knot-a-Surface: NURBS-grounded Gaussian splatting for real-time battlefield reconstruction from a drone swarm under a fixed Gaussian budget.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta property="og:title" content="Knot-a-Surface">
+<meta property="og:description" content="NURBS-Grounded Gaussian Splatting for Adaptive Battlefield Reconstruction">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://tzlilo.github.io/Knot-a-Surface/project.html">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<style>
+/* ─── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  /* light theme — olive cartographic parchment + tactical panels */
+  --paper:   #e7e4d8;
+  --card:    #f1efea;
+  --surface: #faf9f6;
+  --panel:   #0b1419;
+  --panel2:  #101d2b;
+  --ink:     #141d28;
+  --body:    #3e5265;
+  --muted:   #6a7a8c;
+  --border:  #ccc8b8;
+  --pborder: #1b2d40;
+  --psub:    rgba(165,195,215,.12);
+
+  --cobalt:  #0e52a8;
+  --cyan:    #1ca8bc;
+  --amber:   #bf7500;
+  --green:   #0c7a4e;
+
+  --r: 8px;
+}
+
+/* dark theme — same panels, inverted paper world */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:   #0c131b;
+    --card:    #101c28;
+    --surface: #0f1a24;
+    --panel:   #06090e;
+    --panel2:  #0d1820;
+    --ink:     #d4e4ef;
+    --body:    #6e90a8;
+    --muted:   #415870;
+    --border:  #1a2c3c;
+    --pborder: #1c3050;
+    --psub:    rgba(165,195,215,.08);
+    --cobalt:  #4a9de0;
+    --cyan:    #26c0d4;
+    --amber:   #d49030;
+    --green:   #28b878;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:   #0c131b;
+  --card:    #101c28;
+  --surface: #0f1a24;
+  --panel:   #06090e;
+  --panel2:  #0d1820;
+  --ink:     #d4e4ef;
+  --body:    #6e90a8;
+  --muted:   #415870;
+  --border:  #1a2c3c;
+  --pborder: #1c3050;
+  --psub:    rgba(165,195,215,.08);
+  --cobalt:  #4a9de0;
+  --cyan:    #26c0d4;
+  --amber:   #d49030;
+  --green:   #28b878;
+}
+:root[data-theme="light"] {
+  --paper:   #e7e4d8;
+  --card:    #f1efea;
+  --surface: #faf9f6;
+  --panel:   #0b1419;
+  --panel2:  #101d2b;
+  --ink:     #141d28;
+  --body:    #3e5265;
+  --muted:   #6a7a8c;
+  --border:  #ccc8b8;
+  --pborder: #1b2d40;
+  --psub:    rgba(165,195,215,.12);
+  --cobalt:  #0e52a8;
+  --cyan:    #1ca8bc;
+  --amber:   #bf7500;
+  --green:   #0c7a4e;
+}
+
+/* ─── Reset & base ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--paper);
+  color: var(--body);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Layout ─────────────────────────────────────────────────────────────── */
+.wrap      { max-width: 900px;  margin: 0 auto; padding: 0 24px; }
+.wrap-wide { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+section { padding: 72px 0; }
+section + section { border-top: 1px solid var(--border); }
+
+/* ─── Type scale ─────────────────────────────────────────────────────────── */
+h1, h2, h3 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  color: var(--ink);
+  letter-spacing: -.02em;
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2rem, 5.5vw, 3.4rem); font-weight: 700; line-height: 1.05; }
+h2 { font-size: 1.55rem; font-weight: 700; margin-bottom: 10px; }
+h3 { font-size: 1rem; font-weight: 600; color: var(--ink); }
+p  { color: var(--body); }
+a  { color: var(--cobalt); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 10px;
+}
+
+/* ─── Nav ────────────────────────────────────────────────────────────────── */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+.nav-inner { display: flex; align-items: center; gap: 8px; }
+.nav-brand {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  flex: 1;
+  text-decoration: none !important;
+}
+.nav-links { display: flex; gap: 2px; }
+.nav-links a {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--body);
+  padding: 5px 11px;
+  border-radius: 6px;
+  transition: background .14s, color .14s;
+}
+.nav-links a:hover { background: var(--card); color: var(--ink); text-decoration: none; }
+.theme-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 5px 9px;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  transition: border-color .14s, color .14s;
+}
+.theme-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ─── Hero ───────────────────────────────────────────────────────────────── */
+.hero { padding: 80px 0 52px; }
+
+.badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1.5px solid;
+}
+.badge-cyan  { color: var(--cyan);  border-color: var(--cyan);  background: color-mix(in srgb, var(--cyan) 10%, transparent); }
+.badge-amber { color: var(--amber); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.badge-blue  { color: var(--cobalt);border-color: var(--cobalt);background: color-mix(in srgb, var(--cobalt) 10%, transparent); }
+
+.hero h1 .k { color: var(--cobalt); }
+
+.hero-sub {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(.95rem, 2.2vw, 1.25rem);
+  font-weight: 500;
+  color: var(--body);
+  margin: 8px 0 26px;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+
+.authors { font-size: 16px; color: var(--body); margin-bottom: 4px; }
+.authors a { font-weight: 600; color: var(--cobalt); }
+.affil {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-bottom: 34px;
+}
+
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none !important;
+  transition: background .14s, border-color .14s, color .14s, transform .1s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(.975); }
+.btn-solid  { background: var(--cobalt);  color: #fff;          border-color: var(--cobalt); }
+.btn-solid:hover  { background: color-mix(in srgb, var(--cobalt) 82%, #000); border-color: color-mix(in srgb, var(--cobalt) 82%, #000); }
+.btn-line   { background: transparent;     color: var(--ink);    border-color: var(--border); }
+.btn-line:hover   { border-color: var(--cobalt); color: var(--cobalt); }
+.btn-dim    { background: transparent;     color: var(--muted);  border-color: var(--border); cursor: default; }
+
+/* ─── Teaser / cockpit ───────────────────────────────────────────────────── */
+.teaser-section { padding: 0 0 56px; border-top: none !important; }
+
+.cockpit-wrap {
+  position: relative;
+  background: var(--panel);
+  border: 1.5px solid var(--cyan);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px var(--pborder),
+    0 32px 80px rgba(0,0,0,.45),
+    0 0 60px -20px color-mix(in srgb, var(--cyan) 30%, transparent);
+}
+
+/* tactical corner brackets */
+.cockpit-wrap::before,
+.cockpit-wrap::after {
+  content: '';
+  position: absolute;
+  width: 28px; height: 28px;
+  border-color: var(--cyan);
+  border-style: solid;
+  z-index: 4;
+  pointer-events: none;
+  opacity: .8;
+}
+.cockpit-wrap::before { top: -1px; left: -1px;  border-width: 2.5px 0 0 2.5px; border-radius: 11px 0 0 0; }
+.cockpit-wrap::after  { bottom: -1px; right: -1px; border-width: 0 2.5px 2.5px 0; border-radius: 0 0 11px 0; }
+
+.cockpit-hud {
+  position: absolute;
+  top: 12px; left: 14px; right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .13em;
+  color: var(--cyan);
+  background: rgba(11,20,25,.88);
+  border: 1px solid color-mix(in srgb, var(--cyan) 60%, transparent);
+  border-radius: 4px;
+  padding: 5px 11px;
+}
+.live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: throb 2s ease-in-out infinite;
+}
+@keyframes throb { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.hud-coord {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  color: rgba(165,195,215,.5);
+  background: rgba(11,20,25,.75);
+  border: 1px solid var(--pborder);
+  border-radius: 4px;
+  padding: 5px 11px;
+}
+
+.cockpit-wrap iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16/8.5;
+  border: none;
+}
+
+.cockpit-footer {
+  padding: 9px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: .07em;
+  color: rgba(100,160,185,.55);
+  background: color-mix(in srgb, var(--panel) 96%, var(--cyan));
+  border-top: 1px solid var(--pborder);
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.cockpit-footer span { white-space: nowrap; }
+.cockpit-footer strong { color: rgba(100,160,185,.9); }
+
+/* ─── Abstract ───────────────────────────────────────────────────────────── */
+.abstract-body {
+  font-size: 16.5px;
+  line-height: 1.8;
+  max-width: 70ch;
+  color: var(--body);
+}
+.abstract-body + .abstract-body { margin-top: 16px; }
+
+/* ─── Contributions ──────────────────────────────────────────────────────── */
+.contrib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+.contrib-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 22px 22px 20px;
+}
+.contrib-icon {
+  font-size: 1.6rem;
+  margin-bottom: 12px;
+  display: block;
+  line-height: 1;
+}
+.contrib-card h3 { font-size: 14.5px; margin-bottom: 8px; }
+.contrib-card p  { font-size: 13.5px; line-height: 1.6; }
+
+/* ─── Pipeline ───────────────────────────────────────────────────────────── */
+.pipeline-outer {
+  margin-top: 48px;
+}
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  background: var(--panel);
+  border: 1px solid var(--pborder);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.pipe-step {
+  padding: 22px 14px 20px;
+  text-align: center;
+  border-right: 1px solid var(--pborder);
+  position: relative;
+}
+.pipe-step:last-child { border-right: none; }
+.pipe-step::after {
+  content: '→';
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--cyan);
+  z-index: 2;
+}
+.pipe-step:last-child::after { display: none; }
+.pipe-ico { font-size: 1.5rem; margin-bottom: 10px; display: block; }
+.pipe-lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 5px;
+}
+.pipe-desc { font-size: 11.5px; color: rgba(165,195,215,.55); line-height: 1.5; }
+
+/* ─── Key results table ──────────────────────────────────────────────────── */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--pborder);
+  border-radius: var(--r);
+  padding: 22px 20px;
+  text-align: center;
+}
+.stat-val {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--cyan);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-unit { font-size: 1rem; font-weight: 500; color: rgba(165,195,215,.5); }
+.stat-label { font-size: 12px; color: rgba(165,195,215,.55); line-height: 1.4; }
+
+/* ─── Scenes ─────────────────────────────────────────────────────────────── */
+.scenes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin-top: 32px;
+}
+.scene-card {
+  background: var(--panel);
+  border: 1px solid var(--pborder);
+  border-radius: var(--r);
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.scene-card:hover { border-color: color-mix(in srgb, var(--cyan) 60%, transparent); }
+.scene-hero {
+  aspect-ratio: 16/9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--panel) 60%, var(--panel2));
+  font-size: 2.2rem;
+}
+.scene-info {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--pborder);
+}
+.scene-env {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 4px;
+}
+.scene-desc { font-size: 12px; color: rgba(165,195,215,.55); line-height: 1.5; }
+
+/* ─── Demo links ─────────────────────────────────────────────────────────── */
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin-top: 32px;
+}
+.demo-card {
+  background: var(--panel);
+  border: 1.5px solid var(--pborder);
+  border-radius: 10px;
+  padding: 28px 26px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none !important;
+  transition: border-color .2s, box-shadow .2s;
+}
+.demo-card:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px var(--pborder), 0 8px 28px rgba(0,0,0,.3), 0 0 24px -8px color-mix(in srgb, var(--cyan) 30%, transparent);
+}
+.demo-icon { font-size: 1.5rem; color: var(--cyan); }
+.demo-card h3 { font-size: 16.5px; font-weight: 600; color: color-mix(in srgb, var(--ink) 20%, #d4e8f4); margin: 0; }
+.demo-card p  { font-size: 13px; color: rgba(165,195,215,.6); line-height: 1.6; flex: 1; }
+.demo-arrow   { font-size: 13px; color: var(--cyan); margin-top: 6px; }
+
+/* ─── BibTeX ─────────────────────────────────────────────────────────────── */
+.bib-wrap {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--pborder);
+  border-radius: var(--r);
+  overflow-x: auto;
+}
+.bib-wrap pre {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  color: rgba(165,195,215,.85);
+  padding: 28px 28px 24px;
+  white-space: pre;
+}
+.bk  { color: var(--cyan); }
+.bv  { color: var(--amber); }
+.bf  { color: rgba(165,195,215,.45); }
+.copy-btn {
+  position: absolute;
+  top: 14px; right: 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(27,45,64,.7);
+  border: 1px solid var(--pborder);
+  border-radius: 5px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: color .14s, border-color .14s;
+}
+.copy-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+
+/* ─── Footer ─────────────────────────────────────────────────────────────── */
+footer {
+  background: var(--panel);
+  border-top: 1px solid var(--pborder);
+  padding: 28px 0;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  color: rgba(165,195,215,.4);
+}
+.footer-inner a { color: rgba(165,195,215,.45); transition: color .14s; }
+.footer-inner a:hover { color: var(--cyan); text-decoration: none; }
+.footer-links { display: flex; gap: 18px; }
+
+/* ─── Motion ─────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  .fade-up {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity .5s ease, transform .5s ease;
+  }
+  .fade-up.visible { opacity: 1; transform: none; }
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  section { padding: 48px 0; }
+  .hero   { padding: 52px 0 36px; }
+  .pipeline { grid-template-columns: 1fr 1fr; }
+  .pipe-step { border-right: 1px solid var(--pborder); border-bottom: 1px solid var(--pborder); }
+  .pipe-step:nth-child(2n)   { border-right: none; }
+  .pipe-step:nth-last-child(-n+1) { border-bottom: none; }
+  .pipe-step::after { display: none; }
+  .nav-links { display: none; }
+}
+@media (max-width: 480px) {
+  .pipeline { grid-template-columns: 1fr; }
+  .pipe-step { border-right: none !important; }
+  .pipe-step:not(:last-child) { border-bottom: 1px solid var(--pborder); }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ───────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="wrap">
+    <div class="nav-inner">
+      <a href="project.html" class="nav-brand">Knot-a-Surface</a>
+      <div class="nav-links">
+        <a href="#abstract">Abstract</a>
+        <a href="#method">Method</a>
+        <a href="#scenes">Scenes</a>
+        <a href="#bibtex">BibTeX</a>
+      </div>
+      <button class="theme-btn" id="themeBtn" aria-label="Toggle colour theme">☀</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="wrap">
+    <div class="badge-row">
+      <span class="badge badge-cyan"><i class="fa-solid fa-graduation-cap"></i>&nbsp; Thesis · 2025</span>
+      <span class="badge badge-amber">UAV Swarm Reconstruction</span>
+      <span class="badge badge-blue">3D Gaussian Splatting</span>
+    </div>
+
+    <h1><span class="k">Knot-a-</span>Surface</h1>
+    <p class="hero-sub">NURBS-Grounded Gaussian Splatting<br>for Adaptive Battlefield Reconstruction</p>
+
+    <p class="authors"><a href="https://github.com/TzlilO">Tzlil Ovadia</a></p>
+    <p class="affil">Computer Vision Thesis &nbsp;·&nbsp; 2025</p>
+
+    <div class="btn-row">
+      <a href="deck.html"  class="btn btn-solid"><i class="fa-solid fa-person-chalkboard"></i> Slides</a>
+      <a href="index.html" class="btn btn-line" ><i class="fa-solid fa-cube"></i> Live Simulator</a>
+      <a href="https://github.com/TzlilO/knot-a-surface" class="btn btn-line" target="_blank" rel="noopener">
+        <i class="fa-brands fa-github"></i> GitHub
+      </a>
+      <span class="btn btn-dim"><i class="fa-solid fa-file-lines"></i> Paper — Coming Soon</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Teaser ────────────────────────────────────────────────────────────── -->
+<section class="teaser-section">
+  <div class="wrap-wide">
+    <div class="cockpit-wrap">
+      <div class="cockpit-hud">
+        <div class="live-badge">
+          <span class="live-dot"></span>
+          LIVE &nbsp;·&nbsp; INTERACTIVE SIM
+        </div>
+        <div class="hud-coord">FOREST FOB &nbsp;·&nbsp; 64K BUDGET</div>
+      </div>
+      <iframe
+        src="index.html"
+        title="Knot-a-Surface — Live Swarm Simulator"
+        allow="accelerometer"
+        loading="lazy"
+      ></iframe>
+      <div class="cockpit-footer">
+        <span><strong>NURBS p2 basis</strong> &nbsp;·&nbsp; adaptive sampling</span>
+        <span><strong>commander-as-main</strong> &nbsp;·&nbsp; LINK mode</span>
+        <span>drag to orbit &nbsp;·&nbsp; use toolbar to change env / budget / mode</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Abstract ──────────────────────────────────────────────────────────── -->
+<section id="abstract">
+  <div class="wrap">
+    <div class="eyebrow">Abstract</div>
+    <h2>Overview</h2>
+    <p class="abstract-body">
+      We present <strong>Knot-a-Surface</strong>, a method for real-time reconstruction of battlefield scenes
+      from a drone swarm under a fixed Gaussian budget. Rather than optimising splat positions freely
+      in 3D space, we ground the reconstruction on a learnable NURBS bicubic control grid — a
+      structured surface that naturally encodes <em>resolution as a knot</em>: tightening the parametric
+      domain over any region of interest concentrates the full splat budget there without retraining.
+    </p>
+    <p class="abstract-body" style="margin-top:16px">
+      Coverage weights from swarm view frustums drive an online optimization loop with Laplacian
+      regularization. Adaptive sampling (inverse-CDF warp over curvature, texture, and residual error)
+      concentrates density where reconstruction error is highest; a commander-centric window prioritises
+      the operator's field of view. The result is a reconstructor a field commander can steer live —
+      trading breadth for resolution, committing budget to a zone, and querying terrain with ruler,
+      line-of-sight, and MGRS-style grid references.
+    </p>
+  </div>
+</section>
+
+<!-- ── Method ────────────────────────────────────────────────────────────── -->
+<section id="method">
+  <div class="wrap">
+    <div class="eyebrow">Method</div>
+    <h2>Technical Contributions</h2>
+
+    <div class="contrib-grid">
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">⟁</span>
+        <h3>NURBS-Grounded Splatting</h3>
+        <p>Gaussian positions are derived from a learnable bicubic control grid with switchable basis
+        — Catmull-Rom, B-spline degree 2–5, or NURBS rational. Resolution is a runtime parameter:
+        subdivide the UV crop to zoom without reallocating the budget.</p>
+      </div>
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">🛰</span>
+        <h3>Swarm-Aware Optimization</h3>
+        <p>Coverage weights integrate swarm footprint overlap over a strided ≤ 64/axis grid. The
+        time-based decay rate with photometric and Laplacian terms is fps-independent, stable across
+        changing swarm formations and partial occlusion.</p>
+      </div>
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">◈</span>
+        <h3>Adaptive Budget Allocation</h3>
+        <p>Inverse-CDF warp over a joint curvature + texture + residual importance map concentrates
+        UV samples where error is highest. Fluid mode adds a particle-in-potential-field stage for
+        continuous reallocation as terrain features evolve.</p>
+      </div>
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">◉</span>
+        <h3>Commander Toolkit</h3>
+        <p>Ray-marched ruler and line-of-sight against the live surface. MGRS-style TACREF grid with
+        per-cell reconstruction confidence, copy-to-clipboard. Pitch-linked inset with LINK/FREE
+        coupling between commander and drone perspectives.</p>
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="pipeline-outer fade-up">
+      <div class="eyebrow" style="margin-bottom:16px;margin-top:8px">Reconstruction Pipeline</div>
+      <div class="pipeline">
+        <div class="pipe-step">
+          <span class="pipe-ico">🛸</span>
+          <div class="pipe-lbl">Drone Swarm</div>
+          <div class="pipe-desc">Physical footprints &amp; view frustums</div>
+        </div>
+        <div class="pipe-step">
+          <span class="pipe-ico">⬡</span>
+          <div class="pipe-lbl">Coverage Map</div>
+          <div class="pipe-desc">Strided frustum integration → weight grid</div>
+        </div>
+        <div class="pipe-step">
+          <span class="pipe-ico">⟁</span>
+          <div class="pipe-lbl">NURBS Fit</div>
+          <div class="pipe-desc">Weighted photometric + Laplacian opt.</div>
+        </div>
+        <div class="pipe-step">
+          <span class="pipe-ico">◈</span>
+          <div class="pipe-lbl">Importance Sample</div>
+          <div class="pipe-desc">Inverse-CDF warp over residual &amp; curvature</div>
+        </div>
+        <div class="pipe-step">
+          <span class="pipe-ico">✦</span>
+          <div class="pipe-lbl">Splat Output</div>
+          <div class="pipe-desc">NN-stretched surface splats + facade walls</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="results-grid" style="margin-top:40px">
+      <div class="stat-card fade-up">
+        <div class="stat-val">64<span class="stat-unit">k</span></div>
+        <div class="stat-label">Gaussian budget — surface + facade walls</div>
+      </div>
+      <div class="stat-card fade-up">
+        <div class="stat-val">O<span class="stat-unit">(n)</span></div>
+        <div class="stat-label">Neighbor queries via UV grid — no KD-tree</div>
+      </div>
+      <div class="stat-card fade-up">
+        <div class="stat-val">∞</div>
+        <div class="stat-label">Effective resolution — knot subdivision, constant cost</div>
+      </div>
+      <div class="stat-card fade-up">
+        <div class="stat-val">4</div>
+        <div class="stat-label">Battlefield environments with deterministic occupancy</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Scenes ─────────────────────────────────────────────────────────────── -->
+<section id="scenes">
+  <div class="wrap">
+    <div class="eyebrow">Environments</div>
+    <h2>Scene Library</h2>
+    <p style="max-width:64ch">Four procedural battlefield environments. Each is defined by a deterministic
+    <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">h(x,z,t)</code> occupancy
+    and <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">col(x,z,h,t)</code>
+    albedo — any object visible in 3D is also visible to the reconstruction by construction.</p>
+
+    <div class="scenes-grid">
+      <div class="scene-card">
+        <div class="scene-hero">🌲</div>
+        <div class="scene-info">
+          <div class="scene-env">Forest FOB</div>
+          <div class="scene-desc">Treeline with instanced trunk/canopy geometry, forward operating base structures, patrol trajectory.</div>
+        </div>
+      </div>
+      <div class="scene-card">
+        <div class="scene-hero">🏙</div>
+        <div class="scene-info">
+          <div class="scene-env">Urban</div>
+          <div class="scene-desc">City block with procedural SITE_BOXES building grid — tests wall-scan + facade splat reconstruction.</div>
+        </div>
+      </div>
+      <div class="scene-card">
+        <div class="scene-hero">🌊</div>
+        <div class="scene-info">
+          <div class="scene-env">Ocean</div>
+          <div class="scene-desc">Animated wave surface with temporal occupancy — tests time-based optimization on non-static terrain.</div>
+        </div>
+      </div>
+      <div class="scene-card">
+        <div class="scene-hero">🏜</div>
+        <div class="scene-info">
+          <div class="scene-env">Dust</div>
+          <div class="scene-desc">Desert terrain with DUST_TROOPS patrol trajectories and reduced-visibility fbm noise field.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Demo ───────────────────────────────────────────────────────────────── -->
+<section id="demo">
+  <div class="wrap">
+    <div class="eyebrow">Interactive Demos</div>
+    <h2>Try It</h2>
+    <p style="max-width:64ch;margin-bottom:0">Both run entirely in-browser — no server, no install.
+    three.js WebGL for the simulator; reveal.js + KaTeX for the deck.</p>
+
+    <div class="demo-grid">
+      <a href="index.html" class="demo-card">
+        <span class="demo-icon"><i class="fa-solid fa-cube"></i></span>
+        <h3>Live Simulator</h3>
+        <p>Full interactive reconstructor. Adjust swarm formation, switch environments, tune the
+        resolution knob, and query terrain with ruler, LOS, and TACREF commander tools.
+        Export to binary PLY.</p>
+        <span class="demo-arrow">Open simulator →</span>
+      </a>
+      <a href="deck.html" class="demo-card">
+        <span class="demo-icon"><i class="fa-solid fa-person-chalkboard"></i></span>
+        <h3>Thesis Presentation</h3>
+        <p>21-slide reveal.js deck: motivation, related work, method derivation, and results — with
+        the simulator embedded live on slide 14. Includes interactive spline widget and ablation
+        charts.</p>
+        <span class="demo-arrow">Open slides →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── BibTeX ─────────────────────────────────────────────────────────────── -->
+<section id="bibtex">
+  <div class="wrap">
+    <div class="eyebrow">Citation</div>
+    <h2>BibTeX</h2>
+    <div class="bib-wrap">
+      <button class="copy-btn" id="copyBtn">Copy</button>
+      <pre
+        id="bib-text"
+        data-plain="@misc{ovadia2025knotasurface,
+  title        = {Knot-a-Surface: NURBS-Grounded Gaussian Splatting
+                   for Adaptive Battlefield Reconstruction},
+  author       = {Ovadia, Tzlil},
+  year         = {2025},
+  note         = {Thesis project. Interactive simulator at
+                   https://tzlilo.github.io/Knot-a-Surface/},
+  url          = {https://tzlilo.github.io/Knot-a-Surface/}
+}"
+      ><span class="bk">@misc</span>{<span class="bv">ovadia2025knotasurface</span>,
+  <span class="bf">title</span>        = {<span class="bv">Knot-a-Surface: NURBS-Grounded Gaussian Splatting
+                   for Adaptive Battlefield Reconstruction</span>},
+  <span class="bf">author</span>       = {<span class="bv">Ovadia, Tzlil</span>},
+  <span class="bf">year</span>         = {<span class="bv">2025</span>},
+  <span class="bf">note</span>         = {<span class="bv">Thesis project. Interactive simulator at
+                   https://tzlilo.github.io/Knot-a-Surface/</span>},
+  <span class="bf">url</span>          = {<span class="bv">https://tzlilo.github.io/Knot-a-Surface/</span>}
+}</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <span>© 2025 Tzlil Ovadia</span>
+      <div class="footer-links">
+        <a href="index.html">Simulator</a>
+        <a href="deck.html">Slides</a>
+        <a href="https://github.com/TzlilO/knot-a-surface" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Theme toggle
+const root = document.documentElement;
+const btn  = document.getElementById('themeBtn');
+const mq   = window.matchMedia('(prefers-color-scheme: dark)');
+
+function setTheme(dark) {
+  root.dataset.theme = dark ? 'dark' : 'light';
+  btn.textContent = dark ? '☀' : '☾';
+}
+setTheme(mq.matches);
+btn.addEventListener('click', () => setTheme(root.dataset.theme !== 'dark'));
+
+// BibTeX copy — read the plain-text data attr, not the HTML-highlighted content
+document.getElementById('copyBtn').addEventListener('click', function() {
+  const text = document.getElementById('bib-text').dataset.plain;
+  navigator.clipboard.writeText(text).then(() => {
+    this.textContent = 'Copied!';
+    setTimeout(() => this.textContent = 'Copy', 2000);
+  });
+});
+
+// Scroll-reveal
+const io = new IntersectionObserver(
+  entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+  { threshold: 0.12 }
+);
+document.querySelectorAll('.fade-up').forEach(el => io.observe(el));
+</script>
+
+</body>
+</html>
