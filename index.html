@@ -223,7 +223,7 @@ header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform
 window.KnotSwarmSim = (function () {
   'use strict';
   const SIM_VERSION = 'v18';
-  const SIM_BUILT = '2026-07-20 06:29 UTC';   // stamped by build.py at build time
+  const SIM_BUILT = '2026-07-20 07:02 UTC';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -966,6 +966,8 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-samp kss-on" data-s="adaptive">adaptive</button>' +
           '<button class="kss-btn kss-samp" data-s="uniform">uniform</button>' +
           '<button class="kss-btn kss-samp" data-s="fluid">fluid</button>' +
+          '<span class="kss-lb">Geometry</span>' +
+          '<button class="kss-btn kss-geo kss-on" data-geo="mesh" title="mesh-extraction geometry supervision: match the fit surface normals/curvature to the extracted target mesh so slopes and edges converge directly">mesh sup \u2713</button>' +
           '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div>' +
         '<div class="kss-menu" data-menu="export">' +
           '<span class="kss-lb">Upsample α</span>' +
@@ -1042,6 +1044,7 @@ window.KnotSwarmSim = (function () {
     st.ovl = 0.4;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
     st.drone = true;                              // virtual observer drone owns the main POV by default
     st.cnet = 96;                                 // control-net UV resolution (customizable, was hard-coded)
+    st.geoSup = true;                             // mesh-extraction geometry supervision in optimStep
     let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
@@ -1132,22 +1135,43 @@ window.KnotSwarmSim = (function () {
     }
     function optimStep(rate) {
       // data term (weighted by swarm-view coverage + photometric residual)
-      // + regularizer: the SAME 2nd-order truncation metric as the confidence map
+      // + Laplacian regularizer (smooths curvature toward zero)
+      // + mesh geometry supervision: match the fit surface's normals/curvature to the
+      //   extracted target mesh — a direct geometric signal so slopes and edges
+      //   CONVERGE instead of being blurred flat by height-only fitting.
       const REG = 0.3;
+      const GEO = st.geoSup ? 0.45 : 0;              // geometry-supervision strength
       const cg = fit.cur, g = fit.tgt, N = fit.CN + 3;
       const hasW = covW && covW.length === N * N;
-      let res = 0;
+      let res = 0, gres = 0, gn = 0;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i;
         const d = g[k] - cg[k];
-        let lap = 0;
-        if (i > 0 && i < N - 1 && j > 0 && j < N - 1)
+        let lap = 0, geo = 0;
+        if (i > 0 && i < N - 1 && j > 0 && j < N - 1) {
           lap = (cg[k - 1] + cg[k + 1] + cg[k - N] + cg[k + N]) / 4 - cg[k];
-        const w = hasW ? covW[k] * (1 + 2 * peW[k]) : 1;
-        cg[k] += d * rate * w + lap * rate * REG;
+          if (GEO) {
+            // extract the target mesh's local geometry (curvature = divergence of its
+            // normal field) and drive the fit's curvature toward it — where the true
+            // surface is flat this denoises, where it has an edge this preserves it.
+            const lapT = (g[k - 1] + g[k + 1] + g[k - N] + g[k + N]) / 4 - g[k];
+            // descent on the residual's Dirichlet energy (∇fit → ∇target = normal
+            // supervision): +Laplacian(cg-g). Injects the target mesh's curvature,
+            // so REG smooths noise while real edges are preserved, not flattened.
+            geo = lap - lapT;
+            // surface-normal (gradient) residual — the geometry the supervision targets
+            const gu = (cg[k + 1] - cg[k - 1]) - (g[k + 1] - g[k - 1]);
+            const gv = (cg[k + N] - cg[k - N]) - (g[k + N] - g[k - N]);
+            gres += Math.abs(gu) + Math.abs(gv); gn++;
+          }
+        }
+        const wc = hasW ? covW[k] : 1;               // geometry supervised where the swarm sees
+        const w = hasW ? wc * (1 + 2 * peW[k]) : 1;
+        cg[k] += d * rate * w + lap * rate * REG + geo * rate * GEO * wc;
         res += Math.abs(d);
       }
       fit.res = res / cg.length;
+      fit.gres = gn ? gres / gn : 0;                 // mean normal-supervision residual
     }
     function reconH(x, z) {                     // reconstruction height query (world)
       const u = (x - fit.x0) / fit.crop, v = (z - fit.z0) / fit.crop;
@@ -2715,7 +2739,8 @@ window.KnotSwarmSim = (function () {
         (st.fluid ? (FLU.frozen ? ' · <b style="color:#69f0ae">≈ fluid · settled</b>' : ' · <b style="color:#ce93d8">≈ fluid · flowing</b>') : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive · fwd ' + Math.round((IMP.fwd === undefined ? 1 : IMP.fwd) * 100) + '%</b>' : '') + '</div>' +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
-        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b></div>' +
+        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b>' +
+        (st.geoSup ? ' · <b style="color:#69f0ae">◺ geo-res ' + fmt(fit.gres || 0, 3) + '</b>' : ' · <b style="color:#8fa4c0">geo-sup off</b>') + '</div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
         (st.boost > 0 ? ' · <b style="color:#ffe14d">⚡BOOST</b>' : '') +
         (win.locked ? ' · <b style="color:#69f0ae">⊞ view-driven ' + Math.round((win.u1 - win.u0) * (win.v1 - win.v0) * 100) + '%</b>' : '') + '</div>';
@@ -3166,6 +3191,12 @@ window.KnotSwarmSim = (function () {
       bar.querySelectorAll('.kss-samp').forEach(x => x.classList.toggle('kss-on', x === b));
       IMP.t = -9; if (st.fluid) initFluid(); reconDirty = true;
     }));
+    const geoBtn = bar.querySelector('.kss-geo');
+    if (geoBtn) geoBtn.addEventListener('click', () => {
+      st.geoSup = !st.geoSup;
+      geoBtn.classList.toggle('kss-on', st.geoSup);
+      geoBtn.textContent = st.geoSup ? 'mesh sup \u2713' : 'mesh sup \u2717';
+    });
     const chanBtn = container.querySelector('.kss-chan');
     const CHANS = ['rgb', 'depth', 'normal', 'conf'];
     chanBtn.addEventListener('click', e => {
