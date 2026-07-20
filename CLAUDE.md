@@ -16,7 +16,7 @@ splat surface under a fixed Gaussian budget. The deck embeds the same simulator 
 - Deck parts: `src/deck_a.html` (head+theme+slides 1-11) · `deck_b.html` (slides 12-21) ·
   `deck_c.html` (all deck JS: widgets, charts, reveal init).
 
-## sim_core.js architecture (one IIFE, ~2k lines)
+## sim_core.js architecture (one IIFE, ~3.3k lines)
 Module scope: `hash2/vnoise/fbm` noise · env definitions `ENVS.{urban,forest,ocean,dust}`
 with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable basis
 (CR default path / clamped B-spline p2-5 / NURBS rational, module var `BASIS_DEG`).
@@ -24,9 +24,11 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
 
 - **fit model**: `fit{CN,cur,tgt,res,crop,x0,z0}` — control grid of heights.
   `sampleTarget` (4-tap max supersampling), `optimStep` (time-based rate, Laplacian
-  regularizer REG=0.3, weighted by `covW` swarm-view coverage × `peW` photometric),
-  `computeWeights` (strided ≤64/axis), `truncSubdivStep` (error-driven subdivision),
-  warm-up levels `WARM_LEVELS` (64×64 floor), `reWarm()` on any MODEL change.
+  regularizer REG=0.3, weighted by `covW` swarm-view coverage × `peW` photometric,
+  plus bidirectional-Chamfer geometry supervision `GEO` when `st.geoSup`, residual
+  `fit.gres`), `computeWeights` (strided ≤64/axis), `truncSubdivStep` (error-driven
+  subdivision), warm-up levels `WARM_LEVELS` (64×64 floor), `reWarm()` on any MODEL
+  change. Control-net UV resolution is `st.cnet` (default 96, user-adjustable).
 - **sampling modes** (`st.adaptive/st.fluid`): `rebuildImportance`+`axisSample` =
   inverse-CDF warp (curvature+texture+residual); `FLU` = fluid particles in
   window-relative coords, potential = truncation error, settle/freeze logic in
@@ -39,14 +41,27 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
   `frustumWindow()` = view-driven allocation window `win` (always on).
   `applyFit()` = frozen image-plane framing (binary search).
   Channels RGB/DEPTH/NORMAL/CONF via `fillChannels`+`pushChannel/popChannel` buffer swap.
+- **observer drone** (`st.drone=true` by default → owns the MAIN POV): `droneStep(dt)`
+  is a kinematic entity `drone{px,pz,hd,alt,lx,lz,ly,auto}` that drives `cmdrCam`
+  pos/lookAt + `st.roi` + `cOrbit`. Inputs: joysticks `joy/joyL/joyR` + `elev` (wired
+  by `makeStick`) and WASD/arrows/QE keys; autonomous patrol resumes after 5 s idle.
+  Desktop = one stick; mobile = twin sticks (left rotate+alt, right move) + zen-on-move
+  (`.kss-moving`). Guard flight with `st.drone && !st.warm.active`.
 - **swarm**: `updateSwarm` — physical footprints `footF = alt*0.85`, overlap slider
   sets spacing; `swarmFoot.pts` feeds `computeWeights` (layout matters!).
 - **commander tools**: ruler+LOS (`surfacePickFrom` ray-march), markers, TACREF
   (`tacQuery` — MGRS-style grid + confidence, clipboard), pitch slider, LINK/FREE.
+- **segmentation** (`seg`): UV-map panel, click ±seeds, `segRun` = seeded mean-split +
+  flood-fill (classical CV) on the active channel. Mask is WORLD-anchored in a fixed
+  grid `seg.gmask` (`SEG_GW=384` over ±`SEG_BND=120` m) via `segMarkWorld`/`segLook`,
+  so it stays put as the drone flies and strokes AGGREGATE until `revert`. `applySeg`
+  zeroes per-splat `conf` outside the mask (revertible). Works on RGB/DEPTH/NORMAL.
+- **gradient readout** (`grad`): `gradDraw` renders a slope map with downhill arrows.
 - **export**: `startExport` 2×2 UV-kernel sweep animation → `buildPLY` binary PLY.
 - **UI**: dock + popup menus in `bar`, 3 s auto-fold, zen mode, mobile media queries
-  (in sim_style.css), pinch zoom.
-- Debug: `window.__kss = {fit, swarmFoot, st, FLU}`.
+  (in sim_style.css), pinch zoom, joystick/twin-stick + elevation controls.
+- Debug: `window.__kss = {fit, swarmFoot, st, FLU, topo, seg, grad, drone}` +
+  `__kss.segStats()` (visible-vs-masked splat counts).
 
 ## Invariants — do not break
 1. Field/props single-source: anything visible in 3D must ALSO be in `h()`/`col()`
@@ -55,11 +70,13 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
 2. Grid structure: wall-scan, NN-stretch, and PLY 2×2 tessellation assume the S×S
    sampling grid (adaptive warp keeps it; fluid mode bypasses walls deliberately).
 3. All optimization/animation rates must be TIME-based (`1-exp(-K*dt)`), never
-   per-frame — fps varies wildly.
+   per-frame — fps varies wildly (drone kinematics included).
 4. Optimization weights come from SWARM views; splat allocation window from the
    COMMANDER frustum. Don't mix them.
-5. Defaults: forest env, 64k budget, MANUAL mode, NURBS basis, ×2 params, adaptive
-   sampling, commander-as-main.
+5. Segmentation masks are WORLD-anchored (`seg.gmask` in fixed world coords), never
+   frustum/screen space — otherwise the mask follows the drone and re-masks the scene.
+6. Defaults: forest env, 64k budget, MANUAL mode, CR basis, ×2 params, adaptive
+   sampling, commander-as-main, observer-drone POV on, mesh-supervision (Chamfer) on.
 
 ## Testing
 Headless (no GPU here — 64k is slow, test at 4k):

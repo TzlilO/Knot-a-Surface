@@ -36,10 +36,23 @@ Read `CLAUDE.md` first — especially the architecture map and the five invarian
 - **New dock menu**: menu div in `.kss-menus` + `data-open` button in `.kss-dock`;
   existing wiring handles open/close/fold automatically.
 - **Optimization change**: keep rates time-based; weights flow through
-  `computeWeights` (covW/peW); anything that reshapes the domain must call
-  `setFitDomain(..., keepCur=true)` and set `reconDirty`.
+  `computeWeights` (covW/peW); geometry supervision is the bidirectional-Chamfer
+  term in `optimStep` (`GEO`, gated by `st.geoSup`, residual `fit.gres`); anything
+  that reshapes the domain must call `setFitDomain(..., keepCur=true)` and set
+  `reconDirty`.
 - **Per-splat data**: extend the arrays allocated in `allocRecon`
   (posArr/nrmArr/errArr pattern), fill in `updateRecon` AND `reconFluidPass`.
+- **Drone / camera control**: `droneStep(dt)` owns the main POV. Add an input axis
+  by wiring a UI element into `joy/joyL/joyR/elev` (see `makeStick`) or the `keys`
+  map, then read it in `droneStep` — keep integration time-based and in the heading
+  frame. Anything gating flight uses `st.drone && !st.warm.active`.
+- **Segmentation**: masks are WORLD-anchored in `seg.gmask` (`segMarkWorld`/`segLook`,
+  `SEG_GW`×`SEG_GW` over ±`SEG_BND` m) — never store mask in screen/frustum space.
+  New channel: extend `fillChannels` + the `seg.src` switch. Strokes AGGREGATE; only
+  `revert` clears `seg.gmask`. `applySeg` zeroes per-splat `conf` outside the mask.
+- **Mobile / zen-on-move**: gate with `st.mobile` (`(pointer:coarse)`); moving-drone
+  zen toggles the `.kss-moving` class. Make anything view-sized swap-aware (`resize()`
+  picks `cmdrCam` when `st.swapped`) so mobile portrait aspect stays correct.
 
 ## Perf budget
 Per-frame O(S²) work is the ceiling (S≤240 at 64k default; 512k is a stress option).
