@@ -684,8 +684,9 @@ footer {
         <span class="contrib-icon">⟁</span>
         <h3>NURBS-Grounded Splatting</h3>
         <p>Gaussian positions are derived from a learnable bicubic control grid with switchable basis
-        — Catmull-Rom, B-spline degree 2–5, or NURBS rational. Resolution is a runtime parameter:
-        subdivide the UV crop to zoom without reallocating the budget.</p>
+        — Catmull-Rom (default, interpolating), B-spline degree 2–5, or NURBS rational — over a
+        user-adjustable UV control net. Resolution is a runtime parameter: subdivide the crop to zoom
+        without reallocating the budget.</p>
       </div>
       <div class="contrib-card fade-up">
         <span class="contrib-icon">🛰</span>
@@ -705,8 +706,30 @@ footer {
         <span class="contrib-icon">◉</span>
         <h3>Commander Toolkit</h3>
         <p>Ray-marched ruler and line-of-sight against the live surface. MGRS-style TACREF grid with
-        per-cell reconstruction confidence, copy-to-clipboard. Pitch-linked inset with LINK/FREE
-        coupling between commander and drone perspectives.</p>
+        per-cell reconstruction confidence, copy-to-clipboard. Free-flying commander camera — the
+        reconstruction re-optimizes wherever it looks, with a pitch-linked world inset.</p>
+      </div>
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">🛩</span>
+        <h3>Observer-Drone POV</h3>
+        <p>A virtual observer entity flies an autonomous path over the scene as the main display. Its
+        gaze drives the frustum window and region of interest, so the fixed splat budget flows across
+        the terrain beneath it — the surface materializes exactly where the drone looks.</p>
+      </div>
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">⬚</span>
+        <h3>Segmentation from the Surface</h3>
+        <p>Because the reconstruction is one parametric surface, its RGB / depth / normal field is a
+        flat 2D image indexed by UV. A couple of positive/negative clicks feed a classical
+        region-growing mask that lifts straight back to the 3D Gaussians — revertible isolation, no
+        volumetric labeling. 3D segmentation for the price of a 2D click.</p>
+      </div>
+      <div class="contrib-card fade-up">
+        <span class="contrib-icon">∇</span>
+        <h3>Terrain Gradient Readout</h3>
+        <p>A live slope-shaded map of the fit surface with a downhill quiver (−∇h), read directly from
+        the spline control grid. Surfaces the ridges, drainages, and traversability of the
+        reconstructed terrain at a glance.</p>
       </div>
     </div>
 
