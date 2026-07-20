@@ -591,6 +591,7 @@ footer {
         <a href="#abstract">Abstract</a>
         <a href="#method">Method</a>
         <a href="#scenes">Scenes</a>
+        <a href="#contributions">Contributions</a>
         <a href="#bibtex">BibTeX</a>
       </div>
       <button class="theme-btn" id="themeBtn" aria-label="Toggle colour theme">☀</button>
@@ -612,6 +613,16 @@ footer {
 
     <p class="authors"><a href="https://github.com/TzlilO">Tzlil Ovadia</a></p>
     <p class="affil">Computer Vision Thesis &nbsp;·&nbsp; 2025</p>
+
+    <div class="contact-box" style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:16px;margin:16px auto 2px;
+      padding:11px 20px;border:1.6px solid var(--accent);border-radius:12px;background:rgba(79,195,247,.09);
+      font-size:14.5px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.12)">
+      <span style="text-transform:uppercase;letter-spacing:.13em;font-size:10.5px;opacity:.65">Contact</span>
+      <a href="mailto:Ovadia.Tzlil@Gmail.Com" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;gap:7px">
+        <i class="fa-solid fa-envelope"></i> Ovadia.Tzlil@Gmail.Com</a>
+      <a href="https://www.linkedin.com/in/tzlil-o/" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;gap:7px">
+        <i class="fa-brands fa-linkedin"></i> linkedin.com/in/tzlil-o</a>
+    </div>
 
     <div class="btn-row">
       <a href="deck.html"  class="btn btn-solid"><i class="fa-solid fa-person-chalkboard"></i> Slides</a>
@@ -860,6 +871,35 @@ footer {
 </section>
 
 <!-- ── BibTeX ─────────────────────────────────────────────────────────────── -->
+<!-- ── Contributions / Foundations ─────────────────────────────────────── -->
+<section id="contributions">
+  <div class="wrap">
+    <div class="eyebrow">Contributions</div>
+    <h2>Built on 3D Gaussian Splatting</h2>
+    <p class="lead" style="margin-bottom:14px">Knot-a-Surface keeps the differentiable Gaussian rasterizer of Kerbl&nbsp;et&nbsp;al. and replaces the unstructured particle cloud with a single NURBS surface from which every splat is derived. If this work is useful, please also cite the foundational method:</p>
+    <div class="bib-wrap">
+      <button class="copy-btn" id="copyBtn2">Copy</button>
+      <pre id="bib-3dgs" data-plain="@article{kerbl3Dgaussians,
+  author       = {Kerbl, Bernhard and Kopanas, Georgios and Leimk{\&quot;u}hler, Thomas and Drettakis, George},
+  title        = {3D Gaussian Splatting for Real-Time Radiance Field Rendering},
+  journal      = {ACM Transactions on Graphics},
+  volume       = {42},
+  number       = {4},
+  year         = {2023},
+  url          = {https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/}
+}"><span class="bk">@article</span>{<span class="bv">kerbl3Dgaussians</span>,
+  <span class="bf">author</span>       = {<span class="bv">Kerbl, Bernhard and Kopanas, Georgios and Leimkühler, Thomas and Drettakis, George</span>},
+  <span class="bf">title</span>        = {<span class="bv">3D Gaussian Splatting for Real-Time Radiance Field Rendering</span>},
+  <span class="bf">journal</span>      = {<span class="bv">ACM Transactions on Graphics</span>},
+  <span class="bf">volume</span>       = {<span class="bv">42</span>},
+  <span class="bf">number</span>       = {<span class="bv">4</span>},
+  <span class="bf">year</span>         = {<span class="bv">2023</span>},
+  <span class="bf">url</span>          = {<span class="bv">https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/</span>}
+}</pre>
+    </div>
+  </div>
+</section>
+
 <section id="bibtex">
   <div class="wrap">
     <div class="eyebrow">Citation</div>
@@ -920,6 +960,13 @@ btn.addEventListener('click', () => setTheme(root.dataset.theme !== 'dark'));
 // BibTeX copy — read the plain-text data attr, not the HTML-highlighted content
 document.getElementById('copyBtn').addEventListener('click', function() {
   const text = document.getElementById('bib-text').dataset.plain;
+  navigator.clipboard.writeText(text).then(() => {
+    this.textContent = 'Copied!';
+    setTimeout(() => this.textContent = 'Copy', 2000);
+  });
+});
+document.getElementById('copyBtn2').addEventListener('click', function() {
+  const text = document.getElementById('bib-3dgs').dataset.plain;
   navigator.clipboard.writeText(text).then(() => {
     this.textContent = 'Copied!';
     setTimeout(() => this.textContent = 'Copy', 2000);
