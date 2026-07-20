@@ -638,7 +638,24 @@ window.KnotSwarmSim = (function () {
           '<div class="kss-cmdr-label">REAL SCENE</div>' +
           '<button class="kss-cmdr-swap" title="swap main / inset views">⇆</button>' +
         '</div>' +
-        '<div class="kss-hud kss-hud-tl"></div>' +
+        '<div class="kss-seg" style="display:none">' +
+          '<div class="kss-seg-head">UV SEGMENTATION &middot; <span class="kss-seg-src-l">RGB</span></div>' +
+          '<canvas class="kss-seg-canvas"></canvas>' +
+          '<div class="kss-seg-row">' +
+            '<button class="kss-sbtn kss-on" data-seg="pos">+ in</button>' +
+            '<button class="kss-sbtn" data-seg="neg">- out</button>' +
+            '<button class="kss-sbtn" data-seg="run">segment</button>' +
+            '<button class="kss-sbtn" data-seg="iso">isolate 3D</button>' +
+            '<button class="kss-sbtn" data-seg="clear">revert</button>' +
+            '<select class="kss-seg-src"><option value="rgb">RGB</option><option value="depth">depth</option><option value="normal">normal</option></select>' +
+          '</div>' +
+          '<div class="kss-seg-msg">click + seeds on the object, - seeds outside, then segment</div>' +
+        '</div>' +
+        '<div class="kss-grad" style="display:none">' +
+          '<div class="kss-seg-head">TERRAIN GRADIENT &middot; downhill arrows</div>' +
+          '<canvas class="kss-grad-canvas"></canvas>' +
+        '</div>' +
+                '<div class="kss-hud kss-hud-tl"></div>' +
         '<div class="kss-hud kss-hud-tr"></div>' +
         '<div class="kss-phase"></div>' +
         '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
@@ -648,7 +665,10 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-cbtn" data-tool="mark" title="drop tactical marker">◎</button>' +
           '<button class="kss-cbtn" data-tool="topo" title="topo probe: drop a sphere, it rolls down the gradient">⚫</button>' +
           '<button class="kss-cbtn" data-tool="heat" title="residual heatmap (change detection)">▦</button>' +
-          '<button class="kss-cbtn kss-fit" title="fit-to-screen: frame the crop exactly">FIT</button>' +
+          '<button class="kss-cbtn kss-drone-t kss-on" title="virtual observer drone \u2014 autonomous flyover POV (main view)">\uD83D\uDEE9</button>' +
+          '<button class="kss-cbtn kss-seg-t" title="3D segmentation via the flat UV attribute map">\u2b1a</button>' +
+          '<button class="kss-cbtn kss-grad-t" title="terrain gradient field with downhill arrows">\u2207</button>' +
+                    '<button class="kss-cbtn kss-fit" title="fit-to-screen: frame the crop exactly">FIT</button>' +
           '<button class="kss-cbtn kss-chan" title="render channel: RGB / depth / normal / confidence">RGB</button>' +
         '</div>' +
         '<div class="kss-compass">▲<span>N</span></div>' +
@@ -716,18 +736,21 @@ window.KnotSwarmSim = (function () {
           '<span class="kss-ovl-val" style="font-size:11px;color:#4fc3f7;min-width:34px">40%</span></div>' +
         '<div class="kss-menu" data-menu="model">' +
           '<span class="kss-lb">Basis</span>' +
-          '<button class="kss-btn kss-degc kss-on" data-deg="nurbs">NURBS</button>' +
-          '<button class="kss-btn kss-degc" data-deg="cr">CR</button>' +
-          '<button class="kss-btn kss-degc" data-deg="2">B2</button>' +
-          '<button class="kss-btn kss-degc" data-deg="3">B3</button>' +
-          '<button class="kss-btn kss-degc" data-deg="4">B4</button>' +
-          '<button class="kss-btn kss-degc" data-deg="5">B5</button>' +
+          '<button class="kss-btn kss-degc kss-on" data-deg="cr" title="Catmull\u2013Rom: interpolating cubic \u2014 surface passes through every control point">Catmull\u2013Rom</button>' +
+          '<button class="kss-btn kss-degc" data-deg="nurbs" title="NURBS: rational cubic B-spline (per-point weights; exact conics)">NURBS</button>' +
+          '<button class="kss-btn kss-degc" data-deg="2" title="uniform B-spline, degree 2 \u2014 quadratic, C\u00b9 approximating">B-quadratic</button>' +
+          '<button class="kss-btn kss-degc" data-deg="3" title="uniform B-spline, degree 3 \u2014 cubic, C\u00b2 approximating">B-cubic</button>' +
+          '<button class="kss-btn kss-degc" data-deg="4" title="uniform B-spline, degree 4 \u2014 quartic, C\u00b3">B-quartic</button>' +
+          '<button class="kss-btn kss-degc" data-deg="5" title="uniform B-spline, degree 5 \u2014 quintic, C\u2074 smoothest">B-quintic</button>' +
           '<span class="kss-lb">Params</span>' +
           '<button class="kss-btn kss-denc" data-den="1">×1</button>' +
           '<button class="kss-btn kss-denc kss-on" data-den="2">×2</button>' +
           '<button class="kss-btn kss-denc" data-den="4">×4</button>' +
           '<button class="kss-btn kss-denc" data-den="8">×8</button>' +
           '<button class="kss-btn kss-denc" data-den="16">×16</button>' +
+          '<span class="kss-lb">Ctrl-net UV</span>' +
+          '<input class="kss-cnet" type="range" min="48" max="192" step="8" value="96" style="width:92px;accent-color:#ffa726">' +
+          '<span class="kss-cnet-val" style="font-size:11px;color:#ffa726;min-width:52px">96\u00d796</span>' +
           '<span class="kss-lb">Sampling</span>' +
           '<button class="kss-btn kss-samp kss-on" data-s="adaptive">adaptive</button>' +
           '<button class="kss-btn kss-samp" data-s="uniform">uniform</button>' +
@@ -802,17 +825,20 @@ window.KnotSwarmSim = (function () {
     const SPREAD_G = 42, ALT = 46;
     const CROP_G = 84, CROP_MIN = 7;
     const ROI_CAP = 70;                            // commander/ROI travel envelope (world edge = end of scene)
-    st.deg = 'nurbs'; st.den = 2; st.chan = 'rgb'; // NURBS default · ×2 parameter group
+    st.deg = 'cr'; st.den = 2; st.chan = 'rgb';    // Catmull-Rom default · ×2 parameter group
     st.adaptive = true;                            // curvature/texture/residual-aware sampling
     st.fluid = false;                              // fluid-particle sampling mode
     st.ovl = 0.4;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
+    st.drone = true;                              // virtual observer drone owns the main POV by default
+    st.cnet = 96;                                 // control-net UV resolution (customizable, was hard-coded)
     let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
-      WARM_LEVELS = [64, Math.round(80 * ax), Math.round(96 * ax)]
-        .map(x => Math.min(220, Math.max(64, x)));
-      CN_BASE = Math.min(200, Math.max(96, Math.round(96 * ax)));
-      CN_MAX = Math.min(256, Math.max(CN_BASE + 16, Math.round(160 * ax)));
+      const b = st.cnet || 96;                    // user control-net base (UV resolution)
+      WARM_LEVELS = [Math.min(64, b), Math.round(0.83 * b * ax), Math.round(b * ax)]
+        .map(x => Math.min(240, Math.max(32, x)));
+      CN_BASE = Math.min(220, Math.max(64, Math.round(b * ax)));
+      CN_MAX = Math.min(256, Math.max(CN_BASE + 16, Math.round(1.67 * b * ax)));
     }
     applyDensity();
     BASIS_DEG = st.deg;
@@ -2487,7 +2513,7 @@ window.KnotSwarmSim = (function () {
         (st.mode === 'auto' && !st.warm.active ? ' · ' + st.auto.phase : '') + '</div>' +
         '<div>' + (DR * DR) + ' drones' + (st.drAdapt ? ' (adaptive)' : '') + ' · alt ' + fmt(ALT * (1 - 0.35 * st.zoom), 0) + ' m</div>' +
         '<div>overlap <b>' + Math.round(st.ovl * 100) + '%</b> · drone footprint <b>' + fmt(footF, 0) + ' m</b></div>' +
-        '<div>✈ commander @ GRID <b>' + gridRef(cOrbit.tx, cOrbit.tz) + '</b>' + (st.heat ? ' · ▦ residual view' : '') + '</div>';
+        '<div>' + (st.drone ? '🛩 observer drone @ GRID <b>' : '✈ commander @ GRID <b>') + gridRef(cOrbit.tx, cOrbit.tz) + '</b>' + (st.heat ? ' · ▦ residual view' : '') + '</div>';
       if (st.warm.active) {
         phaseEl.style.display = 'block';
         phaseEl.innerHTML = '⚙ WARM-UP · adapting parameter domain · level ' +
@@ -2663,6 +2689,34 @@ window.KnotSwarmSim = (function () {
     /* FIT: the commander view becomes the image plane the 3DGS are splatted onto —
        viewpoint frozen (rotation off), distance binary-searched so the crop's
        corners exactly fill the frustum at the current heading & pitch. */
+    /* ── virtual observer drone ─────────────────────────────
+       An autonomous camera entity flies a smooth path; its POV is the main view.
+       It drives the free commander's target (cOrbit.t*) and the ROI to its gaze,
+       so the frustum-allocated splats flow seamlessly across the terrain below.
+       Reuses frustumWindow()/domainStep()/updateRecon() unchanged. ── */
+    const drone = { lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2 };
+    function droneStep(dt) {
+      const H = ENV_HOME[st.env], t = st.t;
+      const ang = t * 0.11;                          // slow revolution over the site
+      const rad = 30 + 7 * Math.sin(t * 0.05);       // breathing orbit radius
+      const dx = H.x + rad * Math.cos(ang);
+      const dz = H.z + rad * Math.sin(ang);
+      const alt = 26 + 5 * Math.sin(t * 0.09);       // gentle altitude bob
+      const hd = ang + Math.PI / 2 + 0.3 * Math.sin(t * 0.17);   // travel heading, wandering
+      const look = 16;                               // gaze lands ahead of travel -> steep gimbal
+      const gx = clamp(dx + Math.cos(hd) * look, -ROI_CAP, ROI_CAP);
+      const gz = clamp(dz + Math.sin(hd) * look, -ROI_CAP, ROI_CAP);
+      const sh = reconH(gx, gz);
+      const gy = sh === null ? 2 : sh;
+      const k = Math.min(1, dt * 2);                 // smooth the gaze so domain re-centre is gentle
+      drone.lx += (gx - drone.lx) * k;
+      drone.lz += (gz - drone.lz) * k;
+      drone.ly += (gy - drone.ly) * k;
+      st.roi.x = drone.lx; st.roi.z = drone.lz;      // domain follows the gaze
+      cOrbit.tx = drone.lx; cOrbit.tz = drone.lz; cOrbit.auto = false;
+      cmdrCam.position.set(dx, alt, dz);
+      cmdrCam.lookAt(drone.lx, drone.ly, drone.lz);
+    }
     function applyFit() {
       cOrbit.auto = false;                        // a fixed image plane cannot rotate
       const cs = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => new T.Vector3(
@@ -2949,6 +3003,185 @@ window.KnotSwarmSim = (function () {
 
     let raf = 0, dead = false, frame = 0, adaptCooldown = 0, _hudT = -9;
     const clock = new T.Clock();
+    /* ═══ analysis panels: UV segmentation + terrain gradient ═══════════════
+       The reconstruction is one parametric surface over UV, so its colour/normal/
+       depth field IS a flat 2D image (splat k = j*S+i). Segment in 2D, lift the
+       mask straight back to the 3D splats. Fully revertible. ── */
+    const droneBtn = container.querySelector('.kss-drone-t');
+    droneBtn.addEventListener('click', e => { e.stopPropagation(); st.drone = !st.drone; droneBtn.classList.toggle('kss-on', st.drone); if (!st.drone) cOrbit.auto = true; });
+
+    const cnetSlider = bar.querySelector('.kss-cnet'), cnetVal = bar.querySelector('.kss-cnet-val');
+    if (cnetSlider) {
+      cnetSlider.addEventListener('pointerdown', e => e.stopPropagation());
+      cnetSlider.addEventListener('input', () => { cnetVal.textContent = cnetSlider.value + 'x' + cnetSlider.value; });
+      cnetSlider.addEventListener('change', () => { st.cnet = +cnetSlider.value; reWarm(); });
+    }
+
+    const segPanel = container.querySelector('.kss-seg');
+    const segCanvas = container.querySelector('.kss-seg-canvas');
+    const segCtx = segCanvas.getContext('2d');
+    const segMsgEl = container.querySelector('.kss-seg-msg');
+    const segSrcSel = container.querySelector('.kss-seg-src');
+    const segSrcL = container.querySelector('.kss-seg-src-l');
+    const _segOff = document.createElement('canvas');
+    segCanvas.width = segCanvas.height = 232;
+    const seg = { open: false, mode: 'pos', src: 'rgb', pos: [], neg: [], mask: null, active: false, img: null, W: 0 };
+    function segMsg(m) { if (segMsgEl) segMsgEl.textContent = m; }
+
+    function segFeature() {                          // snapshot S*S feature image from current recon
+      const W = S; seg.W = W;
+      const img = new Float32Array(W * W * 3);
+      if (seg.src === 'normal') {
+        for (let k = 0; k < W * W; k++) { img[k*3] = nrmArr[k*3]*0.5+0.5; img[k*3+1] = nrmArr[k*3+1]*0.5+0.5; img[k*3+2] = nrmArr[k*3+2]*0.5+0.5; }
+      } else if (seg.src === 'depth') {
+        const cp = cmdrCam.position; let mn = 1e9, mx = -1e9;
+        for (let k = 0; k < W * W; k++) { const d = Math.hypot(posArr[k*3]-cp.x, posArr[k*3+1]-cp.y, posArr[k*3+2]-cp.z); if (d<mn) mn=d; if (d>mx) mx=d; }
+        const rng = Math.max(1, mx - mn);
+        for (let k = 0; k < W * W; k++) { const d = Math.hypot(posArr[k*3]-cp.x, posArr[k*3+1]-cp.y, posArr[k*3+2]-cp.z); const g = 1 - clamp01((d-mn)/rng); img[k*3]=g; img[k*3+1]=g; img[k*3+2]=g; }
+      } else {
+        const src = splats.instanceColor.array;
+        for (let k = 0; k < W * W * 3; k++) img[k] = src[k];
+      }
+      seg.img = img;
+    }
+
+    function segDraw() {
+      const W = seg.W; if (!W || !seg.img) return;
+      _segOff.width = _segOff.height = W;
+      const octx = _segOff.getContext('2d');
+      const id = octx.createImageData(W, W), img = seg.img, mask = seg.mask;
+      for (let k = 0; k < W * W; k++) {
+        let r = img[k*3]*255, g = img[k*3+1]*255, b = img[k*3+2]*255;
+        if (mask && mask[k]) { r = r*0.35+30; g = g*0.35+200; b = b*0.35+40; }
+        id.data[k*4]=r; id.data[k*4+1]=g; id.data[k*4+2]=b; id.data[k*4+3]=255;
+      }
+      octx.putImageData(id, 0, 0);
+      const D = segCanvas.width;
+      segCtx.imageSmoothingEnabled = false;
+      segCtx.clearRect(0, 0, D, D);
+      segCtx.drawImage(_segOff, 0, 0, W, W, 0, 0, D, D);
+      const sc = D / W;
+      const dot = (p, col) => { segCtx.beginPath(); segCtx.arc((p.i+0.5)*sc, (p.j+0.5)*sc, 4, 0, 7); segCtx.fillStyle = col; segCtx.fill(); segCtx.lineWidth = 1.5; segCtx.strokeStyle = '#000'; segCtx.stroke(); };
+      for (const p of seg.pos) dot(p, '#39ff9e');
+      for (const p of seg.neg) dot(p, '#ff5b6e');
+    }
+
+    function segRun() {                              // seeded mean-split + flood fill (classical CV)
+      segFeature();
+      const W = seg.W, N = W * W, img = seg.img;
+      if (!seg.pos.length) { segMsg('add + (in) seeds on the object first'); return; }
+      const mean = list => { const m = [0,0,0]; for (const p of list) { const k = p.j*W+p.i; m[0]+=img[k*3]; m[1]+=img[k*3+1]; m[2]+=img[k*3+2]; } const n = Math.max(1, list.length); return [m[0]/n, m[1]/n, m[2]/n]; };
+      const pm = mean(seg.pos);
+      let neg;
+      if (seg.neg.length) neg = mean(seg.neg);
+      else { let g = [0,0,0]; for (let k = 0; k < N; k++) { g[0]+=img[k*3]; g[1]+=img[k*3+1]; g[2]+=img[k*3+2]; } neg = [g[0]/N, g[1]/N, g[2]/N]; }
+      const d2 = (a, k) => { const r = img[k*3]-a[0], gg = img[k*3+1]-a[1], b = img[k*3+2]-a[2]; return r*r+gg*gg+b*b; };
+      const inC = new Uint8Array(N);
+      for (let k = 0; k < N; k++) inC[k] = d2(pm, k) < d2(neg, k) ? 1 : 0;
+      const mask = new Uint8Array(N), seen = new Uint8Array(N), stack = [];
+      for (const p of seg.pos) { const k = p.j*W+p.i; if (inC[k] && !seen[k]) { seen[k] = 1; stack.push(k); } }
+      while (stack.length) {
+        const k = stack.pop(); mask[k] = 1;
+        const i = k % W, j = (k / W) | 0;
+        if (i > 0)   { const nk = k-1; if (inC[nk] && !seen[nk]) { seen[nk]=1; stack.push(nk); } }
+        if (i < W-1) { const nk = k+1; if (inC[nk] && !seen[nk]) { seen[nk]=1; stack.push(nk); } }
+        if (j > 0)   { const nk = k-W; if (inC[nk] && !seen[nk]) { seen[nk]=1; stack.push(nk); } }
+        if (j < W-1) { const nk = k+W; if (inC[nk] && !seen[nk]) { seen[nk]=1; stack.push(nk); } }
+      }
+      seg.mask = mask;
+      let cnt = 0; for (let k = 0; k < N; k++) cnt += mask[k];
+      segMsg(cnt.toLocaleString() + ' / ' + N.toLocaleString() + ' splats in mask (' + Math.round(cnt/N*100) + '%) - hit "isolate 3D"');
+      segDraw();
+    }
+
+    function applySeg() {                            // lift 2D mask to 3D: hide splats outside it
+      if (!seg.active || !seg.mask || seg.W !== S) return;
+      const conf = splats.userData.conf, mask = seg.mask;
+      for (let k = 0; k < S * S; k++) if (!mask[k]) conf.array[k] = 0;
+      conf.needsUpdate = true;
+    }
+
+    segCanvas.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (!seg.W) segFeature();
+      const r = segCanvas.getBoundingClientRect();
+      const i = clamp(Math.floor((e.clientX-r.left)/r.width*seg.W), 0, seg.W-1);
+      const j = clamp(Math.floor((e.clientY-r.top)/r.height*seg.W), 0, seg.W-1);
+      (seg.mode === 'pos' ? seg.pos : seg.neg).push({ i, j });
+      segDraw();
+    });
+    container.querySelectorAll('.kss-sbtn[data-seg]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const a = b.dataset.seg;
+      if (a === 'pos' || a === 'neg') { seg.mode = a; container.querySelectorAll('.kss-sbtn[data-seg="pos"],.kss-sbtn[data-seg="neg"]').forEach(x => x.classList.toggle('kss-on', x.dataset.seg === a)); }
+      else if (a === 'run') segRun();
+      else if (a === 'iso') {
+        if (!seg.mask) { segMsg('run "segment" first'); return; }
+        seg.active = !seg.active; b.classList.toggle('kss-on', seg.active);
+        wallSplats.visible = !seg.active;
+        if (seg.active) applySeg(); else reconDirty = true;
+        segMsg(seg.active ? '3D isolated to mask - revert to restore' : 'restored');
+      } else if (a === 'clear') {
+        seg.pos = []; seg.neg = []; seg.mask = null; seg.active = false;
+        wallSplats.visible = true; reconDirty = true;
+        container.querySelector('.kss-sbtn[data-seg="iso"]').classList.remove('kss-on');
+        segFeature(); segDraw(); segMsg('cleared');
+      }
+    }));
+    segSrcSel.addEventListener('pointerdown', e => e.stopPropagation());
+    segSrcSel.addEventListener('change', () => { seg.src = segSrcSel.value; if (segSrcL) segSrcL.textContent = seg.src.toUpperCase(); seg.mask = null; segFeature(); segDraw(); });
+
+    /* terrain gradient view: slope-shaded height field + downhill quiver */
+    const gradPanel = container.querySelector('.kss-grad');
+    const gradCanvas = container.querySelector('.kss-grad-canvas');
+    const gradCtx = gradCanvas.getContext('2d');
+    gradCanvas.width = gradCanvas.height = 232;
+    const _gradOff = document.createElement('canvas');
+    const grad = { open: false };
+    let _gradT = 0;
+    function arrow(ctx, x0, y0, x1, y1) {
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      const a = Math.atan2(y1-y0, x1-x0), hl = 4.5;
+      ctx.beginPath(); ctx.moveTo(x1, y1);
+      ctx.lineTo(x1-hl*Math.cos(a-0.5), y1-hl*Math.sin(a-0.5));
+      ctx.lineTo(x1-hl*Math.cos(a+0.5), y1-hl*Math.sin(a+0.5));
+      ctx.closePath(); ctx.fill();
+    }
+    function gradDraw() {
+      const G = 48, D = gradCanvas.width;
+      _gradOff.width = _gradOff.height = G;
+      const octx = _gradOff.getContext('2d');
+      const Hh = new Float32Array(G * G);
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) Hh[j*G+i] = bicubic(fit.cur, fit.CN, i/(G-1), j/(G-1));
+      const slp = new Float32Array(G * G); let mx = 1e-6;
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const iL = Math.max(0,i-1), iR = Math.min(G-1,i+1), jU = Math.max(0,j-1), jD = Math.min(G-1,j+1);
+        const dx = Hh[j*G+iR]-Hh[j*G+iL], dz = Hh[jD*G+i]-Hh[jU*G+i];
+        const s = Math.hypot(dx, dz); slp[j*G+i] = s; if (s > mx) mx = s;
+      }
+      const id = octx.createImageData(G, G);
+      for (let k = 0; k < G*G; k++) { const cc = heatColor(clamp01(slp[k]/mx)); id.data[k*4]=cc[0]*255; id.data[k*4+1]=cc[1]*255; id.data[k*4+2]=cc[2]*255; id.data[k*4+3]=255; }
+      octx.putImageData(id, 0, 0);
+      gradCtx.imageSmoothingEnabled = true;
+      gradCtx.clearRect(0, 0, D, D);
+      gradCtx.drawImage(_gradOff, 0, 0, G, G, 0, 0, D, D);
+      const A = 12, cell = D / A, e = 0.012;
+      gradCtx.strokeStyle = 'rgba(235,244,255,.92)'; gradCtx.fillStyle = 'rgba(235,244,255,.92)'; gradCtx.lineWidth = 1.3;
+      for (let aj = 0; aj < A; aj++) for (let ai = 0; ai < A; ai++) {
+        const u = (ai+0.5)/A, v = (aj+0.5)/A;
+        const dx = bicubic(fit.cur, fit.CN, Math.min(1,u+e), v) - bicubic(fit.cur, fit.CN, Math.max(0,u-e), v);
+        const dz = bicubic(fit.cur, fit.CN, u, Math.min(1,v+e)) - bicubic(fit.cur, fit.CN, u, Math.max(0,v-e));
+        let gx = -dx, gz = -dz; const m = Math.hypot(gx, gz) || 1; gx /= m; gz /= m;
+        const cx = (ai+0.5)*cell, cy = (aj+0.5)*cell, L = cell*0.4;
+        arrow(gradCtx, cx, cy, cx+gx*L, cy+gz*L);
+      }
+    }
+
+    const segToolBtn = container.querySelector('.kss-seg-t'), gradToolBtn = container.querySelector('.kss-grad-t');
+    segToolBtn.addEventListener('click', e => { e.stopPropagation(); seg.open = !seg.open; segPanel.style.display = seg.open ? 'block' : 'none'; segToolBtn.classList.toggle('kss-on', seg.open); if (seg.open) { segFeature(); segDraw(); } });
+    gradToolBtn.addEventListener('click', e => { e.stopPropagation(); grad.open = !grad.open; gradPanel.style.display = grad.open ? 'block' : 'none'; gradToolBtn.classList.toggle('kss-on', grad.open); if (grad.open) gradDraw(); });
+    Object.assign(window.__kss, { seg, grad, drone });   // debug handles
+
     function loop() {
       if (dead) return;
       raf = requestAnimationFrame(loop);
@@ -2957,6 +3190,7 @@ window.KnotSwarmSim = (function () {
       if (st.warm.active) warmStep(st.t);
       else if (st.mode === 'auto') autoStep(st.t);
       keyStep(dt);
+      if (st.drone && !st.warm.active) droneStep(dt);
       domainStep(dt);
       frustumWindow();
       // adaptive swarm size: more drones as detail demand rises
@@ -2974,6 +3208,8 @@ window.KnotSwarmSim = (function () {
       else if (st.adaptive && st.t - IMP.t > 0.35) { if (rebuildImportance()) reconDirty = true; }
       // periodic rebuild only serves time-varying fields; static envs rebuild on real change
       if (!exp_.active && (reconDirty || (frame % 6 === 0 && ENVS[st.env].animated))) { updateRecon(st.t); reconDirty = false; }
+      if (seg.active) applySeg();
+      if (grad.open && st.t - _gradT > 0.2) { _gradT = st.t; gradDraw(); }
       exportStep(dt);
       topoStep(dt);
       updateSwarm(fit.crop, st.t);
@@ -3023,6 +3259,7 @@ window.KnotSwarmSim = (function () {
       }
 
       // commander camera — free-flying; crop + swarm follow its look-at (no LINK)
+      if (!(st.drone && !st.warm.active)) {          // drone owns the pose when flying
       if (cOrbit.auto) cOrbit.th += dt * 0.12;       // ambient orbit until the user drives it (FIT freezes it)
       if (st.mode === 'manual') { st.roi.x = cOrbit.tx; st.roi.z = cOrbit.tz; }   // commander drives the ROI
       else { cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z; }                        // auto tour drives the commander
@@ -3032,6 +3269,7 @@ window.KnotSwarmSim = (function () {
       const cy = cOrbit.r * Math.sin(cOrbit.ph), crr = cOrbit.r * Math.cos(cOrbit.ph);
       cmdrCam.position.set(cOrbit.tx + crr * Math.cos(cOrbit.th), cOrbit.ty + cy, cOrbit.tz + crr * Math.sin(cOrbit.th));
       cmdrCam.lookAt(cOrbit.tx, cOrbit.ty, cOrbit.tz);
+      }
 
       if (tacRing.visible && st.t - tacT > 5) tacRing.visible = false;
       updateCmdrViz();
