@@ -15,6 +15,7 @@ html,body{width:100%;height:100%;background:#07090f;color:#dde5f0;
 header{flex:none;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
 header h1{font-size:19px;font-weight:700;letter-spacing:-.02em}
 header .sub{font-size:13px;color:#5c6f8a}
+header a{font-size:11px;color:#4fc3f7;text-decoration:none;font-weight:700}
 header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
   color:#4fc3f7;background:#121b2e;border:1.5px solid #1b2a42;border-radius:14px;padding:4px 12px;margin-left:auto}
 #sim{flex:1 1 auto;min-height:0}
@@ -239,6 +240,7 @@ header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform
   <header>
     <h1>Swarm Resolution-Knob Simulator</h1>
     <span class="sub">fixed 3DGS budget · B-spline-coupled surface · infinite-resolution zoom</span>
+    <a href="arena.html">arena: live match reconstruction &rarr;</a>
     <span class="badge">Knot-a-Surface</span>
   </header>
   <div id="sim"></div>
@@ -258,7 +260,7 @@ header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform
 window.KnotSwarmSim = (function () {
   'use strict';
   const SIM_VERSION = 'v18';
-  const SIM_BUILT = '2026-07-20 18:00 UTC';   // stamped by build.py at build time
+  const SIM_BUILT = '2026-07-20 18:35 UTC';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
