@@ -258,7 +258,7 @@ header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform
 window.KnotSwarmSim = (function () {
   'use strict';
   const SIM_VERSION = 'v18';
-  const SIM_BUILT = '2026-07-20 13:10 UTC';   // stamped by build.py at build time
+  const SIM_BUILT = '2026-07-20 13:13 UTC';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -1639,15 +1639,17 @@ window.KnotSwarmSim = (function () {
     let _splatAlpha = null;                        // shared radial gaussian falloff
     function splatAlphaTex() {
       if (_splatAlpha) return _splatAlpha;
-      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      const cv = document.createElement('canvas'); cv.width = cv.height = 128;
       const cx = cv.getContext('2d');
-      const g = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
-      g.addColorStop(0, 'rgba(255,255,255,1)');
-      g.addColorStop(0.5, 'rgba(255,255,255,0.9)');
-      g.addColorStop(0.8, 'rgba(255,255,255,0.42)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      cx.fillStyle = g; cx.fillRect(0, 0, 64, 64);
+      const g = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0.00, 'rgba(255,255,255,1)');
+      g.addColorStop(0.30, 'rgba(255,255,255,0.94)');
+      g.addColorStop(0.58, 'rgba(255,255,255,0.60)');
+      g.addColorStop(0.80, 'rgba(255,255,255,0.24)');
+      g.addColorStop(1.00, 'rgba(255,255,255,0)');
+      cx.fillStyle = g; cx.fillRect(0, 0, 128, 128);
       _splatAlpha = new T.CanvasTexture(cv);
+      _splatAlpha.minFilter = _splatAlpha.magFilter = T.LinearFilter;
       return _splatAlpha;
     }
     function wallFrac() {                                          // oblique → more facade budget
@@ -1661,7 +1663,7 @@ window.KnotSwarmSim = (function () {
       wallCap = Math.max(128, st.budget - S * S);
       HH = new Float32Array(S * S);
       const mk = cap => {
-        const g = new T.CircleGeometry(0.5, S > 300 ? 4 : S > 100 ? 6 : 10);
+        const g = new T.CircleGeometry(0.5, S > 380 ? 10 : S > 160 ? 14 : 20);   // rounder → no faceted edges
         const conf = new T.InstancedBufferAttribute(new Float32Array(cap).fill(1), 1);
         conf.setUsage(T.DynamicDrawUsage);
         g.setAttribute('aConf', conf);
@@ -1838,8 +1840,8 @@ window.KnotSwarmSim = (function () {
         const sv = Math.max(Math.hypot(cvv, dDv), Math.hypot(cvv, dUv));
         _p.set(x, h + lift, z);
         // splat plane strictly spans the surface tangents ∂P/∂u, ∂P/∂v at the mean
-        _t1.set(2 * cu, dRu + dLu, 0).normalize().multiplyScalar(Math.min(su * 1.35, cu * 8));
-        _t2.set(0, dDv + dUv, 2 * cvv).normalize().multiplyScalar(Math.min(sv * 1.35, cvv * 8));
+        _t1.set(2 * cu, dRu + dLu, 0).normalize().multiplyScalar(Math.min(su * 1.7, cu * 8));
+        _t2.set(0, dDv + dUv, 2 * cvv).normalize().multiplyScalar(Math.min(sv * 1.7, cvv * 8));
         _m.makeBasis(_t1, _t2, _n);
         _m.setPosition(_p);
         splats.setMatrixAt(k, _m);
@@ -1852,7 +1854,7 @@ window.KnotSwarmSim = (function () {
         } else {
           const c = E.col(x, z, h, time);
           const shade = 0.52 + 0.48 * Math.max(0, _n.dot(SUN));
-          const jit = 0.93 + 0.14 * hash2(i * 7 + 1, j * 5 + 3);
+          const jit = 0.965 + 0.06 * hash2(i * 7 + 1, j * 5 + 3);
           splats.instanceColor.setXYZ(k,
             clamp01(c[0] * shade * jit), clamp01(c[1] * shade * jit), clamp01(c[2] * shade * jit));
         }
@@ -1891,8 +1893,8 @@ window.KnotSwarmSim = (function () {
             const y = lo + (sIdx + 0.5) * (hi - lo) / nSteps;
             _p.set(x + _n.x * 0.12, y, z + _n.z * 0.12);
             // facade basis: wall tangent × vertical — no arbitrary twist
-            _t1.set(tx, 0, tz).multiplyScalar(cell * 1.35);
-            _t2.set(0, (hi - lo) / nSteps * 1.35, 0);
+            _t1.set(tx, 0, tz).multiplyScalar(cell * 1.6);
+            _t2.set(0, (hi - lo) / nSteps * 1.5, 0);
             _m.makeBasis(_t1, _t2, _n);
             _m.setPosition(_p);
             wallSplats.setMatrixAt(wk, _m);
