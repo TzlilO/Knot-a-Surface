@@ -35,14 +35,24 @@ PY
   `.kss-phase` disappears.
 - Fluid mode: `window.__kss.FLU.frozen` must become true (settle) and particle
   coords static while frozen.
-- Menus/zen/fold: class assertions (`kss-folded`, `kss-zenmode`, `kss-open`).
+- Geometry supervision: with `st.geoSup` on, `fit.gres` (Chamfer, in the HUD) must
+  fall over time; A/B a change against `st.geoSup=false` before trusting it.
+- Drone: `window.__kss.drone` moves under keys/joystick and returns to autonomous
+  patrol after idle; the mask must NOT move with it — check `__kss.segStats()` counts
+  are stable as the drone flies (world-anchored). Segmentation should aggregate across
+  strokes and only reset on `revert`.
+- Menus/zen/fold: class assertions (`kss-folded`, `kss-zenmode`, `kss-open`);
+  moving-drone zen toggles `kss-moving`.
 - Export: `pg.expect_download()` around the EXPORT PLY click; validate the PLY
   header math (bytes = header + nV*15 + nF*13).
-- Mobile: rerun with `viewport 390×740, is_mobile=True, has_touch=True`.
+- Mobile: rerun with `viewport 390×740, is_mobile=True, has_touch=True` — expect the
+  `kss-mobile` class, twin sticks, and a non-distorted (aspect-correct) main view.
+  A fresh browser per context: `--single-process` can't hold two.
 
 ## Caveats
 - No GPU in most sandboxes: 64k+ budgets render at seconds/frame — always test
   logic at 4k; game-time (dt-capped) runs ~3× slower than wall-clock, so double
   every timing expectation.
-- Debug handle: `window.__kss = {fit, swarmFoot, st, FLU}`.
+- Debug handle: `window.__kss = {fit, swarmFoot, st, FLU, topo, seg, grad, drone}`
+  + `__kss.segStats()`.
 - Screenshots: read them — layout regressions don't throw errors.
