@@ -170,3 +170,17 @@
   border:1px solid #22314e;border-radius:6px;padding:3px}
 .kss-seg-msg{font-size:9.5px;color:#7f93ad;margin-top:5px;line-height:1.35}
 .kss-seg{left:74px}  /* clear the vertical tool rail on the left stage edge */
+
+/* ── virtual-drone joystick ── */
+.kss-joy{position:absolute;right:18px;bottom:92px;z-index:7;display:flex;flex-direction:column;
+  align-items:center;gap:5px;user-select:none;touch-action:none}
+.kss-joy-base{width:104px;height:104px;border-radius:50%;position:relative;cursor:grab;touch-action:none;
+  background:radial-gradient(circle at 50% 42%,rgba(30,42,66,.9),rgba(8,12,20,.92));
+  border:1.5px solid rgba(79,195,247,.5);box-shadow:0 8px 26px rgba(0,0,0,.5),inset 0 0 22px rgba(79,195,247,.12)}
+.kss-joy-base:active{cursor:grabbing}
+.kss-joy-knob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;
+  background:radial-gradient(circle at 40% 34%,#4fc3f7,#1c6fa0);border:1px solid #7fd4ff;
+  box-shadow:0 3px 10px rgba(0,0,0,.55);transition:transform .04s linear;pointer-events:none}
+.kss-joy-lbl{font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.14em;color:#4fc3f7;opacity:.85}
+@media (max-width:760px){.kss-joy{right:12px;bottom:104px}.kss-joy-base{width:88px;height:88px}
+  .kss-joy-knob{width:38px;height:38px;margin:-19px 0 0 -19px}}

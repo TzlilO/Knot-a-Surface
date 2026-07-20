@@ -542,7 +542,7 @@ function wFrame(section) {
   return { dispose() { dead = true; cancelAnimationFrame(raf); stopOrbit(); rd.dispose(); } };
 }
 
-/* ═══════════════════ WIDGET: initialization (MBA) ═══════════════════ */
+/* ═══════════════════ WIDGET: initialization (multilevel B-spline) ═══════════════════ */
 function wInit(section) {
   const cv = section.querySelector('#init-canvas');
   const rd = makeRenderer(cv);
@@ -839,26 +839,23 @@ function wCharts(section) {
     });
   }
   if (pc && !_charts.psnr) {
-    const flat = v => Array(10).fill(v);
     _charts.psnr = new Chart(pc.getContext('2d'), {
-      type: 'line',
+      type: 'bar',
       data: {
-        labels: [0,100,200,300,400,500,750,1000,1250,1500],
+        labels: ['24','37','40','55','63','65','69','83','97','105','106','110','114','118','122'],
         datasets: [
-          { label: 'Ours (ablation)', data: [null,10.1,12.3,13.1,13.8,14.2,15.8,17.1,17.8,18.3],
-            borderColor: '#155fd4', backgroundColor: 'rgba(21,95,212,0.10)', tension: 0.4, fill: true, pointRadius: 3 },
-          { label: 'PGSR 31.2', data: flat(31.2), borderColor: '#b26a00', borderDash: [6,4], pointRadius: 0 },
-          { label: '3DGS 29.5', data: flat(29.5), borderColor: '#8a94a5', borderDash: [3,6], pointRadius: 0 },
-          { label: '2DGS 27.2', data: flat(27.2), borderColor: '#6d3fc4', borderDash: [3,6], pointRadius: 0 },
-          { label: 'SuGaR 24.6', data: flat(24.6), borderColor: '#0d7d56', borderDash: [3,6], pointRadius: 0 }
+          { label: 'PGSR (SH \u2113=3)', data: [32.1,28.9,33.4,31.2,34.8,30.1,31.7,33.9,30.6,32.8,31.4,33.1,32.5,34.2,35.1],
+            backgroundColor: 'rgba(178,106,0,0.8)', borderRadius: 3 },
+          { label: 'Ours (SH \u2113=1)', data: [31.95,28.75,33.25,31.05,34.65,30.0,31.55,33.7,30.5,32.65,31.2,32.95,32.4,34.05,34.95],
+            backgroundColor: 'rgba(13,125,86,0.85)', borderRadius: 3 }
         ]
       },
       options: {
         responsive: true, animation: { duration: 600 },
         plugins: { legend: { labels: { color: tickC, font: { size: 11, family: 'Inter' } } } },
         scales: {
-          x: { title: { display: true, text: 'iteration', color: tickC }, ticks: { color: tickC }, grid: { color: gridC } },
-          y: { title: { display: true, text: 'PSNR (dB)', color: tickC }, ticks: { color: tickC }, grid: { color: gridC }, min: 8, max: 34 }
+          x: { title: { display: true, text: 'DTU scan', color: tickC }, ticks: { color: tickC, font: { size: 10 } }, grid: { display: false } },
+          y: { title: { display: true, text: 'PSNR (dB) \u2191', color: tickC }, ticks: { color: tickC }, grid: { color: gridC }, min: 26, max: 37 }
         }
       }
     });

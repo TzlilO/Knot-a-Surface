@@ -168,7 +168,7 @@ section.cover .chip.b{color:#4fc3f7}
   <h2>3D Gaussian Splatting, in 90 seconds</h2>
   <div class="eq" style="text-align:center;margin:10px 0 14px;padding:12px 30px">
     <div class="lab">Alpha-composited splatting</div>
-    $$C=\sum_{i=1}^{N} c_i\,\alpha_i \prod_{j<i}(1-\alpha_j)$$
+    $$C=\sum_{i=1}^{N} c_i\,\alpha_i \prod_{j&lt;i}(1-\alpha_j)$$
   </div>
   <div class="cols c3">
     <div class="card"><h3 style="color:var(--accent)">Gaussian primitive</h3>
@@ -250,6 +250,89 @@ section.cover .chip.b{color:#4fc3f7}
       </svg>
       <div class="eq"><p style="font-size:14px">$S(u,v)$ is the <strong style="color:var(--green)">primary learnable object</strong>. Position, rotation, scale of every Gaussian are consequences of surface differential geometry — no regularizer, no extraction, no post-hoc mesh.</p></div>
       <p style="text-align:center;font-size:14px">Structure is not a <em>constraint</em> imposed on Gaussians — it is the <strong style="color:var(--accent)">representation itself</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 9 · PIPELINE ═══════════════════════════════════════════════════ -->
+<section>
+  <span class="tag">Method</span>
+  <h2>The pipeline, end to end</h2>
+  <svg class="panel" viewBox="0 0 900 92" style="width:100%;margin:16px 0 10px;overflow:visible">
+    <g font-family="Inter">
+      <rect x="0" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#ffa72644" stroke-width="1.5"/>
+      <text x="61" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">INPUT</text>
+      <text x="61" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#ffa726">Images + COLMAP</text>
+      <text x="61" y="65" text-anchor="middle" font-size="10.5" fill="#ffa72688">poses · sparse PCD</text>
+      <line x1="124" y1="44" x2="150" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="148,40 156,44 148,48" fill="#5c6f8a"/>
+      <rect x="157" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#ce93d844" stroke-width="1.5"/>
+      <text x="218" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">INIT</text>
+      <text x="218" y="51" text-anchor="middle" font-size="10.5" font-weight="600" fill="#ce93d8">Multilevel B-spline</text>
+      <text x="218" y="65" text-anchor="middle" font-size="10.5" fill="#ce93d888">coarse→fine S(u,v)</text>
+      <line x1="281" y1="44" x2="307" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="305,40 313,44 305,48" fill="#5c6f8a"/>
+      <rect x="314" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#4fc3f744" stroke-width="1.5"/>
+      <text x="375" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">SAMPLE</text>
+      <text x="375" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#4fc3f7">UV grid</text>
+      <text x="375" y="65" text-anchor="middle" font-size="10.5" fill="#4fc3f788">visibility-adaptive</text>
+      <line x1="438" y1="44" x2="464" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="462,40 470,44 462,48" fill="#5c6f8a"/>
+      <rect x="471" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#4fc3f744" stroke-width="1.5"/>
+      <text x="532" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">DERIVE</text>
+      <text x="532" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#4fc3f7">μ · R · σ · a</text>
+      <text x="532" y="65" text-anchor="middle" font-size="10.5" fill="#4fc3f788">∂S/∂u, ∂S/∂v · CUDA</text>
+      <line x1="595" y1="44" x2="621" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="619,40 627,44 619,48" fill="#5c6f8a"/>
+      <rect x="628" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#69f0ae44" stroke-width="1.5"/>
+      <text x="689" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">RENDER</text>
+      <text x="689" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#69f0ae">PGSR rasterizer</text>
+      <text x="689" y="65" text-anchor="middle" font-size="10.5" fill="#69f0ae88">differentiable</text>
+      <line x1="752" y1="44" x2="778" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="776,40 784,44 776,48" fill="#5c6f8a"/>
+      <rect x="785" y="16" width="115" height="56" rx="8" fill="#121b2e" stroke="#69f0ae44" stroke-width="1.5"/>
+      <text x="842" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">LOSS</text>
+      <text x="842" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#69f0ae">Photo + Geo</text>
+      <text x="842" y="65" text-anchor="middle" font-size="10.5" fill="#69f0ae88">L1·SSIM·NCC·normal</text>
+      <path d="M900,74 Q900,90 450,90 Q0,90 0,74" fill="none" stroke="#1b2a42" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="450" y="88" text-anchor="middle" font-size="9.5" fill="#5c6f8a">↺ gradients → P_ij · w_ij · knots · control features</text>
+    </g>
+  </svg>
+  <div class="cols c4" style="margin-top:10px">
+    <div class="card"><h3 style="color:var(--amber)">Photometric</h3><p>$\mathcal{L}_{ph}=\lambda_1\mathcal{L}_1+\lambda_s\mathcal{L}_{\text{D-SSIM}}$</p></div>
+    <div class="card"><h3 style="color:var(--accent)">Normal consistency</h3><p>$\mathcal{L}_n=\lVert 1-\hat n_r\cdot\hat n_g\rVert_1$ — meaningful because $\hat n$ is analytic</p></div>
+    <div class="card"><h3 style="color:var(--green)">Multi-view NCC</h3><p>patch-level geometric consistency across views (from PGSR)</p></div>
+    <div class="card" style="border-color:rgba(79,195,247,.35);background:var(--bg2)"><h3 style="color:var(--accent)">Fused CUDA kernel</h3><p>$S,\mathbf S_u,\mathbf S_v,\mathbf S_{uu},\mathbf S_{vv}$ in one pass — <strong style="color:var(--accent)">~30× faster</strong> than einsum</p></div>
+  </div>
+</section>
+
+<!-- ═══ 10 · INITIALIZATION (interactive 3D) ═══════════════════════════ -->
+<section data-widget="init">
+  <span class="tag">Method</span>
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h2>Initialization: points &amp; cameras → surface</h2>
+    <span style="font-size:13px;color:var(--dim2)">Multilevel B-spline Approximation — each level fits only what the previous one missed</span>
+  </div>
+  <div class="cols" style="grid-template-columns:1.55fr 1fr;height:calc(100% - 60px);margin-top:6px">
+    <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+      <canvas id="init-canvas" class="wcanvas" style="flex:1;min-height:0"></canvas>
+      <div class="widget-ui" style="margin-top:0">
+        <button class="wbtn init-ph on" data-p="0">① points + cameras</button>
+        <button class="wbtn init-ph" data-p="1">② coarse fit 4×4</button>
+        <button class="wbtn init-ph" data-p="2">③ refine 8×8</button>
+        <button class="wbtn init-ph" data-p="3">④ refine 16×16</button>
+        <span id="init-status" style="margin-left:auto;font-size:12.5px;color:var(--dim2);font-variant-numeric:tabular-nums"></span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="card"><h3 style="color:var(--purple)">Multilevel B-spline Approximation — Lee, Wolberg &amp; Shin '97</h3>
+        <p>Multilevel B-spline Approximation: closed-form fit at each level, residuals cascade to the next. No iterative solver, milliseconds on the COLMAP cloud.</p></div>
+      <div class="cols c2" style="gap:10px">
+        <div class="card" style="text-align:center;border-color:rgba(255,167,38,.35)">
+          <div style="font-size:11px;color:var(--dim2);text-transform:uppercase;margin-bottom:4px">3DGS random init</div>
+          <div class="big a" style="font-size:34px">7,000</div>
+          <p style="font-size:11.5px;margin-top:4px">iters before geometry losses activate</p></div>
+        <div class="card" style="text-align:center;border-color:rgba(105,240,174,.35)">
+          <div style="font-size:11px;color:var(--dim2);text-transform:uppercase;margin-bottom:4px">Ours — multilevel B-spline prior</div>
+          <div class="big g" style="font-size:34px">150</div>
+          <p style="font-size:11.5px;margin-top:4px">geometry supervision from the start</p></div>
+      </div>
+      <div class="callout">Normal + NCC losses only produce useful gradients on a <strong>geometrically plausible</strong> surface. The multilevel B-spline prior makes them meaningful <strong style="color:var(--green)">50× earlier</strong>.</div>
     </div>
   </div>
 </section>
@@ -342,7 +425,7 @@ section.cover .chip.b{color:#4fc3f7}
         <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px">
           <span>Control points</span><span style="color:var(--green)">$P_{ij}\in\mathbb{R}^3$ — grid $n\times m$</span>
           <span>Knot vectors</span><span style="color:var(--green)">bounded sigmoid re-param</span>
-          <span>NURBS weights</span><span style="color:var(--green)">$w_{ij}>0$ (optional)</span>
+          <span>NURBS weights</span><span style="color:var(--green)">$w_{ij}&gt;0$ (optional)</span>
           <span>SH &amp; opacity</span><span style="color:var(--green)">$\tilde a_{ij}$ per control point</span>
         </div></div>
       <div class="card" style="border-color:rgba(79,195,247,.3)"><div class="wlab" style="color:var(--accent);margin-bottom:8px">Derived — zero parameters</div>
@@ -352,89 +435,6 @@ section.cover .chip.b{color:#4fc3f7}
           <span style="color:var(--accent);font-weight:600">Scale</span><span>$\lVert\mathbf S_u\rVert\Delta u,\ \lVert\mathbf S_v\rVert\Delta v$</span>
         </div></div>
       <div class="callout">SH degree 1 suffices — view-dependent effects arise from correct geometry, not from 48 SH floats compensating for wrong geometry. <strong>≈50× fewer optimized parameters.</strong></div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ 9 · PIPELINE ═══════════════════════════════════════════════════ -->
-<section>
-  <span class="tag">Method</span>
-  <h2>The pipeline, end to end</h2>
-  <svg class="panel" viewBox="0 0 900 92" style="width:100%;margin:16px 0 10px;overflow:visible">
-    <g font-family="Inter">
-      <rect x="0" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#ffa72644" stroke-width="1.5"/>
-      <text x="61" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">INPUT</text>
-      <text x="61" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#ffa726">Images + COLMAP</text>
-      <text x="61" y="65" text-anchor="middle" font-size="10.5" fill="#ffa72688">poses · sparse PCD</text>
-      <line x1="124" y1="44" x2="150" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="148,40 156,44 148,48" fill="#5c6f8a"/>
-      <rect x="157" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#ce93d844" stroke-width="1.5"/>
-      <text x="218" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">INIT</text>
-      <text x="218" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#ce93d8">MBA fit</text>
-      <text x="218" y="65" text-anchor="middle" font-size="10.5" fill="#ce93d888">coarse→fine S(u,v)</text>
-      <line x1="281" y1="44" x2="307" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="305,40 313,44 305,48" fill="#5c6f8a"/>
-      <rect x="314" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#4fc3f744" stroke-width="1.5"/>
-      <text x="375" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">SAMPLE</text>
-      <text x="375" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#4fc3f7">UV grid</text>
-      <text x="375" y="65" text-anchor="middle" font-size="10.5" fill="#4fc3f788">visibility-adaptive</text>
-      <line x1="438" y1="44" x2="464" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="462,40 470,44 462,48" fill="#5c6f8a"/>
-      <rect x="471" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#4fc3f744" stroke-width="1.5"/>
-      <text x="532" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">DERIVE</text>
-      <text x="532" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#4fc3f7">μ · R · σ · a</text>
-      <text x="532" y="65" text-anchor="middle" font-size="10.5" fill="#4fc3f788">∂S/∂u, ∂S/∂v · CUDA</text>
-      <line x1="595" y1="44" x2="621" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="619,40 627,44 619,48" fill="#5c6f8a"/>
-      <rect x="628" y="16" width="122" height="56" rx="8" fill="#121b2e" stroke="#69f0ae44" stroke-width="1.5"/>
-      <text x="689" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">RENDER</text>
-      <text x="689" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#69f0ae">PGSR rasterizer</text>
-      <text x="689" y="65" text-anchor="middle" font-size="10.5" fill="#69f0ae88">differentiable</text>
-      <line x1="752" y1="44" x2="778" y2="44" stroke="#1b2a42" stroke-width="2"/><polygon points="776,40 784,44 776,48" fill="#5c6f8a"/>
-      <rect x="785" y="16" width="115" height="56" rx="8" fill="#121b2e" stroke="#69f0ae44" stroke-width="1.5"/>
-      <text x="842" y="35" text-anchor="middle" font-size="9" fill="#5c6f8a" letter-spacing=".08em">LOSS</text>
-      <text x="842" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#69f0ae">Photo + Geo</text>
-      <text x="842" y="65" text-anchor="middle" font-size="10.5" fill="#69f0ae88">L1·SSIM·NCC·normal</text>
-      <path d="M900,74 Q900,90 450,90 Q0,90 0,74" fill="none" stroke="#1b2a42" stroke-width="1.5" stroke-dasharray="5,3"/>
-      <text x="450" y="88" text-anchor="middle" font-size="9.5" fill="#5c6f8a">↺ gradients → P_ij · w_ij · knots · control features</text>
-    </g>
-  </svg>
-  <div class="cols c4" style="margin-top:10px">
-    <div class="card"><h3 style="color:var(--amber)">Photometric</h3><p>$\mathcal{L}_{ph}=\lambda_1\mathcal{L}_1+\lambda_s\mathcal{L}_{\text{D-SSIM}}$</p></div>
-    <div class="card"><h3 style="color:var(--accent)">Normal consistency</h3><p>$\mathcal{L}_n=\lVert 1-\hat n_r\cdot\hat n_g\rVert_1$ — meaningful because $\hat n$ is analytic</p></div>
-    <div class="card"><h3 style="color:var(--green)">Multi-view NCC</h3><p>patch-level geometric consistency across views (from PGSR)</p></div>
-    <div class="card" style="border-color:rgba(79,195,247,.35);background:var(--bg2)"><h3 style="color:var(--accent)">Fused CUDA kernel</h3><p>$S,\mathbf S_u,\mathbf S_v,\mathbf S_{uu},\mathbf S_{vv}$ in one pass — <strong style="color:var(--accent)">~30× faster</strong> than einsum</p></div>
-  </div>
-</section>
-
-<!-- ═══ 10 · INITIALIZATION (interactive 3D) ═══════════════════════════ -->
-<section data-widget="init">
-  <span class="tag">Method</span>
-  <div style="display:flex;align-items:baseline;gap:14px">
-    <h2>Initialization: points &amp; cameras → surface</h2>
-    <span style="font-size:13px;color:var(--dim2)">MBA — each level fits only what the previous one missed</span>
-  </div>
-  <div class="cols" style="grid-template-columns:1.55fr 1fr;height:calc(100% - 60px);margin-top:6px">
-    <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
-      <canvas id="init-canvas" class="wcanvas" style="flex:1;min-height:0"></canvas>
-      <div class="widget-ui" style="margin-top:0">
-        <button class="wbtn init-ph on" data-p="0">① points + cameras</button>
-        <button class="wbtn init-ph" data-p="1">② coarse fit 4×4</button>
-        <button class="wbtn init-ph" data-p="2">③ refine 8×8</button>
-        <button class="wbtn init-ph" data-p="3">④ refine 16×16</button>
-        <span id="init-status" style="margin-left:auto;font-size:12.5px;color:var(--dim2);font-variant-numeric:tabular-nums"></span>
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div class="card"><h3 style="color:var(--purple)">MBA — Lee, Wolberg &amp; Shin '97</h3>
-        <p>Multilevel B-spline Approximation: closed-form fit at each level, residuals cascade to the next. No iterative solver, milliseconds on the COLMAP cloud.</p></div>
-      <div class="cols c2" style="gap:10px">
-        <div class="card" style="text-align:center;border-color:rgba(255,167,38,.35)">
-          <div style="font-size:11px;color:var(--dim2);text-transform:uppercase;margin-bottom:4px">3DGS random init</div>
-          <div class="big a" style="font-size:34px">7,000</div>
-          <p style="font-size:11.5px;margin-top:4px">iters before geometry losses activate</p></div>
-        <div class="card" style="text-align:center;border-color:rgba(105,240,174,.35)">
-          <div style="font-size:11px;color:var(--dim2);text-transform:uppercase;margin-bottom:4px">Ours — MBA prior</div>
-          <div class="big g" style="font-size:34px">150</div>
-          <p style="font-size:11.5px;margin-top:4px">geometry supervision from the start</p></div>
-      </div>
-      <div class="callout">Normal + NCC losses only produce useful gradients on a <strong>geometrically plausible</strong> surface. MBA makes them meaningful <strong style="color:var(--green)">50× earlier</strong>.</div>
     </div>
   </div>
 </section>
