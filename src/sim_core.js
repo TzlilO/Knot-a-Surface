@@ -675,7 +675,12 @@ window.KnotSwarmSim = (function () {
         '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
         '<div class="kss-cpitch-wrap kss-topo-wrap" style="display:none"><span>⚫ R</span><input class="kss-topo-r kss-cpitch" type="range" min="0.5" max="6" step="0.1" value="2"><span class="kss-cpitch-val kss-topo-val">2.0 m</span></div>' +
         '<div class="kss-cmdr-read"></div>' +
-        '<div class="kss-joy"><div class="kss-joy-base"><div class="kss-joy-knob"></div></div><div class="kss-joy-lbl">\uD83D\uDD79 DRONE</div></div>' +
+        '<div class="kss-joy">' +
+          '<div class="kss-joy-elev"><button class="kss-joy-up" title="ascend">\u25b2</button><button class="kss-joy-dn" title="descend">\u25bc</button></div>' +
+          '<div class="kss-joy-base" data-joy="main"><div class="kss-joy-knob"></div></div>' +
+          '<div class="kss-joy-lbl">\uD83D\uDD79 yaw \u00b7 fwd</div></div>' +
+        '<div class="kss-joy-l"><div class="kss-joy-base" data-joy="l"><div class="kss-joy-knob"></div></div><div class="kss-joy-lbl">rotate \u00b7 alt</div></div>' +
+        '<div class="kss-joy-r"><div class="kss-joy-base" data-joy="r"><div class="kss-joy-knob"></div></div><div class="kss-joy-lbl">move</div></div>' +
         '<button class="kss-info-btn" title="about this simulator">i</button>' +
         '<div class="kss-info">' +
           '<button class="kss-info-x" title="close">✕</button>' +
@@ -2720,15 +2725,30 @@ window.KnotSwarmSim = (function () {
        It drives the free commander's target (cOrbit.t*) and the ROI to its gaze,
        so the frustum-allocated splats flow seamlessly across the terrain below.
        Reuses frustumWindow()/domainStep()/updateRecon() unchanged. ── */
-    /* kinematic entity: autonomous patrol by default, steerable via the joystick
-       (joy.x = yaw, joy.y = forward/back throttle). Resumes patrol after idle. */
-    const joy = { x: 0, y: 0 };
+    /* kinematic entity: autonomous patrol by default; steerable via keyboard
+       (WASD nav · ←→ yaw · ↑↓ climb) and joysticks. Resumes patrol after idle.
+       Control axes: fwd/back, strafe, yaw, climb — summed from every input. */
+    const joy = { x: 0, y: 0 }, joyL = { x: 0, y: 0 }, joyR = { x: 0, y: 0 }, elev = { v: 0 };
     const drone = { px: ENV_HOME.forest.x, pz: ENV_HOME.forest.z, hd: 0, alt: 26,
                     lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2, auto: true, idleT: 0, init: false };
+    let _moveT = 0;
+    function setMoving(on) {                          // zen-on-move: show nothing but the frame
+      if (on) { _moveT = st.t; container.classList.add('kss-moving'); }
+      else if (container.classList.contains('kss-moving') && st.t - _moveT > 0.8) container.classList.remove('kss-moving');
+    }
     function droneStep(dt) {
       const H = ENV_HOME[st.env];
       if (!drone.init) { drone.px = H.x; drone.pz = H.z; drone.init = true; }
-      const active = Math.abs(joy.x) > 0.03 || Math.abs(joy.y) > 0.03;
+      // gather control axes from joysticks + elevation buttons + keyboard
+      let fwd = joy.y + joyR.y, strafe = joyR.x, yaw = joy.x + joyL.x, climb = elev.v + joyL.y;
+      if (st.drone) {
+        if (keys['w']) fwd += 1; if (keys['s']) fwd -= 1;
+        if (keys['d']) strafe += 1; if (keys['a']) strafe -= 1;
+        if (keys['arrowright']) yaw += 1; if (keys['arrowleft']) yaw -= 1;
+        if (keys['arrowup']) climb += 1; if (keys['arrowdown']) climb -= 1;
+      }
+      fwd = clamp(fwd, -1, 1); strafe = clamp(strafe, -1, 1); yaw = clamp(yaw, -1, 1); climb = clamp(climb, -1, 1);
+      const active = Math.abs(fwd) > 0.02 || Math.abs(strafe) > 0.02 || Math.abs(yaw) > 0.02 || Math.abs(climb) > 0.02;
       if (active) { drone.auto = false; drone.idleT = st.t; }
       else if (!drone.auto && st.t - drone.idleT > 5) drone.auto = true;   // resume patrol after idle
       if (drone.auto) {
@@ -2740,12 +2760,14 @@ window.KnotSwarmSim = (function () {
         drone.hd += clamp(dh, -1, 1) * 0.6 * dt;
         drone.px += Math.cos(drone.hd) * 9 * dt;
         drone.pz += Math.sin(drone.hd) * 9 * dt;
+        drone.alt += (26 + 5 * Math.sin(st.t * 0.09) - drone.alt) * Math.min(1, dt);   // altitude bob
       } else {
-        drone.hd += joy.x * 1.5 * dt;                // yaw
-        drone.px += Math.cos(drone.hd) * joy.y * 20 * dt;   // forward / back
-        drone.pz += Math.sin(drone.hd) * joy.y * 20 * dt;
+        drone.hd += yaw * 1.6 * dt;                  // rotate
+        const spd = 22;                              // translate in the heading frame
+        drone.px += (Math.cos(drone.hd) * fwd - Math.sin(drone.hd) * strafe) * spd * dt;
+        drone.pz += (Math.sin(drone.hd) * fwd + Math.cos(drone.hd) * strafe) * spd * dt;
+        drone.alt = clamp(drone.alt + climb * 16 * dt, 8, 72);   // ascend / descend
       }
-      drone.alt += (26 + 5 * Math.sin(st.t * 0.09) - drone.alt) * Math.min(1, dt);
       drone.px = clamp(drone.px, -ROI_CAP, ROI_CAP);
       drone.pz = clamp(drone.pz, -ROI_CAP, ROI_CAP);
       const look = 16;                               // gaze lands ahead of travel -> steep gimbal
@@ -2761,6 +2783,7 @@ window.KnotSwarmSim = (function () {
       cOrbit.tx = drone.lx; cOrbit.tz = drone.lz; cOrbit.auto = false;
       cmdrCam.position.set(drone.px, drone.alt, drone.pz);
       cmdrCam.lookAt(drone.lx, drone.ly, drone.lz);
+      if (st.mobile) setMoving(active);              // mobile: hide UI while flying
     }
     function applyFit() {
       cOrbit.auto = false;                        // a fixed image plane cannot rotate
@@ -2840,6 +2863,7 @@ window.KnotSwarmSim = (function () {
       st.swapped = !st.swapped;
       cmdrBox.classList.toggle('kss-swapped', st.swapped);
       cmdrLabel.textContent = st.swapped ? 'REAL SCENE' : 'COMMANDER';   // inset shows the other view
+      resize();                                   // cameras swap which canvas they fill → re-fit aspect
     };
     swapBtn.addEventListener('click', onSwap);
 
@@ -2848,7 +2872,7 @@ window.KnotSwarmSim = (function () {
     function kDown(e) {
       showUI();
       const k = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 't', 'g', 'shift'].includes(k)) {
+      if (['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 't', 'g', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
         keys[k] = true;
         e.preventDefault(); e.stopPropagation();
       }
@@ -2859,6 +2883,7 @@ window.KnotSwarmSim = (function () {
     stage.addEventListener('pointerenter', () => stage.focus({ preventScroll: true }));
     function keyStep(dt) {
       const fast = keys['shift'] ? 2.6 : 1;
+      const droneFly = st.drone && !st.warm.active;   // drone claims WASD/QE while flying
       const camForCtl = st.swapped ? cmdrCam : cam;   // move relative to the view on screen
       const fwd = new T.Vector3(); camForCtl.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
       const rgt = new T.Vector3(fwd.z, 0, -fwd.x);
@@ -2867,15 +2892,15 @@ window.KnotSwarmSim = (function () {
       if (keys['s']) { mx -= fwd.x; mz -= fwd.z; }
       if (keys['a']) { mx += rgt.x; mz += rgt.z; }
       if (keys['d']) { mx -= rgt.x; mz -= rgt.z; }
-      if (mx || mz) {                           // WASD flies the commander; crop + swarm follow it
+      if ((mx || mz) && !droneFly) {            // WASD flies the commander; crop + swarm follow it
         if (st.mode !== 'manual') setMode('manual');
         const sp = 24 * fast * dt;
         cOrbit.tx = clamp(cOrbit.tx + mx * sp, -ROI_CAP, ROI_CAP);
         cOrbit.tz = clamp(cOrbit.tz + mz * sp, -ROI_CAP, ROI_CAP);
         cOrbit.auto = false;
       }
-      if (keys['q']) { cOrbit.th -= 1.6 * dt; cOrbit.auto = false; }
-      if (keys['e']) { cOrbit.th += 1.6 * dt; cOrbit.auto = false; }
+      if (keys['q'] && !droneFly) { cOrbit.th -= 1.6 * dt; cOrbit.auto = false; }
+      if (keys['e'] && !droneFly) { cOrbit.th += 1.6 * dt; cOrbit.auto = false; }
       if (keys['r'] || keys['f']) {
         if (st.mode !== 'manual') setMode('manual');
         st.zoom = clamp01(st.zoom + (keys['r'] ? 1 : -1) * 0.55 * fast * dt);
@@ -2890,6 +2915,8 @@ window.KnotSwarmSim = (function () {
     /* ---------- UI: popup menus, auto-fold, zen ---------- */
     let _uiLast = performance.now();
     st.zen = false;
+    st.mobile = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || innerWidth < 760;
+    container.classList.toggle('kss-mobile', st.mobile);
     const menus = bar.querySelectorAll('.kss-menu');
     const dockBtns = bar.querySelectorAll('.kss-dbtn[data-open]');
     function closeMenus() {
@@ -3032,14 +3059,14 @@ window.KnotSwarmSim = (function () {
       const r = stage.getBoundingClientRect();
       if (r.width < 4 || r.height < 4) return;
       renderer.setSize(r.width, r.height, false);
-      cam.aspect = r.width / r.height;
-      cam.updateProjectionMatrix();
       const cr = cmdrCanvas.getBoundingClientRect();
-      if (cr.width > 4) {
-        cmdrRenderer.setSize(cr.width, cr.height, false);
-        cmdrCam.aspect = cr.width / cr.height;
-        cmdrCam.updateProjectionMatrix();
-      }
+      if (cr.width > 4) cmdrRenderer.setSize(cr.width, cr.height, false);
+      // the camera shown in the MAIN canvas must match the MAIN aspect, else it
+      // stretches (bad on portrait phones); the inset camera matches the inset.
+      const mainCam = st.swapped ? cmdrCam : cam;
+      const insetCam = st.swapped ? cam : cmdrCam;
+      mainCam.aspect = r.width / r.height; mainCam.updateProjectionMatrix();
+      if (cr.width > 4) { insetCam.aspect = cr.width / cr.height; insetCam.updateProjectionMatrix(); }
     }
     const ro = new ResizeObserver(resize);
     ro.observe(stage); ro.observe(cmdrBox);
@@ -3059,28 +3086,41 @@ window.KnotSwarmSim = (function () {
        depth field IS a flat 2D image (splat k = j*S+i). Segment in 2D, lift the
        mask straight back to the 3D splats. Fully revertible. ── */
     const droneBtn = container.querySelector('.kss-drone-t');
-    const joyWrap = container.querySelector('.kss-joy');
-    const joyBase = container.querySelector('.kss-joy-base');
-    const joyKnob = container.querySelector('.kss-joy-knob');
-    let joyId = null;
-    function joySet(cx, cy) {
-      const r = joyBase.getBoundingClientRect(), R = r.width / 2;
-      let dx = cx - (r.left + R), dy = cy - (r.top + R);
-      const m = Math.hypot(dx, dy);
-      if (m > R) { dx = dx / m * R; dy = dy / m * R; }
-      joyKnob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
-      joy.x = dx / R; joy.y = -dy / R;            // stick up = +forward
+    function makeStick(sel, state) {                  // wire a joystick base to a {x,y} axis pair
+      const base = container.querySelector(sel); if (!base) return;
+      const knob = base.querySelector('.kss-joy-knob');
+      let id = null;
+      const set = (cx, cy) => {
+        const r = base.getBoundingClientRect(), R = r.width / 2;
+        let dx = cx - (r.left + R), dy = cy - (r.top + R);
+        const m = Math.hypot(dx, dy); if (m > R) { dx = dx / m * R; dy = dy / m * R; }
+        knob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+        state.x = dx / R; state.y = -dy / R;          // stick up = +y
+      };
+      const end = () => { state.x = 0; state.y = 0; id = null; knob.style.transform = 'translate(0,0)'; };
+      base.addEventListener('pointerdown', e => {
+        e.stopPropagation(); e.preventDefault();
+        id = e.pointerId; try { base.setPointerCapture(e.pointerId); } catch (_) {}
+        drone.auto = false; drone.idleT = st.t; set(e.clientX, e.clientY);
+      });
+      base.addEventListener('pointermove', e => { if (id === e.pointerId) { e.stopPropagation(); set(e.clientX, e.clientY); } });
+      base.addEventListener('pointerup', e => { if (id === e.pointerId) { e.stopPropagation(); end(); } });
+      base.addEventListener('pointercancel', e => { if (id === e.pointerId) end(); });
     }
-    function joyEnd() { joy.x = 0; joy.y = 0; joyId = null; joyKnob.style.transform = 'translate(0,0)'; }
-    joyBase.addEventListener('pointerdown', e => {
-      e.stopPropagation(); e.preventDefault();
-      joyId = e.pointerId; try { joyBase.setPointerCapture(e.pointerId); } catch (_) {}
-      drone.auto = false; drone.idleT = st.t; joySet(e.clientX, e.clientY);
-    });
-    joyBase.addEventListener('pointermove', e => { if (joyId === e.pointerId) { e.stopPropagation(); joySet(e.clientX, e.clientY); } });
-    joyBase.addEventListener('pointerup', e => { if (joyId === e.pointerId) { e.stopPropagation(); joyEnd(); } });
-    joyBase.addEventListener('pointercancel', e => { if (joyId === e.pointerId) joyEnd(); });
-    function syncJoy() { joyWrap.style.display = st.drone ? 'flex' : 'none'; }
+    makeStick('.kss-joy [data-joy="main"]', joy);    // desktop: x = yaw, y = forward
+    makeStick('[data-joy="l"]', joyL);               // mobile left: x = rotate, y = up/down
+    makeStick('[data-joy="r"]', joyR);               // mobile right: x = strafe, y = forward/back
+    (function () {                                     // desktop elevation buttons (hold)
+      const holds = [['.kss-joy-up', 1], ['.kss-joy-dn', -1]];
+      for (const [sel, v] of holds) {
+        const b = container.querySelector(sel); if (!b) continue;
+        const down = e => { e.stopPropagation(); e.preventDefault(); elev.v = v; drone.auto = false; drone.idleT = st.t; };
+        const up = () => { elev.v = 0; };
+        b.addEventListener('pointerdown', down);
+        b.addEventListener('pointerup', up); b.addEventListener('pointerleave', up); b.addEventListener('pointercancel', up);
+      }
+    })();
+    function syncJoy() { container.classList.toggle('kss-drone-on', st.drone); if (!st.drone) container.classList.remove('kss-moving'); }
     droneBtn.addEventListener('click', e => {
       e.stopPropagation(); st.drone = !st.drone; droneBtn.classList.toggle('kss-on', st.drone);
       if (!st.drone) cOrbit.auto = true; else drone.auto = true;
