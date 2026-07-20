@@ -1559,6 +1559,11 @@ window.KnotSwarmSim = (function () {
       const d = Math.abs(tu0 - win.u0) + Math.abs(tv0 - win.v0) + Math.abs(tu1 - win.u1) + Math.abs(tv1 - win.v1);
       win.u0 += (tu0 - win.u0) * a; win.v0 += (tv0 - win.v0) * a;
       win.u1 += (tu1 - win.u1) * a; win.v1 += (tv1 - win.v1) * a;
+      // floor the window span: a fast reorientation must never collapse wu/wv to
+      // ~0, since cell size and importance-gradient steps divide by it downstream
+      const MINW = 0.02;
+      if (win.u1 - win.u0 < MINW) { const m = (win.u0 + win.u1) / 2; win.u0 = clamp01(m - MINW / 2); win.u1 = clamp01(m + MINW / 2); }
+      if (win.v1 - win.v0 < MINW) { const m = (win.v0 + win.v1) / 2; win.v0 = clamp01(m - MINW / 2); win.v1 = clamp01(m + MINW / 2); }
       win.locked = locked;
       if (d > 0.004) reconDirty = true;
     }
@@ -2186,7 +2191,9 @@ window.KnotSwarmSim = (function () {
       if (st.boost > 0) { K = 28; st.boost -= dt; }
       const prevRes = fit.res;
       optimStep(1 - Math.exp(-K * dt));
-      if (Math.abs(prevRes - fit.res) > 1e-4) reconDirty = true;
+      if (!isFinite(fit.res)) {                     // a stray non-finite must self-heal, never persist
+        fit.cur.set(fit.tgt); fit.res = 0; IMP.t = -9; reconDirty = true;
+      } else if (Math.abs(prevRes - fit.res) > 1e-4) reconDirty = true;
       truncSubdivStep();
     }
     function warmStep(now) {
@@ -3338,9 +3345,11 @@ window.KnotSwarmSim = (function () {
       return { vis, inm, g };
     };
 
+    let _loopErrT = -9;
     function loop() {
       if (dead) return;
       raf = requestAnimationFrame(loop);
+      try {
       const dt = Math.min(0.05, clock.getDelta());
       st.t += dt; frame++;
       if (st.warm.active) warmStep(st.t);
@@ -3446,6 +3455,15 @@ window.KnotSwarmSim = (function () {
         popChannel();
         scene.background = bgFull; scene.fog = fogFull;
         if (st.show.cmdr) cmdrRenderer.render(scene, cam);
+      }
+      } catch (err) {
+        // one bad frame must never wedge the loop forever (RAF above already
+        // rescheduled) — self-heal the persistent state and keep going
+        if (st.t - _loopErrT > 2) { console.error('[KSS] frame error, self-healing:', err); _loopErrT = st.t; }
+        if (fit.cur && fit.tgt && fit.cur.length === fit.tgt.length) fit.cur.set(fit.tgt);
+        fit.res = 0; IMP.t = -9;
+        win.u0 = 0; win.v0 = 0; win.u1 = 1; win.v1 = 1;
+        reconDirty = true;
       }
     }
     loop();
