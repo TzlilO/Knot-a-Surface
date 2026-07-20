@@ -2727,28 +2727,37 @@ window.KnotSwarmSim = (function () {
       const nV = M * M, nF = 2 * (M - 1) * (M - 1);
       const head = 'ply\nformat binary_little_endian 1.0\ncomment Knot-a-Surface swarm reconstruction\n' +
         'element vertex ' + nV + '\nproperty float x\nproperty float y\nproperty float z\n' +
+        'property float nx\nproperty float ny\nproperty float nz\n' +
         'property uchar red\nproperty uchar green\nproperty uchar blue\n' +
         'element face ' + nF + '\nproperty list uchar int vertex_indices\nend_header\n';
       const hb = new TextEncoder().encode(head);
-      const buf = new ArrayBuffer(hb.length + nV * 15 + nF * 13);
+      const buf = new ArrayBuffer(hb.length + nV * 27 + nF * 13);
       new Uint8Array(buf).set(hb, 0);
       const dv = new DataView(buf);
       let o = hb.length;
       const mapAx = t => st.adaptive && IMP.cdfU ? axisSample(t, IMP.cdfU) : t;
       const mapAy = t => st.adaptive && IMP.cdfV ? axisSample(t, IMP.cdfV) : t;
+      const du = wu / M, dv_ = wv / M;               // UV step for central-difference normals
       for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
         const u = win.u0 + mapAx((i + 0.5) / M) * wu, v = win.v0 + mapAy((j + 0.5) / M) * wv;
         const x = fit.x0 + u * fit.crop, z = fit.z0 + v * fit.crop;
         const h = bicubic(fit.cur, fit.CN, u, v);
+        const hR = bicubic(fit.cur, fit.CN, Math.min(1, u + du), v);
+        const hL = bicubic(fit.cur, fit.CN, Math.max(0, u - du), v);
+        const hD = bicubic(fit.cur, fit.CN, u, Math.min(1, v + dv_));
+        const hU = bicubic(fit.cur, fit.CN, u, Math.max(0, v - dv_));
+        const nx_ = -(hR - hL) / (fit.crop * 2 * du), nz_ = -(hD - hU) / (fit.crop * 2 * dv_);
+        const nl = Math.hypot(nx_, 1, nz_);
         const cc = E.col(x, z, h, st.t) || [0.5, 0.5, 0.5];
         dv.setFloat32(o, x, true); dv.setFloat32(o + 4, h, true); dv.setFloat32(o + 8, z, true);
-        dv.setUint8(o + 12, clamp01(cc[0]) * 255); dv.setUint8(o + 13, clamp01(cc[1]) * 255); dv.setUint8(o + 14, clamp01(cc[2]) * 255);
-        o += 15;
+        dv.setFloat32(o + 12, nx_ / nl, true); dv.setFloat32(o + 16, 1 / nl, true); dv.setFloat32(o + 20, nz_ / nl, true);
+        dv.setUint8(o + 24, clamp01(cc[0]) * 255); dv.setUint8(o + 25, clamp01(cc[1]) * 255); dv.setUint8(o + 26, clamp01(cc[2]) * 255);
+        o += 27;
       }
       for (let j = 0; j < M - 1; j++) for (let i = 0; i < M - 1; i++) {
         const a = j * M + i, b = a + 1, cIdx = a + M, d = cIdx + 1;   // the 2×2 window
-        dv.setUint8(o, 3); dv.setInt32(o + 1, a, true); dv.setInt32(o + 5, b, true); dv.setInt32(o + 9, d, true); o += 13;
-        dv.setUint8(o, 3); dv.setInt32(o + 1, a, true); dv.setInt32(o + 5, d, true); dv.setInt32(o + 9, cIdx, true); o += 13;
+        dv.setUint8(o, 3); dv.setInt32(o + 1, a, true); dv.setInt32(o + 5, d, true); dv.setInt32(o + 9, b, true); o += 13;  // ponytail: CCW from above → normal +Y
+        dv.setUint8(o, 3); dv.setInt32(o + 1, a, true); dv.setInt32(o + 5, cIdx, true); dv.setInt32(o + 9, d, true); o += 13;
       }
       const blob = new Blob([buf], { type: 'application/octet-stream' });
       const a2 = document.createElement('a');
