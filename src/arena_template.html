@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Knot-a-Surface — Arena: Live 4D Match Reconstruction</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#07090f;color:#dde5f0;
+  font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%;padding:14px;gap:10px}
+header{flex:none;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-size:19px;font-weight:700;letter-spacing:-.02em}
+header .sub{font-size:13px;color:#5c6f8a}
+header a{font-size:11px;color:#4fc3f7;text-decoration:none;font-weight:700}
+header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  color:#4fc3f7;background:#121b2e;border:1.5px solid #1b2a42;border-radius:14px;padding:4px 12px;margin-left:auto}
+#sim{flex:1 1 auto;min-height:0}
+footer{flex:none;font-size:12px;color:#5c6f8a;line-height:1.6}
+footer b{color:#8fa4c0}
+/*__ARENA_CSS__*/
+@media (max-width:840px){
+  footer{display:none}
+  header h1{font-size:15px}
+  header .sub{display:none}
+  header .badge{font-size:8px;padding:3px 8px}
+  #app{padding:8px;gap:6px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Arena — Live 4D Match Reconstruction</h1>
+    <span class="sub">fixed broadcast swarm · spline-coupled player/ball tracking · fly through the reconstruction</span>
+    <a href="index.html">&larr; terrain simulator</a>
+    <span class="badge">Knot-a-Surface</span>
+  </header>
+  <div id="sim"></div>
+  <footer>
+    <b>Pipeline:</b> a <b>fixed</b> rig of broadcast cameras (perimeter + roof — the court's bounds are known,
+    so nothing needs to fly) samples each player and the ball ~10&times;/s with per-camera noise and a
+    field-of-view/range cutoff. Detections that see the same entity are fused, then a <b>Catmull-Rom spline is fit
+    through the last ~1.2s of fused samples</b> and evaluated slightly in the past — the same spline-coupled idea
+    as the terrain model, now tracking moving entities instead of static geometry. The fixed <b>Gaussian-splat
+    budget</b> is split between a static court-surface reconstruction and per-entity splat clusters whose spread
+    and opacity encode live tracking <b>confidence</b> (fewer cameras seeing you &rarr; bigger, dimmer blob).
+    <b>Click the view</b> to fly through it in free 3D (WASD + mouse, Shift sprint, Q/E for altitude) — toggle
+    <b>ghost truth</b> to compare the reconstruction against the real (ground-truth) positions.
+  </footer>
+</div>
+<script>
+/*__ARENA_CORE__*/
+</script>
+<script>
+  KnotArenaSim.create(document.getElementById('sim'), { embed: false });
+</script>
+</body>
+</html>

@@ -8,13 +8,36 @@ Gaussian splatting): a drone swarm reconstructs battlefield scenes as a spline-c
 splat surface under a fixed Gaussian budget. The deck embeds the same simulator as a slide.
 
 ## Build & deploy
-- Source of truth: `src/` — never edit `index.html`/`deck.html` directly (generated).
+- Source of truth: `src/` — never edit `index.html`/`deck.html`/`arena.html` directly (generated).
 - `python3 build.py` injects `src/sim_core.js` + `src/sim_style.css` into the two
-  templates (`/*__SIM_CORE__*/`, `/*__SIM_CSS__*/` markers) → `index.html`, `deck.html`.
+  templates (`/*__SIM_CORE__*/`, `/*__SIM_CSS__*/` markers) → `index.html`, `deck.html`,
+  and `src/arena_core.js` + `src/arena_style.css` into `src/arena_template.html`
+  (`/*__ARENA_CORE__*/`, `/*__ARENA_CSS__*/`) → `arena.html`.
 - Deploy = commit + push to `main`; GitHub Pages serves in ~1 min (cache-control 600 s —
   hard-refresh or add `?v=N` to see changes).
 - Deck parts: `src/deck_a.html` (head+theme+slides 1-11) · `deck_b.html` (slides 12-21) ·
   `deck_c.html` (all deck JS: widgets, charts, reveal init).
+
+## arena.html — Arena: live 4D match reconstruction
+A second, independent single-file three.js simulator (`window.KnotArenaSim`, ~`src/arena_core.js`)
+applying the same thesis to a sports court instead of terrain: the swarm is FIXED (perimeter +
+roof broadcast rigs — court bounds are known, nothing needs to fly) and the point of the demo is
+flying INSIDE the live reconstruction, not orbiting a drone around it.
+- `COURTS.{basketball,football}` = dims + markings (`courtLineSegs`/`courtColor`, single source
+  for both the static splat floor and the minimap — same field/props invariant as the terrain sim).
+- Ground truth: each player wanders a closed `CatmullRomCurve3` loop; the ball hops between
+  players with a parabolic height arc (`stepGroundTruth`).
+- Sensing → reconstruction: `updateSensing` fuses per-camera noisy detections (FOV+range gated)
+  into a per-entity ring buffer at 10 Hz; `reconAt` fits an OPEN Catmull-Rom through that buffer
+  and evaluates it `LATENCY` (0.22s) in the past — this is the "spline-coupled 4D" position
+  estimate that gets rendered, distinct from the ground truth (toggle "ghost truth" to compare).
+- Splats reuse the terrain sim's soft-falloff billboard technique (`splatAlphaTex`,
+  confidence-driven alpha via `onBeforeCompile`); static court floor is baked once (flat, no
+  billboard needed), dynamic per-entity clusters billboard to the fly camera every frame and
+  grow/dim with tracking confidence (`e.cov`, driven by camera coverage count).
+- Free-fly camera (WASD + mouse via pointer lock) is the whole point — no commander/main split
+  view like the terrain sim. Scoped out for now: mobile touch controls, occlusion-aware camera
+  visibility (FOV+range only, no line-of-sight blocking).
 
 ## sim_core.js architecture (one IIFE, ~3.3k lines)
 Module scope: `hash2/vnoise/fbm` noise · env definitions `ENVS.{urban,forest,ocean,dust}`

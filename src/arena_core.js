@@ -1,0 +1,415 @@
+/* ═══════════════ Knot-a-Surface — Arena: live 4D match reconstruction ═══════════════
+   Same thesis as the terrain simulator (fixed Gaussian-splat budget, spline-coupled
+   reconstruction) applied to a sports court: a FIXED swarm of broadcast-style rigs
+   (court bounds are known, so no need to fly drones) tracks players + ball, fuses
+   noisy multi-camera detections per entity, fits a Catmull-Rom spline through the
+   recent detections (= the "4D" position estimate, 3D + time), and renders the
+   result as splats you can fly through in free 3D. */
+window.KnotArenaSim = (function () {
+  'use strict';
+  const T = window.THREE;
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function hash2(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123; return s - Math.floor(s); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerp3(o, a, b, t) { o.x = lerp(a.x, b.x, t); o.y = lerp(a.y, b.y, t); o.z = lerp(a.z, b.z, t); return o; }
+
+  /* ---------- court definitions (single source of truth: dims + markings) ---------- */
+  const COURTS = {
+    basketball: {
+      label: 'Basketball · 5v5', w: 28, d: 15, camH: 9, camH2: 15, hoopH: 3.05,
+      perTeam: 5, floorCol: [0.50, 0.34, 0.18], lineCol: [0.92, 0.90, 0.84], stripe: 0,
+      key: 'basketball', ballLift: 1.9,
+    },
+    football: {
+      label: 'Football · 11v11', w: 105, d: 68, camH: 20, camH2: 34, hoopH: 0,
+      perTeam: 11, floorCol: [0.10, 0.34, 0.12], lineCol: [0.94, 0.94, 0.94], stripe: 1,
+      key: 'football', ballLift: 0.11,
+    },
+  };
+  function courtLineSegs(c) {
+    const hw = c.w / 2, hd = c.d / 2, segs = [
+      [-hw, -hd, -hw, hd], [hw, -hd, hw, hd], [-hw, -hd, hw, -hd], [-hw, hd, hw, hd], [0, -hd, 0, hd],
+    ];
+    if (c.key === 'basketball') {
+      const kd = 5.8, kw = 2.45;
+      segs.push([-hw, -kw, -hw + kd, -kw], [-hw, kw, -hw + kd, kw], [-hw + kd, -kw, -hw + kd, kw]);
+      segs.push([hw, -kw, hw - kd, -kw], [hw, kw, hw - kd, kw], [hw - kd, -kw, hw - kd, kw]);
+    } else {
+      const pd = 16.5, pw = 20.15, gd = 5.5, gw = 9.16;
+      segs.push([-hw, -pw, -hw + pd, -pw], [-hw, pw, -hw + pd, pw], [-hw + pd, -pw, -hw + pd, pw]);
+      segs.push([hw, -pw, hw - pd, -pw], [hw, pw, hw - pd, pw], [hw - pd, -pw, hw - pd, pw]);
+      segs.push([-hw, -gw, -hw + gd, -gw], [-hw, gw, -hw + gd, gw], [-hw + gd, -gw, -hw + gd, gw]);
+      segs.push([hw, -gw, hw - gd, -gw], [hw, gw, hw - gd, gw], [hw - gd, -gw, hw - gd, gw]);
+    }
+    return segs;
+  }
+  function segDist(px, pz, ax, az, bx, bz) {
+    const abx = bx - ax, abz = bz - az, apx = px - ax, apz = pz - az;
+    const t = clamp((apx * abx + apz * abz) / (abx * abx + abz * abz || 1e-6), 0, 1);
+    return Math.hypot(px - (ax + t * abx), pz - (az + t * abz));
+  }
+  function courtColor(c, segs, x, z) {                        // SAME rule feeds static splats + minimap
+    for (const s of segs) if (segDist(x, z, s[0], s[1], s[2], s[3]) < 0.09) return c.lineCol;
+    const r = c.key === 'basketball' ? 1.8 : 9.15;
+    if (Math.abs(Math.hypot(x, z) - r) < 0.09) return c.lineCol;
+    const [fr, fg, fb] = c.floorCol;
+    const mow = c.stripe ? 0.035 * (Math.floor((x + 200) / 4.5) % 2 ? 1 : -1) : 0;
+    const n = c.stripe ? 0 : 0.02 * (hash2(Math.floor(x * 4), Math.floor(z * 4)) - 0.5);
+    return [fr + mow + n, fg + mow + n, fb + mow + n];
+  }
+
+  /* ---------- fixed swarm rig (perimeter + roof, all STATIC — bounds are known) ---------- */
+  function buildRig(c) {
+    const cams = [], nSide = c.w > 50 ? 5 : 3, nEnd = 2;
+    for (let i = 0; i < nSide; i++) {
+      const x = -c.w / 2 + (i + 0.5) / nSide * c.w;
+      cams.push({ pos: [x, c.camH, -c.d / 2 - 3], tgt: [x, 1.2, 0] });
+      cams.push({ pos: [x, c.camH, c.d / 2 + 3], tgt: [x, 1.2, 0] });
+    }
+    for (let i = 0; i < nEnd; i++) {
+      const z = -c.d / 2 + (i + 0.5) / nEnd * c.d;
+      cams.push({ pos: [-c.w / 2 - 3, c.camH, z], tgt: [0, 1.2, z] });
+      cams.push({ pos: [c.w / 2 + 3, c.camH, z], tgt: [0, 1.2, z] });
+    }
+    cams.push({ pos: [-c.w / 4, c.camH2, 0], tgt: [-c.w / 4, 0, 0] }, { pos: [c.w / 4, c.camH2, 0], tgt: [c.w / 4, 0, 0] });
+    const fovCos = Math.cos(52 * Math.PI / 180), range = Math.max(c.w, c.d) * 0.85;
+    return cams.map(cam => {
+      const p = new T.Vector3(...cam.pos), tg = new T.Vector3(...cam.tgt);
+      return { p, fwd: tg.clone().sub(p).normalize(), fovCos, range };
+    });
+  }
+
+  /* ---------- ground-truth match (players loop on closed splines, ball hops with an arc) ---------- */
+  function buildPlayerLoop(c, teamIdx, seed) {
+    const nPts = 5, pts = [], side = teamIdx === 0 ? -1 : 1;
+    const cx = side * c.w * 0.16;
+    for (let k = 0; k < nPts; k++) {
+      const a = hash2(seed, k) * Math.PI * 2;
+      const rx = c.w * 0.30 * (0.35 + 0.65 * hash2(seed + 1, k));
+      const rz = c.d * 0.40 * (0.35 + 0.65 * hash2(seed + 2, k));
+      pts.push(new T.Vector3(clamp(cx + Math.cos(a) * rx, -c.w / 2 + 1, c.w / 2 - 1), 0, clamp(Math.sin(a) * rz, -c.d / 2 + 1, c.d / 2 - 1)));
+    }
+    return new T.CatmullRomCurve3(pts, true, 'catmullrom', 0.5);
+  }
+  function buildEntities(c) {
+    const ents = [];
+    for (let team = 0; team < 2; team++) for (let i = 0; i < c.perTeam; i++) {
+      const seed = team * 97 + i * 13 + 1;
+      ents.push({
+        id: ents.length, team, kind: 'player', loop: buildPlayerLoop(c, team, seed),
+        period: 9 + hash2(seed, 5) * 7, phase: hash2(seed, 6), pos: new T.Vector3(),
+        buf: [], reconPos: new T.Vector3(), cov: 0,
+      });
+    }
+    ents.push({
+      id: ents.length, team: -1, kind: 'ball', pos: new T.Vector3(0, c.ballLift, 0),
+      from: new T.Vector3(0, c.ballLift, 0), to: new T.Vector3(0, c.ballLift, 0),
+      t0: 0, dur: 1, arcH: 0.4, buf: [], reconPos: new T.Vector3(), cov: 0,
+    });
+    return ents;
+  }
+  function stepGroundTruth(ents, c, t) {
+    for (const e of ents) {
+      if (e.kind === 'player') { e.loop.getPointAt(((t / e.period + e.phase) % 1 + 1) % 1, e.pos); continue; }
+      if (t >= e.t0 + e.dur) {                                 // ball: hop to a new random player
+        const target = ents[Math.floor(hash2(t, 3.1) * (ents.length - 1))];
+        e.from.copy(e.to); e.to.copy(target.kind === 'player' ? target.pos : e.to);
+        e.t0 = t; e.dur = 0.5 + hash2(t, 7.7) * 1.1; e.arcH = c.ballLift + (0.3 + hash2(t, 9.2) * 3.2);
+      }
+      const s = clamp((t - e.t0) / e.dur, 0, 1);
+      lerp3(e.pos, e.from, e.to, s); e.pos.y = c.ballLift + e.arcH * Math.sin(Math.PI * s);
+    }
+  }
+
+  /* ---------- fixed-swarm sensing → per-entity noisy detection buffer → recon spline ---------- */
+  const SAMPLE_DT = 0.1, BUF_CAP = 12, LATENCY = 0.22;
+  function updateSensing(ents, cams, t, lastSampleT) {
+    if (t - lastSampleT < SAMPLE_DT) return lastSampleT;
+    for (const e of ents) {
+      let nx = 0, ny = 0, nz = 0, n = 0;
+      for (let ci = 0; ci < cams.length; ci++) {
+        const cam = cams[ci], d = e.pos.clone().sub(cam.p);
+        const dist = d.length(); if (dist > cam.range) continue;
+        d.normalize(); if (d.dot(cam.fwd) < cam.fovCos) continue;
+        const sig = 0.05 + dist * 0.006, seed = ci * 91 + e.id * 7 + Math.floor(t / SAMPLE_DT);
+        nx += e.pos.x + (hash2(seed, 1) - 0.5) * sig; ny += e.pos.y + (hash2(seed, 2) - 0.5) * sig;
+        nz += e.pos.z + (hash2(seed, 3) - 0.5) * sig; n++;
+      }
+      e.covRaw = n;
+      e.cov += (clamp(n / 2, 0, 1) - e.cov) * (1 - Math.exp(-4 * SAMPLE_DT));
+      if (n > 0) {
+        e.buf.push({ t, x: nx / n, y: ny / n, z: nz / n });
+        if (e.buf.length > BUF_CAP) e.buf.shift();
+      }
+    }
+    return t;
+  }
+  const _p3 = [];
+  function reconAt(e, t) {
+    if (e.buf.length === 0) return e.reconPos;                // never seen yet → stays at spawn
+    if (e.buf.length === 1) { const b = e.buf[0]; return e.reconPos.set(b.x, b.y, b.z); }
+    const qt = clamp(t - LATENCY, e.buf[0].t, e.buf[e.buf.length - 1].t);
+    _p3.length = 0; for (const b of e.buf) _p3.push(new T.Vector3(b.x, b.y, b.z));
+    const curve = new T.CatmullRomCurve3(_p3, false, 'catmullrom', 0.5);
+    const u = clamp((qt - e.buf[0].t) / (e.buf[e.buf.length - 1].t - e.buf[0].t || 1), 0, 1);
+    return curve.getPointAt(u, e.reconPos);
+  }
+
+  /* ---------- splat rendering (same soft-falloff billboard technique as the terrain sim) ---------- */
+  let _alphaTex = null;
+  function splatAlphaTex() {
+    if (_alphaTex) return _alphaTex;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    const cx = cv.getContext('2d'), g = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,255,255,.94)');
+    g.addColorStop(0.58, 'rgba(255,255,255,.6)'); g.addColorStop(0.8, 'rgba(255,255,255,.24)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    cx.fillStyle = g; cx.fillRect(0, 0, 128, 128);
+    _alphaTex = new T.CanvasTexture(cv); _alphaTex.minFilter = _alphaTex.magFilter = T.LinearFilter;
+    return _alphaTex;
+  }
+  function makeSplatMesh(cap, withConf) {
+    const g = new T.CircleGeometry(0.5, cap > 4000 ? 4 : 6);
+    const m = new T.MeshBasicMaterial({
+      transparent: true, alphaMap: splatAlphaTex(), side: T.DoubleSide, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+    if (withConf) {
+      const conf = new T.InstancedBufferAttribute(new Float32Array(cap).fill(1), 1);
+      conf.setUsage(T.DynamicDrawUsage); g.setAttribute('aConf', conf);
+      m.onBeforeCompile = sh => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aConf;\nvarying float vConf;')
+          .replace('#include <begin_vertex>', 'vConf = aConf;\n#include <begin_vertex>');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vConf;')
+          .replace('#include <opaque_fragment>', 'diffuseColor.a *= vConf;\n#include <opaque_fragment>');
+      };
+      m.userData.conf = conf;
+    }
+    const im = new T.InstancedMesh(g, m, cap);
+    im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    im.instanceColor = new T.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+    im.instanceColor.setUsage(T.DynamicDrawUsage);
+    im.count = 0;
+    return im;
+  }
+
+  /* ---------- public: create(container, {embed}) ---------- */
+  function create(container, opts) {
+    opts = opts || {};
+    if (!T) { container.textContent = 'three.js missing'; return { dispose() {} }; }
+    const root = document.createElement('div'); root.className = 'ka-root';
+    root.innerHTML =
+      '<canvas class="ka-canvas"></canvas>' +
+      '<canvas class="ka-map"></canvas>' +
+      '<div class="ka-hud"></div>' +
+      '<div class="ka-hint">click to fly · WASD + mouse · Shift sprint · Q/E up-down · Esc release</div>' +
+      '<div class="ka-dock">' +
+      '<select class="ka-env"><option value="basketball">Basketball 5v5</option><option value="football">Football 11v11</option></select>' +
+      '<select class="ka-budget"><option value="2048">2,048</option><option value="4096" selected>4,096</option><option value="8192">8,192</option><option value="16384">16,384</option></select>' +
+      '<button class="ka-ghost">ghost truth: off</button>' +
+      '<button class="ka-pause">pause</button></div>';
+    container.appendChild(root);
+    const canvas = root.querySelector('.ka-canvas'), mapCv = root.querySelector('.ka-map'), hud = root.querySelector('.ka-hud');
+    const envSel = root.querySelector('.ka-env'), budgetSel = root.querySelector('.ka-budget');
+    const ghostBtn = root.querySelector('.ka-ghost'), pauseBtn = root.querySelector('.ka-pause');
+
+    const renderer = new T.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    const scene = new T.Scene(); scene.background = new T.Color(0x07090f);
+    const camera = new T.PerspectiveCamera(62, 1, 0.05, 500);
+    scene.add(new T.HemisphereLight(0xbfd4ff, 0x1a1408, 0.9));
+    const sun = new T.DirectionalLight(0xffffff, 0.7); sun.position.set(20, 40, 10); scene.add(sun);
+
+    let court, segs, cams, ents, staticMesh, dynMesh, ghostMesh, rigGroup, hoopGroup;
+    let simT = 0, paused = false, lastSampleT = -9, ghostOn = false;
+    const fly = { yaw: Math.PI, pitch: -0.18, pos: new T.Vector3(), locked: false };
+    const keys = Object.create(null);
+
+    function disposeMesh(m) { if (!m) return; scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    function buildCourt() {
+      const c = COURTS[envSel.value];
+      disposeMesh(staticMesh); disposeMesh(dynMesh); disposeMesh(ghostMesh);
+      if (rigGroup) scene.remove(rigGroup);
+      if (hoopGroup) scene.remove(hoopGroup);
+      court = c; segs = courtLineSegs(c); cams = buildRig(c); ents = buildEntities(c);
+      simT = 0; lastSampleT = -9;
+
+      const budget = parseInt(budgetSel.value, 10);
+      const staticCount = Math.min(Math.round(budget * 0.55), 9000);
+      const S = Math.max(24, Math.floor(Math.sqrt(staticCount)));
+      staticMesh = makeSplatMesh(S * S, false);
+      const mtx = new T.Matrix4(), quat = new T.Quaternion().setFromEuler(new T.Euler(-Math.PI / 2, 0, 0));
+      const col = new T.Color();
+      let k = 0;
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++, k++) {
+        const x = (i + 0.5) / S * c.w - c.w / 2, z = (j + 0.5) / S * c.d - c.d / 2;
+        mtx.compose(new T.Vector3(x, 0, z), quat, new T.Vector3(0.62, 0.62, 0.62));
+        staticMesh.setMatrixAt(k, mtx);
+        const [r, g, b] = courtColor(c, segs, x, z); col.setRGB(r, g, b); staticMesh.setColorAt(k, col);
+      }
+      staticMesh.count = S * S; staticMesh.instanceMatrix.needsUpdate = true; staticMesh.instanceColor.needsUpdate = true;
+      scene.add(staticMesh);
+
+      const dynBudget = Math.max(512, budget - staticCount), perEnt = clamp(Math.floor(dynBudget / ents.length), 20, 240);
+      dynMesh = makeSplatMesh(perEnt * ents.length, true);
+      dynMesh.userData.perEnt = perEnt;
+      dynMesh.userData.offsets = ents.map(() => {
+        const arr = new Float32Array(perEnt * 3);
+        for (let i = 0; i < perEnt; i++) {
+          const r = 0.18 * Math.cbrt(hash2(i, 0.5)), a = hash2(i, 1.5) * Math.PI * 2, cz = (hash2(i, 2.5) - 0.5) * 0.4;
+          arr[i * 3] = Math.cos(a) * r; arr[i * 3 + 1] = 0.15 + Math.abs(cz); arr[i * 3 + 2] = Math.sin(a) * r;
+        }
+        return arr;
+      });
+      scene.add(dynMesh);
+
+      ghostMesh = new T.InstancedMesh(new T.SphereGeometry(0.22, 6, 5), new T.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 }), ents.length);
+      ghostMesh.visible = ghostOn; scene.add(ghostMesh);
+
+      rigGroup = new T.Group();
+      const camG = new T.ConeGeometry(0.35, 0.9, 6), camM = new T.MeshBasicMaterial({ color: 0x4fc3f7 });
+      for (const cam of cams) {
+        const m = new T.Mesh(camG, camM); m.position.copy(cam.p);
+        m.quaternion.setFromUnitVectors(new T.Vector3(0, -1, 0), cam.fwd.clone());
+        rigGroup.add(m);
+      }
+      scene.add(rigGroup);
+
+      hoopGroup = new T.Group();
+      if (c.key === 'basketball') {
+        const rimG = new T.TorusGeometry(0.45, 0.02, 6, 16), rimM = new T.MeshBasicMaterial({ color: 0xff7043 });
+        for (const side of [-1, 1]) {
+          const rim = new T.Mesh(rimG, rimM); rim.rotation.x = Math.PI / 2;
+          rim.position.set(side * (c.w / 2 - 1.575), c.hoopH, 0); hoopGroup.add(rim);
+        }
+      } else {
+        const gm = new T.LineBasicMaterial({ color: 0xffffff });
+        for (const side of [-1, 1]) {
+          const pts = [[0, 0, -3.66], [0, 2.44, -3.66], [0, 2.44, 3.66], [0, 0, 3.66]].map(p => new T.Vector3(side * c.w / 2, p[1], p[2]));
+          const line = new T.Line(new T.BufferGeometry().setFromPoints(pts), gm);
+          hoopGroup.add(line);
+        }
+      }
+      scene.add(hoopGroup);
+
+      mapCv.width = 240; mapCv.height = Math.round(240 * c.d / c.w) || 160;
+      fly.pos.set(0, c.d > 40 ? 12 : 6, -c.d / 2 - 10); fly.yaw = 0; fly.pitch = -0.15;   // yaw 0 → fwd=+z, facing the court from behind the endline
+    }
+
+    /* free-fly controls */
+    function onKey(e, down) { keys[e.code] = down; }
+    const kd = e => onKey(e, true), ku = e => onKey(e, false);
+    window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
+    function onMove(e) {
+      if (!fly.locked) return;
+      fly.yaw -= e.movementX * 0.0022; fly.pitch = clamp(fly.pitch - e.movementY * 0.0022, -1.5, 1.5);
+    }
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('click', () => canvas.requestPointerLock && canvas.requestPointerLock());
+    function onLockChange() { fly.locked = document.pointerLockElement === canvas; root.querySelector('.ka-hint').style.opacity = fly.locked ? '0' : '1'; }
+    document.addEventListener('pointerlockchange', onLockChange);
+    function stepFly(dt) {
+      const fwd = new T.Vector3(Math.sin(fly.yaw) * Math.cos(fly.pitch), Math.sin(fly.pitch), Math.cos(fly.yaw) * Math.cos(fly.pitch));
+      const right = new T.Vector3().crossVectors(fwd, new T.Vector3(0, 1, 0)).normalize();
+      const speed = (keys.ShiftLeft || keys.ShiftRight ? 16 : 6) * dt;
+      if (keys.KeyW) fly.pos.addScaledVector(fwd, speed);
+      if (keys.KeyS) fly.pos.addScaledVector(fwd, -speed);
+      if (keys.KeyD) fly.pos.addScaledVector(right, speed);
+      if (keys.KeyA) fly.pos.addScaledVector(right, -speed);
+      if (keys.KeyE || keys.Space) fly.pos.y += speed;
+      if (keys.KeyQ) fly.pos.y -= speed;
+      const pad = 25, cap = court.camH2 + 8;
+      fly.pos.x = clamp(fly.pos.x, -court.w / 2 - pad, court.w / 2 + pad);
+      fly.pos.z = clamp(fly.pos.z, -court.d / 2 - pad, court.d / 2 + pad);
+      fly.pos.y = clamp(fly.pos.y, 0.3, cap);
+      camera.position.copy(fly.pos);
+      camera.lookAt(fly.pos.x + fwd.x, fly.pos.y + fwd.y, fly.pos.z + fwd.z);
+    }
+
+    /* minimap */
+    const mctx = mapCv.getContext('2d');
+    function drawMap() {
+      const w = mapCv.width, h = mapCv.height, sx = w / court.w, sz = h / court.d;
+      const tx = x => (x + court.w / 2) * sx, tz = z => (z + court.d / 2) * sz;
+      mctx.clearRect(0, 0, w, h);
+      mctx.fillStyle = `rgb(${court.floorCol.map(v => v * 255 | 0)})`; mctx.fillRect(0, 0, w, h);
+      mctx.strokeStyle = 'rgba(255,255,255,.55)'; mctx.lineWidth = 1;
+      for (const s of segs) { mctx.beginPath(); mctx.moveTo(tx(s[0]), tz(s[1])); mctx.lineTo(tx(s[2]), tz(s[3])); mctx.stroke(); }
+      for (const cam of cams) { mctx.fillStyle = '#4fc3f7'; mctx.fillRect(tx(cam.p.x) - 1.5, tz(cam.p.z) - 1.5, 3, 3); }
+      for (const e of ents) {
+        mctx.fillStyle = e.kind === 'ball' ? '#ffd54f' : (e.team === 0 ? '#ff7043' : '#66bb6a');
+        mctx.beginPath(); mctx.arc(tx(e.reconPos.x), tz(e.reconPos.z), e.kind === 'ball' ? 2 : 2.6, 0, 7); mctx.fill();
+      }
+      mctx.save(); mctx.translate(tx(fly.pos.x), tz(fly.pos.z)); mctx.rotate(fly.yaw);
+      mctx.fillStyle = '#fff'; mctx.beginPath(); mctx.moveTo(0, -5); mctx.lineTo(3.5, 4); mctx.lineTo(-3.5, 4); mctx.closePath(); mctx.fill();
+      mctx.restore();
+    }
+
+    let last = performance.now(), fps = 60, mapAcc = 0;
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      fps += ((1 / Math.max(dt, 1e-3)) - fps) * 0.08;
+      stepFly(dt);
+      if (!paused) {
+        simT += dt;
+        stepGroundTruth(ents, court, simT);
+        lastSampleT = updateSensing(ents, cams, simT, lastSampleT);
+        const perEnt = dynMesh.userData.perEnt, offs = dynMesh.userData.offsets;
+        const mtx = new T.Matrix4(), quat = new T.Quaternion(), col = new T.Color();
+        const camQuat = camera.quaternion;
+        let gi = 0, di = 0;
+        for (const e of ents) {
+          reconAt(e, simT);
+          const spread = 0.18 + (1 - e.cov) * 0.55;
+          const baseR = e.team === 0 ? 1 : e.team === -1 ? 1 : 0.4, baseG = e.kind === 'ball' ? 0.84 : (e.team === 0 ? 0.44 : 0.73), baseB = e.kind === 'ball' ? 0.31 : (e.team === 0 ? 0.26 : 0.42);
+          const dim = 0.35 + 0.65 * e.cov;
+          const off = offs[e.id];
+          for (let i = 0; i < perEnt; i++, di++) {
+            const ox = off[i * 3] * spread / 0.18, oy = off[i * 3 + 1] * spread / 0.18, oz = off[i * 3 + 2] * spread / 0.18;
+            mtx.compose(new T.Vector3(e.reconPos.x + ox, e.reconPos.y + oy, e.reconPos.z + oz), camQuat, new T.Vector3(1, 1, 1));
+            dynMesh.setMatrixAt(di, mtx);
+            col.setRGB(baseR * dim, baseG * dim, baseB * dim); dynMesh.setColorAt(di, col);
+            dynMesh.material.userData.conf.array[di] = clamp(0.25 + e.cov * 0.75, 0, 1);
+          }
+          quat.identity();
+          ghostMesh.setMatrixAt(gi, mtx.compose(e.pos, quat, new T.Vector3(1, 1, 1))); gi++;
+        }
+        dynMesh.count = di; dynMesh.instanceMatrix.needsUpdate = true; dynMesh.instanceColor.needsUpdate = true;
+        dynMesh.material.userData.conf.needsUpdate = true;
+        ghostMesh.instanceMatrix.needsUpdate = true;
+      }
+      renderer.render(scene, camera);
+      mapAcc += dt; if (mapAcc > 0.1) { mapAcc = 0; drawMap(); }
+      const avgCov = ents.reduce((s, e) => s + e.cov, 0) / ents.length;
+      hud.innerHTML = `<b>${court.label}</b> · budget ${dynMesh.count + staticMesh.count}` +
+        ` (static ${staticMesh.count} / dyn ${dynMesh.count}) · entities ${ents.length} · avg coverage ${(avgCov * 100 | 0)}%` +
+        ` · fps ${(fps | 0)}${paused ? ' · PAUSED' : ''}`;
+      raf = requestAnimationFrame(frame);
+    }
+    let raf = requestAnimationFrame(frame);
+
+    function resize() {
+      const w = container.clientWidth || 800, h = container.clientHeight || 500;
+      renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+    const ro = new ResizeObserver(resize); ro.observe(container); resize();
+
+    envSel.addEventListener('change', buildCourt);
+    budgetSel.addEventListener('change', buildCourt);
+    ghostBtn.addEventListener('click', () => { ghostOn = !ghostOn; ghostMesh.visible = ghostOn; ghostBtn.textContent = 'ghost truth: ' + (ghostOn ? 'on' : 'off'); });
+    pauseBtn.addEventListener('click', () => { paused = !paused; pauseBtn.textContent = paused ? 'resume' : 'pause'; });
+
+    buildCourt();
+
+    return {
+      dispose() {
+        cancelAnimationFrame(raf); ro.disconnect();
+        window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku);
+        document.removeEventListener('pointerlockchange', onLockChange);
+        disposeMesh(staticMesh); disposeMesh(dynMesh); disposeMesh(ghostMesh);
+        renderer.dispose(); root.remove();
+      },
+    };
+  }
+
+  return { create };
+})();
