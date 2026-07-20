@@ -126,3 +126,21 @@
   .kss-btn{font-size:11px;padding:3px 9px}
   .kss-lb{font-size:8.5px}
 }
+
+/* ── analysis panels: UV segmentation + terrain gradient ── */
+.kss-seg,.kss-grad{position:absolute;top:12px;left:12px;z-index:7;width:248px;
+  background:rgba(6,10,18,.95);border:1.5px solid rgba(255,167,38,.5);border-radius:10px;
+  padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.6);font-family:inherit;color:#cfe0f0}
+.kss-grad{left:auto;right:12px;border-color:rgba(105,240,174,.5)}
+.kss-seg-head{font-size:10px;font-weight:800;letter-spacing:.1em;color:#ffa726;margin-bottom:6px}
+.kss-grad .kss-seg-head{color:#69f0ae}
+.kss-seg-canvas,.kss-grad-canvas{width:232px;height:232px;display:block;border-radius:6px;
+  image-rendering:pixelated;background:#04070d;cursor:crosshair}
+.kss-grad-canvas{cursor:default;image-rendering:auto}
+.kss-seg-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;align-items:center}
+.kss-sbtn{font-family:inherit;font-size:10px;font-weight:700;color:#8fa4c0;background:rgba(18,27,46,.92);
+  border:1px solid #22314e;border-radius:6px;padding:4px 6px;cursor:pointer}
+.kss-sbtn.kss-on{color:#04070d;background:#ffa726;border-color:#ffa726}
+.kss-seg-src{font-family:inherit;font-size:10px;background:#0e1626;color:#cfe0f0;
+  border:1px solid #22314e;border-radius:6px;padding:3px}
+.kss-seg-msg{font-size:9.5px;color:#7f93ad;margin-top:5px;line-height:1.35}
