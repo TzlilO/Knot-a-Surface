@@ -675,6 +675,7 @@ window.KnotSwarmSim = (function () {
         '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
         '<div class="kss-cpitch-wrap kss-topo-wrap" style="display:none"><span>⚫ R</span><input class="kss-topo-r kss-cpitch" type="range" min="0.5" max="6" step="0.1" value="2"><span class="kss-cpitch-val kss-topo-val">2.0 m</span></div>' +
         '<div class="kss-cmdr-read"></div>' +
+        '<div class="kss-joy"><div class="kss-joy-base"><div class="kss-joy-knob"></div></div><div class="kss-joy-lbl">\uD83D\uDD79 DRONE</div></div>' +
         '<button class="kss-info-btn" title="about this simulator">i</button>' +
         '<div class="kss-info">' +
           '<button class="kss-info-x" title="close">✕</button>' +
@@ -2719,27 +2720,46 @@ window.KnotSwarmSim = (function () {
        It drives the free commander's target (cOrbit.t*) and the ROI to its gaze,
        so the frustum-allocated splats flow seamlessly across the terrain below.
        Reuses frustumWindow()/domainStep()/updateRecon() unchanged. ── */
-    const drone = { lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2 };
+    /* kinematic entity: autonomous patrol by default, steerable via the joystick
+       (joy.x = yaw, joy.y = forward/back throttle). Resumes patrol after idle. */
+    const joy = { x: 0, y: 0 };
+    const drone = { px: ENV_HOME.forest.x, pz: ENV_HOME.forest.z, hd: 0, alt: 26,
+                    lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2, auto: true, idleT: 0, init: false };
     function droneStep(dt) {
-      const H = ENV_HOME[st.env], t = st.t;
-      const ang = t * 0.11;                          // slow revolution over the site
-      const rad = 30 + 7 * Math.sin(t * 0.05);       // breathing orbit radius
-      const dx = H.x + rad * Math.cos(ang);
-      const dz = H.z + rad * Math.sin(ang);
-      const alt = 26 + 5 * Math.sin(t * 0.09);       // gentle altitude bob
-      const hd = ang + Math.PI / 2 + 0.3 * Math.sin(t * 0.17);   // travel heading, wandering
+      const H = ENV_HOME[st.env];
+      if (!drone.init) { drone.px = H.x; drone.pz = H.z; drone.init = true; }
+      const active = Math.abs(joy.x) > 0.03 || Math.abs(joy.y) > 0.03;
+      if (active) { drone.auto = false; drone.idleT = st.t; }
+      else if (!drone.auto && st.t - drone.idleT > 5) drone.auto = true;   // resume patrol after idle
+      if (drone.auto) {
+        // gentle patrol: bank toward a ~30 m ring around the site home
+        const toHome = Math.atan2(H.z - drone.pz, H.x - drone.px);
+        const r = Math.hypot(drone.px - H.x, drone.pz - H.z);
+        const desired = toHome + Math.PI / 2 + (r - 30) * 0.02;
+        const dh = ((desired - drone.hd + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        drone.hd += clamp(dh, -1, 1) * 0.6 * dt;
+        drone.px += Math.cos(drone.hd) * 9 * dt;
+        drone.pz += Math.sin(drone.hd) * 9 * dt;
+      } else {
+        drone.hd += joy.x * 1.5 * dt;                // yaw
+        drone.px += Math.cos(drone.hd) * joy.y * 20 * dt;   // forward / back
+        drone.pz += Math.sin(drone.hd) * joy.y * 20 * dt;
+      }
+      drone.alt += (26 + 5 * Math.sin(st.t * 0.09) - drone.alt) * Math.min(1, dt);
+      drone.px = clamp(drone.px, -ROI_CAP, ROI_CAP);
+      drone.pz = clamp(drone.pz, -ROI_CAP, ROI_CAP);
       const look = 16;                               // gaze lands ahead of travel -> steep gimbal
-      const gx = clamp(dx + Math.cos(hd) * look, -ROI_CAP, ROI_CAP);
-      const gz = clamp(dz + Math.sin(hd) * look, -ROI_CAP, ROI_CAP);
+      const gx = clamp(drone.px + Math.cos(drone.hd) * look, -ROI_CAP, ROI_CAP);
+      const gz = clamp(drone.pz + Math.sin(drone.hd) * look, -ROI_CAP, ROI_CAP);
       const sh = reconH(gx, gz);
       const gy = sh === null ? 2 : sh;
-      const k = Math.min(1, dt * 2);                 // smooth the gaze so domain re-centre is gentle
+      const k = Math.min(1, dt * 3);                 // smooth the gaze so domain re-centre is gentle
       drone.lx += (gx - drone.lx) * k;
       drone.lz += (gz - drone.lz) * k;
       drone.ly += (gy - drone.ly) * k;
       st.roi.x = drone.lx; st.roi.z = drone.lz;      // domain follows the gaze
       cOrbit.tx = drone.lx; cOrbit.tz = drone.lz; cOrbit.auto = false;
-      cmdrCam.position.set(dx, alt, dz);
+      cmdrCam.position.set(drone.px, drone.alt, drone.pz);
       cmdrCam.lookAt(drone.lx, drone.ly, drone.lz);
     }
     function applyFit() {
@@ -3039,7 +3059,34 @@ window.KnotSwarmSim = (function () {
        depth field IS a flat 2D image (splat k = j*S+i). Segment in 2D, lift the
        mask straight back to the 3D splats. Fully revertible. ── */
     const droneBtn = container.querySelector('.kss-drone-t');
-    droneBtn.addEventListener('click', e => { e.stopPropagation(); st.drone = !st.drone; droneBtn.classList.toggle('kss-on', st.drone); if (!st.drone) cOrbit.auto = true; });
+    const joyWrap = container.querySelector('.kss-joy');
+    const joyBase = container.querySelector('.kss-joy-base');
+    const joyKnob = container.querySelector('.kss-joy-knob');
+    let joyId = null;
+    function joySet(cx, cy) {
+      const r = joyBase.getBoundingClientRect(), R = r.width / 2;
+      let dx = cx - (r.left + R), dy = cy - (r.top + R);
+      const m = Math.hypot(dx, dy);
+      if (m > R) { dx = dx / m * R; dy = dy / m * R; }
+      joyKnob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+      joy.x = dx / R; joy.y = -dy / R;            // stick up = +forward
+    }
+    function joyEnd() { joy.x = 0; joy.y = 0; joyId = null; joyKnob.style.transform = 'translate(0,0)'; }
+    joyBase.addEventListener('pointerdown', e => {
+      e.stopPropagation(); e.preventDefault();
+      joyId = e.pointerId; try { joyBase.setPointerCapture(e.pointerId); } catch (_) {}
+      drone.auto = false; drone.idleT = st.t; joySet(e.clientX, e.clientY);
+    });
+    joyBase.addEventListener('pointermove', e => { if (joyId === e.pointerId) { e.stopPropagation(); joySet(e.clientX, e.clientY); } });
+    joyBase.addEventListener('pointerup', e => { if (joyId === e.pointerId) { e.stopPropagation(); joyEnd(); } });
+    joyBase.addEventListener('pointercancel', e => { if (joyId === e.pointerId) joyEnd(); });
+    function syncJoy() { joyWrap.style.display = st.drone ? 'flex' : 'none'; }
+    droneBtn.addEventListener('click', e => {
+      e.stopPropagation(); st.drone = !st.drone; droneBtn.classList.toggle('kss-on', st.drone);
+      if (!st.drone) cOrbit.auto = true; else drone.auto = true;
+      syncJoy();
+    });
+    syncJoy();
 
     const cnetSlider = bar.querySelector('.kss-cnet'), cnetVal = bar.querySelector('.kss-cnet-val');
     if (cnetSlider) {

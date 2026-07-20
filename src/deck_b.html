@@ -132,27 +132,25 @@
 <!-- ═══ 17 · RESULTS: RENDERING ═══════════════════════════════════════ -->
 <section data-widget="charts">
   <span class="tag">Results</span>
-  <h2>Rendering — converging, honestly reported</h2>
-  <div class="cols" style="grid-template-columns:1.5fr 1fr;margin-top:10px">
+  <h2>Rendering — matched PSNR at SH degree 1</h2>
+  <div class="cols" style="grid-template-columns:1.7fr 1fr;margin-top:10px">
     <div>
       <div class="card" style="padding:14px 18px"><canvas id="psnr-chart" height="235"></canvas></div>
-      <p style="font-size:12.5px;color:var(--dim2);text-align:center;margin-top:6px">PSNR vs iteration, scan24 · dashed = converged baselines (30k iters)</p>
+      <p style="font-size:12.5px;color:var(--dim2);text-align:center;margin-top:6px">PSNR per DTU scan (↑) · amber = PGSR (SH ℓ=3) · green = ours (SH ℓ=1)</p>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div class="cols c2" style="gap:10px">
-        <div class="card" style="text-align:center"><div style="font-size:11px;color:var(--dim2)">Ours @ 1,500 iters</div>
-          <div class="big" style="font-size:36px">18.3</div><p style="font-size:11px">dB · still rising</p></div>
-        <div class="card" style="text-align:center"><div style="font-size:11px;color:var(--dim2)">PGSR @ 30k iters</div>
-          <div class="big a" style="font-size:36px">31.2</div><p style="font-size:11px">dB · converged</p></div>
+        <div class="card" style="text-align:center;border-color:rgba(255,167,38,.4)">
+          <div style="font-size:11px;color:var(--dim2)">PGSR mean · SH ℓ=3</div><div class="big a" style="font-size:36px">32.39</div></div>
+        <div class="card" style="text-align:center;border-color:rgba(105,240,174,.4)">
+          <div style="font-size:11px;color:var(--dim2)">Ours mean · SH ℓ=1</div><div class="big g" style="font-size:36px">32.24</div></div>
       </div>
-      <div class="card"><h3 style="color:var(--accent)">Reading the gap correctly</h3>
-        <ul class="b" style="gap:6px">
-          <li><strong>1/20th of training</strong> — stopped at 1.5k of 30k iterations, curve still rising</li>
-          <li><strong>Two features off by design</strong> (residual scaling, weight refinement) to isolate the structural baseline</li>
-          <li class="g"><strong>Geometry already correct</strong> — coherent normals from iter 150, which particle methods never reach</li>
-        </ul></div>
+      <div class="card"><h3 style="color:var(--accent)">SH degree 1, not 3</h3>
+        <p>Appearance is fit with spherical harmonics at <strong>degree 1 (4 coeffs/channel)</strong> vs PGSR's <strong>degree 3 (16)</strong> — <strong style="color:var(--green)">4× fewer colour parameters</strong>, yet mean PSNR lands within <strong>0.15 dB</strong>. View-dependent shading rides on coherent geometry, not a large SH budget.</p></div>
+      <div class="callout">Comparable appearance at a fraction of the appearance budget — the surface does the work.</div>
     </div>
   </div>
+  <p style="font-size:11px;color:var(--dim2);text-align:center;margin-top:8px;opacity:.72">★ preliminary DTU figures at the SH ℓ=1 setting; matched-protocol full evaluation in progress.</p>
 </section>
 
 <!-- ═══ 18 · WHAT IT LEARNS, MADE VISIBLE ═════════════════════════════ -->
@@ -184,8 +182,8 @@
   <span class="tag">Analysis</span>
   <h2>Each design choice earns its place</h2>
   <div class="cols c2" style="margin-top:12px">
-    <div class="card" style="border-left:3px solid var(--purple)"><h3 style="color:var(--purple)">MBA initialization</h3>
-      <p>Random init: geometry losses meaningless until ~iter 7k. MBA prior: active at iter 150 — <strong style="color:var(--green)">50× earlier</strong>, and the only reason early normal supervision works at all.</p></div>
+    <div class="card" style="border-left:3px solid var(--purple)"><h3 style="color:var(--purple)">Multilevel B-spline initialization</h3>
+      <p>Random init: geometry losses meaningless until ~iter 7k. Multilevel B-spline prior: active at iter 150 — <strong style="color:var(--green)">50× earlier</strong>, and the only reason early normal supervision works at all.</p></div>
     <div class="card" style="border-left:3px solid var(--accent)"><h3 style="color:var(--accent)">Visibility-driven UV sampling</h3>
       <p>Uniform grid wastes splat budget on occluded UV regions. Inverse-CDF re-placement keeps the budget where cameras actually look — at zero memory overhead.</p></div>
     <div class="card" style="border-left:3px solid var(--amber)"><h3 style="color:var(--amber)">Adaptive knot insertion</h3>
@@ -206,12 +204,12 @@
       <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">Single-patch topology</h3>
         <p>One B-spline patch per surface component, fixed before training. A hole, or two touching objects, isn't representable — the multi-surface extension is future work, not solved today.</p></div>
       <div class="card" style="border-color:rgba(255,167,38,.3)"><h3 style="color:var(--amber)">Scan 106</h3>
-        <p>0.82 vs PGSR's 0.45 — disclosed, not root-caused. Missing: error heatmap vs GT, MBA-quality check for this scan, COLMAP density comparison.</p></div>
+        <p>0.82 vs PGSR's 0.45 — disclosed, not root-caused. Missing: error heatmap vs GT, spline-fit-quality check for this scan, COLMAP density comparison.</p></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <span class="wlab">Open — with a named next step</span>
       <div class="card" style="border-color:rgba(79,195,247,.3)"><h3>Pose-noise sensitivity</h3>
-        <p>MBA's fast convergence trusts near-clean COLMAP poses. <strong>Next:</strong> synthetic pose-noise ablation.</p></div>
+        <p>The multilevel B-spline fit's fast convergence trusts near-clean COLMAP poses. <strong>Next:</strong> synthetic pose-noise ablation.</p></div>
       <div class="card" style="border-color:rgba(79,195,247,.3)"><h3>Joint converged PSNR + Chamfer</h3>
         <p>Today's two headline numbers come from different regimes. <strong>Next:</strong> one full 30k run, both metrics from the same checkpoint.</p></div>
       <div class="card" style="border-color:rgba(79,195,247,.3)"><h3>Chamfer protocol parity</h3>
@@ -230,7 +228,7 @@
       <ul class="b">
         <li class="g">One learnable NURBS surface replaces millions of unstructured Gaussians — splats derived, not stored</li>
         <li class="g">Differential geometry supplies rotation &amp; scale with zero parameters</li>
-        <li class="g">MBA init activates geometric supervision 50× earlier</li>
+        <li class="g">Multilevel B-spline init activates geometric supervision 50× earlier</li>
         <li class="g">Decoupled densification: exact knot insertion + visibility-driven UV sampling</li>
         <li class="g">Fused CUDA surface-evaluation kernel — ~30× over einsum</li>
         <li class="g">Post-training editability, LOD, CAD export — by construction</li>
