@@ -3143,7 +3143,22 @@ window.KnotSwarmSim = (function () {
     const segSrcL = container.querySelector('.kss-seg-src-l');
     const _segOff = document.createElement('canvas');
     segCanvas.width = segCanvas.height = 232;
-    const seg = { open: false, mode: 'pos', src: 'rgb', pos: [], neg: [], mask: null, active: false, img: null, W: 0 };
+    // mask is anchored in WORLD coords (global UV), NOT the moving sample grid — so it
+    // stays put as the drone flies, and repeated 'segment' strokes AGGREGATE into it.
+    const SEG_BND = 120, SEG_GW = 384;               // world grid: [-120,120] m, ~0.625 m cells
+    const seg = { open: false, mode: 'pos', src: 'rgb', pos: [], neg: [], gmask: new Uint8Array(SEG_GW * SEG_GW),
+                  has: false, active: false, img: null, W: 0 };
+    function segLook(x, z) {
+      const i = ((x + SEG_BND) / (2 * SEG_BND) * SEG_GW) | 0, j = ((z + SEG_BND) / (2 * SEG_BND) * SEG_GW) | 0;
+      return (i < 0 || j < 0 || i >= SEG_GW || j >= SEG_GW) ? 0 : seg.gmask[j * SEG_GW + i];
+    }
+    function segMarkWorld(x, z) {                     // mark a 3×3 world neighbourhood (dilate → no gaps)
+      const i0 = ((x + SEG_BND) / (2 * SEG_BND) * SEG_GW) | 0, j0 = ((z + SEG_BND) / (2 * SEG_BND) * SEG_GW) | 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const i = i0 + di, j = j0 + dj;
+        if (i >= 0 && j >= 0 && i < SEG_GW && j < SEG_GW) seg.gmask[j * SEG_GW + i] = 1;
+      }
+    }
     function segMsg(m) { if (segMsgEl) segMsgEl.textContent = m; }
 
     function segFeature() {                          // snapshot S*S feature image from current recon
@@ -3167,10 +3182,11 @@ window.KnotSwarmSim = (function () {
       const W = seg.W; if (!W || !seg.img) return;
       _segOff.width = _segOff.height = W;
       const octx = _segOff.getContext('2d');
-      const id = octx.createImageData(W, W), img = seg.img, mask = seg.mask;
+      const id = octx.createImageData(W, W), img = seg.img;
+      const proj = seg.has && seg.W === S && posArr;   // project the global world mask into this view
       for (let k = 0; k < W * W; k++) {
         let r = img[k*3]*255, g = img[k*3+1]*255, b = img[k*3+2]*255;
-        if (mask && mask[k]) { r = r*0.35+30; g = g*0.35+200; b = b*0.35+40; }
+        if (proj && segLook(posArr[k*3], posArr[k*3+2])) { r = r*0.35+30; g = g*0.35+200; b = b*0.35+40; }
         id.data[k*4]=r; id.data[k*4+1]=g; id.data[k*4+2]=b; id.data[k*4+3]=255;
       }
       octx.putImageData(id, 0, 0);
@@ -3206,16 +3222,18 @@ window.KnotSwarmSim = (function () {
         if (j > 0)   { const nk = k-W; if (inC[nk] && !seen[nk]) { seen[nk]=1; stack.push(nk); } }
         if (j < W-1) { const nk = k+W; if (inC[nk] && !seen[nk]) { seen[nk]=1; stack.push(nk); } }
       }
-      seg.mask = mask;
-      let cnt = 0; for (let k = 0; k < N; k++) cnt += mask[k];
-      segMsg(cnt.toLocaleString() + ' / ' + N.toLocaleString() + ' splats in mask (' + Math.round(cnt/N*100) + '%) - hit "isolate 3D"');
+      let cnt = 0;
+      for (let k = 0; k < N; k++) if (mask[k]) { cnt++; segMarkWorld(posArr[k*3], posArr[k*3+2]); }
+      if (cnt) seg.has = true;
+      seg.pos = []; seg.neg = [];                 // aggregate: next stroke adds to the mask
+      segMsg('+' + cnt.toLocaleString() + ' splats added to mask (world-anchored) - segment more, or "isolate 3D"');
       segDraw();
     }
 
-    function applySeg() {                            // lift 2D mask to 3D: hide splats outside it
-      if (!seg.active || !seg.mask || seg.W !== S) return;
-      const conf = splats.userData.conf, mask = seg.mask;
-      for (let k = 0; k < S * S; k++) if (!mask[k]) conf.array[k] = 0;
+    function applySeg() {                            // lift the world mask to 3D: hide splats outside it
+      if (!seg.active || !seg.has) return;
+      const conf = splats.userData.conf;
+      for (let k = 0; k < S * S; k++) if (!segLook(posArr[k*3], posArr[k*3+2])) conf.array[k] = 0;
       conf.needsUpdate = true;
     }
 
@@ -3234,20 +3252,20 @@ window.KnotSwarmSim = (function () {
       if (a === 'pos' || a === 'neg') { seg.mode = a; container.querySelectorAll('.kss-sbtn[data-seg="pos"],.kss-sbtn[data-seg="neg"]').forEach(x => x.classList.toggle('kss-on', x.dataset.seg === a)); }
       else if (a === 'run') segRun();
       else if (a === 'iso') {
-        if (!seg.mask) { segMsg('run "segment" first'); return; }
+        if (!seg.has) { segMsg('run "segment" first'); return; }
         seg.active = !seg.active; b.classList.toggle('kss-on', seg.active);
         wallSplats.visible = !seg.active;
         if (seg.active) applySeg(); else reconDirty = true;
         segMsg(seg.active ? '3D isolated to mask - revert to restore' : 'restored');
       } else if (a === 'clear') {
-        seg.pos = []; seg.neg = []; seg.mask = null; seg.active = false;
+        seg.pos = []; seg.neg = []; seg.gmask.fill(0); seg.has = false; seg.active = false;
         wallSplats.visible = true; reconDirty = true;
         container.querySelector('.kss-sbtn[data-seg="iso"]').classList.remove('kss-on');
         segFeature(); segDraw(); segMsg('cleared');
       }
     }));
     segSrcSel.addEventListener('pointerdown', e => e.stopPropagation());
-    segSrcSel.addEventListener('change', () => { seg.src = segSrcSel.value; if (segSrcL) segSrcL.textContent = seg.src.toUpperCase(); seg.mask = null; segFeature(); segDraw(); });
+    segSrcSel.addEventListener('change', () => { seg.src = segSrcSel.value; if (segSrcL) segSrcL.textContent = seg.src.toUpperCase(); segFeature(); segDraw(); });
 
     /* terrain gradient view: slope-shaded height field + downhill quiver */
     const gradPanel = container.querySelector('.kss-grad');
@@ -3299,6 +3317,12 @@ window.KnotSwarmSim = (function () {
     segToolBtn.addEventListener('click', e => { e.stopPropagation(); seg.open = !seg.open; segPanel.style.display = seg.open ? 'block' : 'none'; segToolBtn.classList.toggle('kss-on', seg.open); if (seg.open) { segFeature(); segDraw(); } });
     gradToolBtn.addEventListener('click', e => { e.stopPropagation(); grad.open = !grad.open; gradPanel.style.display = grad.open ? 'block' : 'none'; gradToolBtn.classList.toggle('kss-on', grad.open); if (grad.open) gradDraw(); });
     Object.assign(window.__kss, { seg, grad, drone });   // debug handles
+    window.__kss.segStats = function () {                 // debug: visible vs in-mask splats + mask size
+      const conf = splats.userData.conf.array; let vis = 0, inm = 0;
+      for (let k = 0; k < S * S; k++) if (conf[k] > 0.1) { vis++; if (segLook(posArr[k*3], posArr[k*3+2])) inm++; }
+      let g = 0; for (let cc = 0; cc < seg.gmask.length; cc++) g += seg.gmask[cc];
+      return { vis, inm, g };
+    };
 
     function loop() {
       if (dead) return;
