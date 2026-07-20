@@ -945,7 +945,7 @@ section.cover .chip.b{color:#4fc3f7}
 window.KnotSwarmSim = (function () {
   'use strict';
   const SIM_VERSION = 'v18';
-  const SIM_BUILT = '2026-07-20 13:13 UTC';   // stamped by build.py at build time
+  const SIM_BUILT = '2026-07-20 13:16 UTC';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -1695,7 +1695,7 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-samp" data-s="uniform">uniform</button>' +
           '<button class="kss-btn kss-samp" data-s="fluid">fluid</button>' +
           '<span class="kss-lb">Geometry</span>' +
-          '<button class="kss-btn kss-geo kss-on" data-geo="mesh" title="mesh-extraction geometry supervision: match the fit surface normals/curvature to the extracted target mesh so slopes and edges converge directly">mesh sup \u2713</button>' +
+          '<button class="kss-btn kss-geo kss-on" data-geo="mesh" title="mesh-in-the-loop: bidirectional Chamfer distance between the control-mesh points and the GT surface points, minimized every optimization step">mesh sup \u2713</button>' +
           '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div>' +
         '<div class="kss-menu" data-menu="export">' +
           '<span class="kss-lb">Upsample α</span>' +
@@ -1861,45 +1861,56 @@ window.KnotSwarmSim = (function () {
       fit.pres = peSum / cells;
       _wT = st.t;
     }
+    let _cdelta = null;
     function optimStep(rate) {
-      // data term (weighted by swarm-view coverage + photometric residual)
-      // + Laplacian regularizer (smooths curvature toward zero)
-      // + mesh geometry supervision: match the fit surface's normals/curvature to the
-      //   extracted target mesh — a direct geometric signal so slopes and edges
-      //   CONVERGE instead of being blurred flat by height-only fitting.
+      // data term (swarm-view + photometric weighted) + Laplacian regularizer
+      // + MESH-IN-THE-LOOP: a local, bidirectional Chamfer term. On every step the
+      //   control mesh is treated as an explicit point set and pulled toward the GT
+      //   surface point set (and vice-versa) — minimizing nearest-point distance in
+      //   3D, so horizontally-offset edges snap into place instead of only vertical fit.
       const REG = 0.3;
-      const GEO = st.geoSup ? 0.45 : 0;              // geometry-supervision strength
-      const cg = fit.cur, g = fit.tgt, N = fit.CN + 3;
-      const hasW = covW && covW.length === N * N;
-      let res = 0, gres = 0, gn = 0;
+      const GEO = st.geoSup ? 0.35 : 0;              // Chamfer-supervision strength
+      const cg = fit.cur, g = fit.tgt, N = fit.CN + 3, len = N * N;
+      const hasW = covW && covW.length === len;
+      let res = 0, ch = 0, cn = 0;
+      if (GEO) {
+        const W = 2;                                 // local search radius (control points)
+        const cw = fit.crop / fit.CN;                // world spacing between control points
+        if (!_cdelta || _cdelta.length !== len) _cdelta = new Float32Array(len);
+        const dl = _cdelta; dl.fill(0);
+        for (let j = W; j < N - W; j++) for (let i = W; i < N - W; i++) {
+          const k = j * N + i, y = cg[k];
+          let bMG = 1e18, yMG = y;                   // mesh→GT: nearest GT point to this mesh point
+          let bGM = 1e18, mGM = k;                   // GT→mesh: nearest mesh point to this GT point
+          for (let dj = -W; dj <= W; dj++) for (let di = -W; di <= W; di++) {
+            const m = k + dj * N + di, h2 = (di * cw) * (di * cw) + (dj * cw) * (dj * cw);
+            const dyMG = g[m] - y, dMG = h2 + dyMG * dyMG;
+            if (dMG < bMG) { bMG = dMG; yMG = g[m]; }
+            const dyGM = cg[m] - g[k], dGM = h2 + dyGM * dyGM;
+            if (dGM < bGM) { bGM = dGM; mGM = m; }
+          }
+          dl[k] += (yMG - y);                         // pull mesh point onto nearest GT surface
+          dl[mGM] += (g[k] - cg[mGM]);                // pull nearest mesh point onto this GT point
+          ch += Math.sqrt(bMG); cn++;                 // accumulate Chamfer distance (mesh→GT)
+        }
+        for (let k = 0; k < len; k++) {
+          const wc = hasW ? covW[k] : 1;
+          cg[k] += clamp(dl[k], -2, 2) * rate * GEO * wc;
+        }
+      }
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i;
         const d = g[k] - cg[k];
-        let lap = 0, geo = 0;
-        if (i > 0 && i < N - 1 && j > 0 && j < N - 1) {
+        let lap = 0;
+        if (i > 0 && i < N - 1 && j > 0 && j < N - 1)
           lap = (cg[k - 1] + cg[k + 1] + cg[k - N] + cg[k + N]) / 4 - cg[k];
-          if (GEO) {
-            // extract the target mesh's local geometry (curvature = divergence of its
-            // normal field) and drive the fit's curvature toward it — where the true
-            // surface is flat this denoises, where it has an edge this preserves it.
-            const lapT = (g[k - 1] + g[k + 1] + g[k - N] + g[k + N]) / 4 - g[k];
-            // descent on the residual's Dirichlet energy (∇fit → ∇target = normal
-            // supervision): +Laplacian(cg-g). Injects the target mesh's curvature,
-            // so REG smooths noise while real edges are preserved, not flattened.
-            geo = lap - lapT;
-            // surface-normal (gradient) residual — the geometry the supervision targets
-            const gu = (cg[k + 1] - cg[k - 1]) - (g[k + 1] - g[k - 1]);
-            const gv = (cg[k + N] - cg[k - N]) - (g[k + N] - g[k - N]);
-            gres += Math.abs(gu) + Math.abs(gv); gn++;
-          }
-        }
-        const wc = hasW ? covW[k] : 1;               // geometry supervised where the swarm sees
+        const wc = hasW ? covW[k] : 1;
         const w = hasW ? wc * (1 + 2 * peW[k]) : 1;
-        cg[k] += d * rate * w + lap * rate * REG + geo * rate * GEO * wc;
+        cg[k] += d * rate * w + lap * rate * REG;
         res += Math.abs(d);
       }
       fit.res = res / cg.length;
-      fit.gres = gn ? gres / gn : 0;                 // mean normal-supervision residual
+      fit.gres = cn ? ch / cn : 0;                   // mean mesh→GT Chamfer distance (m)
     }
     function reconH(x, z) {                     // reconstruction height query (world)
       const u = (x - fit.x0) / fit.crop, v = (z - fit.z0) / fit.crop;
@@ -3470,7 +3481,7 @@ window.KnotSwarmSim = (function () {
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b>' +
-        (st.geoSup ? ' · <b style="color:#69f0ae">◺ geo-res ' + fmt(fit.gres || 0, 3) + '</b>' : ' · <b style="color:#8fa4c0">geo-sup off</b>') + '</div>' +
+        (st.geoSup ? ' · <b style="color:#69f0ae">◺ chamfer ' + fmt(fit.gres || 0, 3) + ' m</b>' : ' · <b style="color:#8fa4c0">mesh-loss off</b>') + '</div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
         (st.boost > 0 ? ' · <b style="color:#ffe14d">⚡BOOST</b>' : '') +
         (win.locked ? ' · <b style="color:#69f0ae">⊞ view-driven ' + Math.round((win.u1 - win.u0) * (win.v1 - win.v0) * 100) + '%</b>' : '') + '</div>';
