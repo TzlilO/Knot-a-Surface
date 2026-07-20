@@ -3419,8 +3419,7 @@ window.KnotSwarmSim = (function () {
       if (cOrbit.auto) cOrbit.th += dt * 0.12;       // ambient orbit until the user drives it (FIT freezes it)
       if (st.mode === 'manual') { st.roi.x = cOrbit.tx; st.roi.z = cOrbit.tz; }   // commander drives the ROI
       else { cOrbit.tx = st.roi.x; cOrbit.tz = st.roi.z; }                        // auto tour drives the commander
-      const sh = reconH(cOrbit.tx, cOrbit.tz);
-      const tgtY = sh === null ? (st.env === 'ocean' ? 2 : bicubic(fit.cur, fit.CN, 0.5, 0.5)) : sh;
+      const tgtY = st.env === 'ocean' ? 2 : ENVS[st.env].h(cOrbit.tx, cOrbit.tz, st.t);   // ground truth, never the swarm's in-progress reconstruction
       cOrbit.ty += (tgtY - cOrbit.ty) * Math.min(1, dt * 3);
       const cy = cOrbit.r * Math.sin(cOrbit.ph), crr = cOrbit.r * Math.cos(cOrbit.ph);
       cmdrCam.position.set(cOrbit.tx + crr * Math.cos(cOrbit.th), cOrbit.ty + cy, cOrbit.tz + crr * Math.sin(cOrbit.th));
