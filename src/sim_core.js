@@ -963,36 +963,53 @@ window.KnotSwarmSim = (function () {
        Optimization is w.r.t. the SWARM's views — unobserved regions barely update,
        multi-view redundancy speeds convergence, and a photometric term (gaussian
        albedo at model height vs the actual world map) drives extra correction. */
-    let covW = null, peW = null, _wT = -9;
+    let covW = null, peW = null, mvW = null, _wT = -9;
     function computeWeights() {
       const N = fit.CN + 3;
-      if (!covW || covW.length !== N * N) { covW = new Float32Array(N * N); peW = new Float32Array(N * N); }
+      if (!covW || covW.length !== N * N) { covW = new Float32Array(N * N); peW = new Float32Array(N * N); mvW = new Float32Array(N * N); }
       const E = ENVS[st.env];
       const half = swarmFoot.F * 0.55;             // 10% margin
       const stride = Math.max(1, Math.ceil(N / 64));   // decimated for dense grids
-      let covered = 0, peSum = 0, cells = 0;
+      const eye = swarmFoot.eye, alt = Math.max(6, swarmFoot.alt || 26);
+      let covered = 0, peSum = 0, mvSum = 0, cells = 0;
       const lum = cc => cc ? 0.3 * cc[0] + 0.6 * cc[1] + 0.1 * cc[2] : 0.5;
       for (let j = 0; j < N; j += stride) for (let i = 0; i < N; i += stride) {
         const k = j * N + i;
         const x = fit.x0 + ((i - 1) / fit.CN) * fit.crop;
         const z = fit.z0 + ((j - 1) / fit.CN) * fit.crop;
-        let views = 0;
-        for (let p = 0; p < swarmFoot.pts.length && views < 6; p += 2)
-          if (Math.abs(x - swarmFoot.pts[p]) < half && Math.abs(z - swarmFoot.pts[p + 1]) < half) views++;
-        const w = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved ⇒ ~frozen
-        const dh = fit.tgt[k] - fit.cur[k];
+        // multi-view photometric consistency: every drone that sees this cell photographs
+        // the surface THROUGH the current height hypothesis; parallax from the true surface
+        // makes those samples diverge when the height is wrong. Cross-view agreement is the
+        // photo-consistency constraint — high only where the swarm redundantly confirms depth.
+        const Hc = fit.cur[k], Hg = fit.tgt[k];
+        let views = 0, cmin = 1e9, cmax = -1e9;
+        for (let p = 0; p < swarmFoot.pts.length && views < 6; p += 2) {
+          const fxp = swarmFoot.pts[p], fzp = swarmFoot.pts[p + 1];
+          if (Math.abs(x - fxp) >= half || Math.abs(z - fzp) >= half) continue;
+          views++;
+          const ex = eye ? eye[p] : fxp, ez = eye ? eye[p + 1] : fzp;
+          const dx = x - ex, dz = z - ez, dl = Math.hypot(dx, dz) || 1e-3;
+          const o = (Hc - Hg) * dl / alt;            // back-project the hypothesis to the true height
+          const c = lum(E.col(x + o * dx / dl, z + o * dz / dl, Hg, st.t));
+          if (c < cmin) cmin = c; if (c > cmax) cmax = c;
+        }
+        // >=2 agreeing views => consistent; <2 views => unverified (no multi-view evidence)
+        const mv = views >= 2 ? clamp01(1 - 2.2 * (cmax - cmin)) : 0.25;
+        const w = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved => ~frozen
+        const dh = Hg - Hc;
         const pe = Math.min(1, Math.abs(
-          lum(E.col(x + 0.6 * dh, z + 0.3 * dh, fit.tgt[k], st.t)) -
-          lum(E.col(x, z, fit.tgt[k], st.t))));
+          lum(E.col(x + 0.6 * dh, z + 0.3 * dh, Hg, st.t)) -
+          lum(E.col(x, z, Hg, st.t))));
         for (let bj = j; bj < Math.min(N, j + stride); bj++)
           for (let bi = i; bi < Math.min(N, i + stride); bi++) {
-            covW[bj * N + bi] = w; peW[bj * N + bi] = pe;
+            covW[bj * N + bi] = w; peW[bj * N + bi] = pe; mvW[bj * N + bi] = mv;
           }
         if (views) covered++;
-        peSum += pe; cells++;
+        peSum += pe; mvSum += mv; cells++;
       }
       fit.cov = covered / cells;
       fit.pres = peSum / cells;
+      fit.mvc = mvSum / cells;
       _wT = st.t;
     }
     let _cdelta = null;
@@ -1032,6 +1049,7 @@ window.KnotSwarmSim = (function () {
           cg[k] += clamp(dl[k], -2, 2) * rate * GEO * wc;
         }
       }
+      const hasMV = mvW && mvW.length === len && !st.warm.active;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i;
         const d = g[k] - cg[k];
@@ -1039,8 +1057,12 @@ window.KnotSwarmSim = (function () {
         if (i > 0 && i < N - 1 && j > 0 && j < N - 1)
           lap = (cg[k - 1] + cg[k + 1] + cg[k - N] + cg[k + N]) / 4 - cg[k];
         const wc = hasW ? covW[k] : 1;
-        const w = hasW ? wc * (1 + 2 * peW[k]) : 1;
-        cg[k] += d * rate * w + lap * rate * REG;
+        const mv = hasMV ? mvW[k] : 1;                 // multi-view photo-consistency in [0,1]
+        // confidence-weighted fusion: consistent multi-view cells trust their own data;
+        // poorly-agreed cells lean on the smoothness prior instead of one noisy view
+        const w = (hasW ? wc * (1 + 2 * peW[k]) : 1) * (0.55 + 0.45 * mv);
+        const regK = REG * (1 + 0.9 * (1 - mv));
+        cg[k] += d * rate * w + lap * rate * regK;
         res += Math.abs(d);
       }
       fit.res = res / cg.length;
@@ -1874,22 +1896,34 @@ window.KnotSwarmSim = (function () {
           }
         }
       }
-      // forest stem pass: oblique swarm angle reveals trunks under the canopy —
-      // reuse the SAME wall/facade splat pool (wk, wallCap), no new arrays.
+      // forest stem pass: the swarm's MULTI-VIEW consistency reveals trunks under the
+      // canopy AND pins them to it — reuse the SAME wall/facade splat pool (wk, wallCap).
       if (st.env === 'forest') {
         const obliq = clamp01((st.pitch - 4) / 20);       // nadir ⇒ ~0 (under-canopy hidden); oblique reveals it
         if (obliq > 0.02) {
           const ci0 = Math.floor(x0 / TREE_CELL) - 1, ci1 = Math.ceil((x0 + crop) / TREE_CELL) + 1;
           const cj0 = Math.floor(z0 / TREE_CELL) - 1, cj1 = Math.ceil((z0 + crop) / TREE_CELL) + 1;
           const trunkCol = [0.29, 0.20, 0.14];             // same as buildForestProps' trunkM (0x4a3423)
+          const halfF = swarmFoot.F * 0.55;                // same footprint gate as computeWeights
           for (let cj = cj0; cj <= cj1 && wk < wallCap; cj++) for (let ci = ci0; ci <= ci1 && wk < wallCap; ci++) {
             const t = forestTree(ci, cj);
             if (!t || treeClear(t.x, t.z)) continue;
             if (t.x < x0 || t.x > x0 + crop || t.z < z0 || t.z > z0 + crop) continue;
+            // multi-view constraint: a single view can't disambiguate a thin stem from the
+            // canopy above it. Count swarm drones that observe this trunk; unobserved trees
+            // spend nothing (kills the phantom bars scattered through the swarm's blind zones).
+            let sv = 0;
+            for (let p = 0; p < swarmFoot.pts.length && sv < 4; p += 2)
+              if (Math.abs(t.x - swarmFoot.pts[p]) < halfF && Math.abs(t.z - swarmFoot.pts[p + 1]) < halfF) sv++;
+            if (sv < 1) continue;
+            const support = clamp01((sv - 1) / 2);           // 0 at 1 view → 1 at ≥3 agreeing views
             // a trunk facing away from the commander spends nothing (same rule as the facade pass)
             const toCamX = cmdrCam.position.x - t.x, toCamZ = cmdrCam.position.z - t.z;
-            const base = ENVS.forest.terra(t.x, t.z);
-            const topY = base + t.hh * 0.5, botY = base;
+            const base = ENVS.forest.terra(t.x, t.z), botY = base;
+            // PIN the stem top to the reconstructed canopy so it can never float detached
+            const rec = reconH(t.x, t.z);
+            const topY = clamp(rec == null ? base + t.hh * 0.5 : rec, base + 1, base + t.hh * 1.3);
+            const conf = clamp(obliq * (0.2 + 0.8 * support), 0.1, 1);   // multi-view + obliquity → opacity
             const nSteps = Math.min(10, Math.max(2, Math.ceil((topY - botY) / Math.max(0.3, cell * 0.5))));
             for (let s = 0; s < nSteps && wk < wallCap; s++) {
               const f = (s + 0.5) / nSteps;                // 0 = root flare, 1 = canopy attach
@@ -1907,8 +1941,8 @@ window.KnotSwarmSim = (function () {
               wPosArr[wk * 3] = _p.x; wPosArr[wk * 3 + 1] = _p.y; wPosArr[wk * 3 + 2] = _p.z;
               wNrmArr[wk * 3] = _n.x; wNrmArr[wk * 3 + 1] = _n.y; wNrmArr[wk * 3 + 2] = _n.z;
               wErrArr[wk] = r * 0.4;
-              wConfA.array[wk] = clamp(obliq, 0.15, 1);     // faint at low obliquity, solid once well-observed
-              const shade = 0.55 + 0.45 * obliq;
+              wConfA.array[wk] = conf;                       // faint when only 1 view sees it, solid on multi-view
+              const shade = 0.55 + 0.45 * conf;
               wallSplats.instanceColor.setXYZ(wk, trunkCol[0] * shade, trunkCol[1] * shade, trunkCol[2] * shade);
               wk++;
             }
@@ -2302,14 +2336,14 @@ window.KnotSwarmSim = (function () {
        overlap o=1 → all frustums coincide (≈ one shared frustum);
        o=0.2 → footprints tile the crop with a 20% shared band (feature-matching floor). */
     let footF = 0;                                 // per-drone footprint edge (HUD)
-    const swarmFoot = { pts: [], F: 0 };           // this frame's drone footprints
+    const swarmFoot = { pts: [], eye: [], F: 0, alt: 0 };  // footprints + eye positions (parallax)
     function updateSwarm(crop, time) {
       const alt = ALT * (1 - 0.35 * st.zoom);
       const n1 = Math.max(1, DR - 1);
       footF = alt * 0.85;                          // physical sensor footprint (FOV × altitude)
       const s = footF * (1 - st.ovl);              // spacing from the overlap setting
       const bodyS = Math.max(s, 4.2);              // bodies never stack physically
-      swarmFoot.pts.length = 0; swarmFoot.F = footF;
+      swarmFoot.pts.length = 0; swarmFoot.eye.length = 0; swarmFoot.F = footF; swarmFoot.alt = alt;
       // oblique offset: swarm stands back and views the ROI diagonally (pitch)
       const pr = st.pitch * Math.PI / 180;
       const back = Math.tan(pr) * alt;
@@ -2324,6 +2358,7 @@ window.KnotSwarmSim = (function () {
         const fx = st.roi.x + ui * n1 * s, fz = st.roi.z + uj * n1 * s;
         swarmFoot.pts.push(fx, fz);
         const gx = ox + ui * n1 * bodyS, gz = oz + uj * n1 * bodyS;
+        swarmFoot.eye.push(gx, gz);
         const bob = 0.5 * Math.sin(time * 1.7 + ph);
         d.position.set(gx, alt + bob, gz);
         d.lookAt(fx, ENVS[st.env].h(fx, fz, time), fz);
@@ -2761,7 +2796,7 @@ window.KnotSwarmSim = (function () {
             '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' + sampStr + '</div>') +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
-        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b>' +
+        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b> · <b style="color:#7fd4ff">multi-view ' + Math.round((fit.mvc || 0) * 100) + '%</b>' +
         (st.geoSup ? ' · <b style="color:#69f0ae">◺ chamfer ' + fmt(fit.gres || 0, 3) + ' m</b>' : ' · <b style="color:#8fa4c0">mesh-loss off</b>') + '</div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
         (SUBS.length ? ' · <b style="color:#ffd54f">⊕ ' + (SUBS.length + 1) + ' splines · local res ' + fmt(_subResSum / SUBS.length, 3) + '</b>' : '') +
