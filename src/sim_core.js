@@ -855,6 +855,11 @@ window.KnotSwarmSim = (function () {
     st.drone = true;                              // virtual observer drone owns the main POV by default
     st.cnet = 96;                                 // control-net UV resolution (customizable, was hard-coded)
     st.geoSup = true;                             // mesh-extraction geometry supervision in optimStep
+    // event-driven recon resample: while the commander frustum keeps moving (pitch/rotate/
+    // WASD/elev), only rebuild the S×S splat/mesh grid on settle, on a timer, or on big drift —
+    // never every frame — to kill the continuous-resample "jelly" wobble. All tunable live via
+    // __kss.st.resample.*; interval is clamped to [0.07125, 1.0] s per spec.
+    st.resample = { interval: 0.15, settle: 0.18, devThresh: 0.05, devGate: true };
     let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
@@ -1644,6 +1649,11 @@ window.KnotSwarmSim = (function () {
     }
 
     let reconDirty = true;
+    // camera-follow dirty: set by frustumWindow()/domainStep() while the commander view is
+    // moving; gated into a real reconDirty (below, in loop()) on settle/timer/drift instead
+    // of every frame.
+    let camDirty = false, _lastCamMoveT = -9, _lastSampleT = -9, _reconBuilds = 0;
+    let _gwin = { u0: 0, v0: 0, u1: 1, v1: 1 }, _gcrop = CROP_G;
     let uMapA = null, vMapA = null;
     let posArr = null, nrmArr = null, errArr = null,
         wPosArr = null, wNrmArr = null, wErrArr = null, chanArr = null, wChanArr = null;
@@ -1702,7 +1712,7 @@ window.KnotSwarmSim = (function () {
       if (win.u1 - win.u0 < MINW) { const m = (win.u0 + win.u1) / 2; win.u0 = clamp01(m - MINW / 2); win.u1 = clamp01(m + MINW / 2); }
       if (win.v1 - win.v0 < MINW) { const m = (win.v0 + win.v1) / 2; win.v0 = clamp01(m - MINW / 2); win.v1 = clamp01(m + MINW / 2); }
       win.locked = locked;
-      if (d > 0.004) reconDirty = true;
+      if (d > 0.004) { camDirty = true; _lastCamMoveT = st.t; }
     }
     function heatColor(r01) {
       const x = clamp01(r01);
@@ -2332,7 +2342,7 @@ window.KnotSwarmSim = (function () {
       const moved = Math.abs(want.crop - fit.crop) > 0.15 ||
                     Math.abs(x0 - fit.x0) > 0.15 || Math.abs(z0 - fit.z0) > 0.15;
       const resized = want.CN !== fit.CN;
-      if (moved || resized) { setFitDomain(want.CN, x0, z0, want.crop, true); reconDirty = true; }
+      if (moved || resized) { setFitDomain(want.CN, x0, z0, want.crop, true); camDirty = true; _lastCamMoveT = st.t; }
       else if (ENVS[st.env].animated && st.t - _resampleT > clamp(fit.CN * fit.CN / 60000, 0.07, 1.2)) {
         _resampleT = st.t;
         fit.tgt = sampleTarget(fit.CN, fit.x0, fit.z0, fit.crop, st.t);
@@ -3673,6 +3683,7 @@ window.KnotSwarmSim = (function () {
     segToolBtn.addEventListener('click', e => { e.stopPropagation(); seg.open = !seg.open; segPanel.style.display = seg.open ? 'block' : 'none'; segToolBtn.classList.toggle('kss-on', seg.open); if (seg.open) { segFeature(); segDraw(); } });
     gradToolBtn.addEventListener('click', e => { e.stopPropagation(); grad.open = !grad.open; gradPanel.style.display = grad.open ? 'block' : 'none'; gradToolBtn.classList.toggle('kss-on', grad.open); if (grad.open) gradDraw(); });
     Object.assign(window.__kss, { seg, grad, drone, SUBS });   // debug handles
+    window.__kss.resampleStats = () => ({ camDirty, builds: _reconBuilds, lastSampleT: _lastSampleT });
     window.__kss.segStats = function () {                 // debug: visible vs in-mask splats + mask size
       const conf = splats.userData.conf.array; let vis = 0, inm = 0;
       for (let k = 0; k < S * S; k++) if (conf[k] > 0.1) { vis++; if (segLook(posArr[k*3], posArr[k*3+2])) inm++; }
@@ -3706,8 +3717,23 @@ window.KnotSwarmSim = (function () {
       if (st.t - _wT > 0.3) computeWeights();
       if (st.fluid) fluidStep(dt);
       else if (st.adaptive && st.t - IMP.t > 0.35) { if (rebuildImportance()) reconDirty = true; }
+      // event-driven resample gate: camera-follow dirt (frustum pan/rotate, WASD/elev) only
+      // becomes a real reconDirty once the view SETTLES, a REFRESH TIMER elapses, or the
+      // window/crop has DRIFTED past last-sampled by devThresh — never on every dirty frame.
+      if (camDirty) {
+        const RS = st.resample;
+        const settled = st.t - _lastCamMoveT > RS.settle;
+        const periodDue = st.t - _lastSampleT >= clamp(RS.interval, 0.07125, 1.0);
+        const drift = Math.abs(win.u0 - _gwin.u0) + Math.abs(win.v0 - _gwin.v0) +
+                      Math.abs(win.u1 - _gwin.u1) + Math.abs(win.v1 - _gwin.v1) +
+                      Math.abs(fit.crop - _gcrop) / Math.max(fit.crop, 1);
+        if (settled || periodDue || (RS.devGate && drift > RS.devThresh)) {
+          reconDirty = true; camDirty = false; _lastSampleT = st.t;
+          _gwin.u0 = win.u0; _gwin.v0 = win.v0; _gwin.u1 = win.u1; _gwin.v1 = win.v1; _gcrop = fit.crop;
+        }
+      }
       // periodic rebuild only serves time-varying fields; static envs rebuild on real change
-      if (!exp_.active && (reconDirty || (frame % 6 === 0 && ENVS[st.env].animated))) { updateRecon(st.t); reconDirty = false; }
+      if (!exp_.active && (reconDirty || (frame % 6 === 0 && ENVS[st.env].animated))) { updateRecon(st.t); reconDirty = false; _reconBuilds++; }
       if (seg.active) applySeg();
       if (grad.open && st.t - _gradT > 0.2) { _gradT = st.t; gradDraw(); }
       exportStep(dt);
