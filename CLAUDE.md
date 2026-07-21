@@ -80,6 +80,16 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
   so it stays put as the drone flies and strokes AGGREGATE until `revert`. `applySeg`
   zeroes per-splat `conf` outside the mask (revertible). Works on RGB/DEPTH/NORMAL.
 - **gradient readout** (`grad`): `gradDraw` renders a slope map with downhill arrows.
+- **mesh recon** (`st.recon='mesh'`, `st.meshKind` tri/quad/tetra): `meshIndexFor`/
+  `setMeshIndex` stitch the S×S sample grid live via the 2×2 UV kernel into an indexed
+  mesh (`meshObj`+`meshWire`, shared vertex buffer); no facade pool (grid connectivity
+  spans jumps), whole budget → surface. Mutually exclusive with fluid sampling.
+- **multi-spline** (`SUBS`): `subFromMask` detaches a seg-mask region into a dedicated
+  finer world-anchored spline (warm-started from the composite), `subOptimStep` refines
+  each independently, `subH` = composite height (global + feathered local overrides —
+  patched into `updateRecon` HH, `reconH`, `buildPLY`). `autoDecompose` = bulk: threshold
+  `errArr` truncation error → flood-fill components → top-4 get their own splines.
+  Seg-panel buttons: decompose+refine / auto-decomp / merge back. Cleared on env change.
 - **export**: `startExport` 2×2 UV-kernel sweep animation → `buildPLY` binary PLY.
 - **UI**: dock + popup menus in `bar`, 3 s auto-fold, zen mode, mobile media queries
   (in sim_style.css), pinch zoom, joystick/twin-stick + elevation controls.
