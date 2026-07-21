@@ -193,7 +193,7 @@
 .kss-seg-src{font-family:inherit;font-size:10px;background:#0e1626;color:#cfe0f0;
   border:1px solid #22314e;border-radius:6px;padding:3px}
 .kss-seg-msg{font-size:9.5px;color:#7f93ad;margin-top:5px;line-height:1.35}
-.kss-seg{left:64px;top:150px}  /* clear the tool rail and the top-left HUD */
+.kss-seg{left:96px;top:150px}  /* clear the 2-col tool rail and the top-left HUD */
 
 /* ── virtual-drone controls: desktop stick + elevation, mobile twin sticks ── */
 .kss-joy,.kss-joy-l,.kss-joy-r{position:absolute;z-index:8;display:none;flex-direction:column;

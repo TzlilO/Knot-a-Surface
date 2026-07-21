@@ -2996,7 +2996,8 @@ window.KnotSwarmSim = (function () {
        Control axes: fwd/back, strafe, yaw, climb — summed from every input. */
     const joy = { x: 0, y: 0 }, joyL = { x: 0, y: 0 }, joyR = { x: 0, y: 0 }, elev = { v: 0 };
     const drone = { px: ENV_HOME.forest.x, pz: ENV_HOME.forest.z, hd: 0, alt: 26,
-                    lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2, auto: true, idleT: 0, init: false };
+                    lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2, auto: true, idleT: 0, init: false,
+                    gp: null };   // manual gimbal pitch (rad below horizon); null = terrain-follow gaze
     let _moveT = 0;
     function setMoving(on) {                          // zen-on-move: show nothing but the frame
       if (on) { _moveT = st.t; container.classList.add('kss-moving'); }
@@ -3011,7 +3012,8 @@ window.KnotSwarmSim = (function () {
         if (keys['w']) fwd += 1; if (keys['s']) fwd -= 1;
         if (keys['d']) strafe += 1; if (keys['a']) strafe -= 1;
         if (keys['arrowright']) yaw += 1; if (keys['arrowleft']) yaw -= 1;
-        if (keys['arrowup']) climb += 1; if (keys['arrowdown']) climb -= 1;
+        if (keys['arrowup'] && !keys['shift']) climb += 1;      // Shift+↑/↓ = gimbal pitch, not climb
+        if (keys['arrowdown'] && !keys['shift']) climb -= 1;
       }
       fwd = clamp(fwd, -1, 1); strafe = clamp(strafe, -1, 1); yaw = clamp(yaw, -1, 1); climb = clamp(climb, -1, 1);
       const active = Math.abs(fwd) > 0.02 || Math.abs(strafe) > 0.02 || Math.abs(yaw) > 0.02 || Math.abs(climb) > 0.02;
@@ -3027,6 +3029,7 @@ window.KnotSwarmSim = (function () {
         drone.px += Math.cos(drone.hd) * 9 * dt;
         drone.pz += Math.sin(drone.hd) * 9 * dt;
         drone.alt += (26 + 5 * Math.sin(st.t * 0.09) - drone.alt) * Math.min(1, dt);   // altitude bob
+        drone.gp = null;                             // patrol reverts to cinematic terrain-follow gaze
       } else {
         drone.hd += yaw * 1.6 * dt;                  // rotate
         const spd = 22;                              // translate in the heading frame
@@ -3037,10 +3040,18 @@ window.KnotSwarmSim = (function () {
       drone.px = clamp(drone.px, -ROI_CAP, ROI_CAP);
       drone.pz = clamp(drone.pz, -ROI_CAP, ROI_CAP);
       const look = 16;                               // gaze lands ahead of travel -> steep gimbal
-      const gx = clamp(drone.px + Math.cos(drone.hd) * look, -ROI_CAP, ROI_CAP);
-      const gz = clamp(drone.pz + Math.sin(drone.hd) * look, -ROI_CAP, ROI_CAP);
-      const sh = reconH(gx, gz);
-      const gy = sh === null ? 2 : sh;
+      let gx, gz, gy;
+      if (drone.gp !== null) {                       // manual gimbal: pitch slider / T,G / Shift+↑↓
+        const cg = Math.cos(drone.gp) * look;
+        gx = clamp(drone.px + Math.cos(drone.hd) * cg, -ROI_CAP, ROI_CAP);
+        gz = clamp(drone.pz + Math.sin(drone.hd) * cg, -ROI_CAP, ROI_CAP);
+        gy = drone.alt - Math.sin(drone.gp) * look;
+      } else {
+        gx = clamp(drone.px + Math.cos(drone.hd) * look, -ROI_CAP, ROI_CAP);
+        gz = clamp(drone.pz + Math.sin(drone.hd) * look, -ROI_CAP, ROI_CAP);
+        const sh = reconH(gx, gz);
+        gy = sh === null ? 2 : sh;
+      }
       const k = Math.min(1, dt * 3);                 // smooth the gaze so domain re-centre is gentle
       drone.lx += (gx - drone.lx) * k;
       drone.lz += (gz - drone.lz) * k;
@@ -3077,16 +3088,21 @@ window.KnotSwarmSim = (function () {
     /* pitch slider — fully adjustable commander pitch */
     const pitchSlider = container.querySelector('.kss-cpitch');
     const pitchVal = container.querySelector('.kss-cpitch-val');
+    function impliedGp() {                            // drone's current terrain-follow pitch
+      return clamp(Math.atan2(drone.alt - drone.ly, Math.hypot(drone.lx - drone.px, drone.lz - drone.pz) || 1), 0.05, 1.52);
+    }
     function syncPitchUI() {
-      const deg = Math.round(cOrbit.ph * 180 / Math.PI);
+      const ph = st.drone ? (drone.gp === null ? impliedGp() : drone.gp) : cOrbit.ph;
+      const deg = Math.round(ph * 180 / Math.PI);
       pitchSlider.value = clamp(deg, 3, 87);
       pitchVal.textContent = deg + '°';
     }
     pitchSlider.addEventListener('pointerdown', e => e.stopPropagation());
     pitchSlider.addEventListener('input', e => {
-      cOrbit.ph = (+pitchSlider.value) * Math.PI / 180;
+      const ph = (+pitchSlider.value) * Math.PI / 180;
+      if (st.drone) { drone.gp = ph; drone.auto = false; drone.idleT = st.t; }
+      else { cOrbit.ph = ph; applyCam(); }
       pitchVal.textContent = pitchSlider.value + '°';
-      applyCam();
     });
     syncPitchUI();
 
@@ -3185,7 +3201,11 @@ window.KnotSwarmSim = (function () {
       }
       if (keys['t'] || keys['g'] || (keys['shift'] && (keys['arrowup'] || keys['arrowdown']))) {   // commander pitch keys
         const dir = keys['t'] || keys['arrowup'] ? 1 : -1;
-        cOrbit.ph = clamp(cOrbit.ph + dir * 0.9 * dt, 0.05, 1.52);
+        if (st.drone) {
+          const cur = drone.gp === null ? impliedGp() : drone.gp;
+          drone.gp = clamp(cur + dir * 0.9 * dt, 0.05, 1.52);
+          drone.auto = false; drone.idleT = st.t;
+        } else cOrbit.ph = clamp(cOrbit.ph + dir * 0.9 * dt, 0.05, 1.52);
         syncPitchUI();
       }
     }
