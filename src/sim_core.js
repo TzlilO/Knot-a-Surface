@@ -859,7 +859,7 @@ window.KnotSwarmSim = (function () {
     // WASD/elev), only rebuild the S×S splat/mesh grid on settle, on a timer, or on big drift —
     // never every frame — to kill the continuous-resample "jelly" wobble. All tunable live via
     // __kss.st.resample.*; interval is clamped to [0.07125, 1.0] s per spec.
-    st.resample = { interval: 0.15, settle: 0.18, devThresh: 0.05, devGate: true };
+    st.resample = { interval: 0.75, settle: 0.9, devThresh: 0.25, devGate: true };  // 5x sparser
     let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
