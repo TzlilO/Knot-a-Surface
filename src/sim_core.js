@@ -378,6 +378,22 @@ window.KnotSwarmSim = (function () {
   /* ── per-env home positions (ROI reset / autopilot bias) ── */
   const ENV_HOME = { urban: { x: -18, z: 9 }, forest: { x: 14, z: 16 }, ocean: { x: 8, z: -4 }, dust: { x: 7, z: 6 } };
 
+  /* ── shared gaussian-falloff splat sprite (sim splats + onboarding preview) ── */
+  function mkSplatAlphaTex(T) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    const cx = cv.getContext('2d');
+    const g = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0.00, 'rgba(255,255,255,1)');
+    g.addColorStop(0.30, 'rgba(255,255,255,0.94)');
+    g.addColorStop(0.58, 'rgba(255,255,255,0.60)');
+    g.addColorStop(0.80, 'rgba(255,255,255,0.24)');
+    g.addColorStop(1.00, 'rgba(255,255,255,0)');
+    cx.fillStyle = g; cx.fillRect(0, 0, 128, 128);
+    const tex = new T.CanvasTexture(cv);
+    tex.minFilter = tex.magFilter = T.LinearFilter;
+    return tex;
+  }
+
   /* ── OCEAN warfare: destroyer + moving patrol boats (in the field!) ── */
   const SHIP = { x: 8, z: -4, w: 34, d: 7 };
   function boatPos(t, ph) {
@@ -639,7 +655,7 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-cmdr-swap" title="swap main / inset views">⇆</button>' +
         '</div>' +
         '<div class="kss-seg" style="display:none">' +
-          '<div class="kss-seg-head">UV SEGMENTATION &middot; <span class="kss-seg-src-l">RGB</span></div>' +
+          '<div class="kss-seg-head"><span>UV SEGMENTATION &middot; <span class="kss-seg-src-l">RGB</span></span><button class="kss-fold" title="collapse / expand">▾</button></div>' +
           '<canvas class="kss-seg-canvas"></canvas>' +
           '<div class="kss-seg-row">' +
             '<button class="kss-sbtn kss-on" data-seg="pos">+ in</button>' +
@@ -657,11 +673,11 @@ window.KnotSwarmSim = (function () {
           '<div class="kss-seg-msg">click + seeds on the object, - seeds outside, then segment</div>' +
         '</div>' +
         '<div class="kss-grad" style="display:none">' +
-          '<div class="kss-seg-head">TERRAIN GRADIENT &middot; downhill arrows</div>' +
+          '<div class="kss-seg-head"><span>TERRAIN GRADIENT &middot; downhill arrows</span><button class="kss-fold" title="collapse / expand">▾</button></div>' +
           '<canvas class="kss-grad-canvas"></canvas>' +
         '</div>' +
-                '<div class="kss-hud kss-hud-tl"></div>' +
-        '<div class="kss-hud kss-hud-tr"></div>' +
+        '<div class="kss-hud kss-hud-tl"><div class="kss-hud-head"><span>RECON</span><button class="kss-fold" title="collapse / expand">▾</button></div><div class="kss-hud-body"></div></div>' +
+        '<div class="kss-hud kss-hud-tr"><div class="kss-hud-head"><button class="kss-fold" title="collapse / expand">▾</button><span>SWARM</span></div><div class="kss-hud-body"></div></div>' +
         '<div class="kss-phase"></div>' +
         '<button class="kss-zen-exit">◐ EXIT ZEN</button>' +
         '<div class="kss-tools">' +
@@ -679,7 +695,7 @@ window.KnotSwarmSim = (function () {
         '<div class="kss-compass">▲<span>N</span></div>' +
         '<div class="kss-cpitch-wrap"><span>pitch</span><input class="kss-cpitch" type="range" min="3" max="87" value="36"><span class="kss-cpitch-val">36°</span></div>' +
         '<div class="kss-cpitch-wrap kss-topo-wrap" style="display:none"><span>⚫ R</span><input class="kss-topo-r kss-cpitch" type="range" min="0.5" max="6" step="0.1" value="2"><span class="kss-cpitch-val kss-topo-val">2.0 m</span></div>' +
-        '<div class="kss-cmdr-read"></div>' +
+        '<div class="kss-read-wrap"><button class="kss-fold" title="collapse / expand">▾</button><div class="kss-cmdr-read"></div></div>' +
         '<div class="kss-joy">' +
           '<div class="kss-joy-elev"><button class="kss-joy-up" title="ascend">\u25b2</button><button class="kss-joy-dn" title="descend">\u25bc</button></div>' +
           '<div class="kss-joy-base" data-joy="main"><div class="kss-joy-knob"></div></div>' +
@@ -704,8 +720,8 @@ window.KnotSwarmSim = (function () {
     const cmdrCanvas = container.querySelector('.kss-cmdr-canvas');
     const cmdrRead = container.querySelector('.kss-cmdr-read');
     const compassEl = container.querySelector('.kss-compass');
-    const hudTL = container.querySelector('.kss-hud-tl');
-    const hudTR = container.querySelector('.kss-hud-tr');
+    const hudTL = container.querySelector('.kss-hud-tl .kss-hud-body');
+    const hudTR = container.querySelector('.kss-hud-tr .kss-hud-body');
     const phaseEl = container.querySelector('.kss-phase');
     const bar = container.querySelector('.kss-bar');
 
@@ -713,26 +729,28 @@ window.KnotSwarmSim = (function () {
       '<div class="kss-bar-handle">⌃ CONTROLS</div>' +
       '<div class="kss-menus">' +
         '<div class="kss-menu" data-menu="mode">' +
-          '<span class="kss-lb">Mode</span>' +
+          '<div class="kss-mrow"><span class="kss-lb">Mode</span>' +
           '<button class="kss-btn" data-mode="auto">AUTO</button>' +
-          '<button class="kss-btn kss-on" data-mode="manual">MANUAL</button>' +
-          '<span class="kss-lb">Swarm view</span>' +
+          '<button class="kss-btn kss-on" data-mode="manual">MANUAL</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Swarm view</span>' +
           '<button class="kss-btn kss-pitch kss-on" data-p="0">nadir</button>' +
           '<button class="kss-btn kss-pitch" data-p="25">25°</button>' +
-          '<button class="kss-btn kss-pitch" data-p="45">45°</button>' +
-          '<span class="kss-lb">Recon</span>' +
+          '<button class="kss-btn kss-pitch" data-p="45">45°</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Recon</span>' +
           '<button class="kss-btn kss-rec kss-on" data-rec="splats">3DGS</button>' +
-          '<button class="kss-btn kss-rec" data-rec="mesh">MESH</button>' +
-          '<span class="kss-lb">Mesh</span>' +
+          '<button class="kss-btn kss-rec" data-rec="mesh">MESH</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Mesh</span>' +
           '<button class="kss-btn kss-mk kss-on" data-mk="tri">tri</button>' +
           '<button class="kss-btn kss-mk" data-mk="quad">quad</button>' +
-          '<button class="kss-btn kss-mk" data-mk="tetra">tetra</button></div>' +
+          '<button class="kss-btn kss-mk" data-mk="tetra">tetra</button></div></div>' +
         '<div class="kss-menu" data-menu="env">' +
+          '<div class="kss-mrow"><span class="kss-lb">Scene</span>' +
           '<button class="kss-btn kss-env" data-env="urban">urban</button>' +
           '<button class="kss-btn kss-env kss-on" data-env="forest">forest</button>' +
           '<button class="kss-btn kss-env" data-env="ocean">ocean</button>' +
-          '<button class="kss-btn kss-env" data-env="dust">dust</button></div>' +
+          '<button class="kss-btn kss-env" data-env="dust">dust</button></div></div>' +
         '<div class="kss-menu" data-menu="budget">' +
+          '<div class="kss-mrow"><span class="kss-lb">Budget</span>' +
           '<button class="kss-btn kss-bud" data-b="1024">1k</button>' +
           '<button class="kss-btn kss-bud" data-b="2048">2k</button>' +
           '<button class="kss-btn kss-bud" data-b="4096">4k</button>' +
@@ -742,53 +760,55 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-bud kss-on" data-b="65536">64k</button>' +
           '<button class="kss-btn kss-bud" data-b="131072">128k</button>' +
           '<button class="kss-btn kss-bud" data-b="262144">256k</button>' +
-          '<button class="kss-btn kss-bud" data-b="524288">512k</button>' +
-          '<span class="kss-lb" style="opacity:.7">≥128k is a stress test — heavy on CPU/GPU</span></div>' +
+          '<button class="kss-btn kss-bud" data-b="524288">512k</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb" style="opacity:.7">≥128k is a stress test — heavy on CPU/GPU</span></div></div>' +
         '<div class="kss-menu" data-menu="swarm">' +
+          '<div class="kss-mrow"><span class="kss-lb">Drones</span>' +
           '<button class="kss-btn kss-dr" data-dr="3">9</button>' +
           '<button class="kss-btn kss-dr kss-on" data-dr="5">25</button>' +
           '<button class="kss-btn kss-dr" data-dr="7">49</button>' +
-          '<button class="kss-btn kss-dr" data-dr="0">ADAPT</button>' +
-          '<span class="kss-lb" style="margin-left:8px">Frustum overlap</span>' +
+          '<button class="kss-btn kss-dr" data-dr="0">ADAPT</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Frustum overlap</span>' +
           '<input class="kss-ovl" type="range" min="0.2" max="1" step="0.01" value="0.4" style="width:110px;accent-color:#4fc3f7">' +
-          '<span class="kss-ovl-val" style="font-size:11px;color:#4fc3f7;min-width:34px">40%</span></div>' +
+          '<span class="kss-ovl-val" style="font-size:11px;color:#4fc3f7;min-width:34px">40%</span></div></div>' +
         '<div class="kss-menu" data-menu="model">' +
-          '<span class="kss-lb">Basis</span>' +
+          '<div class="kss-mrow"><span class="kss-lb">Basis</span>' +
           '<button class="kss-btn kss-degc kss-on" data-deg="cr" title="Catmull\u2013Rom: interpolating cubic \u2014 surface passes through every control point">Catmull\u2013Rom</button>' +
           '<button class="kss-btn kss-degc" data-deg="nurbs" title="NURBS: rational cubic B-spline (per-point weights; exact conics)">NURBS</button>' +
           '<button class="kss-btn kss-degc" data-deg="2" title="uniform B-spline, degree 2 \u2014 quadratic, C\u00b9 approximating">B-quadratic</button>' +
           '<button class="kss-btn kss-degc" data-deg="3" title="uniform B-spline, degree 3 \u2014 cubic, C\u00b2 approximating">B-cubic</button>' +
           '<button class="kss-btn kss-degc" data-deg="4" title="uniform B-spline, degree 4 \u2014 quartic, C\u00b3">B-quartic</button>' +
-          '<button class="kss-btn kss-degc" data-deg="5" title="uniform B-spline, degree 5 \u2014 quintic, C\u2074 smoothest">B-quintic</button>' +
-          '<span class="kss-lb">Params</span>' +
+          '<button class="kss-btn kss-degc" data-deg="5" title="uniform B-spline, degree 5 \u2014 quintic, C\u2074 smoothest">B-quintic</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Params</span>' +
           '<button class="kss-btn kss-denc" data-den="1">×1</button>' +
           '<button class="kss-btn kss-denc kss-on" data-den="2">×2</button>' +
           '<button class="kss-btn kss-denc" data-den="4">×4</button>' +
           '<button class="kss-btn kss-denc" data-den="8">×8</button>' +
-          '<button class="kss-btn kss-denc" data-den="16">×16</button>' +
-          '<span class="kss-lb">Ctrl-net UV</span>' +
+          '<button class="kss-btn kss-denc" data-den="16">×16</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Ctrl-net UV</span>' +
           '<input class="kss-cnet" type="range" min="48" max="192" step="8" value="96" style="width:92px;accent-color:#ffa726">' +
-          '<span class="kss-cnet-val" style="font-size:11px;color:#ffa726;min-width:52px">96\u00d796</span>' +
-          '<span class="kss-lb">Sampling</span>' +
+          '<span class="kss-cnet-val" style="font-size:11px;color:#ffa726;min-width:52px">96\u00d796</span></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Sampling</span>' +
           '<button class="kss-btn kss-samp kss-on" data-s="adaptive">adaptive</button>' +
           '<button class="kss-btn kss-samp" data-s="uniform">uniform</button>' +
-          '<button class="kss-btn kss-samp" data-s="fluid">fluid</button>' +
-          '<span class="kss-lb">Geometry</span>' +
+          '<button class="kss-btn kss-samp" data-s="fluid">fluid</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb">Geometry</span>' +
           '<button class="kss-btn kss-geo kss-on" data-geo="mesh" title="mesh-in-the-loop: bidirectional Chamfer distance between the control-mesh points and the GT surface points, minimized every optimization step">mesh sup \u2713</button>' +
-          '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div>' +
+          '<span class="kss-lb" style="opacity:.7">any change → global re-optimization</span></div></div>' +
         '<div class="kss-menu" data-menu="export">' +
-          '<span class="kss-lb">Upsample α</span>' +
+          '<div class="kss-mrow"><span class="kss-lb">Upsample α</span>' +
           '<button class="kss-btn kss-alpha" data-a="1">1×</button>' +
           '<button class="kss-btn kss-alpha kss-on" data-a="2">2×</button>' +
           '<button class="kss-btn kss-alpha" data-a="4">4×</button>' +
           '<button class="kss-btn kss-alpha" data-a="8">8×</button>' +
-          '<button class="kss-btn kss-export" style="color:#69f0ae;border-color:rgba(105,240,174,.5)">⬇ EXPORT PLY</button>' +
-          '<span class="kss-lb" style="opacity:.7">UV-trick tessellation: slide a 2×2 window over the sampling domain</span></div>' +
+          '<button class="kss-btn kss-export" style="color:#69f0ae;border-color:rgba(105,240,174,.5)">⬇ EXPORT PLY</button></div>' +
+          '<div class="kss-mrow"><span class="kss-lb" style="opacity:.7">UV-trick tessellation: slide a 2×2 window over the sampling domain</span></div></div>' +
         '<div class="kss-menu" data-menu="show">' +
+          '<div class="kss-mrow"><span class="kss-lb">Layers</span>' +
           '<button class="kss-btn kss-tg kss-on" data-tg="splats">surface</button>' +
           '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
           '<button class="kss-btn kss-tg kss-on" data-tg="frustum">frustums</button>' +
-          '<button class="kss-btn kss-tg kss-on" data-tg="cmdr">commander</button></div>' +
+          '<button class="kss-btn kss-tg kss-on" data-tg="cmdr">commander</button></div></div>' +
         '<div class="kss-menu" data-menu="subs"></div>' +
       '</div>' +
       '<div class="kss-dock">' +
@@ -855,6 +875,38 @@ window.KnotSwarmSim = (function () {
     st.drone = true;                              // virtual observer drone owns the main POV by default
     st.cnet = 96;                                 // control-net UV resolution (customizable, was hard-coded)
     st.geoSup = true;                             // mesh-extraction geometry supervision in optimStep
+    // event-driven recon resample: while the commander frustum keeps moving (pitch/rotate/
+    // WASD/elev), only rebuild the S×S splat/mesh grid on settle, on a timer, or on big drift —
+    // never every frame — to kill the continuous-resample "jelly" wobble. All tunable live via
+    // __kss.st.resample.*; interval is clamped to [0.07125, 1.0] s per spec.
+    st.resample = { interval: 0.15, settle: 0.18, devThresh: 0.05, devGate: true };
+
+    /* onboarding hand-off: merge the pre-run setup into st BEFORE applyDensity()
+       and fit construction, then reflect it in the dock menus (which hard-code
+       the default kss-on buttons in their innerHTML). */
+    if (opts.initial) {
+      const I = opts.initial;
+      if (I.env && ENVS[I.env]) st.env = I.env;
+      if (+I.budget > 0) st.budget = +I.budget;
+      if (I.recon === 'splats' || I.recon === 'mesh') st.recon = I.recon;
+      if (I.meshKind) st.meshKind = I.meshKind;
+      if (+I.den > 0) st.den = +I.den;
+      if (+I.cnet > 0) st.cnet = clamp(Math.round(+I.cnet / 8) * 8, 48, 192);
+      if (I.sampling) { st.adaptive = I.sampling === 'adaptive'; st.fluid = I.sampling === 'fluid'; }
+      if (st.recon === 'mesh' && st.fluid) { st.fluid = false; st.adaptive = true; }   // stitching needs the S×S grid
+      st.roi.x = st.auto.from.x = st.auto.to.x = cOrbit.tx = ENV_HOME[st.env].x;
+      st.roi.z = st.auto.from.z = st.auto.to.z = cOrbit.tz = ENV_HOME[st.env].z;
+      const syncRow = (cls, attr, val) =>
+        bar.querySelectorAll(cls).forEach(b => b.classList.toggle('kss-on', b.dataset[attr] === String(val)));
+      syncRow('.kss-env', 'env', st.env);
+      syncRow('.kss-bud', 'b', st.budget);
+      syncRow('.kss-rec', 'rec', st.recon);
+      syncRow('.kss-mk', 'mk', st.meshKind);
+      syncRow('.kss-denc', 'den', st.den);
+      syncRow('.kss-samp', 's', st.fluid ? 'fluid' : (st.adaptive ? 'adaptive' : 'uniform'));
+      const cs = bar.querySelector('.kss-cnet'), cv = bar.querySelector('.kss-cnet-val');
+      if (cs) { cs.value = st.cnet; if (cv) cv.textContent = st.cnet + '×' + st.cnet; }
+    }
     let WARM_LEVELS = [64, 96, 128], CN_BASE = 96, CN_MAX = 160;
     function applyDensity() {
       const ax = Math.sqrt(st.den);               // param count ×den → grid axis ×√den
@@ -877,7 +929,7 @@ window.KnotSwarmSim = (function () {
     }
 
     /* ---------- fit model ---------- */
-    const fit = { CN: WARM_LEVELS[0], cur: null, tgt: null, res: 1, crop: CROP_G, x0: ENV_HOME.forest.x - CROP_G / 2, z0: ENV_HOME.forest.z - CROP_G / 2 };
+    const fit = { CN: WARM_LEVELS[0], cur: null, tgt: null, res: 1, crop: CROP_G, x0: ENV_HOME[st.env].x - CROP_G / 2, z0: ENV_HOME[st.env].z - CROP_G / 2 };
     function sampleTarget(CN, x0, z0, crop, time) {
       const E = ENVS[st.env];
       const out = new Float32Array((CN + 3) * (CN + 3));
@@ -905,42 +957,59 @@ window.KnotSwarmSim = (function () {
       fit.tgt = tgt;
       fit.CN = CN; fit.x0 = x0; fit.z0 = z0; fit.crop = crop;
     }
-    setFitDomain(WARM_LEVELS[0], ENV_HOME.forest.x - CROP_G / 2, ENV_HOME.forest.z - CROP_G / 2, CROP_G, false);
+    setFitDomain(WARM_LEVELS[0], ENV_HOME[st.env].x - CROP_G / 2, ENV_HOME[st.env].z - CROP_G / 2, CROP_G, false);
 
     /* per-control-point weights: swarm-view coverage × photometric residual.
        Optimization is w.r.t. the SWARM's views — unobserved regions barely update,
        multi-view redundancy speeds convergence, and a photometric term (gaussian
        albedo at model height vs the actual world map) drives extra correction. */
-    let covW = null, peW = null, _wT = -9;
+    let covW = null, peW = null, mvW = null, _wT = -9;
     function computeWeights() {
       const N = fit.CN + 3;
-      if (!covW || covW.length !== N * N) { covW = new Float32Array(N * N); peW = new Float32Array(N * N); }
+      if (!covW || covW.length !== N * N) { covW = new Float32Array(N * N); peW = new Float32Array(N * N); mvW = new Float32Array(N * N); }
       const E = ENVS[st.env];
       const half = swarmFoot.F * 0.55;             // 10% margin
       const stride = Math.max(1, Math.ceil(N / 64));   // decimated for dense grids
-      let covered = 0, peSum = 0, cells = 0;
+      const eye = swarmFoot.eye, alt = Math.max(6, swarmFoot.alt || 26);
+      let covered = 0, peSum = 0, mvSum = 0, cells = 0;
       const lum = cc => cc ? 0.3 * cc[0] + 0.6 * cc[1] + 0.1 * cc[2] : 0.5;
       for (let j = 0; j < N; j += stride) for (let i = 0; i < N; i += stride) {
         const k = j * N + i;
         const x = fit.x0 + ((i - 1) / fit.CN) * fit.crop;
         const z = fit.z0 + ((j - 1) / fit.CN) * fit.crop;
-        let views = 0;
-        for (let p = 0; p < swarmFoot.pts.length && views < 6; p += 2)
-          if (Math.abs(x - swarmFoot.pts[p]) < half && Math.abs(z - swarmFoot.pts[p + 1]) < half) views++;
-        const w = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved ⇒ ~frozen
-        const dh = fit.tgt[k] - fit.cur[k];
+        // multi-view photometric consistency: every drone that sees this cell photographs
+        // the surface THROUGH the current height hypothesis; parallax from the true surface
+        // makes those samples diverge when the height is wrong. Cross-view agreement is the
+        // photo-consistency constraint — high only where the swarm redundantly confirms depth.
+        const Hc = fit.cur[k], Hg = fit.tgt[k];
+        let views = 0, cmin = 1e9, cmax = -1e9;
+        for (let p = 0; p < swarmFoot.pts.length && views < 6; p += 2) {
+          const fxp = swarmFoot.pts[p], fzp = swarmFoot.pts[p + 1];
+          if (Math.abs(x - fxp) >= half || Math.abs(z - fzp) >= half) continue;
+          views++;
+          const ex = eye ? eye[p] : fxp, ez = eye ? eye[p + 1] : fzp;
+          const dx = x - ex, dz = z - ez, dl = Math.hypot(dx, dz) || 1e-3;
+          const o = (Hc - Hg) * dl / alt;            // back-project the hypothesis to the true height
+          const c = lum(E.col(x + o * dx / dl, z + o * dz / dl, Hg, st.t));
+          if (c < cmin) cmin = c; if (c > cmax) cmax = c;
+        }
+        // >=2 agreeing views => consistent; <2 views => unverified (no multi-view evidence)
+        const mv = views >= 2 ? clamp01(1 - 2.2 * (cmax - cmin)) : 0.25;
+        const w = views ? Math.min(1, 0.18 * views) : 0.04;   // unobserved => ~frozen
+        const dh = Hg - Hc;
         const pe = Math.min(1, Math.abs(
-          lum(E.col(x + 0.6 * dh, z + 0.3 * dh, fit.tgt[k], st.t)) -
-          lum(E.col(x, z, fit.tgt[k], st.t))));
+          lum(E.col(x + 0.6 * dh, z + 0.3 * dh, Hg, st.t)) -
+          lum(E.col(x, z, Hg, st.t))));
         for (let bj = j; bj < Math.min(N, j + stride); bj++)
           for (let bi = i; bi < Math.min(N, i + stride); bi++) {
-            covW[bj * N + bi] = w; peW[bj * N + bi] = pe;
+            covW[bj * N + bi] = w; peW[bj * N + bi] = pe; mvW[bj * N + bi] = mv;
           }
         if (views) covered++;
-        peSum += pe; cells++;
+        peSum += pe; mvSum += mv; cells++;
       }
       fit.cov = covered / cells;
       fit.pres = peSum / cells;
+      fit.mvc = mvSum / cells;
       _wT = st.t;
     }
     let _cdelta = null;
@@ -980,6 +1049,7 @@ window.KnotSwarmSim = (function () {
           cg[k] += clamp(dl[k], -2, 2) * rate * GEO * wc;
         }
       }
+      const hasMV = mvW && mvW.length === len && !st.warm.active;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i;
         const d = g[k] - cg[k];
@@ -987,8 +1057,12 @@ window.KnotSwarmSim = (function () {
         if (i > 0 && i < N - 1 && j > 0 && j < N - 1)
           lap = (cg[k - 1] + cg[k + 1] + cg[k - N] + cg[k + N]) / 4 - cg[k];
         const wc = hasW ? covW[k] : 1;
-        const w = hasW ? wc * (1 + 2 * peW[k]) : 1;
-        cg[k] += d * rate * w + lap * rate * REG;
+        const mv = hasMV ? mvW[k] : 1;                 // multi-view photo-consistency in [0,1]
+        // confidence-weighted fusion: consistent multi-view cells trust their own data;
+        // poorly-agreed cells lean on the smoothness prior instead of one noisy view
+        const w = (hasW ? wc * (1 + 2 * peW[k]) : 1) * (0.55 + 0.45 * mv);
+        const regK = REG * (1 + 0.9 * (1 - mv));
+        cg[k] += d * rate * w + lap * rate * regK;
         res += Math.abs(d);
       }
       fit.res = res / cg.length;
@@ -1498,18 +1572,7 @@ window.KnotSwarmSim = (function () {
     let HH = null;                                 // last surface heights S×S (for wall scan)
     let _splatAlpha = null;                        // shared radial gaussian falloff
     function splatAlphaTex() {
-      if (_splatAlpha) return _splatAlpha;
-      const cv = document.createElement('canvas'); cv.width = cv.height = 128;
-      const cx = cv.getContext('2d');
-      const g = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
-      g.addColorStop(0.00, 'rgba(255,255,255,1)');
-      g.addColorStop(0.30, 'rgba(255,255,255,0.94)');
-      g.addColorStop(0.58, 'rgba(255,255,255,0.60)');
-      g.addColorStop(0.80, 'rgba(255,255,255,0.24)');
-      g.addColorStop(1.00, 'rgba(255,255,255,0)');
-      cx.fillStyle = g; cx.fillRect(0, 0, 128, 128);
-      _splatAlpha = new T.CanvasTexture(cv);
-      _splatAlpha.minFilter = _splatAlpha.magFilter = T.LinearFilter;
+      if (!_splatAlpha) _splatAlpha = mkSplatAlphaTex(T);
       return _splatAlpha;
     }
     function wallFrac() {                                          // oblique → more facade budget
@@ -1644,6 +1707,11 @@ window.KnotSwarmSim = (function () {
     }
 
     let reconDirty = true;
+    // camera-follow dirty: set by frustumWindow()/domainStep() while the commander view is
+    // moving; gated into a real reconDirty (below, in loop()) on settle/timer/drift instead
+    // of every frame.
+    let camDirty = false, _lastCamMoveT = -9, _lastSampleT = -9, _reconBuilds = 0;
+    let _gwin = { u0: 0, v0: 0, u1: 1, v1: 1 }, _gcrop = CROP_G;
     let uMapA = null, vMapA = null;
     let posArr = null, nrmArr = null, errArr = null,
         wPosArr = null, wNrmArr = null, wErrArr = null, chanArr = null, wChanArr = null;
@@ -1702,7 +1770,7 @@ window.KnotSwarmSim = (function () {
       if (win.u1 - win.u0 < MINW) { const m = (win.u0 + win.u1) / 2; win.u0 = clamp01(m - MINW / 2); win.u1 = clamp01(m + MINW / 2); }
       if (win.v1 - win.v0 < MINW) { const m = (win.v0 + win.v1) / 2; win.v0 = clamp01(m - MINW / 2); win.v1 = clamp01(m + MINW / 2); }
       win.locked = locked;
-      if (d > 0.004) reconDirty = true;
+      if (d > 0.004) { camDirty = true; _lastCamMoveT = st.t; }
     }
     function heatColor(r01) {
       const x = clamp01(r01);
@@ -1828,22 +1896,34 @@ window.KnotSwarmSim = (function () {
           }
         }
       }
-      // forest stem pass: oblique swarm angle reveals trunks under the canopy —
-      // reuse the SAME wall/facade splat pool (wk, wallCap), no new arrays.
+      // forest stem pass: the swarm's MULTI-VIEW consistency reveals trunks under the
+      // canopy AND pins them to it — reuse the SAME wall/facade splat pool (wk, wallCap).
       if (st.env === 'forest') {
         const obliq = clamp01((st.pitch - 4) / 20);       // nadir ⇒ ~0 (under-canopy hidden); oblique reveals it
         if (obliq > 0.02) {
           const ci0 = Math.floor(x0 / TREE_CELL) - 1, ci1 = Math.ceil((x0 + crop) / TREE_CELL) + 1;
           const cj0 = Math.floor(z0 / TREE_CELL) - 1, cj1 = Math.ceil((z0 + crop) / TREE_CELL) + 1;
           const trunkCol = [0.29, 0.20, 0.14];             // same as buildForestProps' trunkM (0x4a3423)
+          const halfF = swarmFoot.F * 0.55;                // same footprint gate as computeWeights
           for (let cj = cj0; cj <= cj1 && wk < wallCap; cj++) for (let ci = ci0; ci <= ci1 && wk < wallCap; ci++) {
             const t = forestTree(ci, cj);
             if (!t || treeClear(t.x, t.z)) continue;
             if (t.x < x0 || t.x > x0 + crop || t.z < z0 || t.z > z0 + crop) continue;
+            // multi-view constraint: a single view can't disambiguate a thin stem from the
+            // canopy above it. Count swarm drones that observe this trunk; unobserved trees
+            // spend nothing (kills the phantom bars scattered through the swarm's blind zones).
+            let sv = 0;
+            for (let p = 0; p < swarmFoot.pts.length && sv < 4; p += 2)
+              if (Math.abs(t.x - swarmFoot.pts[p]) < halfF && Math.abs(t.z - swarmFoot.pts[p + 1]) < halfF) sv++;
+            if (sv < 1) continue;
+            const support = clamp01((sv - 1) / 2);           // 0 at 1 view → 1 at ≥3 agreeing views
             // a trunk facing away from the commander spends nothing (same rule as the facade pass)
             const toCamX = cmdrCam.position.x - t.x, toCamZ = cmdrCam.position.z - t.z;
-            const base = ENVS.forest.terra(t.x, t.z);
-            const topY = base + t.hh * 0.5, botY = base;
+            const base = ENVS.forest.terra(t.x, t.z), botY = base;
+            // PIN the stem top to the reconstructed canopy so it can never float detached
+            const rec = reconH(t.x, t.z);
+            const topY = clamp(rec == null ? base + t.hh * 0.5 : rec, base + 1, base + t.hh * 1.3);
+            const conf = clamp(obliq * (0.2 + 0.8 * support), 0.1, 1);   // multi-view + obliquity → opacity
             const nSteps = Math.min(10, Math.max(2, Math.ceil((topY - botY) / Math.max(0.3, cell * 0.5))));
             for (let s = 0; s < nSteps && wk < wallCap; s++) {
               const f = (s + 0.5) / nSteps;                // 0 = root flare, 1 = canopy attach
@@ -1861,8 +1941,8 @@ window.KnotSwarmSim = (function () {
               wPosArr[wk * 3] = _p.x; wPosArr[wk * 3 + 1] = _p.y; wPosArr[wk * 3 + 2] = _p.z;
               wNrmArr[wk * 3] = _n.x; wNrmArr[wk * 3 + 1] = _n.y; wNrmArr[wk * 3 + 2] = _n.z;
               wErrArr[wk] = r * 0.4;
-              wConfA.array[wk] = clamp(obliq, 0.15, 1);     // faint at low obliquity, solid once well-observed
-              const shade = 0.55 + 0.45 * obliq;
+              wConfA.array[wk] = conf;                       // faint when only 1 view sees it, solid on multi-view
+              const shade = 0.55 + 0.45 * conf;
               wallSplats.instanceColor.setXYZ(wk, trunkCol[0] * shade, trunkCol[1] * shade, trunkCol[2] * shade);
               wk++;
             }
@@ -2256,14 +2336,14 @@ window.KnotSwarmSim = (function () {
        overlap o=1 → all frustums coincide (≈ one shared frustum);
        o=0.2 → footprints tile the crop with a 20% shared band (feature-matching floor). */
     let footF = 0;                                 // per-drone footprint edge (HUD)
-    const swarmFoot = { pts: [], F: 0 };           // this frame's drone footprints
+    const swarmFoot = { pts: [], eye: [], F: 0, alt: 0 };  // footprints + eye positions (parallax)
     function updateSwarm(crop, time) {
       const alt = ALT * (1 - 0.35 * st.zoom);
       const n1 = Math.max(1, DR - 1);
       footF = alt * 0.85;                          // physical sensor footprint (FOV × altitude)
       const s = footF * (1 - st.ovl);              // spacing from the overlap setting
       const bodyS = Math.max(s, 4.2);              // bodies never stack physically
-      swarmFoot.pts.length = 0; swarmFoot.F = footF;
+      swarmFoot.pts.length = 0; swarmFoot.eye.length = 0; swarmFoot.F = footF; swarmFoot.alt = alt;
       // oblique offset: swarm stands back and views the ROI diagonally (pitch)
       const pr = st.pitch * Math.PI / 180;
       const back = Math.tan(pr) * alt;
@@ -2278,6 +2358,7 @@ window.KnotSwarmSim = (function () {
         const fx = st.roi.x + ui * n1 * s, fz = st.roi.z + uj * n1 * s;
         swarmFoot.pts.push(fx, fz);
         const gx = ox + ui * n1 * bodyS, gz = oz + uj * n1 * bodyS;
+        swarmFoot.eye.push(gx, gz);
         const bob = 0.5 * Math.sin(time * 1.7 + ph);
         d.position.set(gx, alt + bob, gz);
         d.lookAt(fx, ENVS[st.env].h(fx, fz, time), fz);
@@ -2332,7 +2413,7 @@ window.KnotSwarmSim = (function () {
       const moved = Math.abs(want.crop - fit.crop) > 0.15 ||
                     Math.abs(x0 - fit.x0) > 0.15 || Math.abs(z0 - fit.z0) > 0.15;
       const resized = want.CN !== fit.CN;
-      if (moved || resized) { setFitDomain(want.CN, x0, z0, want.crop, true); reconDirty = true; }
+      if (moved || resized) { setFitDomain(want.CN, x0, z0, want.crop, true); camDirty = true; _lastCamMoveT = st.t; }
       else if (ENVS[st.env].animated && st.t - _resampleT > clamp(fit.CN * fit.CN / 60000, 0.07, 1.2)) {
         _resampleT = st.t;
         fit.tgt = sampleTarget(fit.CN, fit.x0, fit.z0, fit.crop, st.t);
@@ -2715,7 +2796,7 @@ window.KnotSwarmSim = (function () {
             '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' + sampStr + '</div>') +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
-        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b>' +
+        '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b> · <b style="color:#7fd4ff">multi-view ' + Math.round((fit.mvc || 0) * 100) + '%</b>' +
         (st.geoSup ? ' · <b style="color:#69f0ae">◺ chamfer ' + fmt(fit.gres || 0, 3) + ' m</b>' : ' · <b style="color:#8fa4c0">mesh-loss off</b>') + '</div>' +
         '<div>domain <b>' + fit.CN + '×' + fit.CN + '</b> · residual <b>' + fmt(fit.res, 3) + '</b> · LOD <b>×' + fmt(CROP_G / crop, 1) + '</b>' +
         (SUBS.length ? ' · <b style="color:#ffd54f">⊕ ' + (SUBS.length + 1) + ' splines · local res ' + fmt(_subResSum / SUBS.length, 3) + '</b>' : '') +
@@ -3039,6 +3120,17 @@ window.KnotSwarmSim = (function () {
     container.querySelector('.kss-info-x').addEventListener('click', e => { e.stopPropagation(); infoClose(); });
     infoPanel.addEventListener('pointerdown', e => e.stopPropagation());
     stage.addEventListener('pointerdown', infoClose);   // click-away closes
+
+    /* collapsible floating bubbles: same toggle pattern as the info popup */
+    container.querySelectorAll('.kss-fold').forEach(fb => {
+      fb.addEventListener('pointerdown', e => e.stopPropagation());
+      fb.addEventListener('click', e => {
+        e.stopPropagation();
+        const p = fb.closest('.kss-hud, .kss-seg, .kss-grad, .kss-read-wrap');
+        if (!p) return;
+        fb.textContent = p.classList.toggle('kss-min') ? '▸' : '▾';
+      });
+    });
 
     cmdrBox.classList.add('kss-swapped');          // commander main · world inset (default)
     const swapBtn = container.querySelector('.kss-cmdr-swap');
@@ -3558,16 +3650,16 @@ window.KnotSwarmSim = (function () {
     }
     function renderSubMenu() {
       const m = bar.querySelector('.kss-menu[data-menu="subs"]');
-      let html = '<button class="kss-btn kss-sub-bnd' + (st.show.bounds ? ' kss-on' : '') + '">bounds</button>' +
-        '<span class="kss-lb">G global ' + fit.CN + '×' + fit.CN + ' · res ' + fit.res.toFixed(3) + '</span>';
+      let html = '<div class="kss-mrow"><button class="kss-btn kss-sub-bnd' + (st.show.bounds ? ' kss-on' : '') + '">bounds</button>' +
+        '<span class="kss-lb">G global ' + fit.CN + '×' + fit.CN + ' · res ' + fit.res.toFixed(3) + '</span></div>';
       SUBS.forEach((sb, n2) => {
         const col = '#' + SUB_COLS[n2 % 6].toString(16).padStart(6, '0');
-        html += '<span class="kss-lb" style="color:' + col + '">S' + (n2 + 1) + ' ' + sb.CN + '×' + sb.CN + ' · res ' + sb.res.toFixed(3) + '</span>' +
+        html += '<div class="kss-mrow"><span class="kss-lb" style="color:' + col + '">S' + (n2 + 1) + ' ' + sb.CN + '×' + sb.CN + ' · res ' + sb.res.toFixed(3) + '</span>' +
           '<button class="kss-btn kss-sub-eye' + (sb.hidden ? '' : ' kss-on') + '" data-n="' + n2 + '">' + (sb.hidden ? 'hidden' : 'shown') + '</button>' +
           '<button class="kss-btn kss-sub-ref" data-n="' + n2 + '" title="subdivide control grid">refine</button>' +
-          '<button class="kss-btn kss-sub-del" data-n="' + n2 + '" title="merge back into global">×</button>';
+          '<button class="kss-btn kss-sub-del" data-n="' + n2 + '" title="merge back into global">×</button></div>';
       });
-      if (!SUBS.length) html += '<span class="kss-lb" style="opacity:.7">no local surfaces — segment + ⊕ decompose, or ⊕ auto-decomp</span>';
+      if (!SUBS.length) html += '<div class="kss-mrow"><span class="kss-lb" style="opacity:.7">no local surfaces — segment + ⊕ decompose, or ⊕ auto-decomp</span></div>';
       m.innerHTML = html;
       // clicks must BUBBLE to the bar (showUI keep-alive) or the dock auto-folds mid-interaction
       m.querySelector('.kss-sub-bnd').addEventListener('click', () => { st.show.bounds = !st.show.bounds; rebuildBounds(); renderSubMenu(); });
@@ -3673,6 +3765,7 @@ window.KnotSwarmSim = (function () {
     segToolBtn.addEventListener('click', e => { e.stopPropagation(); seg.open = !seg.open; segPanel.style.display = seg.open ? 'block' : 'none'; segToolBtn.classList.toggle('kss-on', seg.open); if (seg.open) { segFeature(); segDraw(); } });
     gradToolBtn.addEventListener('click', e => { e.stopPropagation(); grad.open = !grad.open; gradPanel.style.display = grad.open ? 'block' : 'none'; gradToolBtn.classList.toggle('kss-on', grad.open); if (grad.open) gradDraw(); });
     Object.assign(window.__kss, { seg, grad, drone, SUBS });   // debug handles
+    window.__kss.resampleStats = () => ({ camDirty, builds: _reconBuilds, lastSampleT: _lastSampleT });
     window.__kss.segStats = function () {                 // debug: visible vs in-mask splats + mask size
       const conf = splats.userData.conf.array; let vis = 0, inm = 0;
       for (let k = 0; k < S * S; k++) if (conf[k] > 0.1) { vis++; if (segLook(posArr[k*3], posArr[k*3+2])) inm++; }
@@ -3706,8 +3799,23 @@ window.KnotSwarmSim = (function () {
       if (st.t - _wT > 0.3) computeWeights();
       if (st.fluid) fluidStep(dt);
       else if (st.adaptive && st.t - IMP.t > 0.35) { if (rebuildImportance()) reconDirty = true; }
+      // event-driven resample gate: camera-follow dirt (frustum pan/rotate, WASD/elev) only
+      // becomes a real reconDirty once the view SETTLES, a REFRESH TIMER elapses, or the
+      // window/crop has DRIFTED past last-sampled by devThresh — never on every dirty frame.
+      if (camDirty) {
+        const RS = st.resample;
+        const settled = st.t - _lastCamMoveT > RS.settle;
+        const periodDue = st.t - _lastSampleT >= clamp(RS.interval, 0.07125, 1.0);
+        const drift = Math.abs(win.u0 - _gwin.u0) + Math.abs(win.v0 - _gwin.v0) +
+                      Math.abs(win.u1 - _gwin.u1) + Math.abs(win.v1 - _gwin.v1) +
+                      Math.abs(fit.crop - _gcrop) / Math.max(fit.crop, 1);
+        if (settled || periodDue || (RS.devGate && drift > RS.devThresh)) {
+          reconDirty = true; camDirty = false; _lastSampleT = st.t;
+          _gwin.u0 = win.u0; _gwin.v0 = win.v0; _gwin.u1 = win.u1; _gwin.v1 = win.v1; _gcrop = fit.crop;
+        }
+      }
       // periodic rebuild only serves time-varying fields; static envs rebuild on real change
-      if (!exp_.active && (reconDirty || (frame % 6 === 0 && ENVS[st.env].animated))) { updateRecon(st.t); reconDirty = false; }
+      if (!exp_.active && (reconDirty || (frame % 6 === 0 && ENVS[st.env].animated))) { updateRecon(st.t); reconDirty = false; _reconBuilds++; }
       if (seg.active) applySeg();
       if (grad.open && st.t - _gradT > 0.2) { _gradT = st.t; gradDraw(); }
       exportStep(dt);
@@ -3825,6 +3933,382 @@ window.KnotSwarmSim = (function () {
     };
   }
 
+  /* ═══ onboarding: pre-run mission setup ═══════════════════════════════
+     Three screens (map → representation → resolution & sampling), each with
+     live rotating previews sampled from the REAL ENVS h()/col() fields
+     (invariant #1: previews and model share one deterministic source).
+     "START" tears the galleries down and boots the real sim via
+     create(container, { ...opts, initial }).                              */
+  function onboard(container, opts) {
+    opts = opts || {};
+    const T = window.THREE;
+    if (!T) { container.textContent = 'three.js missing'; return { dispose() {} }; }
+
+    const sel = { env: 'forest', recon: 'splats', meshKind: 'tri', den: 2, cnet: 96, sampling: 'adaptive', budget: 65536 };
+    const STEPS = ['MAP', 'REPRESENTATION', 'RESOLUTION & SAMPLING'];
+    let step = 0, inst = null, dead = false;
+
+    container.classList.add('kss-root');
+    container.innerHTML =
+      '<div class="kss-ob">' +
+        '<div class="kss-ob-head">' +
+          '<div><div class="kss-ob-title">KNOT-A-SURFACE</div><div class="kss-ob-sub">mission setup · spline-coupled swarm reconstruction</div></div>' +
+          '<div class="kss-ob-step"></div>' +
+        '</div>' +
+        '<div class="kss-ob-prog"><div class="kss-ob-prog-fill"></div></div>' +
+        '<div class="kss-ob-body"></div>' +
+        '<div class="kss-ob-nav">' +
+          '<button class="kss-ob-btn kss-ob-back">← BACK</button>' +
+          '<button class="kss-ob-btn kss-ob-next kss-ob-go">NEXT →</button>' +
+        '</div>' +
+      '</div>';
+    const body = container.querySelector('.kss-ob-body');
+    const stepEl = container.querySelector('.kss-ob-step');
+    const progFill = container.querySelector('.kss-ob-prog-fill');
+    const backBtn = container.querySelector('.kss-ob-back');
+    const nextBtn = container.querySelector('.kss-ob-next');
+
+    /* ── shared preview loop: one RAF drives every live card renderer ── */
+    let items = [], rafId = 0, gridRaf = 0;
+    (function loop(now) {
+      if (dead) return;
+      rafId = requestAnimationFrame(loop);
+      const t = (now || 0) / 1000;
+      for (const it of items) { if (it.tick) it.tick(t); it.r.render(it.scene, it.cam); }
+    })(0);
+    function killPreviews() {
+      cancelAnimationFrame(gridRaf);
+      for (const it of items) {
+        it.scene.traverse(o => {
+          if (o.geometry) o.geometry.dispose();
+          if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+            if (m.map) m.map.dispose(); if (m.alphaMap) m.alphaMap.dispose(); m.dispose();
+          });
+        });
+        it.r.dispose();
+        if (it.r.forceContextLoss) try { it.r.forceContextLoss(); } catch (e) { /* already lost */ }
+      }
+      items = [];
+    }
+    function mkPreview(canvas, w, h) {
+      const r = new T.WebGLRenderer({ canvas, antialias: true });
+      r.setPixelRatio(1); r.setSize(w, h, false);
+      const scene = new T.Scene();
+      scene.background = new T.Color(0x04070d);
+      const cam = new T.PerspectiveCamera(45, w / h, 0.1, 600);
+      scene.add(new T.AmbientLight(0xffffff, 0.55));
+      const L = new T.DirectionalLight(0xbfd8ff, 1.1); L.position.set(45, 100, 34); scene.add(L);
+      const it = { r, scene, cam, tick: null };
+      items.push(it);
+      return it;
+    }
+
+    /* real-field heightfield patch: positions from ENVS.h, colors from ENVS.col */
+    function patchGeo(env, segs, crop) {
+      const E = ENVS[env], cx = ENV_HOME[env].x, cz = ENV_HOME[env].z;
+      const g = new T.PlaneGeometry(crop, crop, segs, segs);
+      g.rotateX(-Math.PI / 2);
+      const pos = g.attributes.position, col = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const x = cx + pos.getX(i), z = cz + pos.getZ(i);
+        const hh = E.h(x, z, 0);
+        pos.setY(i, hh);
+        const c = E.col(x, z, hh, 0);
+        col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
+      }
+      g.setAttribute('color', new T.BufferAttribute(col, 3));
+      g.computeVertexNormals();
+      return g;
+    }
+    function orbitTick(it, radius, height, speed, phase) {
+      return t => {
+        const a = phase + t * speed;
+        it.cam.position.set(radius * Math.cos(a), height, radius * Math.sin(a));
+        it.cam.lookAt(0, 2, 0);
+      };
+    }
+
+    /* ── screen 1: map gallery ── */
+    const ENV_INFO = {
+      urban:  ['URBAN',  'city blocks · river · forward operating base'],
+      forest: ['FOREST', 'canopy · river valley · hidden camp'],
+      ocean:  ['OCEAN',  'open sea · destroyer + patrol boats'],
+      dust:   ['DUST',   'desert ridges · troop columns']
+    };
+    function renderMap() {
+      body.innerHTML = '<div class="kss-ob-gal">' + Object.keys(ENVS).map(k =>
+        '<div class="kss-ob-card' + (sel.env === k ? ' kss-on' : '') + '" data-env="' + k + '">' +
+          '<canvas width="264" height="164"></canvas>' +
+          '<div class="kss-ob-card-t">' + ENV_INFO[k][0] + '</div>' +
+          '<div class="kss-ob-card-d">' + ENV_INFO[k][1] + '</div>' +
+        '</div>').join('') + '</div>';
+      body.querySelectorAll('.kss-ob-card').forEach((card, n) => {
+        const env = card.dataset.env;
+        const it = mkPreview(card.querySelector('canvas'), 264, 164);
+        it.scene.background = new T.Color(ENVS[env].sky);
+        const mesh = new T.Mesh(patchGeo(env, 56, 72), new T.MeshLambertMaterial({ vertexColors: true }));
+        it.scene.add(mesh);
+        it.tick = orbitTick(it, 62, 42, 0.22, n * 1.7);
+        card.addEventListener('click', () => {
+          sel.env = env;
+          body.querySelectorAll('.kss-ob-card').forEach(c => c.classList.toggle('kss-on', c === card));
+        });
+      });
+    }
+
+    /* ── screen 2: representation — real splat technique vs stitched mesh ── */
+    function buildSplatPatch(it, env, crop, N) {
+      const E = ENVS[env], cx = ENV_HOME[env].x, cz = ENV_HOME[env].z;
+      const g = new T.CircleGeometry(0.5, 14);
+      const m = new T.MeshBasicMaterial({
+        transparent: true, alphaMap: mkSplatAlphaTex(T),   // the sim's gaussian-falloff sprite
+        side: T.DoubleSide, depthWrite: false
+      });
+      const im = new T.InstancedMesh(g, m, N * N);
+      im.instanceColor = new T.InstancedBufferAttribute(new Float32Array(N * N * 3), 3);
+      const pts = new Float32Array(N * N * 3), step = crop / (N - 1);
+      let k = 0;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++, k++) {
+        const lx = -crop / 2 + i * step, lz = -crop / 2 + j * step;
+        const hh = E.h(cx + lx, cz + lz, 0);
+        pts[k * 3] = lx; pts[k * 3 + 1] = hh; pts[k * 3 + 2] = lz;
+        const c = E.col(cx + lx, cz + lz, hh, 0);
+        im.instanceColor.array[k * 3] = c[0]; im.instanceColor.array[k * 3 + 1] = c[1]; im.instanceColor.array[k * 3 + 2] = c[2];
+      }
+      im.frustumCulled = false;
+      it.scene.add(im);
+      const M = new T.Matrix4(), P = new T.Vector3(), S3 = new T.Vector3();
+      const rad = step * 1.55;
+      it.billboard = () => {                     // splats face the orbiting camera, like the sim
+        for (let q = 0; q < N * N; q++) {
+          P.set(pts[q * 3], pts[q * 3 + 1], pts[q * 3 + 2]);
+          M.compose(P, it.cam.quaternion, S3.set(rad, rad, rad));
+          im.setMatrixAt(q, M);
+        }
+        im.instanceMatrix.needsUpdate = true;
+      };
+    }
+    function buildMeshPatch(it, env, crop, N, kind) {
+      if (it.meshGroup) {
+        it.scene.remove(it.meshGroup);
+        it.meshGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      }
+      const grp = new T.Group();
+      const g = patchGeo(env, N - 1, crop);
+      grp.add(new T.Mesh(g, new T.MeshLambertMaterial({
+        vertexColors: true, side: T.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+      })));
+      // wire per subtype: tri = triangulated, quad = grid rows/cols, tetra = grid + both diagonals
+      const pos = g.attributes.position, wire = [];
+      const push = (a, b) => wire.push(pos.getX(a), pos.getY(a), pos.getZ(a), pos.getX(b), pos.getY(b), pos.getZ(b));
+      const idx = (i, j) => j * N + i;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        if (i + 1 < N) push(idx(i, j), idx(i + 1, j));
+        if (j + 1 < N) push(idx(i, j), idx(i, j + 1));
+        if (i + 1 < N && j + 1 < N) {
+          if (kind === 'tri') push(idx(i + 1, j), idx(i, j + 1));
+          if (kind === 'tetra') { push(idx(i + 1, j), idx(i, j + 1)); push(idx(i, j), idx(i + 1, j + 1)); }
+        }
+      }
+      const wg = new T.BufferGeometry();
+      wg.setAttribute('position', new T.BufferAttribute(new Float32Array(wire), 3));
+      grp.add(new T.LineSegments(wg, new T.LineBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.35 })));
+      it.scene.add(grp);
+      it.meshGroup = grp;
+    }
+    function renderRep() {
+      body.innerHTML =
+        '<div class="kss-ob-gal">' +
+          '<div class="kss-ob-card kss-ob-card-lg' + (sel.recon === 'splats' ? ' kss-on' : '') + '" data-rec="splats">' +
+            '<canvas width="330" height="206"></canvas>' +
+            '<div class="kss-ob-card-t">3D GAUSSIAN SPLATS</div>' +
+            '<div class="kss-ob-card-d">soft gaussian billboards · confidence-driven alpha · facade wall-scan</div>' +
+          '</div>' +
+          '<div class="kss-ob-card kss-ob-card-lg' + (sel.recon === 'mesh' ? ' kss-on' : '') + '" data-rec="mesh">' +
+            '<canvas width="330" height="206"></canvas>' +
+            '<div class="kss-ob-card-t">MESH</div>' +
+            '<div class="kss-ob-card-d">live 2×2 UV-stitched connectivity · whole budget on the surface</div>' +
+            '<div class="kss-ob-row">' + ['tri', 'quad', 'tetra'].map(mk =>
+              '<button class="kss-ob-opt' + (sel.meshKind === mk ? ' kss-on' : '') + '" data-mk="' + mk + '">' + mk + '</button>').join('') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      const N = 40, crop = 46;
+      const cards = body.querySelectorAll('.kss-ob-card');
+      const itS = mkPreview(cards[0].querySelector('canvas'), 330, 206);
+      buildSplatPatch(itS, sel.env, crop, N);
+      const baseS = orbitTick(itS, 44, 30, 0.25, 0.6);
+      itS.tick = t => { baseS(t); itS.billboard(); };
+      const itM = mkPreview(cards[1].querySelector('canvas'), 330, 206);
+      buildMeshPatch(itM, sel.env, crop, N, sel.meshKind);
+      itM.tick = orbitTick(itM, 44, 30, 0.25, 0.6);
+      cards.forEach(card => card.addEventListener('click', () => {
+        sel.recon = card.dataset.rec;
+        if (sel.recon === 'mesh' && sel.sampling === 'fluid') sel.sampling = 'adaptive';  // stitching needs the grid
+        cards.forEach(c => c.classList.toggle('kss-on', c === card));
+      }));
+      body.querySelectorAll('[data-mk]').forEach(b => b.addEventListener('click', e => {
+        e.stopPropagation();
+        sel.meshKind = b.dataset.mk; sel.recon = 'mesh';
+        if (sel.sampling === 'fluid') sel.sampling = 'adaptive';
+        cards.forEach(c => c.classList.toggle('kss-on', c.dataset.rec === 'mesh'));
+        body.querySelectorAll('[data-mk]').forEach(x => x.classList.toggle('kss-on', x === b));
+        buildMeshPatch(itM, sel.env, crop, N, sel.meshKind);
+      }));
+    }
+
+    /* ── screen 3: resolution & sampling — live control-net diagram ── */
+    function renderRes() {
+      const DENS = [1, 2, 4, 8, 16];
+      const BUDS = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288];
+      const bl = b => b >= 1024 ? (b / 1024) + 'k' : b;
+      body.innerHTML =
+        '<div class="kss-ob-res">' +
+          '<div class="kss-ob-res-ctl">' +
+            '<div class="kss-ob-row"><span class="kss-ob-lb">Params</span>' +
+              '<input class="kss-ob-den" type="range" min="0" max="4" step="1" value="' + DENS.indexOf(sel.den) + '">' +
+              '<span class="kss-ob-val kss-ob-den-v">×' + sel.den + '</span></div>' +
+            '<div class="kss-ob-row"><span class="kss-ob-lb">Ctrl-net UV</span>' +
+              '<input class="kss-ob-cnet" type="range" min="48" max="192" step="8" value="' + sel.cnet + '">' +
+              '<span class="kss-ob-val kss-ob-cnet-v">' + sel.cnet + '×' + sel.cnet + '</span></div>' +
+            '<div class="kss-ob-row"><span class="kss-ob-lb">Sampling</span>' + ['adaptive', 'uniform', 'fluid'].map(s =>
+              '<button class="kss-ob-opt' + (sel.sampling === s ? ' kss-on' : '') +
+              (s === 'fluid' && sel.recon === 'mesh' ? ' kss-ob-dis' : '') + '" data-s="' + s + '">' + s + '</button>').join('') + '</div>' +
+            (sel.recon === 'mesh' ? '<div class="kss-ob-note">fluid sampling is unavailable with mesh recon — stitching needs the S×S grid</div>' : '') +
+            '<div class="kss-ob-row"><span class="kss-ob-lb">Budget</span>' + BUDS.map(b =>
+              '<button class="kss-ob-opt' + (sel.budget === b ? ' kss-on' : '') + '" data-b="' + b + '">' + bl(b) + '</button>').join('') + '</div>' +
+            '<div class="kss-ob-note">≥128k is a stress test — heavy on CPU/GPU</div>' +
+          '</div>' +
+          '<div class="kss-ob-res-viz">' +
+            '<canvas class="kss-ob-grid" width="300" height="300"></canvas>' +
+            '<div class="kss-ob-viz-cap"></div>' +
+          '</div>' +
+        '</div>';
+      const gc = body.querySelector('.kss-ob-grid'), gx = gc.getContext('2d');
+      const cap = body.querySelector('.kss-ob-viz-cap');
+      // per-axis importance from the REAL field: mean |∂h| along the other axis
+      // (same signal family as rebuildImportance's curvature term)
+      const E = ENVS[sel.env], cx0 = ENV_HOME[sel.env].x, cz0 = ENV_HOME[sel.env].z, crop = 72;
+      const B = 48, impU = new Float64Array(B), impV = new Float64Array(B);
+      for (let i = 0; i < B; i++) for (let j = 0; j < B; j++) {
+        const x = cx0 - crop / 2 + (i / (B - 1)) * crop, z = cz0 - crop / 2 + (j / (B - 1)) * crop;
+        const d = crop / B;
+        impU[i] += Math.abs(E.h(x + d, z, 0) - E.h(x, z, 0));
+        impV[j] += Math.abs(E.h(x, z + d, 0) - E.h(x, z, 0));
+      }
+      const cdf = imp => {
+        const c = new Float64Array(B + 1);
+        for (let i = 0; i < B; i++) c[i + 1] = c[i] + imp[i] + 0.15 * (imp.reduce((a, b) => a + b, 0) / B);
+        for (let i = 0; i <= B; i++) c[i] /= c[B];
+        return c;
+      };
+      const cdfU = cdf(impU), cdfV = cdf(impV);
+      const warp = (u, c) => {                   // inverse-CDF: uniform u → importance-warped position
+        let lo = 0, hi = B;
+        while (lo < hi) { const m = (lo + hi) >> 1; if (c[m + 1] < u) lo = m + 1; else hi = m; }
+        const seg = c[lo + 1] - c[lo] || 1;
+        return (lo + (u - c[lo]) / seg) / B;
+      };
+      const eff = () => Math.round(sel.cnet * Math.sqrt(sel.den));   // applyDensity's exact axis law
+      let shown = eff();
+      function drawGrid(n) {
+        const W = gc.width, pad = 8, w = W - 2 * pad;
+        gx.clearRect(0, 0, W, W);
+        gx.fillStyle = '#04070d'; gx.fillRect(0, 0, W, W);
+        gx.strokeStyle = 'rgba(79,195,247,' + Math.max(0.06, Math.min(0.5, 26 / n)) + ')';
+        gx.lineWidth = 1; gx.beginPath();
+        const nn = Math.round(n);
+        for (let i = 0; i <= nn; i++) {
+          const p = pad + (i / nn) * w;
+          gx.moveTo(p, pad); gx.lineTo(p, pad + w);
+          gx.moveTo(pad, p); gx.lineTo(pad + w, p);
+        }
+        gx.stroke();
+        // sample distribution vs the net (dots = where the S×S grid concentrates)
+        const D = 20;
+        gx.fillStyle = sel.sampling === 'fluid' ? 'rgba(105,240,174,.85)' : 'rgba(255,167,38,.85)';
+        for (let i = 0; i < D; i++) for (let j = 0; j < D; j++) {
+          let u = (i + 0.5) / D, v = (j + 0.5) / D;
+          if (sel.sampling !== 'uniform') { u = warp(u, cdfU); v = warp(v, cdfV); }
+          if (sel.sampling === 'fluid') {
+            u = clamp01(u + 0.018 * (hash2(i * 13 + 1, j * 7 + 3) - 0.5) * 2);
+            v = clamp01(v + 0.018 * (hash2(i * 5 + 2, j * 11 + 4) - 0.5) * 2);
+          }
+          gx.beginPath();
+          gx.arc(pad + u * w, pad + v * w, 1.6, 0, 6.2832);
+          gx.fill();
+        }
+        cap.innerHTML = 'control net <b>' + nn + '×' + nn + '</b> — ' + sel.cnet + ' × √' + sel.den +
+          ' · <span style="color:' + (sel.sampling === 'fluid' ? '#69f0ae' : '#ffa726') + '">' + sel.sampling + '</span> samples';
+      }
+      function animateGrid() {
+        cancelAnimationFrame(gridRaf);
+        const from = shown, to = eff(), t0 = performance.now();
+        const stepFn = () => {
+          const u = Math.min(1, (performance.now() - t0) / 280);
+          shown = from + (to - from) * (1 - Math.pow(1 - u, 3));    // ~280 ms ease-out
+          drawGrid(shown);
+          if (u < 1 && !dead) gridRaf = requestAnimationFrame(stepFn);
+        };
+        gridRaf = requestAnimationFrame(stepFn);
+      }
+      drawGrid(shown);
+      const denS = body.querySelector('.kss-ob-den'), denV = body.querySelector('.kss-ob-den-v');
+      denS.addEventListener('input', () => {
+        sel.den = DENS[+denS.value]; denV.textContent = '×' + sel.den; animateGrid();
+      });
+      const cnS = body.querySelector('.kss-ob-cnet'), cnV = body.querySelector('.kss-ob-cnet-v');
+      cnS.addEventListener('input', () => {
+        sel.cnet = +cnS.value; cnV.textContent = sel.cnet + '×' + sel.cnet; animateGrid();
+      });
+      body.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => {
+        if (b.classList.contains('kss-ob-dis')) return;
+        sel.sampling = b.dataset.s;
+        body.querySelectorAll('[data-s]').forEach(x => x.classList.toggle('kss-on', x === b));
+        drawGrid(shown);
+      }));
+      body.querySelectorAll('[data-b]').forEach(b => b.addEventListener('click', () => {
+        sel.budget = +b.dataset.b;
+        body.querySelectorAll('[data-b]').forEach(x => x.classList.toggle('kss-on', x === b));
+      }));
+    }
+
+    /* ── nav ── */
+    const RENDER = [renderMap, renderRep, renderRes];
+    function show(n) {
+      killPreviews();
+      step = n;
+      stepEl.textContent = 'STEP ' + (n + 1) + ' / 3 · ' + STEPS[n];
+      progFill.style.width = ((n + 1) / 3 * 100) + '%';
+      backBtn.style.visibility = n === 0 ? 'hidden' : 'visible';
+      nextBtn.textContent = n === 2 ? '▶ START' : 'NEXT →';
+      RENDER[n]();
+    }
+    backBtn.addEventListener('click', () => { if (step > 0) show(step - 1); });
+    nextBtn.addEventListener('click', () => {
+      if (step < 2) { show(step + 1); return; }
+      // START: tear down the galleries, boot the real sim with the chosen setup
+      dead = true;
+      cancelAnimationFrame(rafId);
+      killPreviews();
+      container.classList.remove('kss-root');
+      inst = create(container, Object.assign({}, opts, { initial: Object.assign({}, sel) }));
+    });
+    show(0);
+
+    return {
+      dispose() {
+        if (inst) return inst.dispose();
+        dead = true;
+        cancelAnimationFrame(rafId);
+        killPreviews();
+        container.innerHTML = '';
+        container.classList.remove('kss-root');
+      }
+    };
+  }
+
   // _basis: debug/self-check handle — verify gridEval ≡ bicubic per basis mode
-  return { create, _basis: { bicubic, gridEval, deg: d => { BASIS_DEG = d; } } };
+  return { create, onboard, _basis: { bicubic, gridEval, deg: d => { BASIS_DEG = d; } } };
 })();
