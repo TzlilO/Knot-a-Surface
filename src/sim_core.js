@@ -714,7 +714,14 @@ window.KnotSwarmSim = (function () {
           '<span class="kss-lb">Swarm view</span>' +
           '<button class="kss-btn kss-pitch kss-on" data-p="0">nadir</button>' +
           '<button class="kss-btn kss-pitch" data-p="25">25°</button>' +
-          '<button class="kss-btn kss-pitch" data-p="45">45°</button></div>' +
+          '<button class="kss-btn kss-pitch" data-p="45">45°</button>' +
+          '<span class="kss-lb">Recon</span>' +
+          '<button class="kss-btn kss-rec kss-on" data-rec="splats">3DGS</button>' +
+          '<button class="kss-btn kss-rec" data-rec="mesh">MESH</button>' +
+          '<span class="kss-lb">Mesh</span>' +
+          '<button class="kss-btn kss-mk kss-on" data-mk="tri">tri</button>' +
+          '<button class="kss-btn kss-mk" data-mk="quad">quad</button>' +
+          '<button class="kss-btn kss-mk" data-mk="tetra">tetra</button></div>' +
         '<div class="kss-menu" data-menu="env">' +
           '<button class="kss-btn kss-env" data-env="urban">urban</button>' +
           '<button class="kss-btn kss-env kss-on" data-env="forest">forest</button>' +
@@ -773,7 +780,7 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-export" style="color:#69f0ae;border-color:rgba(105,240,174,.5)">⬇ EXPORT PLY</button>' +
           '<span class="kss-lb" style="opacity:.7">UV-trick tessellation: slide a 2×2 window over the sampling domain</span></div>' +
         '<div class="kss-menu" data-menu="show">' +
-          '<button class="kss-btn kss-tg kss-on" data-tg="splats">splats</button>' +
+          '<button class="kss-btn kss-tg kss-on" data-tg="splats">surface</button>' +
           '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
           '<button class="kss-btn kss-tg kss-on" data-tg="frustum">frustums</button>' +
           '<button class="kss-btn kss-tg kss-on" data-tg="cmdr">commander</button></div>' +
@@ -781,7 +788,7 @@ window.KnotSwarmSim = (function () {
       '<div class="kss-dock">' +
         '<button class="kss-dbtn" data-open="mode">MODE</button>' +
         '<button class="kss-dbtn" data-open="env">ENV</button>' +
-        '<button class="kss-dbtn" data-open="budget">SPLATS</button>' +
+        '<button class="kss-dbtn" data-open="budget">SAMPLES</button>' +
         '<button class="kss-dbtn" data-open="swarm">DRONES</button>' +
         '<button class="kss-dbtn" data-open="show">LAYERS</button>' +
         '<button class="kss-dbtn" data-open="model">MODEL</button>' +
@@ -836,6 +843,7 @@ window.KnotSwarmSim = (function () {
     st.deg = 'cr'; st.den = 2; st.chan = 'rgb';    // Catmull-Rom default · ×2 parameter group
     st.adaptive = true;                            // curvature/texture/residual-aware sampling
     st.fluid = false;                              // fluid-particle sampling mode
+    st.recon = 'splats'; st.meshKind = 'tri';      // representation: 3DGS splats | 2x2-stitched mesh
     st.ovl = 0.4;                                 // frustum overlap: 1 = single shared frustum, 0.2 = min safe
     st.drone = true;                              // virtual observer drone owns the main POV by default
     st.cnet = 96;                                 // control-net UV resolution (customizable, was hard-coded)
@@ -1400,6 +1408,7 @@ window.KnotSwarmSim = (function () {
 
     /* ---------- reconstruction: surface pool + facade pool (one budget) ---------- */
     let splats = null, wallSplats = null, netLines = null, S = 0, wallCap = 0, wallUsed = 0;
+    let meshObj = null, meshWire = null;           // mesh recon: shared verts, per-kind index
     let HH = null;                                 // last surface heights S×S (for wall scan)
     let _splatAlpha = null;                        // shared radial gaussian falloff
     function splatAlphaTex() {
@@ -1422,9 +1431,10 @@ window.KnotSwarmSim = (function () {
       return st.env === 'forest' ? Math.min(0.5, base + 0.10) : base;   // stems share this pool too
     }
     function allocRecon() {
-      for (const o of [splats, wallSplats]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
+      for (const o of [splats, wallSplats, meshObj, meshWire]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
       if (netLines) { scene.remove(netLines); netLines.geometry.dispose(); netLines.material.dispose(); }
-      S = Math.max(8, Math.floor(Math.sqrt(st.budget * (1 - wallFrac()))));
+      // mesh: grid connectivity spans vertical jumps — no facade pool, whole budget is surface samples
+      S = Math.max(8, Math.floor(Math.sqrt(st.budget * (st.recon === 'mesh' ? 1 : 1 - wallFrac()))));
       wallCap = Math.max(128, st.budget - S * S);
       HH = new Float32Array(S * S);
       const mk = cap => {
@@ -1457,6 +1467,17 @@ window.KnotSwarmSim = (function () {
       };
       splats = mk(S * S);
       wallSplats = mk(wallCap);
+      const mg = new T.BufferGeometry();
+      mg.setAttribute('position', new T.BufferAttribute(new Float32Array(S * S * 3), 3).setUsage(T.DynamicDrawUsage));
+      mg.setAttribute('color', new T.BufferAttribute(new Float32Array(S * S * 3), 3).setUsage(T.DynamicDrawUsage));
+      meshObj = new T.Mesh(mg, new T.MeshBasicMaterial({
+        vertexColors: true, side: T.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1   // push fill back so wire wins
+      }));
+      meshWire = new T.LineSegments(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0x0e1620, transparent: true, opacity: 0.35 }));
+      meshWire.geometry.setAttribute('position', mg.attributes.position);   // shared vertex buffer
+      for (const o of [meshObj, meshWire]) { o.frustumCulled = false; o.layers.enable(1); scene.add(o); }
+      setMeshIndex();
       uMapA = new Float32Array(S); vMapA = new Float32Array(S);
       IMP.t = -9;                                  // force importance rebuild for new S
       posArr = new Float32Array(S * S * 3); nrmArr = new Float32Array(S * S * 3);
@@ -1470,6 +1491,36 @@ window.KnotSwarmSim = (function () {
       netLines.layers.enable(1);
       scene.add(netLines);
       reconDirty = true;
+    }
+
+    /* ── mesh stitching: slide a 2×2 kernel over the UV-ordered sample grid;
+       each window (a b / c d) stitches into faces — the UV trick from export,
+       applied live. tri: 2 faces · quad: same fill, no diagonal in wire ·
+       tetra: all 4 faces of the tetrahedron the 4 points span. ── */
+    function meshIndexFor(kind) {
+      const C = S - 1, faces = [], wire = [];
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+        const a = j * S + i;
+        if (i < C) wire.push(a, a + 1);
+        if (j < C) wire.push(a, a + S);
+      }
+      for (let j = 0; j < C; j++) for (let i = 0; i < C; i++) {
+        const a = j * S + i, b = a + 1, cc = a + S, d = cc + 1;   // the 2×2 window
+        if (kind === 'tetra') {
+          faces.push(a, d, b, a, cc, d, a, b, cc, b, d, cc);     // closed tet(a,b,c,d)
+          wire.push(a, d, b, cc);                                // both diagonals
+        } else {
+          faces.push(a, d, b, a, cc, d);                         // CCW from above, as in buildPLY
+          if (kind === 'tri') wire.push(a, d);
+        }
+      }
+      return { faces: new Uint32Array(faces), wire: new Uint32Array(wire) };
+    }
+    function setMeshIndex() {
+      if (!meshObj) return;
+      const ix = meshIndexFor(st.meshKind);
+      meshObj.geometry.setIndex(new T.BufferAttribute(ix.faces, 1));
+      meshWire.geometry.setIndex(new T.BufferAttribute(ix.wire, 1));
     }
 
     /* facade albedo: family from the tall side + procedural window grid */
@@ -1642,6 +1693,7 @@ window.KnotSwarmSim = (function () {
       const wConfA = wallSplats.userData.conf;
       const ws = Math.max(0.9, cell * 1.1);        // vertical splat step
       const wallShade = f => 0.55 + 0.45 * f;
+      if (st.recon !== 'mesh')                     // mesh: connected grid IS the wall — pool idle
       for (let j = 0; j < S && wk < wallCap; j++) for (let i = 0; i < S && wk < wallCap; i++) {
         for (const [di, dj] of [[1, 0], [0, 1]]) {
           const i2 = i + di, j2 = j + dj;
@@ -1733,6 +1785,12 @@ window.KnotSwarmSim = (function () {
       wallSplats.instanceMatrix.needsUpdate = true;
       wallSplats.instanceColor.needsUpdate = true;
       wConfA.needsUpdate = true;
+
+      if (st.recon === 'mesh') {                   // decode the SAME samples as a stitched mesh
+        const pa = meshObj.geometry.attributes.position, ca = meshObj.geometry.attributes.color;
+        pa.array.set(posArr); pa.needsUpdate = true;
+        ca.array.set(splats.instanceColor.array); ca.needsUpdate = true;
+      }
 
       if (st.show.net) {
         const ap = netLines.geometry.attributes.position.array;
@@ -2095,11 +2153,13 @@ window.KnotSwarmSim = (function () {
       _rgbA = splats.instanceColor.array; _rgbWA = wallSplats.instanceColor.array;
       splats.instanceColor.array = chanArr; splats.instanceColor.needsUpdate = true;
       wallSplats.instanceColor.array = wChanArr; wallSplats.instanceColor.needsUpdate = true;
+      if (st.recon === 'mesh') { const c2 = meshObj.geometry.attributes.color; c2.array.set(chanArr); c2.needsUpdate = true; }
     }
     function popChannel() {
       if (st.chan === 'rgb' || !_rgbA) return;
       splats.instanceColor.array = _rgbA; splats.instanceColor.needsUpdate = true;
       wallSplats.instanceColor.array = _rgbWA; wallSplats.instanceColor.needsUpdate = true;
+      if (st.recon === 'mesh') { const c2 = meshObj.geometry.attributes.color; c2.array.set(_rgbA); c2.needsUpdate = true; }
     }
 
     /* ---------- swarm pose: overlap-controlled per-drone frustums ----------
@@ -2145,8 +2205,10 @@ window.KnotSwarmSim = (function () {
       frusLines.visible = st.show.frustum;
       if (st.show.frustum) frusGeo.attributes.position.needsUpdate = true;
       frusMat.opacity = 0.05 + 0.14 * (1 - st.zoom * 0.5);
-      splats.visible = st.show.splats;
-      wallSplats.visible = st.show.splats;
+      const meshOn = st.recon === 'mesh';
+      splats.visible = st.show.splats && !meshOn;
+      wallSplats.visible = st.show.splats && !meshOn;
+      meshObj.visible = meshWire.visible = st.show.splats && meshOn;
       netLines.visible = st.show.net;
       roiRing.position.set(st.roi.x, ENVS[st.env].h(st.roi.x, st.roi.z, time) + 0.4, st.roi.z);
       roiRing.scale.setScalar(crop / 2);
@@ -2536,6 +2598,7 @@ window.KnotSwarmSim = (function () {
         }
       }
       splats.instanceColor.needsUpdate = true;
+      if (st.recon === 'mesh') { const c2 = meshObj.geometry.attributes.color; c2.array.set(colA); c2.needsUpdate = true; }
       if (exp_.cell >= exp_.total) {
         splats.instanceColor.array.set(exp_.saved);
         splats.instanceColor.needsUpdate = true;
@@ -2548,10 +2611,17 @@ window.KnotSwarmSim = (function () {
     const fmt = (x, d) => x.toFixed(d !== undefined ? d : 1);
     function updateHUD(crop) {
       const foot = crop * ((win.u1 - win.u0) + (win.v1 - win.v0)) / 2 / S;
+      const meshMode = st.recon === 'mesh', cells = (S - 1) * (S - 1);
+      const sampStr = (st.fluid ? (FLU.frozen ? ' · <b style="color:#69f0ae">≈ fluid · settled</b>' : ' · <b style="color:#ce93d8">≈ fluid · flowing</b>') : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive · fwd ' + Math.round((IMP.fwd === undefined ? 1 : IMP.fwd) * 100) + '%</b>' : '');
       hudTL.innerHTML =
-        '<div class="kss-big">' + (S * S + wallUsed).toLocaleString() + ' <span>splats · budget ' + st.budget.toLocaleString() + '</span></div>' +
-        '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' +
-        (st.fluid ? (FLU.frozen ? ' · <b style="color:#69f0ae">≈ fluid · settled</b>' : ' · <b style="color:#ce93d8">≈ fluid · flowing</b>') : st.adaptive && uMapA ? ' · <b style="color:#4fc3f7">◮ adaptive · fwd ' + Math.round((IMP.fwd === undefined ? 1 : IMP.fwd) * 100) + '%</b>' : '') + '</div>' +
+        (meshMode
+          ? '<div class="kss-big">' + (S * S).toLocaleString() + ' <span>samples · budget ' + st.budget.toLocaleString() + '</span></div>' +
+            '<div>' + (st.meshKind === 'tri' ? '△ tri-mesh <b>' + (2 * cells).toLocaleString() + ' faces</b>' :
+                       st.meshKind === 'quad' ? '▢ quad-mesh <b>' + cells.toLocaleString() + ' faces</b>' :
+                       '▲ tetra-mesh <b>' + cells.toLocaleString() + ' tets</b>') +
+            ' · 2×2 UV stitch · pitch <b>' + st.pitch + '°</b>' + sampStr + '</div>'
+          : '<div class="kss-big">' + (S * S + wallUsed).toLocaleString() + ' <span>splats · budget ' + st.budget.toLocaleString() + '</span></div>' +
+            '<div>surface <b>' + (S * S).toLocaleString() + '</b> + facade <b>' + wallUsed.toLocaleString() + '</b> · pitch <b>' + st.pitch + '°</b>' + sampStr + '</div>') +
         '<div>crop <b>' + fmt(crop) + ' m</b> · footprint <b>' +
           (foot >= 1 ? fmt(foot, 2) + ' m' : fmt(foot * 100, 0) + ' cm') + '</b> · GRID <b>' + gridRef(st.roi.x, st.roi.z) + '</b></div>' +
         '<div>swarm-view coverage <b>' + Math.round((fit.cov || 0) * 100) + '%</b> · photometric res <b>' + fmt(fit.pres || 0, 3) + '</b>' +
@@ -3046,7 +3116,26 @@ window.KnotSwarmSim = (function () {
       const m = b.dataset.s;
       st.adaptive = m === 'adaptive'; st.fluid = m === 'fluid';
       bar.querySelectorAll('.kss-samp').forEach(x => x.classList.toggle('kss-on', x === b));
+      if (st.fluid && st.recon === 'mesh') {       // stitching needs the S×S grid — back to 3DGS
+        st.recon = 'splats';
+        bar.querySelectorAll('.kss-rec').forEach(x => x.classList.toggle('kss-on', x.dataset.rec === 'splats'));
+        allocRecon();
+      }
       IMP.t = -9; if (st.fluid) initFluid(); reconDirty = true;
+    }));
+    bar.querySelectorAll('.kss-rec').forEach(b => b.addEventListener('click', () => {
+      st.recon = b.dataset.rec;
+      bar.querySelectorAll('.kss-rec').forEach(x => x.classList.toggle('kss-on', x === b));
+      if (st.recon === 'mesh' && st.fluid) {       // mesh stitching needs the grid — drop fluid
+        st.fluid = false; st.adaptive = true; IMP.t = -9;
+        bar.querySelectorAll('.kss-samp').forEach(x => x.classList.toggle('kss-on', x.dataset.s === 'adaptive'));
+      }
+      allocRecon();                                // re-split budget (mesh: no facade pool)
+    }));
+    bar.querySelectorAll('.kss-mk').forEach(b => b.addEventListener('click', () => {
+      st.meshKind = b.dataset.mk;
+      bar.querySelectorAll('.kss-mk').forEach(x => x.classList.toggle('kss-on', x === b));
+      setMeshIndex(); reconDirty = true;
     }));
     const geoBtn = bar.querySelector('.kss-geo');
     if (geoBtn) geoBtn.addEventListener('click', () => {
