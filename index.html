@@ -260,7 +260,7 @@ header .badge{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform
 window.KnotSwarmSim = (function () {
   'use strict';
   const SIM_VERSION = 'v18';
-  const SIM_BUILT = '2026-07-21 07:56 UTC';   // stamped by build.py at build time
+  const SIM_BUILT = '2026-07-21 08:18 UTC';   // stamped by build.py at build time
 
   /* ── deterministic value noise ─────────────────────────────────────── */
   function hash2(x, y) {
@@ -1037,6 +1037,7 @@ window.KnotSwarmSim = (function () {
           '<button class="kss-btn kss-tg" data-tg="net">net</button>' +
           '<button class="kss-btn kss-tg kss-on" data-tg="frustum">frustums</button>' +
           '<button class="kss-btn kss-tg kss-on" data-tg="cmdr">commander</button></div>' +
+        '<div class="kss-menu" data-menu="subs"></div>' +
       '</div>' +
       '<div class="kss-dock">' +
         '<button class="kss-dbtn" data-open="mode">MODE</button>' +
@@ -1046,6 +1047,7 @@ window.KnotSwarmSim = (function () {
         '<button class="kss-dbtn" data-open="show">LAYERS</button>' +
         '<button class="kss-dbtn" data-open="model">MODEL</button>' +
         '<button class="kss-dbtn" data-open="export">EXPORT</button>' +
+        '<button class="kss-dbtn" data-open="subs">SPLINES</button>' +
         '<button class="kss-dbtn kss-force" title="burst of optimization steps">⚡</button>' +
         '<button class="kss-dbtn kss-zen" title="zen: scene + commander only">◐ ZEN</button>' +
         '<div class="kss-knob"><input class="kss-zoom" type="range" min="0" max="1" step="0.002" value="0">' +
@@ -1081,7 +1083,7 @@ window.KnotSwarmSim = (function () {
     const st = {
       env: 'forest', mode: 'manual', budget: 65536, zoom: 0,
       roi: { x: ENV_HOME.forest.x, z: ENV_HOME.forest.z },
-      show: { splats: true, net: false, frustum: true, cmdr: true },
+      show: { splats: true, net: false, frustum: true, cmdr: true, bounds: true },
       swapped: true, tool: 'nav', heat: false,
       drGrid: 5, drAdapt: false,
       pitch: 0,                                  // oblique view angle (deg): 0 = nadir
@@ -1265,6 +1267,7 @@ window.KnotSwarmSim = (function () {
     function subH(x, z, h0) {                     // composite: local splines override inside their masks
       for (let n = 0; n < SUBS.length; n++) {
         const sb = SUBS[n];
+        if (sb.hidden) continue;                  // hidden → region falls back to the global surface
         const u = (x - sb.x0) / sb.crop, v = (z - sb.z0) / sb.crop;
         if (u < 0 || u > 1 || v < 0 || v > 1) continue;
         const w = subBlend(sb.gm, x, z);
@@ -1294,6 +1297,7 @@ window.KnotSwarmSim = (function () {
         sub.cur[k] = g0 === null ? sub.tgt[k] : g0;
       }
       SUBS.push(sub); _decFlash = st.t; reconDirty = true;
+      rebuildBounds();
       return sub;
     }
     function subOptimStep(dt) {                   // independent(ish) refinement per local surface
@@ -3401,6 +3405,7 @@ window.KnotSwarmSim = (function () {
       clearRuler(); clearMarkers(); topoClear(); tacRing.visible = false;
       fit.extra = 0; st.boost = 0;
       SUBS.length = 0; _subResSum = 0;             // local surfaces are per-env
+      rebuildBounds();
       covW = null;                                 // swarm-view weights recomputed fresh
       IMP.t = -9; IMP._pu = null; IMP.cdfU = IMP.cdfV = null; IMP.fwd = undefined;
       FLU._prevE = null; FLU.eT = -9;
@@ -3691,11 +3696,23 @@ window.KnotSwarmSim = (function () {
       // truncation error IS the frequency disentangler: where the global spline
       // keeps failing, the scene is high-frequency — carve those regions out.
       const hf = new Uint8Array(SEG_GW * SEG_GW);
-      const n = S * S;
+      const n = S * S, E = ENVS[st.env];
+      // estimation error vs GT: |composite spline height − world truth| per sample,
+      // plus a steady-climb term (|∇error| along the grid) — transitions like
+      // ground→building/tree show up as a consistent local rise before the peak.
+      const err = new Float32Array(n);
+      for (let k = 0; k < n; k++) err[k] = Math.abs(HH[k] - E.h(posArr[k * 3], posArr[k * 3 + 2], st.t));
+      const score = new Float32Array(n);
       let thr = 0;
-      for (let k = 0; k < n; k++) thr += errArr[k];
-      thr = Math.max(0.12, 2.2 * thr / n);        // well above mean truncation error
-      for (let k = 0; k < n; k++) if (errArr[k] > thr) {
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+        const k = j * S + i;
+        const gU = Math.abs(err[j * S + Math.min(S - 1, i + 1)] - err[j * S + Math.max(0, i - 1)]) / 2;
+        const gV = Math.abs(err[Math.min(S - 1, j + 1) * S + i] - err[Math.max(0, j - 1) * S + i]) / 2;
+        score[k] = err[k] + 1.5 * (gU + gV);      // magnitude + climb
+        thr += score[k];
+      }
+      thr = Math.max(0.12, 2.2 * thr / n);        // well above mean estimation error
+      for (let k = 0; k < n; k++) if (score[k] > thr) {
         const i = ((posArr[k * 3] + SEG_BND) / (2 * SEG_BND) * SEG_GW) | 0;
         const j = ((posArr[k * 3 + 2] + SEG_BND) / (2 * SEG_BND) * SEG_GW) | 0;
         if (i > 0 && j > 0 && i < SEG_GW - 1 && j < SEG_GW - 1)
@@ -3730,6 +3747,85 @@ window.KnotSwarmSim = (function () {
                   : 'no high-frequency regions above threshold - optimize longer or zoom in');
     }
 
+    /* ── per-surface manager (SPLINES menu) + 3D boundary contours ──
+       Contours trace each sub's MASK outline (seg-cell edges between in/out),
+       draped on the composite surface, one color per surface; the dimmer square
+       is the spline's parametric domain. World-anchored, overlay layer. ── */
+    const SUB_COLS = [0xffd54f, 0x4fc3f7, 0xff8a65, 0xba68c8, 0x69f0ae, 0xf06292];
+    let boundGrp = null;
+    function rebuildBounds() {
+      if (boundGrp) {
+        scene.remove(boundGrp);
+        boundGrp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); });
+        boundGrp = null;
+      }
+      if (!st.show.bounds || !SUBS.length) return;
+      boundGrp = new T.Group();
+      const cw = 2 * SEG_BND / SEG_GW;
+      const drape = (x, z) => { const h = reconH(x, z); return (h === null ? ENVS[st.env].h(x, z, st.t) : h) + 0.5; };
+      SUBS.forEach((sb, ni) => {
+        const pts = [];
+        const seg2 = (xa, za, xb, zb) => { pts.push(xa, drape(xa, za), za, xb, drape(xb, zb), zb); };
+        const i0 = Math.max(1, ((sb.x0 + SEG_BND) / cw) | 0), i1 = Math.min(SEG_GW - 2, ((sb.x0 + sb.crop + SEG_BND) / cw) | 0);
+        const j0 = Math.max(1, ((sb.z0 + SEG_BND) / cw) | 0), j1 = Math.min(SEG_GW - 2, ((sb.z0 + sb.crop + SEG_BND) / cw) | 0);
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          if (!sb.gm[j * SEG_GW + i]) continue;
+          const x = i * cw - SEG_BND, z = j * cw - SEG_BND;
+          if (!sb.gm[j * SEG_GW + i - 1]) seg2(x, z, x, z + cw);
+          if (!sb.gm[j * SEG_GW + i + 1]) seg2(x + cw, z, x + cw, z + cw);
+          if (!sb.gm[(j - 1) * SEG_GW + i]) seg2(x, z, x + cw, z);
+          if (!sb.gm[(j + 1) * SEG_GW + i]) seg2(x, z + cw, x + cw, z + cw);
+        }
+        const g = new T.BufferGeometry();
+        g.setAttribute('position', new T.BufferAttribute(new Float32Array(pts), 3));
+        const ln = new T.LineSegments(g, new T.LineBasicMaterial({ color: SUB_COLS[ni % 6], transparent: true, opacity: 0.95 }));
+        boundGrp.add(ln);
+        // parametric domain square, dimmer, draped every ~2 m
+        const dp = [], n2 = Math.max(4, Math.ceil(sb.crop / 2));
+        const edge = (xa, za, xb, zb) => { for (let s2 = 0; s2 < n2; s2++) { const t0 = s2 / n2, t1 = (s2 + 1) / n2; seg2(xa + (xb - xa) * t0, za + (zb - za) * t0, xa + (xb - xa) * t1, za + (zb - za) * t1); } };
+        const P0 = pts.length;
+        edge(sb.x0, sb.z0, sb.x0 + sb.crop, sb.z0); edge(sb.x0 + sb.crop, sb.z0, sb.x0 + sb.crop, sb.z0 + sb.crop);
+        edge(sb.x0 + sb.crop, sb.z0 + sb.crop, sb.x0, sb.z0 + sb.crop); edge(sb.x0, sb.z0 + sb.crop, sb.x0, sb.z0);
+        const g2 = new T.BufferGeometry();
+        g2.setAttribute('position', new T.BufferAttribute(new Float32Array(pts.slice(P0)), 3));
+        const ln2 = new T.LineSegments(g2, new T.LineBasicMaterial({ color: SUB_COLS[ni % 6], transparent: true, opacity: 0.3 }));
+        boundGrp.add(ln2);
+      });
+      boundGrp.traverse(o => o.layers && o.layers.set(2));   // overlay: visible in BOTH views
+      scene.add(boundGrp);
+    }
+    function subRefine(sb) {                      // subdivide this surface's control grid ×1.35
+      const CN = Math.min(96, Math.round(sb.CN * 1.35));
+      if (CN === sb.CN) return;
+      const cur = new Float32Array((CN + 3) * (CN + 3));
+      for (let j = -1; j <= CN + 1; j++) for (let i = -1; i <= CN + 1; i++)
+        cur[(j + 1) * (CN + 3) + (i + 1)] = bicubic(sb.cur, sb.CN, clamp01(i / CN), clamp01(j / CN));
+      sb.CN = CN; sb.cur = cur;
+      sb.tgt = sampleTarget(CN, sb.x0, sb.z0, sb.crop, st.t);
+      _decFlash = st.t; reconDirty = true;
+    }
+    function renderSubMenu() {
+      const m = bar.querySelector('.kss-menu[data-menu="subs"]');
+      let html = '<button class="kss-btn kss-sub-bnd' + (st.show.bounds ? ' kss-on' : '') + '">bounds</button>' +
+        '<span class="kss-lb">G global ' + fit.CN + '×' + fit.CN + ' · res ' + fit.res.toFixed(3) + '</span>';
+      SUBS.forEach((sb, n2) => {
+        const col = '#' + SUB_COLS[n2 % 6].toString(16).padStart(6, '0');
+        html += '<span class="kss-lb" style="color:' + col + '">S' + (n2 + 1) + ' ' + sb.CN + '×' + sb.CN + ' · res ' + sb.res.toFixed(3) + '</span>' +
+          '<button class="kss-btn kss-sub-eye' + (sb.hidden ? '' : ' kss-on') + '" data-n="' + n2 + '">' + (sb.hidden ? 'hidden' : 'shown') + '</button>' +
+          '<button class="kss-btn kss-sub-ref" data-n="' + n2 + '" title="subdivide control grid">refine</button>' +
+          '<button class="kss-btn kss-sub-del" data-n="' + n2 + '" title="merge back into global">×</button>';
+      });
+      if (!SUBS.length) html += '<span class="kss-lb" style="opacity:.7">no local surfaces — segment + ⊕ decompose, or ⊕ auto-decomp</span>';
+      m.innerHTML = html;
+      // clicks must BUBBLE to the bar (showUI keep-alive) or the dock auto-folds mid-interaction
+      m.querySelector('.kss-sub-bnd').addEventListener('click', () => { st.show.bounds = !st.show.bounds; rebuildBounds(); renderSubMenu(); });
+      m.querySelectorAll('.kss-sub-eye').forEach(b2 => b2.addEventListener('click', () => { const sb = SUBS[+b2.dataset.n]; sb.hidden = !sb.hidden; reconDirty = true; renderSubMenu(); }));
+      m.querySelectorAll('.kss-sub-ref').forEach(b2 => b2.addEventListener('click', () => { subRefine(SUBS[+b2.dataset.n]); renderSubMenu(); }));
+      m.querySelectorAll('.kss-sub-del').forEach(b2 => b2.addEventListener('click', () => { SUBS.splice(+b2.dataset.n, 1); _subResSum = 0; reconDirty = true; rebuildBounds(); renderSubMenu(); }));
+    }
+    bar.querySelector('.kss-dbtn[data-open="subs"]').addEventListener('click', renderSubMenu);
+    renderSubMenu();
+
     segCanvas.addEventListener('pointerdown', e => {
       e.stopPropagation();
       if (!seg.W) segFeature();
@@ -3763,6 +3859,7 @@ window.KnotSwarmSim = (function () {
         autoDecompose();
       } else if (a === 'merge') {
         SUBS.length = 0; _subResSum = 0; reconDirty = true;
+        rebuildBounds(); renderSubMenu();
         segMsg('merged back to a single global surface');
       } else if (a === 'clear') {
         seg.pos = []; seg.neg = []; seg.gmask.fill(0); seg.has = false; seg.active = false;

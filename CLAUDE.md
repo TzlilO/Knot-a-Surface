@@ -88,8 +88,11 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
   finer world-anchored spline (warm-started from the composite), `subOptimStep` refines
   each independently, `subH` = composite height (global + feathered local overrides —
   patched into `updateRecon` HH, `reconH`, `buildPLY`). `autoDecompose` = bulk: threshold
-  `errArr` truncation error → flood-fill components → top-4 get their own splines.
-  Seg-panel buttons: decompose+refine / auto-decomp / merge back. Cleared on env change.
+  spline-vs-GT estimation error + steady-climb gradient term → flood-fill components →
+  top-4 get their own splines. Seg-panel buttons: decompose+refine / auto-decomp /
+  merge back. SPLINES dock menu (`renderSubMenu`) = per-surface hide/refine(subdivide)/
+  remove + `rebuildBounds` draped mask-contour overlay (layer 2, color per surface,
+  `st.show.bounds`). Cleared on env change.
 - **export**: `startExport` 2×2 UV-kernel sweep animation → `buildPLY` binary PLY.
 - **UI**: dock + popup menus in `bar`, 3 s auto-fold, zen mode, mobile media queries
   (in sim_style.css), pinch zoom, joystick/twin-stick + elevation controls.
