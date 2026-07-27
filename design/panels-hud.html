@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="tokens/design_tokens.css">
+<link rel="stylesheet" href="tokens/design_components.css">
+<style>
+  body{background:var(--instr-bg);padding:22px}
+  h2{font-family:var(--font-display);font-size:15px;margin:0 0 4px;color:var(--instr-text)}
+  .note{font-size:11.5px;color:var(--instr-dim);margin:0 0 14px;max-width:600px;line-height:1.5}
+  section{margin-bottom:26px}
+  .grid{display:flex;gap:14px;flex-wrap:wrap}
+</style>
+</head><body>
+
+<section>
+  <h2>HUD readout (.kss-hud / .ka-hud)</h2>
+  <p class="note">Compact instrument-panel gauge, top-left/top-right corners. Backdrop-blurred,
+    pointer-events:none — an overlay, not a clickable panel.</p>
+  <div class="ds-hud">
+    SPLATS <b>63,412</b> / 64,000<br>
+    SURFACE <b>58,190</b> · FACADE <b>5,222</b><br>
+    COVERAGE <b>87%</b> · MULTI-VIEW <b>62%</b><br>
+    RESIDUAL <b>0.014</b>
+  </div>
+</section>
+
+<section>
+  <h2>Panel (--r-panel / --r-panel-lg / --r-panel-sm)</h2>
+  <p class="note">Popups, segmentation/gradient analysis panels, onboarding cards, info popup —
+    same background family at three container sizes.</p>
+  <div class="grid">
+    <div class="ds-panel sm" style="width:140px">sm — 6px<br>(seg canvas, seg-src)</div>
+    <div class="ds-panel" style="width:160px">panel — 10px<br>(cmdr inset, menu, seg/grad)</div>
+    <div class="ds-panel lg" style="width:180px">lg — 12px<br>(info popup, onboarding card)</div>
+  </div>
+</section>
+
+</body></html>

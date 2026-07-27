@@ -1,0 +1,45 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens/design_tokens.css">
+<link rel="stylesheet" href="tokens/design_components.css">
+<style>
+  section{padding:22px}
+  .instr{background:var(--instr-bg)}
+  .page{background:var(--paper)}
+  h2{font-family:var(--font-display);font-size:15px;margin:0 0 4px}
+  .note{font-size:11.5px;margin:0 0 14px;max-width:600px;line-height:1.5}
+  .instr .note{color:var(--instr-dim)}
+  .page .note{color:var(--pmuted)}
+  .instr h2{color:var(--instr-text)}
+  .page h2{color:var(--pink)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+</style>
+</head><body>
+
+<section class="instr">
+  <h2>Instrument badges</h2>
+  <p class="note">Status/mode indicators for the HUD — dot + label, semantic color by role.</p>
+  <div class="row">
+    <span class="ds-badge-instr accent"><span class="dot"></span>MANUAL</span>
+    <span class="ds-badge-instr warn"><span class="dot"></span>WARMING UP</span>
+    <span class="ds-badge-instr ok"><span class="dot"></span>CONVERGED</span>
+    <span class="ds-badge-instr danger"><span class="dot"></span>BLIND ZONE</span>
+    <span class="ds-badge-instr special"><span class="dot"></span>ZEN</span>
+  </div>
+</section>
+
+<section class="page">
+  <h2>Page badges (project.html .badge family)</h2>
+  <p class="note">Pill badges on the landing page's hero — mono label, tinted outline via
+    color-mix(). Separate radius (20px, a true pill at this size) from the instrument buttons.</p>
+  <div class="row">
+    <span class="ds-badge-page cyan">REAL-TIME</span>
+    <span class="ds-badge-page amber">DRONE SWARM</span>
+    <span class="ds-badge-page green">FIXED BUDGET</span>
+  </div>
+</section>
+
+</body></html>

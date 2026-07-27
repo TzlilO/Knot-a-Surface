@@ -1,0 +1,70 @@
+/* ═══════════ Knot-a-Surface — design tokens (single source, shared by index/deck/arena) ═══════════
+   Two independent groups — don't cross them:
+
+   - PAGE tokens: the readable-surface palette for slide/document chrome (deck.html's body,
+     cards, tables). Responds to light/dark via prefers-color-scheme + an explicit [data-theme]
+     override. Values here are the deck's "field notebook" palette (previously duplicated inline
+     in deck_a.html and in the now-retired src/theme_v2.css :root block).
+
+   - INSTRUMENT tokens: the always-dark tactical HUD palette. This does NOT respond to light/dark
+     mode — it's a rendered instrument overlay (dock, HUD, panels, joystick), not page chrome.
+     Canonicalized on sim_style.css's existing values, the most load-bearing palette in the repo
+     (used verbatim by index.html + arena.html, and by deck.html's dark widget canvases).
+
+   project.html intentionally keeps its own local token set (different "paper" tuning + its own
+   cockpit-panel pairing per light/dark mode) — same naming *schema*, different values by design.
+   Don't try to force byte-identical values onto it; see design/README for the rationale. */
+
+:root{
+  /* ---- page tokens: light (default) ---- */
+  --paper:#f4f1e9; --card:#fffdf7; --psurface:#eae5d8;
+  --pink:#151d2c; --pbody:#4d5a6e; --pmuted:#8a94a5; --pborder-c:#d9d1bd;
+  --pcobalt:#155fd4; --pamber:#b26a00; --pgreen:#0d7d56; --ppurple:#6d3fc4; --pred:#c03530;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0b1017; --card:#0f1622; --psurface:#0d131c;
+    --pink:#dde5f0; --pbody:#8fa4c0; --pmuted:#5c6f8a; --pborder-c:#22314e;
+    --pcobalt:#4fc3f7; --pamber:#ffa726; --pgreen:#69f0ae; --ppurple:#ce93d8; --pred:#ef5350;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0b1017; --card:#0f1622; --psurface:#0d131c;
+  --pink:#dde5f0; --pbody:#8fa4c0; --pmuted:#5c6f8a; --pborder-c:#22314e;
+  --pcobalt:#4fc3f7; --pamber:#ffa726; --pgreen:#69f0ae; --ppurple:#ce93d8; --pred:#ef5350;
+}
+:root[data-theme="light"]{
+  --paper:#f4f1e9; --card:#fffdf7; --psurface:#eae5d8;
+  --pink:#151d2c; --pbody:#4d5a6e; --pmuted:#8a94a5; --pborder-c:#d9d1bd;
+  --pcobalt:#155fd4; --pamber:#b26a00; --pgreen:#0d7d56; --ppurple:#6d3fc4; --pred:#c03530;
+}
+
+:root{
+  /* ---- instrument tokens: always dark, one literal set ---- */
+  --instr-bg:#07090f;  --instr-bg-rgb:7,9,15;
+  --instr-bg2:#04070d; --instr-bg2-rgb:4,7,13;
+  --instr-surface:#121b2e;  --instr-surface-rgb:18,27,46;
+  --instr-surface2:#0d1220; --instr-surface2-rgb:13,18,32;
+  --instr-surface3:#060a12; --instr-surface3-rgb:6,10,18;
+  --instr-surface4:#0a0e18; --instr-surface4-rgb:10,14,24;
+  --instr-surface5:#0e1626;
+  --instr-border:#1b2a42; --instr-border2:#22314e;
+  --instr-text:#dde5f0; --instr-text2:#cfe0f0;
+  --instr-dim:#8fa4c0; --instr-dim2:#7f93ad; --instr-dim3:#5c6f8a; --instr-dim4:#4a5b73;
+
+  --instr-accent:#4fc3f7;  --instr-accent-rgb:79,195,247;
+  --instr-warn:#ffa726;    --instr-warn-rgb:255,167,38;
+  --instr-warn2:#ffe14d;   --instr-warn2-rgb:255,225,77;
+  --instr-ok:#69f0ae;      --instr-ok-rgb:105,240,174;
+  --instr-danger:#ef5350;  --instr-danger-rgb:239,83,80;
+  --instr-special:#ce93d8; --instr-special-rgb:206,147,216;
+
+  /* radius scale for interactive/container chrome. Functional circles (info button, compass,
+     joystick base/knob) stay literal border-radius:50% — they're hit-targets, not this scale. */
+  --r-tool:8px; --r-pill:15px; --r-hint-pill:999px;
+  --r-panel-sm:6px; --r-panel:10px; --r-panel-lg:12px;
+
+  --font-ui:'Inter',ui-sans-serif,system-ui,sans-serif;
+  --font-display:'Space Grotesk','Inter',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}

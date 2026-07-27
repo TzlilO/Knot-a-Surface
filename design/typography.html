@@ -1,0 +1,40 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens/design_tokens.css">
+<link rel="stylesheet" href="tokens/design_components.css">
+<style>
+  body{padding:24px;background:var(--paper);color:var(--pink)}
+  .note{font-size:12px;color:var(--pmuted);margin:0 0 20px;max-width:640px;line-height:1.5}
+  .row{display:flex;align-items:baseline;gap:16px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--pborder-c)}
+  .fam{font-size:11px;color:var(--pmuted);width:180px;flex:none;font-family:var(--font-mono)}
+  .display{font-family:var(--font-display);font-weight:700}
+  .ui{font-family:var(--font-ui)}
+  .mono{font-family:var(--font-mono)}
+</style>
+</head><body>
+
+<h2 style="font-family:var(--font-display)">Type families</h2>
+<p class="note">Three families cover the whole system: display headings, UI/body text, and
+  monospace for HUD readouts and eyebrow labels. Sizes themselves stay per-component (the sim's
+  dense HUD text is intentionally hand-tuned across ~15 sizes from 8&ndash;17px and isn't being
+  collapsed into a scale in this pass — see the note at the bottom).</p>
+
+<div class="row"><div class="fam">--font-display</div><div class="display" style="font-size:28px">Space Grotesk — headings, big metrics</div></div>
+<div class="row"><div class="fam">--font-ui</div><div class="ui" style="font-size:17px">Inter — everything else: body, HUD, buttons</div></div>
+<div class="row"><div class="fam">--font-mono</div><div class="mono" style="font-size:15px">JetBrains Mono — eyebrow labels, TACREF grid refs</div></div>
+
+<h2 style="font-family:var(--font-display);margin-top:28px">In context</h2>
+<div class="row"><div class="fam">h1 (page)</div><div class="display" style="font-size:clamp(1.6rem,4vw,2.6rem)">Knot-a-Surface</div></div>
+<div class="row"><div class="fam">h2 (page)</div><div class="display" style="font-size:24px;border-bottom:3px solid var(--pcobalt);display:inline-block;padding-bottom:4px">Section heading</div></div>
+<div class="row"><div class="fam">eyebrow / mono label</div><div class="mono" style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--pcobalt)">NURBS-GROUNDED GAUSSIAN SPLATTING</div></div>
+<div class="row"><div class="fam">HUD big metric</div><div class="display" style="font-size:17px;color:var(--pgreen);font-variant-numeric:tabular-nums">64,000 <span style="font-size:11px;font-weight:600;opacity:.7">splats</span></div></div>
+
+<p class="note" style="margin-top:20px">Retrofitting every existing font-size declaration in
+  sim_style.css into a formal scale was intentionally scoped out of this pass — those sizes are
+  pixel-tuned for a dense HUD and touching all of them risked visual regressions for no real
+  benefit. This page documents the intended scale for new components going forward.</p>
+
+</body></html>

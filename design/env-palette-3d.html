@@ -1,0 +1,66 @@
+<!-- @dsCard group="3D Palette" -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="tokens/design_tokens.css">
+<link rel="stylesheet" href="tokens/design_components.css">
+<style>
+  body{background:var(--instr-bg);padding:22px;color:var(--instr-text)}
+  h2{font-family:var(--font-display);font-size:15px;margin:0 0 4px}
+  .note{font-size:11.5px;color:var(--instr-dim);margin:0 0 14px;max-width:680px;line-height:1.5}
+  section{margin-bottom:28px}
+</style>
+</head><body>
+
+<h2>ENVS terrain albedo — reference swatches (read-only)</h2>
+<p class="note">Sampled from src/sim_core.js's ENVS.{urban,forest,ocean,dust}.col() for reference.
+  These are anchor colors read out of noise-blended, per-branch procedural expressions (not
+  standalone constants in the source) — extracting them into a real lookup table was scoped out of
+  this pass: the color math is inseparable from the noise perturbation at each call site, and
+  ENVS.col() runs per-splat during rebuild, so adding indirection there risked exactly the
+  megorphic-property-access cost the project's own performance notes warn about. This page
+  documents the palette for design purposes without touching the generator.</p>
+
+<section>
+  <h2 style="font-size:13px">Urban</h2>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(158,77,51)"></div><div class="ds-swatch-label">brick low-rise</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(64,107,158)"></div><div class="ds-swatch-label">tower glass</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(33,36,41)"></div><div class="ds-swatch-label">asphalt</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(191,158,26)"></div><div class="ds-swatch-label">lane paint</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(13,82,140)"></div><div class="ds-swatch-label">canal water</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(51,173,41)"></div><div class="ds-swatch-label">park grass</div></div>
+  </div>
+</section>
+
+<section>
+  <h2 style="font-size:13px">Forest</h2>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(28,135,38)"></div><div class="ds-swatch-label">conifer canopy</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(43,156,38)"></div><div class="ds-swatch-label">broadleaf canopy</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(230,135,15)"></div><div class="ds-swatch-label">autumn canopy</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(10,77,128)"></div><div class="ds-swatch-label">river</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(61,122,41)"></div><div class="ds-swatch-label">valley floor</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(133,128,122)"></div><div class="ds-swatch-label">high rock/peak</div></div>
+  </div>
+</section>
+
+<section>
+  <h2 style="font-size:13px">Ocean &amp; Dust</h2>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(10,56,107)"></div><div class="ds-swatch-label">deep water</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(66,153,204)"></div><div class="ds-swatch-label">shallow / foam</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(42,31,20)"></div><div class="ds-swatch-label">dust sky</div></div>
+  </div>
+</section>
+
+<section>
+  <h2 style="font-size:13px">Arena courts (COURTS.*, arena_core.js — already clean labeled data, no change needed)</h2>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(128,87,46)"></div><div class="ds-swatch-label">basketball floor</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(235,230,214)"></div><div class="ds-swatch-label">basketball lines</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(26,87,31)"></div><div class="ds-swatch-label">football floor</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:rgb(240,240,240)"></div><div class="ds-swatch-label">football lines</div></div>
+  </div>
+</section>
+
+</body></html>
