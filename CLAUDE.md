@@ -39,19 +39,32 @@ flying INSIDE the live reconstruction, not orbiting a drone around it.
   view like the terrain sim. Scoped out for now: mobile touch controls, occlusion-aware camera
   visibility (FOV+range only, no line-of-sight blocking).
 
-## sim_core.js architecture (one IIFE, ~3.3k lines)
+## sim_core.js architecture (one IIFE, ~4.3k lines)
 Module scope: `hash2/vnoise/fbm` noise · env definitions `ENVS.{urban,forest,ocean,dust}`
 with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable basis
 (CR default path / clamped B-spline p2-5 / NURBS rational, module var `BASIS_DEG`).
-`create(container,{embed})` closure holds everything else:
+`create(container,{embed})` closure holds everything else; `onboard(container,{embed})`
+is a thin wrapper in front of it (see **onboarding** below) — the public API is
+`{ create, onboard, _basis }`.
 
-- **fit model**: `fit{CN,cur,tgt,res,crop,x0,z0}` — control grid of heights.
-  `sampleTarget` (4-tap max supersampling), `optimStep` (time-based rate, Laplacian
-  regularizer REG=0.3, weighted by `covW` swarm-view coverage × `peW` photometric,
+- **fit model**: `fit{CN,cur,tgt,res,crop,x0,z0,cov,pres,mvc,gres}` — control grid of
+  heights. `sampleTarget` (4-tap max supersampling), `optimStep` (time-based rate,
+  Laplacian regularizer REG=0.3 scaled up where multi-view disagrees, weighted by
+  `covW` swarm-view coverage × `peW` photometric × `mvW` multi-view photo-consistency,
   plus bidirectional-Chamfer geometry supervision `GEO` when `st.geoSup`, residual
   `fit.gres`), `computeWeights` (strided ≤64/axis), `truncSubdivStep` (error-driven
   subdivision), warm-up levels `WARM_LEVELS` (64×64 floor), `reWarm()` on any MODEL
   change. Control-net UV resolution is `st.cnet` (default 96, user-adjustable).
+- **multi-view photo-consistency**: `computeWeights` back-projects each covering
+  drone's ray through the CURRENT height hypothesis and compares cross-view color
+  agreement (`mvW`, needs ≥2 views; <2 → unverified, `mv=0.25`); `swarmFoot.eye`/`.alt`
+  carry the eye positions+altitude needed for the back-projection geometry. `optimStep`
+  does confidence-weighted fusion: consistent cells trust their own data (`w *= 0.55 +
+  0.45·mv`), poorly-agreed cells lean harder on the smoothness prior (`REG *= 1 + 0.9·
+  (1-mv)`), gated to post-warm-up only. HUD exposes it as `fit.mvc` ("multi-view N%").
+  Forest stems: multi-view support (`sv` = drones observing a trunk) gates trunk-splat
+  opacity and PINS the stem top to `reconH` (the reconstructed canopy) so it can never
+  read as floating/detached; unobserved trees in swarm blind zones spend nothing.
 - **sampling modes** (`st.adaptive/st.fluid`): `rebuildImportance`+`axisSample` =
   inverse-CDF warp (curvature+texture+residual); `FLU` = fluid particles in
   window-relative coords, potential = truncation error, settle/freeze logic in
@@ -59,19 +72,34 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
 - **recon**: `updateRecon` two-pass (heights `HH`, then NN-stretched splats + facade
   wall-scan on vertical jumps) · `reconFluidPass` for fluid mode · `allocRecon` splits
   budget into surface `S×S` + `wallCap` by `wallFrac(pitch)`.
+- **event-driven resample**: while the commander frustum is only panning/rotating/
+  flying, `frustumWindow()`/`domainStep()` set `camDirty` instead of `reconDirty`
+  directly; `loop()` promotes it to a real `reconDirty` (rebuilding the S×S grid) only
+  on settle (`st.resample.settle`, 0.18 s idle), on a periodic timer
+  (`st.resample.interval`, default 0.15 s, clamped 0.07125–1.0 s), or on window/crop
+  drift past `st.resample.devThresh` (gated by `st.resample.devGate`) — kills the
+  continuous-resample "jelly" wobble. Discrete state changes (env/mode switch,
+  convergence, subdivision, UI toggles) still resample immediately, unchanged.
+  Debug: `__kss.resampleStats()` → `{camDirty, builds, lastSampleT}`.
 - **views**: main renderer + commander renderer share one scene; layers: 0 world,
   1 recon, 2 overlays. `st.swapped=true` by default (commander = MAIN, world = inset).
   `frustumWindow()` = view-driven allocation window `win` (always on).
   `applyFit()` = frozen image-plane framing (binary search).
   Channels RGB/DEPTH/NORMAL/CONF via `fillChannels`+`pushChannel/popChannel` buffer swap.
 - **observer drone** (`st.drone=true` by default → owns the MAIN POV): `droneStep(dt)`
-  is a kinematic entity `drone{px,pz,hd,alt,lx,lz,ly,auto}` that drives `cmdrCam`
-  pos/lookAt + `st.roi` + `cOrbit`. Inputs: joysticks `joy/joyL/joyR` + `elev` (wired
-  by `makeStick`) and WASD/arrows/QE keys; autonomous patrol resumes after 5 s idle.
-  Desktop = one stick; mobile = twin sticks (left rotate+alt, right move) + zen-on-move
-  (`.kss-moving`). Guard flight with `st.drone && !st.warm.active`.
+  is a kinematic entity `drone{px,pz,hd,alt,lx,lz,ly,auto,gp}` that drives `cmdrCam`
+  pos/lookAt + `st.roi` + `cOrbit`. `drone.gp` is the manual gimbal pitch (rad below
+  horizon; `null` = terrain-follow gaze) — the pitch slider, T/G keys, and Shift+↑/↓
+  write `drone.gp` while the observer drone owns the POV (previously they wrote
+  `cOrbit.ph`, which `droneStep` silently ignored — fixed); Shift+↑/↓ drives pitch
+  only, plain ↑/↓ still climbs; patrol resume (`drone.auto`) reverts `gp` to `null`.
+  Inputs: joysticks `joy/joyL/joyR` + `elev` (wired by `makeStick`) and WASD/arrows/QE
+  keys; autonomous patrol resumes after 5 s idle. Desktop = one stick; mobile = twin
+  sticks (left rotate+alt, right move) + zen-on-move (`.kss-moving`). Guard flight
+  with `st.drone && !st.warm.active`.
 - **swarm**: `updateSwarm` — physical footprints `footF = alt*0.85`, overlap slider
-  sets spacing; `swarmFoot.pts` feeds `computeWeights` (layout matters!).
+  sets spacing; `swarmFoot.pts` (footprints) + `swarmFoot.eye`/`.alt` (eye positions +
+  altitude, for multi-view parallax) feed `computeWeights` (layout matters!).
 - **commander tools**: ruler+LOS (`surfacePickFrom` ray-march), markers, TACREF
   (`tacQuery` — MGRS-style grid + confidence, clipboard), pitch slider, LINK/FREE.
 - **segmentation** (`seg`): UV-map panel, click ±seeds, `segRun` = seeded mean-split +
@@ -94,10 +122,29 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
   remove + `rebuildBounds` draped mask-contour overlay (layer 2, color per surface,
   `st.show.bounds`). Cleared on env change.
 - **export**: `startExport` 2×2 UV-kernel sweep animation → `buildPLY` binary PLY.
-- **UI**: dock + popup menus in `bar`, 3 s auto-fold, zen mode, mobile media queries
-  (in sim_style.css), pinch zoom, joystick/twin-stick + elevation controls.
-- Debug: `window.__kss = {fit, swarmFoot, st, FLU, topo, seg, grad, drone}` +
-  `__kss.segStats()` (visible-vs-masked splat counts).
+- **onboarding** (`onboard(container, opts)`, module scope, separate from `create`):
+  pre-run 3-screen setup (MAP → REPRESENTATION → RESOLUTION & SAMPLING) shown ONLY
+  by the standalone entry point (`src/swarm_simulator_template.html` → `index.html`
+  calls `KnotSwarmSim.onboard(...)`); the deck embed still calls `KnotSwarmSim.create`
+  directly and skips onboarding entirely (`src/deck_c.html`). Every gallery preview
+  (map orbit cards, splat-vs-mesh cards, the control-net density diagram) samples the
+  REAL `ENVS.h()/col()` fields and the real splat/mesh-stitch techniques — no
+  decorative fakes (same field/props invariant as the sim itself). Reuses the sim's
+  `mkSplatAlphaTex` sprite. "▶ START" hands the chosen `{env,budget,recon,meshKind,
+  den,cnet,sampling}` into `create(container, {...opts, initial})`, which merges it
+  into `st` before `applyDensity()`/fit construction and syncs the dock's hard-coded
+  `kss-on` buttons to match. Defaults mirror the sim's own defaults (forest, 64k,
+  splats/tri, ×2, cnet 96, adaptive).
+- **UI**: dock + popup menus in `bar` (rows now wrap in `.kss-mrow` for stacked
+  layout), 3 s auto-fold, zen mode, mobile media queries (in sim_style.css), pinch
+  zoom, joystick/twin-stick + elevation controls. Left tool rail (`.kss-tools`, 10
+  buttons: nav/ruler/mark/topo/heat/drone-toggle/seg/grad/FIT/chan) is a 2-col grid
+  so it never overflows short viewports. The HUD (`kss-hud-tl`="RECON", `kss-hud-tr`
+  ="SWARM"), segmentation panel, gradient panel, and commander readout are each
+  collapsible via a shared `.kss-fold` toggle button (`.kss-min` class hides the body).
+- Debug: `window.__kss = {fit, swarmFoot, st, FLU, topo, seg, grad, drone, SUBS,
+  resampleStats, segStats}` — `__kss.segStats()` (visible-vs-masked splat counts),
+  `__kss.resampleStats()` (event-driven resample: camDirty/builds/lastSampleT).
 
 ## Invariants — do not break
 1. Field/props single-source: anything visible in 3D must ALSO be in `h()`/`col()`
@@ -113,9 +160,16 @@ with `h(x,z,t)` occupancy + `col(x,z,h,t)` albedo · `bicubic()` = switchable ba
    frustum/screen space — otherwise the mask follows the drone and re-masks the scene.
 6. Defaults: forest env, 64k budget, MANUAL mode, CR basis, ×2 params, adaptive
    sampling, commander-as-main, observer-drone POV on, mesh-supervision (Chamfer) on.
+   `index.html` now lands on the onboarding gallery first (same defaults, pre-selected)
+   — `create()`'s actual defaults only take effect after "▶ START"; `deck.html`'s
+   embed calls `create()` directly and is unaffected.
 
 ## Testing
-Headless (no GPU here — 64k is slow, test at 4k):
+Headless (no GPU here — 64k is slow, test at 4k). `index.html` now boots into the
+onboarding gallery, not the sim — click `.kss-ob-next` three times (MAP → REP →
+RESOLUTION → START) before the HUD exists. `deck.html`'s embedded slide skips
+onboarding, so testing it directly (extract the slide's script) still lands on the
+sim immediately.
 ```bash
 sed 's/budget: 65536/budget: 4096/' index.html > /tmp/t.html
 python3 - <<'PY'
@@ -124,7 +178,11 @@ with sync_playwright() as p:
     b=p.chromium.launch(args=["--no-sandbox","--headless=new","--disable-gpu","--single-process"])
     pg=b.new_page(viewport={"width":1100,"height":650})
     pg.on("pageerror", lambda e: print("PE:",e))
-    pg.goto("file:///tmp/t.html"); pg.wait_for_timeout(5000)
+    pg.goto("file:///tmp/t.html")
+    pg.wait_for_timeout(600)
+    for _ in range(3):                      # click through onboarding to START
+        pg.click(".kss-ob-next"); pg.wait_for_timeout(300)
+    pg.wait_for_timeout(5000)
     print(pg.inner_text(".kss-hud-tl")); b.close()
 PY
 ```
