@@ -1,0 +1,74 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="tokens/design_tokens.css">
+<link rel="stylesheet" href="tokens/design_components.css">
+<style>
+  body{padding:24px;background:var(--paper);color:var(--pink)}
+  h2{font-family:var(--font-display);font-size:16px;margin:0 0 4px}
+  .note{font-size:12px;color:var(--pmuted);margin:0 0 14px;max-width:640px;line-height:1.5}
+  section{margin-bottom:32px}
+  .instr-bg{background:var(--instr-bg);padding:18px;border-radius:var(--r-panel-lg)}
+</style>
+</head><body>
+
+<section>
+  <h2>Page tokens — deck.html reading surface</h2>
+  <p class="note">Light/dark via prefers-color-scheme or [data-theme]. Promoted from the deck's
+    "field notebook" theme (previously duplicated inline in deck_a.html and in a dead
+    src/theme_v2.css :root block — now a single source).</p>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--paper)"></div><div class="ds-swatch-label">paper</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--card)"></div><div class="ds-swatch-label">card</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--psurface)"></div><div class="ds-swatch-label">psurface</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pink)"></div><div class="ds-swatch-label">pink (text)</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pbody)"></div><div class="ds-swatch-label">pbody</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pmuted)"></div><div class="ds-swatch-label">pmuted</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pborder-c)"></div><div class="ds-swatch-label">pborder-c</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Page accents</h2>
+  <p class="note">Semantic roles shared by name across every surface. Values differ per surface by
+    design — project.html tunes its own (see the note on that page's section below).</p>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pcobalt)"></div><div class="ds-swatch-label">pcobalt</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pamber)"></div><div class="ds-swatch-label">pamber</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pgreen)"></div><div class="ds-swatch-label">pgreen</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--ppurple)"></div><div class="ds-swatch-label">ppurple</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--pred)"></div><div class="ds-swatch-label">pred</div></div>
+  </div>
+</section>
+
+<section class="instr-bg">
+  <h2 style="color:var(--instr-text)">Instrument tokens — the always-dark tactical HUD</h2>
+  <p class="note" style="color:var(--instr-dim)">Used verbatim by index.html + arena.html (the whole
+    UI), and by deck.html's dark widget canvases + cover slide. Does not respond to light/dark mode
+    — canonicalized on the single most load-bearing palette in the repo.</p>
+  <div class="ds-swatch-row">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-bg)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">instr-bg</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-surface)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">instr-surface</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-surface2)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">instr-surface2</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-border)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">instr-border</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-text)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">instr-text</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-dim)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">instr-dim</div></div>
+  </div>
+  <div class="ds-swatch-row" style="margin-top:10px">
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-accent)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">accent (brand)</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-warn)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">warn</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-ok)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">ok</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-danger)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">danger</div></div>
+    <div class="ds-swatch"><div class="ds-swatch-fill" style="background:var(--instr-special)"></div><div class="ds-swatch-label" style="color:var(--instr-dim)">special</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>project.html — sibling instrument implementation</h2>
+  <p class="note">project.html keeps its own local --panel/--panel2/--pborder, deliberately tuned
+    (slightly different depth per its own light/dark mode, paired with color-mix() glows elsewhere
+    on the page). Same role as the instrument tokens above, independently maintained by design —
+    not forced to byte-identical values.</p>
+</section>
+
+</body></html>

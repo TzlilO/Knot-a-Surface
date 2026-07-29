@@ -1,0 +1,92 @@
+/* ═══════════ Knot-a-Surface — canonical component recipes ═══════════
+   These classes document the shapes already live in production (sim_style.css's .kss-cbtn
+   family, arena_style.css's .ka-dock, project.html's .btn/.badge) using the shared tokens from
+   design_tokens.css. They are reference recipes for this design library, not a new class layer
+   the production JS needs to adopt — the production files already consume the same tokens
+   directly on their existing selectors. */
+
+* { box-sizing: border-box; }
+body {
+  font-family: var(--font-ui);
+  margin: 0;
+}
+
+/* ── instrument buttons: the dark tactical-HUD family (sim .kss-cbtn/.kss-dbtn/.kss-cmdr-swap/
+   .kss-sbtn, arena .ka-dock) — one shared radius (--r-tool) after unification ── */
+.ds-btn-tool {
+  font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1;
+  color: var(--instr-dim); background: rgba(var(--instr-surface-rgb), .92);
+  border: 1px solid var(--instr-border2); border-radius: var(--r-tool);
+  padding: 9px 14px; cursor: pointer; transition: all .15s;
+}
+.ds-btn-tool:hover { color: var(--instr-text); border-color: rgba(var(--instr-accent-rgb), .4); }
+.ds-btn-tool.on { color: var(--instr-accent); border-color: rgba(var(--instr-accent-rgb), .53); background: rgba(var(--instr-accent-rgb), .16); }
+
+/* ── instrument pill toggle: wider mode-select buttons (sim .kss-btn/.kss-ob-opt) ── */
+.ds-btn-pill {
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  color: var(--instr-dim); background: var(--instr-surface);
+  border: 1px solid var(--instr-border); border-radius: var(--r-pill);
+  padding: 7px 16px; min-height: 30px; cursor: pointer; transition: all .15s;
+}
+.ds-btn-pill:hover { border-color: rgba(var(--instr-accent-rgb), .4); color: var(--instr-text); }
+.ds-btn-pill.on { color: var(--instr-accent); border-color: rgba(var(--instr-accent-rgb), .53); background: rgba(var(--instr-accent-rgb), .12); }
+
+/* ── instrument panel/container: HUD, popups, cards (--r-panel-sm/--r-panel/--r-panel-lg) ── */
+.ds-panel {
+  background: rgba(var(--instr-surface2-rgb), .92);
+  border: 1px solid var(--instr-border); border-radius: var(--r-panel);
+  color: var(--instr-text2); padding: 12px 14px;
+}
+.ds-panel.lg { border-radius: var(--r-panel-lg); }
+.ds-panel.sm { border-radius: var(--r-panel-sm); padding: 8px 10px; }
+
+/* ── HUD readout (sim .kss-hud / arena .ka-hud) ── */
+.ds-hud {
+  display: inline-block; font-size: 11px; line-height: 1.55; color: var(--instr-dim);
+  background: rgba(var(--instr-bg-rgb), .72); border: 1px solid var(--instr-border);
+  border-radius: var(--r-tool); padding: 8px 12px;
+}
+.ds-hud b { color: var(--instr-text); font-variant-numeric: tabular-nums; }
+
+/* ── instrument chip/badge (semantic accent dot + label) ── */
+.ds-badge-instr {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--instr-dim); background: rgba(var(--instr-surface-rgb), .92);
+  border: 1px solid var(--instr-border2); border-radius: var(--r-hint-pill);
+  padding: 5px 12px;
+}
+.ds-badge-instr .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ds-badge-instr.accent { color: var(--instr-accent); }
+.ds-badge-instr.warn   { color: var(--instr-warn); }
+.ds-badge-instr.ok     { color: var(--instr-ok); }
+.ds-badge-instr.danger { color: var(--instr-danger); }
+.ds-badge-instr.special{ color: var(--instr-special); }
+
+/* ── page-level button (project.html .btn family — reading-surface chrome, not the HUD) ── */
+.ds-btn-page {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-ui); font-size: 14px; font-weight: 600;
+  padding: 10px 20px; border-radius: 8px; border: 2px solid transparent;
+  cursor: pointer; text-decoration: none; transition: background .14s, border-color .14s, color .14s;
+}
+.ds-btn-page.solid { background: var(--pcobalt); color: #fff; border-color: var(--pcobalt); }
+.ds-btn-page.line  { background: transparent; color: var(--pink); border-color: var(--pborder-c); }
+.ds-btn-page.dim   { background: transparent; color: var(--pmuted); border-color: var(--pborder-c); cursor: default; }
+
+/* ── page-level pill badge (project.html .badge family) ── */
+.ds-badge-page {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; letter-spacing: .06em;
+  padding: 4px 12px; border-radius: 20px; border: 1.5px solid;
+}
+.ds-badge-page.cyan  { color: var(--pcobalt); border-color: var(--pcobalt); background: color-mix(in srgb, var(--pcobalt) 10%, transparent); }
+.ds-badge-page.amber { color: var(--pamber);  border-color: var(--pamber);  background: color-mix(in srgb, var(--pamber) 10%, transparent); }
+.ds-badge-page.green { color: var(--pgreen);  border-color: var(--pgreen);  background: color-mix(in srgb, var(--pgreen) 10%, transparent); }
+
+/* ── swatch helper for the color/3D-palette preview pages ── */
+.ds-swatch-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.ds-swatch { width: 108px; }
+.ds-swatch-fill { height: 64px; border-radius: var(--r-panel-sm); border: 1px solid var(--instr-border); }
+.ds-swatch-label { font-size: 11px; margin-top: 6px; font-family: var(--font-mono); }

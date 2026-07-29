@@ -1,0 +1,56 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="tokens/design_tokens.css">
+<link rel="stylesheet" href="tokens/design_components.css">
+<style>
+  section{padding:22px;margin-bottom:2px}
+  .instr{background:var(--instr-bg)}
+  .page{background:var(--paper)}
+  h2{font-family:var(--font-display);font-size:15px;margin:0 0 4px}
+  .note{font-size:11.5px;margin:0 0 14px;max-width:600px;line-height:1.5}
+  .instr .note{color:var(--instr-dim)}
+  .page .note{color:var(--pmuted)}
+  .instr h2{color:var(--instr-text)}
+  .page h2{color:var(--pink)}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+</style>
+</head><body>
+
+<section class="instr">
+  <h2>Instrument — tool button (--r-tool, unified from 6 near-duplicate radii)</h2>
+  <p class="note">Was 5 selectors at 8px + one outlier at 6px (.kss-sbtn) and one at 9px
+    (.kss-joy-up/dn) in sim_style.css, plus a stray 20px pill on arena's .ka-hint. All now share
+    one radius token. Two functional circles (.kss-info-btn, joystick base/knob) are intentionally
+    excluded — they're hit-targets, not decorative rounding.</p>
+  <div class="row">
+    <button class="ds-btn-tool">NAV</button>
+    <button class="ds-btn-tool on">RULER</button>
+    <button class="ds-btn-tool">LOS</button>
+    <button class="ds-btn-tool">MARK</button>
+  </div>
+</section>
+
+<section class="instr">
+  <h2>Instrument — pill toggle (--r-pill)</h2>
+  <p class="note">Wider mode-select buttons (sim .kss-btn / .kss-ob-opt) — a distinct, intentional
+    shape from the tool button above, not merged into it.</p>
+  <div class="row">
+    <button class="ds-btn-pill">ADAPTIVE</button>
+    <button class="ds-btn-pill on">FLUID</button>
+    <button class="ds-btn-pill">UNIFORM</button>
+  </div>
+</section>
+
+<section class="page">
+  <h2>Page — button (project.html .btn family)</h2>
+  <p class="note">Reading-surface chrome, separate shape language from the instrument buttons
+    above by design (this is a document/landing surface, not a HUD).</p>
+  <div class="row">
+    <button class="ds-btn-page solid">Watch the demo</button>
+    <button class="ds-btn-page line">Read the thesis</button>
+    <button class="ds-btn-page dim">Coming soon</button>
+  </div>
+</section>
+
+</body></html>
