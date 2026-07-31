@@ -3,9 +3,35 @@ branch: main
 path: src/
 
 ## Last sync
-date: 2026-07-31T13:20:00Z
+date: 2026-07-31T16:05:00Z
 
 ### Updated in this project
+- `src/sim_v4_core.js` — two (u,v) samplers alongside the transport one, selectable via
+  `setSampler('transport'|'uvUniform'|'uvAdaptive')`; **default is unchanged (`transport`)**.
+  A 6-chart cube atlas (`atlasBuild`) gives the captures the parametric domain they lacked:
+  each triangle goes to the chart its normal most faces, and each chart is a bilinear height
+  field so `F(u,v)` is continuous and sub-cell steps stay meaningful. `uvUniform` walks a
+  screen-uniform lattice (step = `ps·s(B)`, slope-corrected); `uvAdaptive` adds Chhugani &
+  Kumar's structure — a deviation pyramid as the flatness test, `d_o = s(B)·δs`, separate
+  `t_u`/`t_v` steps from `|F_uu|`/`|F_vv|`, warm-started solve — with the tolerance inverted
+  to hit the budget rather than the count falling out of the tolerance. `setUvOcclude(b)`
+  adds occlusion culling to the visibility test (default off). `aScale` and the relocation
+  fade were split into separate attributes (`aScale` = per-splat footprint, `aFade` = fade).
+  Verified: 99–100% of budget across zoom 0/0.5/1, 100% of samples camera-visible, no
+  duplicate or NaN positions, adaptive samples at 3.5× uniform's mean curvature.
+  KNOWN LIMITATION: the UV modes reconstruct these captures visibly worse than `transport` —
+  a cube-projection height field keeps only the frontmost sheet per ray, and the barn's
+  planks, open sides and foliage do not survive that. They cost 30–38 ms/refresh vs 5.8 ms.
+  Shipped as opt-in modes, not as the default. Next step if resumed: fit each chart's (u,v)
+  bounds to its own assigned geometry instead of the shared scene bbox (most of the charts'
+  grids are currently empty), or move the domain to a UV atlas over the triangle soup.
+- `v4.html` — new, published at the repo root so Pages actually serves v4 (there was no v4
+  page before; `build.py` does not consume `sim_v4_core.js`). Loads `src/sim_v4_core.js` as a
+  sibling, so editing the core is a plain refresh with no build step. Carries the sampler
+  selector, occlusion toggle, capture/budget/zoom controls and a live primitives-vs-budget
+  readout. The amber "◇ placeholder rates" chip is retained.
+
+### Updated 2026-07-31 (earlier)
 - `src/sim_v4_core.js` — fixed the splats popping instead of flowing when the camera zooms or
   orbits. Root cause: a splat's identity was its rank in a global CDF over a **Morton**-ordered
   triangle domain, so any camera change restretched the CDF and re-drew the whole cloud, and

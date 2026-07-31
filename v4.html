@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knot-a-Surface — Sim v4 · Surface Prior</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:#07090f;color:#dde5f0;
+            font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden}
+  a{color:#69f0ae;text-decoration:none}
+  a:hover{color:#a5ffcd}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+  #wrap{display:flex;flex-direction:column;height:100vh}
+  header{flex:none;background:linear-gradient(90deg,#080d16,#0b1220 52%,#080d16);
+         border-top:1px solid #16223a;border-bottom:1px solid #16223a;padding:12px 20px}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
+           letter-spacing:.22em;text-transform:uppercase;color:#69f0ae;margin-bottom:5px}
+  h1{font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;letter-spacing:-.02em;
+     margin:0 0 6px}
+  .lede{font-size:12.5px;color:#8fa4c0;max-width:78ch;margin:0}
+  .hdrow{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .chip{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;
+        text-transform:uppercase;border:1.5px solid;border-radius:15px;padding:4px 11px;white-space:nowrap}
+  .chip.warn{color:#ffa726;border-color:rgba(255,167,38,.5)}
+  .links{margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .links a{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em}
+  #sim{flex:1 1 auto;min-height:0;position:relative}
+  #bar{flex:none;display:flex;gap:18px;align-items:center;flex-wrap:wrap;
+       background:#0a0e18;border-top:1px solid #1b2a42;padding:9px 20px}
+  .grp{display:flex;gap:7px;align-items:center}
+  .lab{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.14em;
+       text-transform:uppercase;color:#5c6f8a}
+  button.pill{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;
+       text-transform:uppercase;background:#0d1220;color:#7f93ad;border:1.5px solid #1b2a42;
+       border-radius:15px;padding:5px 12px;cursor:pointer;transition:.15s}
+  button.pill:hover{background:#101a2a;color:#cfe0f0}
+  button.pill[aria-pressed="true"]{color:#69f0ae;border-color:rgba(105,240,174,.75);background:#0e1626}
+  input[type=range]{width:112px;accent-color:#69f0ae}
+  /* the core appends its canvas after this node, so both being absolute the canvas would
+     paint over it without an explicit stacking order */
+  #hud{position:absolute;z-index:5;top:11px;left:11px;background:rgba(6,10,18,.82);border:1px solid #1b2a42;
+       border-radius:10px;padding:9px 12px;font-family:'JetBrains Mono',monospace;font-size:10.5px;
+       line-height:1.65;color:#8fa4c0;pointer-events:none;backdrop-filter:blur(6px)}
+  #hud b{color:#dde5f0;font-weight:700}
+  #hud .ok{color:#69f0ae}
+  #err{display:none;padding:10px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#ef5350}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <div class="hdrow">
+      <div>
+        <div class="eyebrow">Knot-a-Surface · Sim v4</div>
+        <h1>Surface Prior</h1>
+        <p class="lede">A fixed Gaussian budget, reallocated into the view. <b>Transport</b> is the
+          shipping sampler: splats persist and are repaired toward the view rather than redrawn.
+          <b>Uniform&nbsp;UV</b> and <b>Adaptive&nbsp;UV</b> sample a six-chart (u,v) atlas instead —
+          every sample camera-visible, the whole budget spent, density and splat scale falling out
+          of the view.</p>
+      </div>
+      <div class="links">
+        <span class="chip warn">◇ placeholder rates</span>
+        <a href="./index.html">swarm sim</a>
+        <a href="./deck.html">deck</a>
+      </div>
+    </div>
+  </header>
+  <div id="sim"><div id="hud">booting…</div></div>
+  <div id="err"></div>
+  <div id="bar">
+    <div class="grp"><span class="lab">sampler</span>
+      <button class="pill" data-s="transport" aria-pressed="true">transport</button>
+      <button class="pill" data-s="uvUniform" aria-pressed="false">uniform uv</button>
+      <button class="pill" data-s="uvAdaptive" aria-pressed="false">adaptive uv</button>
+    </div>
+    <div class="grp"><span class="lab">occlusion cull</span>
+      <button class="pill" id="occ" aria-pressed="false">off</button>
+    </div>
+    <div class="grp"><span class="lab">capture</span>
+      <button class="pill" data-d="barn" aria-pressed="true">barn</button>
+      <button class="pill" data-d="truck" aria-pressed="false">truck</button>
+      <button class="pill" data-d="bust" aria-pressed="false">bust</button>
+    </div>
+    <div class="grp"><span class="lab">budget</span><input type="range" id="bud" min="2000" max="57000" step="1000" value="16000"><span class="mono lab" id="budv">16k</span></div>
+    <div class="grp"><span class="lab">zoom</span><input type="range" id="zoom" min="0" max="1" step="0.01" value="0"></div>
+    <div class="grp"><button class="pill" id="play" aria-pressed="true">pause</button></div>
+  </div>
+</div>
+<script>
+(function () {
+  const el = document.getElementById('sim'), hud = document.getElementById('hud');
+  const fail = m => { const e = document.getElementById('err'); e.style.display = 'block';
+                      e.textContent = 'simulator failed to start — ' + m; };
+  let tries = 0;
+  (function boot() {
+    if (!window.THREE || !window.KnotSurfacePrior) {
+      if (++tries > 400) return fail('three.js / sim core did not load');
+      return void setTimeout(boot, 50);
+    }
+    let sim;
+    try {
+      sim = window.KnotSurfacePrior.create(el, { budget: 16000, dataset: 'barn', playing: true });
+    } catch (err) { return fail(String(err && err.message || err)); }
+
+    const press = (sel, on) => document.querySelectorAll(sel).forEach(b =>
+      b.setAttribute('aria-pressed', String(on(b))));
+
+    document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+      sim.setSampler(b.dataset.s);
+      press('[data-s]', x => x.dataset.s === b.dataset.s);
+    });
+    document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+      sim.setDataset(b.dataset.d);
+      press('[data-d]', x => x.dataset.d === b.dataset.d);
+    });
+    const occ = document.getElementById('occ');
+    occ.onclick = () => {
+      const on = occ.getAttribute('aria-pressed') !== 'true';
+      occ.setAttribute('aria-pressed', String(on));
+      occ.textContent = on ? 'on' : 'off';
+      sim.setUvOcclude(on);
+    };
+    const bud = document.getElementById('bud'), budv = document.getElementById('budv');
+    bud.oninput = () => { sim.setBudget(+bud.value); budv.textContent = Math.round(bud.value / 1000) + 'k'; };
+    document.getElementById('zoom').oninput = e => sim.setZoom(+e.target.value);
+    const play = document.getElementById('play');
+    play.onclick = () => {
+      const on = play.getAttribute('aria-pressed') !== 'true';
+      play.setAttribute('aria-pressed', String(on));
+      play.textContent = on ? 'pause' : 'play';
+      sim.setPlaying(on);
+    };
+    sim.onZoom(z => { document.getElementById('zoom').value = z; });
+
+    // readout: primitive count against budget is the claim worth showing continuously
+    setInterval(() => {
+      const d = sim._dbg, AD = d.AD, st = sim.state, uv = st.sampler !== 'transport';
+      const fill = st.budget ? (100 * AD.n / Math.min(st.budget, 60000)) : 0;
+      hud.innerHTML =
+        'sampler <b>' + st.sampler + '</b><br>' +
+        'primitives <b>' + AD.n.toLocaleString() + '</b> / ' + st.budget.toLocaleString() +
+        ' &nbsp;<span class="ok">' + fill.toFixed(1) + '%</span><br>' +
+        (uv ? ('screen step <b>' + (AD.step || 0).toFixed(2) + ' px</b>' +
+               (st.sampler === 'uvAdaptive' ? '<br>deviation δs <b>' + (AD.ds || 0).toFixed(2) + ' px</b>' : ''))
+            : ('in view <b>' + (100 * AD.nIn / Math.max(AD.n, 1)).toFixed(1) + '%</b><br>' +
+               'concentration <b>×' + (AD.conc || 0).toFixed(1) + '</b>'));
+    }, 240);
+  })();
+})();
+</script>
+<script src="src/sim_v4_core.js"></script>
+</body>
+</html>

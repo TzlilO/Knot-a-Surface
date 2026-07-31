@@ -683,10 +683,10 @@ window.KnotSurfacePrior = (function () {
   /* ══ shaders ════════════════════════════════════════════════════ */
   const VERT = `
     attribute vec3 aPos, aNrm, aTan, aCol, aSm, aSeed;
-    attribute float aBirth, aBirthU, aScale, aCurv, aVoid;
+    attribute float aBirth, aBirthU, aScale, aCurv, aVoid, aFade;
     uniform float uAlign, uFloat, uJitter, uSmooth, uHole, uThresh, uThreshOut, uSize, uAniso;
     uniform float uSizeVar, uConv, uSH, uViewDriven, uCloudR, uTanHalf, uRoiR, uPriExp;
-    uniform float uNeighbor, uCoverK, uCell, uGridN, uTexW, uTexH;
+    uniform float uNeighbor, uCoverK, uCell, uGridN, uTexW, uTexH, uUvMode;
     uniform float uKnotW, uKnotR, uModMix, uModGap, uModMin, uModSpan, uModD0, uModD1;
     uniform vec3 uCamPos, uViewDir, uCenter, uLight, uGridMin, uKnotC, uModAxis;
     uniform sampler2D uSpacing;
@@ -754,10 +754,12 @@ window.KnotSurfacePrior = (function () {
         // major direction without growing its footprint. Stretching one axis only (as
         // before) added overlap everywhere aCurv > 0 on top of an already large K.
         float e = sqrt(1.0 + uAniso * aCurv * 0.5);
-        // aScale is the relocation fade on this path: 1 normally, dipping through 0 while a
-        // splat is being moved somewhere it could not have walked to
-        base = h * uCoverK;
-        sx = base * e * aScale; sy = base / e * aScale;
+        /* uUvMode: the (u,v) samplers carry their own footprint per splat (aScale, from the
+           local step) instead of the neighbour-spacing estimate, because their density is set
+           by the domain step and not by how many survivors happen to land in a 24^3 cell.
+           aFade is the relocation shrink-fade and multiplies whichever footprint applies. */
+        base = mix(h, aScale, uUvMode) * uCoverK;
+        sx = base * e * aFade; sy = base / e * aFade;
       } else {
         sx = base * (1.0 + uAniso * aCurv) * (1.0 + uSizeVar * (aSeed.y - 0.5) * 2.0);
         sy = base * (1.0 - 0.42 * uAniso * aCurv) * (1.0 + uSizeVar * (aSeed.z - 0.5) * 2.0);
@@ -854,6 +856,10 @@ window.KnotSurfacePrior = (function () {
       knots: 0, mod: 0, modGap: 0.03,
       render: opts.render || 'splats', triBudget: opts.triBudget || 12000, wire: opts.wire !== false,
       zoom: 0, split: true, showGT: false, chart: false, solo: 'ours',
+      /* 'transport' = the Hilbert/local-transport sampler; 'uvUniform' / 'uvAdaptive' =
+         the (u,v) atlas samplers. uvOcclude adds occlusion culling to the visibility test
+         (off by default — see uvVisible). */
+      sampler: opts.sampler || 'transport', uvOcclude: !!opts.uvOcclude,
       cover: opts.cover || 1,
       maxStep: 30000,
       distScale: 1, gtOp: 0.22, chartOp: 0.42
@@ -864,6 +870,8 @@ window.KnotSurfacePrior = (function () {
 
     /* src is any object exposing the a* attribute arrays: the static pool for baselines,
        the adaptively resampled buffers for ours. */
+    const ONES_CACHE = new Map();
+    const ONES = n => { let a = ONES_CACHE.get(n); if (!a) { a = new Float32Array(n).fill(1); ONES_CACHE.set(n, a); } return a; };
     function mkSplats(src, count) {
       const base = new T.PlaneGeometry(1, 1);
       const g = new T.InstancedBufferGeometry();
@@ -875,6 +883,7 @@ window.KnotSurfacePrior = (function () {
       A('aCol', src.aCol, 3); A('aSm', src.aSm, 3); A('aSeed', src.aSeed, 3);
       A('aBirth', src.aBirth, 1); A('aBirthU', src.aBirthU, 1);
       A('aScale', src.aScale, 1); A('aCurv', src.aCurv, 1); A('aVoid', src.aVoid, 1);
+      A('aFade', src.aFade || ONES(src.N), 1);
       g.instanceCount = count;
       g.boundingSphere = new T.Sphere(new T.Vector3(0, 4, 0), 120);
       const m = new T.ShaderMaterial({
@@ -884,7 +893,7 @@ window.KnotSurfacePrior = (function () {
           uHole: { value: 0 }, uThresh: { value: 0.3 }, uThreshOut: { value: 0.01 }, uSize: { value: 0.2 }, uAniso: { value: 0 },
           uSizeVar: { value: 0.1 }, uConv: { value: 1 }, uSH: { value: 0 }, uViewDriven: { value: 0 },
           uCloudR: { value: 9 }, uTanHalf: { value: 0.38 }, uRoiR: { value: 9 }, uPriExp: { value: 1 },
-          uNeighbor: { value: 0 }, uCoverK: { value: COVER_K },
+          uNeighbor: { value: 0 }, uCoverK: { value: COVER_K }, uUvMode: { value: 0 },
           uCell: { value: 1 }, uGridN: { value: GN }, uTexW: { value: TEXW }, uTexH: { value: TEXH },
           uGridMin: { value: new T.Vector3() }, uSpacing: { value: G.tex },
           uCamPos: { value: new T.Vector3(0, 0, 40) }, uViewDir: { value: new T.Vector3(0, 0, -1) },
@@ -1199,6 +1208,7 @@ window.KnotSurfacePrior = (function () {
       measureModAxis();
       buildTriSoup();
       adBuildDomain();
+      atlasBuild();
       meshBase = mkSplats(sampler, sampler.N);
       scene.add(meshBase);
       rebuildOurs();
@@ -1765,7 +1775,13 @@ window.KnotSurfacePrior = (function () {
          correctly served is never touched, so it does not move at all. scl/pend drive the
          shrink-fade used for the relocations that are too long to walk. */
       AD.q = new Int32Array(ADCAP); AD.pend = new Int32Array(ADCAP).fill(-1);
-      AD.scl = new Float32Array(ADCAP).fill(1);
+      /* two separate per-instance scalars, deliberately not one: aFade is the relocation
+         shrink-fade, aScale is the splat's own footprint. The UV samplers set a real
+         footprint per splat from the local (u,v) step, so a sparsely-stepped flat region
+         draws bigger disks and still closes — density and scale move together, which is
+         what keeps a view-driven sample set from tearing. */
+      AD.fade = new Float32Array(ADCAP).fill(1);
+      AD.usz = new Float32Array(ADCAP).fill(1);
       for (let i = 0; i < ADCAP; i++) {
         AD.seed[i * 3] = R(); AD.seed[i * 3 + 1] = R(); AD.seed[i * 3 + 2] = R();
         // low-discrepancy barycentric, fixed for the lifetime of the slot: consecutive slots
@@ -1776,7 +1792,8 @@ window.KnotSurfacePrior = (function () {
     }
     const ADSRC = {
       aPos: AD.pos, aNrm: AD.nrm, aTan: AD.tan, aCol: AD.col, aSm: AD.pos, aSeed: AD.seed,
-      aBirth: AD.zero, aBirthU: AD.zero, aScale: AD.scl, aCurv: AD.curv, aVoid: AD.one, N: ADCAP
+      aBirth: AD.zero, aBirthU: AD.zero, aScale: AD.usz, aFade: AD.fade,
+      aCurv: AD.curv, aVoid: AD.one, N: ADCAP
     };
     const ADCOV = { P: AD.tgt, NR: AD.tnr, SM: AD.tgt, SD: AD.seed };
     const adOn = () => st.adapt !== false && AD.count > 0;
@@ -1866,6 +1883,195 @@ window.KnotSurfacePrior = (function () {
         AD.cv[i] = clamp((1 - Math.abs(d)) * 2.2, 0, 1);
       }
       AD.count = n;
+    }
+
+    /* ══ (u,v) ATLAS — 6-chart cube projection ═══════════════════════════════════════
+       Both UV samplers need what the captures do not have: an actual parametric domain.
+       Every triangle is assigned to exactly ONE of six axis-aligned charts by dominant
+       signed normal, so the six charts partition the surface (no double counting, no
+       gaps), and inside a chart the two axes orthogonal to the projection ARE u and v —
+       separable, which is what "uniform along U and V" and the t_u / t_v step formulas
+       both require.
+
+       Each chart is a height field: (u,v) ↦ the frontmost surface along the chart axis.
+       Because a triangle only lands in the chart its normal most faces, inclination
+       inside a chart is ≤45°, so projected-area sampling is within √2 of surface-area
+       sampling. The known cost of this choice: one surface per projection ray, so
+       overhangs and enclosed interiors are flattened to their frontmost sheet. */
+    /* 256² per chart, over the whole scene bbox. The captures put ground, trees and silo
+       in the same box as the subject, so a chart's cells are shared out among all of them —
+       at 128² the barn itself only resolved to roughly 40×40 and the height field went blocky. */
+    const ATLAS = { NU: 256, NV: 256, charts: [], built: false, cells: 0 };
+    // axis, sign, and the two domain axes (au = u, av = v)
+    const CHARTDEF = [
+      { ax: 0, sg: +1, au: 2, av: 1 }, { ax: 0, sg: -1, au: 2, av: 1 },
+      { ax: 1, sg: +1, au: 0, av: 2 }, { ax: 1, sg: -1, au: 0, av: 2 },
+      { ax: 2, sg: +1, au: 0, av: 1 }, { ax: 2, sg: -1, au: 0, av: 1 }
+    ];
+
+    function atlasBuild() {
+      ATLAS.charts = []; ATLAS.built = false; ATLAS.cells = 0;
+      if (!TRI || !TRI.count) return;
+      const n = TRI.count, P = TRI.p, NR = TRI.n, CL = TRI.col0 || TRI.col;
+      const NU = ATLAS.NU, NV = ATLAS.NV;
+      // one shared world bbox for every chart, so charts that meet at a seam agree on
+      // the world position of that seam (the precondition for Chhugani §2.6)
+      const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < n * 3; i++) {
+        for (let k = 0; k < 3; k++) {
+          const v = P[i * 3 + k];
+          if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v;
+        }
+      }
+      for (let k = 0; k < 3; k++) {
+        const pad = Math.max((mx[k] - mn[k]) * 0.001, 1e-4);
+        mn[k] -= pad; mx[k] += pad;
+        if (mx[k] - mn[k] < 1e-6) mx[k] = mn[k] + 1e-6;
+      }
+      for (const d of CHARTDEF) {
+        const C = {
+          ax: d.ax, sg: d.sg, au: d.au, av: d.av, NU: NU, NV: NV,
+          u0: mn[d.au], u1: mx[d.au], v0: mn[d.av], v1: mx[d.av],
+          H: new Float32Array(NU * NV), mask: new Uint8Array(NU * NV),
+          nrm: new Float32Array(NU * NV * 3), col: new Float32Array(NU * NV * 3),
+          cv: new Float32Array(NU * NV), tris: 0
+        };
+        C.du = (C.u1 - C.u0) / NU; C.dv = (C.v1 - C.v0) / NV;
+        C.H.fill(d.sg > 0 ? -Infinity : Infinity);
+        ATLAS.charts.push(C);
+      }
+      // assign each triangle to the chart its normal most faces, then rasterise
+      for (let t = 0; t < n; t++) {
+        const t3 = t * 3;
+        let best = 0, bv = -Infinity;
+        for (let c = 0; c < 6; c++) {
+          const d = CHARTDEF[c], s = NR[t3 + d.ax] * d.sg;
+          if (s > bv) { bv = s; best = c; }
+        }
+        const C = ATLAS.charts[best], d = CHARTDEF[best], t9 = t * 9;
+        C.tris++;
+        const au = d.au, av = d.av, ax = d.ax;
+        const uA = (P[t9 + au] - C.u0) / C.du, vA = (P[t9 + av] - C.v0) / C.dv, hA = P[t9 + ax];
+        const uB = (P[t9 + 3 + au] - C.u0) / C.du, vB = (P[t9 + 3 + av] - C.v0) / C.dv, hB = P[t9 + 3 + ax];
+        const uC = (P[t9 + 6 + au] - C.u0) / C.du, vC = (P[t9 + 6 + av] - C.v0) / C.dv, hC = P[t9 + 6 + ax];
+        const i0 = Math.max(0, Math.floor(Math.min(uA, uB, uC))), i1 = Math.min(NU - 1, Math.ceil(Math.max(uA, uB, uC)));
+        const j0 = Math.max(0, Math.floor(Math.min(vA, vB, vC))), j1 = Math.min(NV - 1, Math.ceil(Math.max(vA, vB, vC)));
+        const det = (vB - vC) * (uA - uC) + (uC - uB) * (vA - vC);
+        if (Math.abs(det) < 1e-12) continue;
+        for (let j = j0; j <= j1; j++) {
+          for (let i = i0; i <= i1; i++) {
+            const pu = i + 0.5, pv = j + 0.5;
+            let l0 = ((vB - vC) * (pu - uC) + (uC - uB) * (pv - vC)) / det;
+            let l1 = ((vC - vA) * (pu - uC) + (uA - uC) * (pv - vC)) / det;
+            const l2 = 1 - l0 - l1;
+            if (l0 < -0.001 || l1 < -0.001 || l2 < -0.001) continue;
+            const h = l0 * hA + l1 * hB + l2 * hC;
+            const k = j * NU + i;
+            // frontmost as seen from this chart's side
+            if (C.mask[k] && (d.sg > 0 ? h <= C.H[k] : h >= C.H[k])) continue;
+            C.H[k] = h; C.mask[k] = 1;
+            const k3 = k * 3;
+            C.nrm[k3] = NR[t3]; C.nrm[k3 + 1] = NR[t3 + 1]; C.nrm[k3 + 2] = NR[t3 + 2];
+            C.col[k3] = CL[t3]; C.col[k3 + 1] = CL[t3 + 1]; C.col[k3 + 2] = CL[t3 + 2];
+          }
+        }
+      }
+      /* curvature proxy per cell from the height field's own second differences — this is
+         also |F_uu| / |F_vv|, which §2.5's step sizes need */
+      for (const C of ATLAS.charts) {
+        let occ = 0;
+        for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+          const k = j * NU + i;
+          if (!C.mask[k]) continue;
+          occ++;
+          const im = Math.max(0, i - 1), ip = Math.min(NU - 1, i + 1);
+          const jm = Math.max(0, j - 1), jp = Math.min(NV - 1, j + 1);
+          const ku = j * NU + im, kU = j * NU + ip, kv = jm * NU + i, kV = jp * NU + i;
+          const huu = (C.mask[ku] && C.mask[kU]) ? Math.abs(C.H[ku] - 2 * C.H[k] + C.H[kU]) : 0;
+          const hvv = (C.mask[kv] && C.mask[kV]) ? Math.abs(C.H[kv] - 2 * C.H[k] + C.H[kV]) : 0;
+          C.cv[k] = Math.max(huu, hvv);
+        }
+        C.occ = occ; ATLAS.cells += occ;
+      }
+      // normalise the curvature proxy to 0..1 for the shader's aniso term
+      let cmax = 1e-9;
+      for (const C of ATLAS.charts) for (let k = 0; k < C.cv.length; k++) if (C.cv[k] > cmax) cmax = C.cv[k];
+      for (const C of ATLAS.charts) for (let k = 0; k < C.cv.length; k++) C.cv[k] = clamp(C.cv[k] / cmax, 0, 1);
+      ATLAS.built = ATLAS.cells > 0;
+    }
+
+    // world position of a chart cell centre
+    function uvPos(C, i, j, out) {
+      const k = j * C.NU + i;
+      out[C.au] = C.u0 + (i + 0.5) * C.du;
+      out[C.av] = C.v0 + (j + 0.5) * C.dv;
+      out[C.ax] = C.H[k];
+      return out;
+    }
+
+    /* F(u,v) at CONTINUOUS (u,v), in cell units. The chart grid stores the height field but
+       it must not be the limit on how finely the domain can be sampled: zoom in far enough
+       and a framed patch spans only a handful of cells, so cell-centre sampling caps the
+       achievable count and the budget can no longer be spent — the opposite of the
+       resolution-knob claim. Bilinear H makes the domain continuous, so both samplers can
+       take sub-cell steps and keep filling the budget as the view tightens.
+       Bilinear is suppressed across a mask boundary (silhouettes, depth jumps), where
+       interpolating between surface and no-surface would invent geometry. */
+    let uvAttrK = 0;                 // cell uvPosAt drew attributes from — set on every call
+    function uvPosAt(C, fu, fv, out) {
+      const NU = C.NU, NV = C.NV;
+      const gu = clamp(fu - 0.5, 0, NU - 1.0001), gv = clamp(fv - 0.5, 0, NV - 1.0001);
+      const i = gu | 0, j = gv | 0;
+      const tx = gu - i, ty = gv - j;
+      const ip = Math.min(NU - 1, i + 1), jp = Math.min(NV - 1, j + 1);
+      const k00 = j * NU + i, k10 = j * NU + ip, k01 = jp * NU + i, k11 = jp * NU + ip;
+      /* attributes come from whichever of the four is occupied and nearest, and the mask
+         test upstream uses THAT cell too — an earlier version floored (fu,fv) for the mask
+         but interpolated around (fu-½,fv-½), so the two disagreed by half a cell and killed
+         samples whose own cell was fine. */
+      const m00 = C.mask[k00], m10 = C.mask[k10], m01 = C.mask[k01], m11 = C.mask[k11];
+      uvAttrK = (tx < 0.5 ? (ty < 0.5 ? k00 : k01) : (ty < 0.5 ? k10 : k11));
+      if (!C.mask[uvAttrK]) uvAttrK = m00 ? k00 : m10 ? k10 : m01 ? k01 : m11 ? k11 : -1;
+      let h;
+      if (m00 && m10 && m01 && m11) {
+        h = C.H[k00] * (1 - tx) * (1 - ty) + C.H[k10] * tx * (1 - ty)
+          + C.H[k01] * (1 - tx) * ty + C.H[k11] * tx * ty;
+      } else {
+        h = uvAttrK >= 0 ? C.H[uvAttrK] : NaN;           // no bilinear across a mask edge
+      }
+      out[C.au] = C.u0 + fu * C.du;
+      out[C.av] = C.v0 + fv * C.dv;
+      out[C.ax] = h;
+      return out;
+    }
+
+    /* per-cell visibility for this camera. Frustum + backface always; occlusion only when
+       st.uvOcclude is on — it is off by default because occlusion flips discontinuously as
+       you orbit (a wall going hidden dumps its whole share elsewhere in one step), which is
+       the same transport spike the Hilbert/transport work exists to avoid. */
+    const uvTmp = [0, 0, 0];
+    function uvVisible(C, fu, fv) {
+      const p = uvPosAt(C, fu, fv, uvTmp);
+      const k = uvAttrK;
+      if (k < 0 || !(p[C.ax] === p[C.ax])) return false;  // no surface under this (u,v)
+      const vx = p[0] - view.pos.x, vy = p[1] - view.pos.y, vz = p[2] - view.pos.z;
+      const depth = vx * view.dir.x + vy * view.dir.y + vz * view.dir.z;
+      if (depth < 0.12) return false;
+      const e = camera.matrixWorld.elements;
+      const th = Math.max(view.tanHalf, 1e-3), asp = clamp(camera.aspect || 1.6, 0.4, 4);
+      const sx = (vx * e[0] + vy * e[1] + vz * e[2]) / (th * asp * depth);
+      const sy = (vx * e[4] + vy * e[5] + vz * e[6]) / (th * depth);
+      if (Math.abs(sx) > 1 || Math.abs(sy) > 1) return false;
+      const k3 = k * 3;
+      const fd = -(view.dir.x * C.nrm[k3] + view.dir.y * C.nrm[k3 + 1] + view.dir.z * C.nrm[k3 + 2]);
+      if (fd <= 0.02) return false;                       // backface
+      if (st.uvOcclude) {
+        const cc = clamp(((sx * 0.5 + 0.5) * OGW) | 0, 0, OGW - 1)
+          + clamp(((0.5 - sy * 0.5) * OGH) | 0, 0, OGH - 1) * OGW;
+        const R = gt ? gt.radius : 10;
+        if (depth > AD.occ[cc] + Math.max(R * 0.05, depth * 0.025)) return false;
+      }
+      return true;
     }
 
     /* per-triangle allocation weight for this camera. Two passes: fill the z-buffer from the
@@ -2037,10 +2243,329 @@ window.KnotSurfacePrior = (function () {
         const u = (i + 0.5) / M * tot;
         while (q < n - 1 && cum[q + 1] < u) q++;
         adPlace(i, q);
-        AD.pend[i] = -1; AD.scl[i] = 1;
+        AD.pend[i] = -1; AD.fade[i] = 1;
       }
       AD.n = M;
       adMark(M);
+      AD.dirty = true;
+    }
+
+    /* ══ MODE 1 — uniform (u,v) ══════════════════════════════════════════════════════
+       A single lattice step s, shared by all six charts, taken on the chart grids:
+       u_i = (i+½)·s, v_j = (j+½)·s. Uniform in U and in V by construction.
+
+       Budget utilisation: only cells that pass uvVisible() are emitted, so every splat
+       drawn is one the camera can see, and the step is solved so the emitted count lands
+       on the budget. Density therefore falls out of the view — frame less surface and the
+       same budget lands on it at a finer step. That is the "resolution knob" claim, made
+       exactly rather than by feedback. */
+    /* local step, in chart cells, for a target spacing of `ps` PIXELS on screen.
+       ps·s(B) is the world distance that projects to ps pixels at this depth — s(B) is the
+       same scale factor §2.4 uses — and dividing by the cell size, with the slope correction
+       that turns projected distance into distance along the surface, gives the step.
+
+       This is what makes the lattice uniform on SCREEN rather than uniform in the atlas. A
+       lattice that is literally uniform in (u,v) is uniform in projected area, and on these
+       captures the ground plane is most of the projected area, so it swallowed ~42% of the
+       budget while the subject starved. Stepping by depth spends the budget where the pixels
+       are. */
+    const uvStep = [1, 1];
+    function uvStepAt(C, fu, fv, ps) {
+      const p = uvPosAt(C, fu, fv, uvTmp);
+      const k = uvAttrK;
+      if (k < 0 || !(p[C.ax] === p[C.ax])) { uvStep[0] = uvStep[1] = 2; return false; }
+      const depth = (p[0] - view.pos.x) * view.dir.x + (p[1] - view.pos.y) * view.dir.y
+        + (p[2] - view.pos.z) * view.dir.z;
+      if (depth < 0.12) { uvStep[0] = uvStep[1] = 4; return false; }
+      const world = ps * uvScaleFactor(depth);
+      const i = k % C.NU, j = (k / C.NU) | 0;
+      const im = Math.max(0, i - 1), ip = Math.min(C.NU - 1, i + 1);
+      const jm = Math.max(0, j - 1), jp = Math.min(C.NV - 1, j + 1);
+      const ku = j * C.NU + im, kU = j * C.NU + ip, kv = jm * C.NU + i, kV = jp * C.NU + i;
+      const gu = (C.mask[ku] && C.mask[kU]) ? (C.H[kU] - C.H[ku]) / (2 * C.du) : 0;
+      const gv = (C.mask[kv] && C.mask[kV]) ? (C.H[kV] - C.H[kv]) / (2 * C.dv) : 0;
+      uvStep[0] = clamp(world / (C.du * Math.sqrt(1 + Math.min(gu * gu, 8))), 0.03, C.NU);
+      uvStep[1] = clamp(world / (C.dv * Math.sqrt(1 + Math.min(gv * gv, 8))), 0.03, C.NV);
+      return true;
+    }
+
+    function uvCountAt(ps, M, emit) {
+      let cnt = 0;
+      for (let c = 0; c < 6; c++) {
+        const C = ATLAS.charts[c];
+        if (!C.occ) continue;
+        let fv = 0.25, rowGuard = 0;
+        let sv = 2;
+        while (fv < C.NV && rowGuard++ < 20000) {
+          let rowSv = -1, fu = 0.25, colGuard = 0;
+          while (fu < C.NU && colGuard++ < 20000) {
+            const ok = uvStepAt(C, fu, fv, ps);
+            const su = uvStep[0];
+            if (ok && uvVisible(C, fu, fv)) {
+              /* row pitch = the TIGHTEST any hit in this row asked for, not the first one's.
+                 Taking the first hit let a row that opens on distant surface advance by that
+                 far step and stride straight over nearer geometry further along it, which
+                 came out as horizontal bands of missing surface. Erring tight over-samples
+                 slightly; the budget solve takes it back out globally. */
+              if (rowSv < 0 || uvStep[1] < rowSv) rowSv = uvStep[1];
+              if (emit) { if (cnt < M) emit(cnt, c, fu, fv, su, uvStep[1]); else return cnt + 1; }
+              cnt++;
+              if (!emit && cnt > M) return cnt;           // bisect only needs the comparison
+            }
+            fu += su;
+          }
+          sv = rowSv > 0 ? rowSv : sv;
+          fv += sv;
+        }
+      }
+      return cnt;
+    }
+
+    /* world footprint of one sample, from its own step in the domain. A step of su cells in
+       u covers su·du of the chart plane, but the SURFACE under it is longer by the local
+       slope — sqrt(1 + (dH/du)²) — and since a triangle only ever lands in the chart its
+       normal most faces, that factor is bounded by √2. Without this the disks are sized from
+       a global spacing estimate and the flat, sparsely-stepped regions tear open. */
+    function uvFoot(C, fu, fv, su, sv) {
+      const i = clamp(Math.round(fu - 0.5), 0, C.NU - 1), j = clamp(Math.round(fv - 0.5), 0, C.NV - 1);
+      const im = Math.max(0, i - 1), ip = Math.min(C.NU - 1, i + 1);
+      const jm = Math.max(0, j - 1), jp = Math.min(C.NV - 1, j + 1);
+      const ku = j * C.NU + im, kU = j * C.NU + ip, kv = jm * C.NU + i, kV = jp * C.NU + i;
+      const gu = (C.mask[ku] && C.mask[kU]) ? (C.H[kU] - C.H[ku]) / (2 * C.du) : 0;
+      const gv = (C.mask[kv] && C.mask[kV]) ? (C.H[kV] - C.H[kv]) / (2 * C.dv) : 0;
+      const wu = su * C.du * Math.sqrt(1 + Math.min(gu * gu, 8));
+      const wv = sv * C.dv * Math.sqrt(1 + Math.min(gv * gv, 8));
+      return Math.max(wu, wv);
+    }
+
+    // bind slot `slot` to continuous chart coordinate (fu,fv) — the UV analogue of adPlace
+    function uvPlace(slot, c, fu, fv, su, sv) {
+      const C = ATLAS.charts[c], o3 = slot * 3;
+      const p = uvPosAt(C, fu, fv, uvTmp);
+      const k = uvAttrK < 0 ? 0 : uvAttrK, k3 = k * 3;
+      AD.usz[slot] = uvFoot(C, fu, fv, su, sv);
+      AD.tgt[o3] = p[0]; AD.tgt[o3 + 1] = p[1]; AD.tgt[o3 + 2] = p[2];
+      AD.tnr[o3] = C.nrm[k3]; AD.tnr[o3 + 1] = C.nrm[k3 + 1]; AD.tnr[o3 + 2] = C.nrm[k3 + 2];
+      const jt = 0.94 + AD.seed[o3] * 0.12;
+      AD.tcl[o3] = C.col[k3] * jt; AD.tcl[o3 + 1] = C.col[k3 + 1] * jt; AD.tcl[o3 + 2] = C.col[k3 + 2] * jt;
+      // tangent along u, so the shader's anisotropy lines up with the chart axes
+      AD.tan[o3] = C.au === 0 ? 1 : 0; AD.tan[o3 + 1] = C.au === 1 ? 1 : 0; AD.tan[o3 + 2] = C.au === 2 ? 1 : 0;
+      AD.curv[slot] = C.cv[k];
+      AD.q[slot] = (c << 24) | k;                        // provenance, for the mode switch
+    }
+
+    const UV_TOL = 0.03;                                  // land within 3% of budget
+    /* Solve a monotone-decreasing count(x) for the budget, warm-started from last frame's
+       answer. Chhugani §2.4 makes the same move — between frames the required detail barely
+       moves, so bracket around the previous solution and only widen if the view really
+       jumped. Cold, this costs ~18 domain walks per refresh; warm, typically 6. */
+    function uvSolve(prev, lim, count, M) {
+      let lo, hi;
+      const g0 = count(prev);
+      if (g0 > M) { lo = prev; hi = prev * 2; let k = 0; while (count(hi) > M && k++ < 12) { lo = hi; hi *= 2; if (hi > lim) { hi = lim; break; } } }
+      else { hi = prev; lo = prev * 0.5; let k = 0; while (count(lo) <= M && k++ < 12) { hi = lo; lo *= 0.5; if (lo < 1e-4) break; } }
+      for (let it = 0; it < 12; it++) {
+        const mid = Math.sqrt(lo * hi);                   // geometric: the range spans decades
+        const got = count(mid);
+        if (got > M) lo = mid; else hi = mid;
+        if (got <= M && got >= M * (1 - UV_TOL)) return mid;
+      }
+      return hi;                                          // the side that does not overrun
+    }
+
+    function uvUniformSample(M) {
+      if (!ATLAS.built) { AD.n = 0; return; }
+      // the knob is now target screen spacing in PIXELS
+      const lim = 400;
+      const s = clamp(uvSolve(clamp(AD.step || 4, 0.05, lim), lim, x => uvCountAt(x, M, null), M), 0.05, lim);
+      const got = uvCountAt(s, M, null);
+      let w = 0;
+      uvCountAt(s, M, (slot, c, fu, fv, su, sv) => { uvPlace(slot, c, fu, fv, su, sv); w++; });
+      for (let i = 0; i < w; i++) { AD.pend[i] = -1; AD.fade[i] = 1; }
+      AD.n = w; AD.nIn = w;                              // every emitted sample is visible
+      AD.step = s; AD.fill = M ? w / M : 0;
+      AD.dirty = true;
+    }
+
+    /* ══ MODE 2 — adaptive (u,v) ═════════════════════════════════════════════════════
+       Chhugani & Kumar's structure, adapted from Bézier patches to the atlas charts.
+
+       Pre-pass (§2.1-2.2, once per capture): per chart, a pyramid of blocks. A block's
+       DEVIATION is the largest distance between the surface and the bilinear approximation
+       taken from that block's four corners — the same quantity the paper drives insertion
+       order with, and the same flatness test GPU Gems 2 ch.7 applies per edge. Deviation is
+       monotone under refinement, so a tolerance selects a cut through the pyramid exactly
+       the way a tolerance selects a prefix of the paper's ordered list.
+
+       Render (§2.4): the object-space tolerance at a block is d_o = s(B)·δs, with s(B) the
+       object-space length that projects to one pixel at that depth. Descend while
+       dev > d_o; emit where it is flat enough. δs is then solved so the emitted count hits
+       the budget — the paper fixes δs and lets the count fall out; we invert it, because
+       here the budget is the fixed quantity. The δs that results is reported in stats as
+       the screen-space deviation the budget can afford.
+
+       Departures from the paper, stated plainly: the pre-pass is a quadtree over the chart
+       grid rather than incremental Delaunay with re-evaluated deviations after each
+       insertion, and there is no running triangulation between frames — splats need sample
+       positions, not a mesh, so the Delaunay machinery that dominates the paper's runtime
+       has nothing to do here. §2.6's crack rule is met differently too: the charts share one
+       world bbox and sample seam cells at a common step, so neighbours agree on the seam. */
+    const UV_LMAX = Math.round(Math.log2(256));            // pyramid depth = log2(chart size)
+    function atlasPyramid() {
+      for (const C of ATLAS.charts) {
+        C.mip = []; C.rep = [];
+        for (let l = 0; l <= UV_LMAX; l++) {
+          const w = Math.max(1, C.NU >> l), h = Math.max(1, C.NV >> l);
+          const dev = new Float32Array(w * h), rep = new Int32Array(w * h).fill(-1);
+          const span = 1 << l;
+          for (let by = 0; by < h; by++) {
+            for (let bx = 0; bx < w; bx++) {
+              const i0 = bx * span, j0 = by * span;
+              const i1 = Math.min(C.NU - 1, i0 + span - 1), j1 = Math.min(C.NV - 1, j0 + span - 1);
+              // corner heights of the block, for the bilinear reference
+              const h00 = C.H[j0 * C.NU + i0], h10 = C.H[j0 * C.NU + i1];
+              const h01 = C.H[j1 * C.NU + i0], h11 = C.H[j1 * C.NU + i1];
+              const ok = C.mask[j0 * C.NU + i0] && C.mask[j0 * C.NU + i1]
+                && C.mask[j1 * C.NU + i0] && C.mask[j1 * C.NU + i1];
+              let mx = 0, r = -1, cx = (i0 + i1) >> 1, cy = (j0 + j1) >> 1;
+              if (C.mask[cy * C.NU + cx]) r = cy * C.NU + cx;
+              for (let j = j0; j <= j1; j++) {
+                const fy = j1 > j0 ? (j - j0) / (j1 - j0) : 0;
+                for (let i = i0; i <= i1; i++) {
+                  const k = j * C.NU + i;
+                  if (!C.mask[k]) continue;
+                  if (r < 0) r = k;
+                  if (!ok) { mx = Infinity; continue; }
+                  const fx = i1 > i0 ? (i - i0) / (i1 - i0) : 0;
+                  const bl = h00 * (1 - fx) * (1 - fy) + h10 * fx * (1 - fy)
+                    + h01 * (1 - fx) * fy + h11 * fx * fy;
+                  const e = Math.abs(C.H[k] - bl);
+                  if (e > mx) mx = e;
+                }
+              }
+              // a block straddling a depth discontinuity is never "flat"
+              dev[by * w + bx] = (r < 0) ? -1 : (mx === Infinity ? 1e9 : mx);
+              rep[by * w + bx] = r;
+            }
+          }
+          C.mip.push(dev); C.rep.push(rep);
+        }
+        /* |F_uu| and |F_vv| per block, max-reduced up the pyramid — §2.5 needs them to set
+           the u and v step sizes independently inside a block that is flat enough to stop on */
+        C.mipU = []; C.mipV = [];
+        const w0 = C.NU, h0 = C.NV;
+        const u0a = new Float32Array(w0 * h0), v0a = new Float32Array(w0 * h0);
+        for (let j = 0; j < h0; j++) for (let i = 0; i < w0; i++) {
+          const k = j * w0 + i;
+          if (!C.mask[k]) continue;
+          const im = Math.max(0, i - 1), ip = Math.min(w0 - 1, i + 1);
+          const jm = Math.max(0, j - 1), jp = Math.min(h0 - 1, j + 1);
+          const ku = j * w0 + im, kU = j * w0 + ip, kv = jm * w0 + i, kV = jp * w0 + i;
+          u0a[k] = (C.mask[ku] && C.mask[kU]) ? Math.abs(C.H[ku] - 2 * C.H[k] + C.H[kU]) : 0;
+          v0a[k] = (C.mask[kv] && C.mask[kV]) ? Math.abs(C.H[kv] - 2 * C.H[k] + C.H[kV]) : 0;
+        }
+        C.mipU.push(u0a); C.mipV.push(v0a);
+        for (let l = 1; l <= UV_LMAX; l++) {
+          const pw = Math.max(1, C.NU >> (l - 1)), ph = Math.max(1, C.NV >> (l - 1));
+          const w = Math.max(1, C.NU >> l), h = Math.max(1, C.NV >> l);
+          const pu = C.mipU[l - 1], pv = C.mipV[l - 1];
+          const cu = new Float32Array(w * h), cvv = new Float32Array(w * h);
+          for (let by = 0; by < h; by++) for (let bx = 0; bx < w; bx++) {
+            let mu = 0, mv = 0;
+            for (let q = 0; q < 4; q++) {
+              const nx = bx * 2 + (q & 1), ny = by * 2 + (q >> 1);
+              if (nx >= pw || ny >= ph) continue;
+              const pi = ny * pw + nx;
+              if (pu[pi] > mu) mu = pu[pi];
+              if (pv[pi] > mv) mv = pv[pi];
+            }
+            cu[by * w + bx] = mu; cvv[by * w + bx] = mv;
+          }
+          C.mipU.push(cu); C.mipV.push(cvv);
+        }
+      }
+    }
+
+    // object-space length projecting to one screen pixel at this depth — the paper's s(B)
+    function uvScaleFactor(depth) {
+      return Math.max(depth, 0.05) * 2 * Math.max(view.tanHalf, 1e-3) / Math.max(H, 2);
+    }
+
+    // descend the pyramid at screen tolerance `ds` (pixels); emit flat-enough blocks
+    function uvAdaptCount(ds, M, emit) {
+      let cnt = 0;
+      const stack = ATLAS._stack || (ATLAS._stack = []);
+      for (let c = 0; c < 6; c++) {
+        const C = ATLAS.charts[c];
+        if (!C.occ) continue;
+        stack.length = 0;
+        stack.push(UV_LMAX, 0, 0);
+        while (stack.length) {
+          const bx = stack.pop(), by = stack.pop(), l = stack.pop();
+          const w = Math.max(1, C.NU >> l);
+          const idx = by * w + bx;
+          const rep = C.rep[l][idx];
+          if (rep < 0) continue;                          // nothing of the surface here
+          const ri = rep % C.NU, rj = (rep / C.NU) | 0;
+          const p = uvPos(C, ri, rj, uvTmp);
+          const vx = p[0] - view.pos.x, vy = p[1] - view.pos.y, vz = p[2] - view.pos.z;
+          const depth = vx * view.dir.x + vy * view.dir.y + vz * view.dir.z;
+          const dev = C.mip[l][idx];
+          const tol = uvScaleFactor(depth) * ds;          // d_o = s(B)·δs
+          if (l > 0 && dev > tol) {                       // not flat enough: subdivide
+            const l2 = l - 1, w2 = Math.max(1, C.NU >> l2), h2 = Math.max(1, C.NV >> l2);
+            for (let q = 0; q < 4; q++) {
+              const nx = bx * 2 + (q & 1), ny = by * 2 + (q >> 1);
+              if (nx < w2 && ny < h2) stack.push(l2, ny, nx);
+            }
+            continue;
+          }
+          /* §2.5 — the block is flat enough to stop descending, but a splat set still has
+             to COVER it, so the block is filled by uniform sampling at the step the paper
+             gives: independent u and v steps from that block's own |F_uu| / |F_vv|, scaled
+             by the square root of the deviation we are allowed. Flat ⇒ long step ⇒ few
+             splats; curved ⇒ short step ⇒ many. This is the piece a pure flatness test
+             cannot supply, because for triangles a flat region genuinely needs no samples
+             and for splats it still needs coverage. */
+          const span = 1 << l;
+          const i0 = bx * span, j0 = by * span;
+          const i1 = Math.min(C.NU - 1, i0 + span - 1), j1 = Math.min(C.NV - 1, j0 + span - 1);
+          const huu = C.mipU[l][idx], hvv = C.mipV[l][idx];
+          // sagitta over m cells ≈ |F_uu|·m²/8; solve m for the allowed deviation
+          // sub-cell steps are allowed: the height field is bilinear, so the domain does not
+          // run out of resolution when the view tightens onto a few cells
+          /* density = whichever demands MORE samples: curvature (the flatness step) or
+             coverage (the screen-uniform step). A flat wall needs no subdivision to be
+             geometrically right but still needs splats on it to be seen. */
+          uvStepAt(C, ri + 0.5, rj + 0.5, ds);
+          const su = clamp(Math.min(Math.sqrt(8 * tol / Math.max(huu, 1e-9)), uvStep[0]), 0.04, span);
+          const sv = clamp(Math.min(Math.sqrt(8 * tol / Math.max(hvv, 1e-9)), uvStep[1]), 0.04, span);
+          for (let fj = j0 + 0.5 * sv; fj < j1 + 1; fj += sv) {
+            for (let fi = i0 + 0.5 * su; fi < i1 + 1; fi += su) {
+              if (!uvVisible(C, fi, fj)) continue;
+              if (emit) { if (cnt < M) emit(cnt, c, fi, fj, su, sv); else return cnt + 1; }
+              cnt++;
+              if (!emit && cnt > M) return cnt;           // bisect only needs the comparison
+            }
+          }
+        }
+      }
+      return cnt;
+    }
+
+    function uvAdaptiveSample(M) {
+      if (!ATLAS.built) { AD.n = 0; return; }
+      if (!ATLAS.charts[0].mip) atlasPyramid();
+      /* solve the screen-space tolerance δs for the budget. The paper fixes δs and lets the
+         triangle count fall out; here the budget is the fixed quantity, so it is inverted —
+         and the δs that comes back is a real readout: the screen deviation this budget can
+         afford, in pixels. */
+      const ds = clamp(uvSolve(clamp(AD.ds || 4, 1e-3, 400), 400, x => uvAdaptCount(x, M, null), M), 1e-3, 400);
+      let w = 0;
+      uvAdaptCount(ds, M, (slot, c, fu, fv, su, sv) => { uvPlace(slot, c, fu, fv, su, sv); w++; });
+      for (let i = 0; i < w; i++) { AD.pend[i] = -1; AD.fade[i] = 1; }
+      AD.n = w; AD.nIn = w;
+      AD.ds = ds; AD.fill = M ? w / M : 0;
       AD.dirty = true;
     }
 
@@ -2163,7 +2688,7 @@ window.KnotSurfacePrior = (function () {
       const fstep = AD_FADE * Math.max(dt, 0);
       const snap = Math.max((gt ? gt.radius : 10) * 0.16, 1e-3), snap2 = snap * snap;
       const p = AD.pos, tg = AD.tgt, nn = AD.nrm, tn = AD.tnr, cc = AD.col, tc = AD.tcl;
-      const scl = AD.scl, pend = AD.pend;
+      const scl = AD.fade, pend = AD.pend;
       let live = false;
       for (let i = 0; i < M; i++) {
         const o = i * 3;
@@ -2204,7 +2729,7 @@ window.KnotSurfacePrior = (function () {
         if (att.updateRange) { att.updateRange.offset = 0; att.updateRange.count = items; }
       };
       upd(A.pos, cnt); upd(A.nrm, cnt); upd(A.col, cnt); upd(A.tan, cnt);
-      upd(A.curv, M); upd(A.scl, M);
+      upd(A.curv, M); upd(A.fade, M); upd(A.usz, M);
     }
 
     // pool test point vs the adaptive z-buffer — used to keep hidden surface out of the metric
@@ -2232,7 +2757,8 @@ window.KnotSurfacePrior = (function () {
       const g = meshOurs.geometry;
       AD.att = on ? {
         pos: g.getAttribute('aPos'), nrm: g.getAttribute('aNrm'), col: g.getAttribute('aCol'),
-        tan: g.getAttribute('aTan'), curv: g.getAttribute('aCurv'), scl: g.getAttribute('aScale')
+        tan: g.getAttribute('aTan'), curv: g.getAttribute('aCurv'),
+        fade: g.getAttribute('aFade'), usz: g.getAttribute('aScale')
       } : null;
       scene.add(meshOurs);
     }
@@ -2413,9 +2939,15 @@ window.KnotSurfacePrior = (function () {
            and every slot is drawn, so the ledger is exact by construction instead of being
            chased by feedback. */
         adWeights(hard || !AD.warm);
-        // absolute placement only to seed the cloud (or when the budget itself changed);
-        // every other refresh repairs the allocation in place
-        if (hard || !AD.warm || oursN !== AD.n) adSample(oursN); else adTransport(oursN);
+        const uvMode = st.sampler === 'uvUniform' || st.sampler === 'uvAdaptive';
+        if (uvMode) {
+          // the UV samplers place absolutely from the atlas; visibility IS the allocation
+          if (st.sampler === 'uvUniform') uvUniformSample(oursN); else uvAdaptiveSample(oursN);
+        } else if (hard || !AD.warm || oursN !== AD.n) {
+          // absolute placement only to seed the cloud (or when the budget itself changed);
+          // every other refresh repairs the allocation in place
+          adSample(oursN);
+        } else adTransport(oursN);
         if (hard || !AD.warm) {
           const c3 = AD.n * 3;
           AD.pos.set(AD.tgt.subarray(0, c3)); AD.nrm.set(AD.tnr.subarray(0, c3)); AD.col.set(AD.tcl.subarray(0, c3));
@@ -2561,6 +3093,7 @@ window.KnotSurfacePrior = (function () {
       u.uSH.value = S.sh;
       u.uViewDriven.value = isOurs ? S.viewDriven : 0;
       u.uNeighbor.value = isOurs ? 1 : 0;
+      u.uUvMode.value = (isOurs && (st.sampler === 'uvUniform' || st.sampler === 'uvAdaptive')) ? 1 : 0;
       u.uCoverK.value = COVER_K * (st.cover || 1);
       u.uCell.value = G.cell;
       u.uGridMin.value.copy(G.min);
@@ -2718,7 +3251,7 @@ window.KnotSurfacePrior = (function () {
     return {
       MODELS, DATASETS, BASELINES, curve, chamfer, prims, params,
       state: st,
-      _dbg: { AD, view, orbit, camera, refresh, updateCamera, adWeights, adSample, adEase, get TRI() { return TRI; }, get gt() { return gt; } },
+      _dbg: { AD, ATLAS, view, orbit, camera, refresh, updateCamera, adWeights, adSample, adEase, get TRI() { return TRI; }, get gt() { return gt; } },
       setDataset(k) { if (DATASETS[k]) loadDataset(k); },
       setBaseline(k) { if (MODELS[k]) { st.baseline = k; refresh(); } },
       setStep(s) { st.step = clamp(s, 0, st.maxStep); refresh(); },
@@ -2731,6 +3264,11 @@ window.KnotSurfacePrior = (function () {
         refresh();
       },
       setRoiTight(t) { st.roiTight = clamp(+t || 1, 1, 2); refresh(true); },
+      setSampler(k) {
+        st.sampler = (k === 'uvUniform' || k === 'uvAdaptive') ? k : 'transport';
+        refresh(true);
+      },
+      setUvOcclude(b) { st.uvOcclude = !!b; refresh(true); },
       setAdapt(b) { st.adapt = !!b; if (gt) { rebuildOurs(); refresh(true); } },
       setClosure(c) { st.closure = clamp(+c, 0, 1); refresh(true); },
       setZoom(z) { st.zoom = clamp(z, 0, 1); refresh(); },
