@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<link rel="stylesheet" href="../_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<script src="../_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0b1017;overflow-x:hidden;color-scheme:dark}
+a{color:#4fc3f7;text-decoration:none}
+a:hover{color:#8fd8fb}
+@keyframes throb{0%,100%{opacity:1}50%{opacity:.22}}
+</style>
+</helmet>
+<div style="font-family:'Inter',ui-sans-serif,system-ui,sans-serif;background:#0b1017;color:#8fa4c0;line-height:1.6;min-height:100vh">
+
+  <nav style="position:sticky;top:0;z-index:50;background:rgba(11,16,23,.86);backdrop-filter:blur(14px);border-bottom:1px solid #1b2a42;padding:12px 0">
+    <div style="max-width:1100px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:10px">
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#dde5f0;flex:1"><span style="color:#4fc3f7">Knot-a-</span>Surface <span style="color:#7f93ad;font-weight:500">/ review</span></span>
+      <a ref="{{ homeRef }}" href="../index.html" style="font-size:13px;font-weight:600;color:#7f93ad;padding:6px 12px;border-radius:6px;border:1px solid #1b2a42;transition:color .15s,border-color .15s" style-hover="color:#dde5f0;border-color:#22314e">← Project page</a>
+    </div>
+  </nav>
+
+  <section style="padding:64px 24px 34px;max-width:1100px;margin:0 auto">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+      <span style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#ce93d8;border:1.5px solid #ce93d8;background:rgba(206,147,216,.1);border-radius:20px;padding:5px 12px">REVIEW BUILD</span>
+      <span style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#4fc3f7;border:1.5px solid #4fc3f7;background:rgba(79,195,247,.1);border-radius:20px;padding:5px 12px">JULY 2026</span>
+      <span style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#5c6f8a;border:1.5px solid #22314e;border-radius:20px;padding:5px 12px">4 CUTS · 4 SIMS</span>
+    </div>
+    <h1 style="font-family:'Space Grotesk',sans-serif;font-size:clamp(2rem,5vw,3.1rem);font-weight:700;letter-spacing:-.02em;color:#dde5f0;margin:0 0 12px;line-height:1.06">Versions <span style="color:#4fc3f7">for review</span></h1>
+    <p style="font-family:'Space Grotesk',sans-serif;font-size:clamp(1rem,2vw,1.16rem);font-weight:500;color:#aeb9cc;margin:0;max-width:64ch;text-wrap:pretty">A parallel deployment of the in-progress teaser cuts and simulator builds. Nothing here replaces the published project page — it is a staging surface for picking a direction.</p>
+  </section>
+
+  <section style="padding:0 24px 52px;max-width:1100px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#4fc3f7">Teaser cuts</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:#4a5b73">same scene, four edits — pick one to lead with</div>
+    </div>
+    <div ref="{{ cutsRef }}" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px">
+
+      <a href="../teaser-cinematic.html" data-deployed="../teaser-cinematic.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(255,167,38,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(255,167,38,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#ffa726;animation:throb 2s ease-in-out infinite"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#ffa726">V4 · CINEMATIC</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#dde5f0;margin:0">Cinematic cut</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">One continuous camera through the whole argument, letterboxed, with the DoF ledger running live. The newest cut and the most demo-like.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">1:18 · 9 chapters · 16:9 / 1:1</div>
+        <span style="font-size:13px;font-weight:700;color:#ffa726">Play cinematic cut →</span>
+      </a>
+
+      <a href="../teaser-bold.html" data-deployed="../teaser-bold.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(206,147,216,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(206,147,216,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#ce93d8"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#ce93d8">V2 · BOLD</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#dde5f0;margin:0">Bold cut</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">High-contrast typography, aggressive cuts, claim-forward copy. The version to lead a talk with — currently embedded on the project page.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">1:44 · 8 chapters · embedded on page</div>
+        <span style="font-size:13px;font-weight:700;color:#ce93d8">Play bold cut →</span>
+      </a>
+
+      <a href="../teaser-modest.html" data-deployed="../teaser-modest.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(79,195,247,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(79,195,247,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#4fc3f7"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#4fc3f7">V2 · MODEST</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#dde5f0;margin:0">Modest cut</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">Measured pacing and hedged claims, sized for a thesis committee rather than a launch.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">1:13 · 8 chapters · committee tone</div>
+        <span style="font-size:13px;font-weight:700;color:#4fc3f7">Play modest cut →</span>
+      </a>
+
+      <a href="../teaser-v1.html" data-deployed="../teaser-v1.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid #22314e;border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(105,240,174,.8);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#69f0ae"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#69f0ae">V1 · BASELINE</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#dde5f0;margin:0">Original teaser</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">The first published cut — the baseline every later version is judged against.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">1:00 · baseline reference</div>
+        <span style="font-size:13px;font-weight:700;color:#69f0ae">Play original →</span>
+      </a>
+
+    </div>
+  </section>
+
+  <section style="padding:0 24px 72px;max-width:1100px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#ffa726">Simulators</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:#4a5b73">interactive · runs in this browser</div>
+    </div>
+    <div ref="{{ simsRef }}" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px">
+
+      <a href="../surface-prior.html" data-deployed="../surface-prior.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(255,167,38,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(255,167,38,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#ffa726;animation:throb 2s ease-in-out infinite"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#ffa726">V4 · NEWEST</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#dde5f0;margin:0">Sim v4 — Surface Prior bench</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">Side-by-side reconstruction bench: our surface-coupled model against PGSR, 2DGS, SuGaR, 3DGS, NeuS/VolSDF and MVS on one capture, one camera, one step counter. Fixed-budget vs densified primitive counts and DoF ledgers are live.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">6 baselines · convergence curves are placeholders</div>
+        <span style="font-size:13px;font-weight:700;color:#ffa726">Open reconstruction bench →</span>
+      </a>
+
+      <a href="../terrain.html" data-deployed="../terrain.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(105,240,174,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(105,240,174,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#69f0ae;animation:throb 2s ease-in-out infinite"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#69f0ae">V1 · DEPLOYED CORE</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#dde5f0;margin:0">Sim v1 — Swarm Resolution Knob</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">The simulator running on the published page. Warm-up subdivision of the parameter domain, frustum-aware budget allocation, adaptive inverse-CDF sampling and visible coarse-to-fine refinement as the observer drone closes on a surface.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">Live build · onboarding walkthrough on load</div>
+        <span style="font-size:13px;font-weight:700;color:#69f0ae">Open swarm simulator →</span>
+      </a>
+
+      <a href="../terrain-atlas.html" data-deployed="../terrain-atlas.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(79,195,247,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(79,195,247,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#4fc3f7"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#4fc3f7">V2 · ATLAS EDITING</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#dde5f0;margin:0">Sim v2 — Terrain UV Atlas</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">Swarm-reconstructed terrain on a control grid. Segment, paint and sculpt in the UV atlas or directly on the terrain, and watch the painted density field move the budget.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">3 environments · ROI crop · direct 3D editing</div>
+        <span style="font-size:13px;font-weight:700;color:#4fc3f7">Open terrain simulator →</span>
+      </a>
+
+      <a href="../knot.html" data-deployed="../knot.html" style="display:flex;flex-direction:column;gap:10px;background:#0d1220;border:1.5px solid rgba(206,147,216,.5);border-radius:10px;padding:22px;transition:border-color .16s,background .16s,transform .16s" style-hover="border-color:rgba(206,147,216,.95);background:#111a2b;transform:translateY(-2px)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:#ce93d8"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.13em;color:#ce93d8">V3 · TOPOLOGY</span>
+        </div>
+        <h3 style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#dde5f0;margin:0">Sim v3 — Knot Chart</h3>
+        <p style="font-size:13px;color:#7f93ad;line-height:1.6;margin:0;flex:1;text-wrap:pretty">Eight parametric surfaces on one shared chart, with object decomposition, densification, free-form control points and direct 3D editing.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#4a5b73;border-top:1px solid #1b2a42;padding-top:10px">8 surfaces · geometry layers · control-point cage</div>
+        <span style="font-size:13px;font-weight:700;color:#ce93d8">Open knot-chart simulator →</span>
+      </a>
+
+    </div>
+  </section>
+
+  <footer style="border-top:1px solid #1b2a42;padding:26px 24px 42px">
+    <div style="max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12.5px;color:rgba(143,164,192,.6)">
+      <span style="flex:1">© 2026 Tzlil Ovadia · review deployment</span>
+      <a ref="{{ footRef }}" href="../index.html" style="color:rgba(143,164,192,.6)" style-hover="color:#dde5f0">Published project page</a>
+    </div>
+  </footer>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;links&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;local&quot;,&quot;deployed&quot;],&quot;default&quot;:&quot;deployed&quot;,&quot;tsType&quot;:&quot;'local'|'deployed'&quot;,&quot;section&quot;:&quot;Hub&quot;}}">
+class Component extends DCLogic {
+  cutsRef = React.createRef(); simsRef = React.createRef();
+  homeRef = React.createRef(); footRef = React.createRef();
+
+  componentDidMount(){ document.documentElement.setAttribute('data-theme','dark'); this.apply(); }
+  componentDidUpdate(){ this.apply(); }
+
+  // "deployed" rewrites every card to the flat filenames published under /review/
+  apply(){
+    const deployed = this.props.links === 'deployed';
+    [this.cutsRef.current, this.simsRef.current].forEach(host => {
+      if(!host) return;
+      host.querySelectorAll('a[data-deployed]').forEach(a => {
+        if(!a.dataset.local) a.dataset.local = a.getAttribute('href');
+        a.setAttribute('href', deployed ? a.dataset.deployed : a.dataset.local);
+      });
+    });
+    [this.homeRef.current, this.footRef.current].forEach(a => {
+      if(a) a.setAttribute('href', deployed ? '../index.html' : '../index.html');
+    });
+  }
+
+  renderVals(){
+    return { cutsRef:this.cutsRef, simsRef:this.simsRef, homeRef:this.homeRef, footRef:this.footRef };
+  }
+}
+
+</script>
+</body>
+</html>

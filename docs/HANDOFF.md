@@ -234,11 +234,17 @@ github.md                       repo association, last sync, screen map
 ```
 
 ## Open items
-1. **v4 numbers are placeholders.** Convergence, chamfer and photometric curves need measured DTU +
-   Tanks-and-Temples runs. Keep the "placeholder rates" chip until then.
-2. **`src/sim_v4_core.js` is not upstream.** It only exists locally — commit it when you're ready.
-3. **Deploy bundles are stale** with respect to this polish pass: `deploy/site/`, `deploy/review/`,
-   `docs/` and `build/` still show three simulators and the old card treatment. Regenerate before the
-   next push (or switch to sibling-file loading first, as noted above).
-4. **Review-hub links** are local `.dc.html` paths; the deployed build needs the flat filenames
-   (`terrain.html`, `teaser-bold.html`, …) — that's what the `links: deployed` tweak produces.
+1. ~~**v4 numbers are placeholders.**~~ **Resolved 2026-08-06 (differently):** chamfer and
+   photometric are now measured in-page against the procedural ground-truth pool
+   (`measureError()` + `measureSeries()` in `src/sim_v4_core.js`) — real measurements of the
+   stand-ins, honestly labeled "measured in-page · proxy captures". They are still not real
+   DTU / TnT runs of the actual baseline codebases; the Limitations paragraph on the landing
+   page carries that caveat, and the bench is built so real benchmark numbers could drop into
+   the same table later.
+2. ~~**`src/sim_v4_core.js` is not upstream.**~~ Committed and deployed.
+3. ~~**Deploy bundles are stale.**~~ **Retired instead:** the site is now sibling-file based
+   (`deploy/flatten.py` + `deploy/deploy-site.sh`); `deploy/site/`, `deploy/review/` and the
+   external `build/` pipeline no longer exist. (Note: `docs/` was never a bundle mirror —
+   it holds this handoff and the controls screenshots.)
+4. ~~**Review-hub links**~~ **Resolved:** the flattened `review/index.html` ships in
+   `links: deployed` mode with `../`-prefixed paths into the repo root.

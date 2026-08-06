@@ -9,7 +9,7 @@
    - INSTRUMENT tokens: the always-dark tactical HUD palette. This does NOT respond to light/dark
      mode — it's a rendered instrument overlay (dock, HUD, panels, joystick), not page chrome.
      Canonicalized on sim_style.css's existing values, the most load-bearing palette in the repo
-     (used verbatim by index.html + arena.html, and by deck.html's dark widget canvases).
+     (used verbatim by terrain.html + arena.html, and by deck.html's dark widget canvases).
 
    project.html intentionally keeps its own local token set (different "paper" tuning + its own
    cockpit-panel pairing per light/dark mode) — same naming *schema*, different values by design.

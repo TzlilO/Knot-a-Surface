@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<link rel="stylesheet" href="src/sim_style.css">
+<script src="src/sim_core.js"></script>
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<script src="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#07090f;overflow:hidden}
+a{color:#4fc3f7;text-decoration:none}
+a:hover{color:#8fd8fb}
+</style>
+</helmet>
+<div style="display:flex;flex-direction:column;height:100vh;padding:14px;gap:10px;background:#07090f;color:#dde5f0;font-family:'Inter',ui-sans-serif,system-ui,sans-serif">
+  <header ref="{{ headRef }}" style="flex:none;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+    <h1 style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em;margin:0;color:#dde5f0">Swarm Resolution-Knob Simulator</h1>
+    <span style="font-size:13px;color:#5c6f8a">fixed 3DGS budget · B-spline-coupled surface · frustum-aware allocation · infinite-resolution zoom</span>
+    <a href="review/index.html" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#4fc3f7">← hub</a>
+    <a href="index.html" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#5c6f8a">project page</a>
+    <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#4fc3f7;background:#121b2e;border:1.5px solid #1b2a42;border-radius:14px;padding:4px 12px">Knot-a-Surface</span>
+  </header>
+  <div ref="{{ simRef }}" style="flex:1 1 auto;min-height:0"></div>
+  <div ref="{{ errRef }}" style="display:none;flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;color:#ef5350"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;onboarding&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulator&quot;},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulator&quot;}}">
+class Component extends DCLogic {
+  simRef = React.createRef(); headRef = React.createRef(); errRef = React.createRef();
+  renderVals(){ return { simRef:this.simRef, headRef:this.headRef, errRef:this.errRef }; }
+
+  bool(v, dflt){ if(v===undefined||v===null||v==='') return dflt; if(typeof v==='string') return v!=='false'&&v!=='0'; return !!v; }
+  componentDidMount(){
+    if(this.bool(this.props.compact,false) && this.headRef.current) this.headRef.current.style.display='none';
+    this.boot();
+  }
+  componentWillUnmount(){
+    this.dead = true;
+    try{ if(this.sim && this.sim.dispose) this.sim.dispose(); }catch(e){}
+  }
+
+  boot(){
+    if(this.dead) return;
+    if(!window.THREE || !window.KnotSwarmSim){
+      this.tries = (this.tries||0)+1;
+      if(this.tries < 400) return void setTimeout(()=>this.boot(), 50);
+      return this.fail('three.js / sim core did not load');
+    }
+    const el = this.simRef.current;
+    if(!el) return void setTimeout(()=>this.boot(), 50);
+    try{
+      const opts = { embed: false };
+      this.sim = (this.bool(this.props.onboarding, true) === false)
+        ? window.KnotSwarmSim.create(el, opts)
+        : window.KnotSwarmSim.onboard(el, opts);
+    }catch(err){ console.error('sim boot failed', err); this.fail(String(err && err.message || err)); }
+  }
+  fail(msg){
+    const e = this.errRef.current;
+    if(e){ e.style.display='block'; e.textContent = 'simulator failed to start — ' + msg; }
+  }
+}
+</script>
+</body>
+</html>

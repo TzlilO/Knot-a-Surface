@@ -3,9 +3,46 @@ branch: main
 path: src/
 
 ## Last sync
-date: 2026-07-31T16:05:00Z
+date: 2026-08-06T13:55:00Z
 
 ### Updated in this project
+- **`src/sim_v4_core.js` — chamfer/photometric are now MEASURED, not placeholder.** New
+  `measureError()` rides the coverage metric's throttled cadence (ERR_MS 320): symmetric
+  chamfer (GT→model over the TESTN in-view test points, model→GT over a stride subsample
+  against a new full-pool linked list `G.pHead/pNext`) plus a photometric L1 that replicates
+  the vertex shader's colour path CPU-side (grey-mix, SH shimmer, misaligned-normal lighting).
+  The shared `mkDrawnFn(D)` replication now includes the shader's initial random-cloud mix,
+  so early-step error reads the cloud the model starts from. Measured values replace
+  `curve()/chamfer()` in stats the moment the first sample lands (analytic curves remain as
+  a first-frames fallback). New `controller.measureSeries(K)` sweeps K checkpoints
+  deterministically (hard refresh each) and returns display-unit series for the charts;
+  `_dbg.err` exposes the raw cache. Canonical table (TnT Barn proxy, 12k budget, step 30k):
+  ours 72.0 mm / L1 0.012 / 95.7% closed / converged ≈5.6k, vs PGSR 58.4 / 0.036 / 87.7%
+  /≈20.6k, 2DGS 58.5 / 0.045 / 84.2% /≈24.4k, SuGaR 216.3 / 0.041 / 87.7% /≈18.8k,
+  3DGS 59.7 / 0.066 / 56.1% /≈28.1k, NeuS 676.6 / 0.038 / 33.2% /≈24.4k, MVS 201.2 /
+  0.014 / 69.2% / instant — ours reaches comparable geometry from 19–38× fewer parameters
+  at a fixed primitive count. Verified headless: zero console errors, coverage 96.4% at
+  convergence, series sweep ~80 ms/checkpoint.
+- **Site is now sibling-file based; the bundle pipeline is gone.** New `deploy/flatten.py`
+  rewrites the .dc.html designs to the deployed pages: `index.html` (landing — was the
+  build.py simulator), `terrain.html` (Sim v1), `terrain-atlas.html` (v2), `knot.html`
+  (v3), `surface-prior.html` (v4), `teaser-{v1,bold,modest,cinematic}.html`,
+  `review/index.html` (deployed-link mode, `../` paths). Root `.nojekyll` added (Pages
+  would skip `_ds/`); `_ds_bundle.js` stub added (was a 404 in every design file).
+  `build.py` no longer emits `index.html` (deck/arena only); deploy scripts rewritten
+  (`deploy-site.sh` = flatten + build + push). `v4.html` stays live as the sampler lab;
+  its swarm-sim link and `project.html`/`arena.html` root links now point at terrain.html.
+- **Landing page gained a Results section** (`Project Page.dc.html`): the canonical
+  measured table above, the transport-sampler stability numbers (25.2%→3.3% teleporting
+  slot-frames, 2.24→0.44 R/s, 99–100% budget fill, 6.9 ms @12k), and an explicit
+  Limitations paragraph (procedural proxies, behavioural baseline emulations, no real
+  DTU/TnT claims). Nav gained the anchor; the v4 card no longer says "placeholder".
+- `Sim v4 - Surface Prior.dc.html` + `v4.html`: "◇ placeholder rates" chip →
+  "◆ measured in-page · proxy captures"; verdict/footnote updated; charts consume
+  `measureSeries(25)` (deferred ~80 ms after first paint, analytic curves shown until then);
+  readouts show "…" until the first measured sample lands.
+
+### Updated 2026-07-31T16:05:00Z
 - `src/sim_v4_core.js` — two (u,v) samplers alongside the transport one, selectable via
   `setSampler('transport'|'uvUniform'|'uvAdaptive')`; **default is unchanged (`transport`)**.
   A 6-chart cube atlas (`atlasBuild`) gives the captures the parametric domain they lacked:
@@ -55,23 +92,39 @@ date: 2026-07-31T16:05:00Z
 - v1–v3 untouched; the word "arena" is gone from project-authored files (remaining hits are design-system source comments and pre-built bundles).
 
 ## Deploy
-### Review deployment (alternative page)
-url: https://tzlilo.github.io/Knot-a-Surface/review/
-files: deploy/review/{index,teaser-v1,teaser-bold,teaser-modest,terrain,terrain-atlas,knot}.html + .nojekyll, deploy/deploy-review.sh, deploy/README.md
-notes: repo Pages source is main / (root), so the alternative page ships as a repo-root /review/ folder — the existing root index.html is untouched. Push with deploy/deploy-review.sh from a local clone. Sources in build/review/; docs/ keeps a mirror copy.
-
-### Main page
-target: GitHub Pages — main / (root), pushed by deploy/deploy-site.sh
-files: deploy/site/{index,teaser,terrain,terrain-atlas,knot}.html + .nojekyll
-notes: every file is self-contained (three.js, sim_core.js, fonts and support runtime inlined); sources live in build/ and are regenerated from the .dc.html designs. Replacing the root index.html does NOT retire the simulator — the same sim_core.js build is published as terrain.html.
+### Sibling-file site (current)
+target: GitHub Pages — main / (root), pushed by deploy/deploy-site.sh (= deploy/flatten.py + build.py + push)
+files: index.html, terrain.html, terrain-atlas.html, knot.html, surface-prior.html,
+  teaser-{v1,bold,modest,cinematic}.html, review/index.html, .nojekyll — all flattened
+  from the .dc.html designs by deploy/flatten.py; they sibling-load support.js, _ds/
+  tokens and the src/ cores (no inlined bundles). v4.html (sampler lab), project.html
+  (retired), deck.html + arena.html (build.py) are hand/generated, not flattened.
+notes: never edit flattened outputs — edit the .dc.html source and re-run flatten.
+  deploy/deploy-review.sh is an alias of deploy-site.sh. The old deploy/site/ +
+  deploy/review/ bundle flow (self-contained files, external build/ sources) is retired;
+  those directories never existed in this repo.
 
 ## Screen map
+| Deployed file | Built from |
+| --- | --- |
+| index.html | Project Page.dc.html (flatten.py) — landing, method, measured Results section |
+| terrain.html | Sim v1 - Swarm Core.dc.html (flatten.py) — sibling-loads src/sim_core.js + src/sim_style.css |
+| terrain-atlas.html | Sim v2 - UV Atlas.dc.html (flatten.py) — logic inside the design file |
+| knot.html | Sim v3 - Knot Chart.dc.html (flatten.py) — logic inside the design file |
+| surface-prior.html | Sim v4 - Surface Prior.dc.html (flatten.py) — sibling-loads src/sim_v4_core.js, measured charts |
+| teaser-{v1,bold,modest,cinematic}.html | Teaser*.dc.html (flatten.py) |
+| review/index.html | Review Hub.dc.html (flatten.py, deployed-link mode, ../ paths) |
+| v4.html | hand-written sampler lab, sibling-loads src/sim_v4_core.js |
+| deck.html / arena.html | build.py from src/deck_*.html / src/arena_template.html + cores |
+| project.html | retired predecessor landing page (live, unlinked) |
+
+### Design-file lineage (pre-flatten)
 | File | Built from |
 | --- | --- |
 | Sim v1 - Swarm Core.dc.html | src/sim_core.js, src/sim_style.css, src/swarm_simulator_template.html (deployed core + local camera-detach fix) |
 | Sim v2 - UV Atlas.dc.html | CLAUDE.md (fit model, seg, recon, splat billboards), src/sim_style.css, src/swarm_simulator_template.html |
 | Sim v3 - Knot Chart.dc.html | CLAUDE.md (fly camera, seg, splats), src/sim_style.css |
-| Sim v4 - Surface Prior.dc.html | src/sim_v4_core.js (new), representation ledgers for PGSR / 2DGS / SuGaR / 3DGS / NeuS / MVS |
+| Sim v4 - Surface Prior.dc.html | src/sim_v4_core.js, representation ledgers for PGSR / 2DGS / SuGaR / 3DGS / NeuS / MVS |
 | Project Page.dc.html | project.html (hero/teaser/demo/method/footer structure and design tokens) |
 
 ## Sync history

@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<script src="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#07090f;overflow:hidden}
+a{color:#4fc3f7;text-decoration:none}
+a:hover{color:#8fd8fb}
+input[type=range]{accent-color:#4fc3f7;cursor:pointer}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative;width:100vw;height:100vh;background:#07090f;color:#dde5f0;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+  <canvas ref="{{ mainRef }}" style="position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none"></canvas>
+
+  <div ref="{{ chromeRef }}" style="position:absolute;inset:0;pointer-events:none;opacity:1;transition:opacity .4s ease">
+
+    <div style="position:absolute;left:12px;top:12px;font-size:10.5px;line-height:1.55;color:#8fa4c0;background:rgba(7,9,15,.72);border:1px solid #1b2a42;border-radius:8px;padding:6px 10px 7px;backdrop-filter:blur(4px);font-variant-numeric:tabular-nums">
+      <div style="display:flex;align-items:baseline;gap:10px;font-size:8.5px;font-weight:800;letter-spacing:.16em;color:#5c6f8a;margin-bottom:3px"><span style="flex:1">FIT · UV ATLAS</span><a href="review/index.html" style="pointer-events:auto;font-weight:800;letter-spacing:.1em;color:#4fc3f7">← HUB</a></div>
+      <div>SPLATS <b ref="{{ hSplats }}" style="color:#dde5f0">—</b></div>
+      <div>CONTROL NET <b ref="{{ hCnet }}" style="color:#dde5f0">—</b></div>
+      <div>MASKED ATLAS <b ref="{{ hMask }}" style="color:#ffa726">0.0%</b> · REGIONS <b ref="{{ hReg }}" style="color:#ffa726">0</b></div>
+      <div>RESIDUAL <b ref="{{ hRes }}" style="color:#69f0ae">—</b></div>
+      <div ref="{{ hRoi }}" style="color:#69f0ae">ROI OFF · FULL ATLAS</div>
+    </div>
+
+    <div style="position:absolute;left:12px;top:118px;bottom:118px;width:214px;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:8px;overflow-y:auto;scrollbar-width:none">
+      <div ref="{{ railRef }}" onClick="{{ onTool }}" style="pointer-events:auto;display:grid;grid-template-columns:repeat(2,44px);gap:5px">
+      <button data-tool="seg+" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#04070d;background:#ffa726;border:1px solid #ffa726;border-radius:8px;padding:9px 4px;min-height:34px;cursor:pointer">SEG+</button>
+      <button data-tool="seg-" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;min-height:34px;cursor:pointer">SEG−</button>
+      <button data-tool="paint" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;min-height:34px;cursor:pointer">PAINT</button>
+      <button data-tool="clone" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;min-height:34px;cursor:pointer">BLUR</button>
+      <button data-tool="raise" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;min-height:34px;cursor:pointer">RAISE</button>
+      <button data-tool="lower" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;min-height:34px;cursor:pointer">LOWER</button>
+    <button data-tool="dens+" title="concentrate splat budget here" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;cursor:pointer">dens+</button>
+      <button data-tool="dens-" title="thin splat budget here" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:9px 4px;cursor:pointer">dens−</button>
+      <button onClick="{{ onNewRegion }}" style="font-family:inherit;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ffa726;background:rgba(255,167,38,.1);border:1px solid rgba(255,167,38,.42);border-radius:7px;grid-column:1 / -1;padding:7px 4px;cursor:pointer">new object · arm seg+</button>
+      <button ref="{{ edit3dRef }}" onClick="{{ onEdit3d }}" title="paint / segment directly on the terrain" style="font-family:inherit;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:7px;grid-column:1 / -1;padding:7px 4px;cursor:pointer">direct 3d off</button>
+    </div>
+      <div onClick="{{ onMetric }}" style="pointer-events:auto;display:grid;grid-template-columns:repeat(2,44px);gap:5px">
+      <button data-metric="geodesic" style="font-family:inherit;font-size:8.5px;font-weight:800;letter-spacing:.04em;color:#4fc3f7;background:rgba(79,195,247,.14);border:1px solid #4fc3f788;border-radius:8px;padding:8px 2px;cursor:pointer">GEO</button>
+      <button data-metric="euclid" style="font-family:inherit;font-size:8.5px;font-weight:800;letter-spacing:.04em;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:8px;padding:8px 2px;cursor:pointer">EUCL</button>
+    
+      <button ref="{{ roiBtnRef }}" onClick="{{ onROI }}" style="grid-column:1 / -1;font-family:inherit;font-size:8.5px;font-weight:800;letter-spacing:.04em;color:#04070d;background:#69f0ae;border:1px solid #69f0ae;border-radius:8px;padding:8px 2px;cursor:pointer">ROI CROP</button>
+    </div>
+      
+    </div>
+
+        <div style="position:absolute;right:12px;top:12px;max-width:250px;font-size:10.5px;line-height:1.5;color:#7f93ad;background:rgba(7,9,15,.72);border:1px solid #1b2a42;border-radius:8px;padding:7px 10px;backdrop-filter:blur(4px);text-align:right">
+      <div style="font-size:8.5px;font-weight:800;letter-spacing:.16em;color:#5c6f8a;margin-bottom:3px">READ</div>
+      <span ref="{{ hRead }}">drag to orbit · scroll to zoom · edit the atlas panel, the surface follows</span>
+    </div>
+
+    
+
+    
+
+    
+
+    <div ref="{{ panelRef }}" style="position:absolute;right:12px;bottom:74px;width:250px;pointer-events:auto;background:rgba(6,10,18,.95);border:1.5px solid rgba(255,167,38,.5);border-radius:10px;padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.6)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10px;font-weight:800;letter-spacing:.1em;color:#ffa726;margin-bottom:6px">
+        <span>UV ATLAS · u,v</span>
+        <span ref="{{ hTool }}" style="font-weight:700;letter-spacing:.06em;color:#7f93ad">SEG+</span>
+      </div>
+      <canvas ref="{{ uvRef }}" style="width:100%;aspect-ratio:1/1;display:block;border-radius:6px;background:#04070d;cursor:crosshair;touch-action:none"></canvas>
+      <div onClick="{{ onSwatch }}" style="display:flex;gap:4px;margin-top:7px">
+        <button data-col="#1c8726" style="flex:1;height:20px;border-radius:5px;border:1px solid #22314e;background:#1c8726;cursor:pointer"></button>
+        <button data-col="#e6870f" style="flex:1;height:20px;border-radius:5px;border:1px solid #22314e;background:#e6870f;cursor:pointer"></button>
+        <button data-col="#0a4d80" style="flex:1;height:20px;border-radius:5px;border:1px solid #22314e;background:#0a4d80;cursor:pointer"></button>
+        <button data-col="#85807a" style="flex:1;height:20px;border-radius:5px;border:1px solid #22314e;background:#85807a;cursor:pointer"></button>
+        <button data-col="#212429" style="flex:1;height:20px;border-radius:5px;border:1px solid #22314e;background:#212429;cursor:pointer"></button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px">
+        <button onClick="{{ onApply }}" ref="{{ applyRef }}" style="font-family:inherit;font-size:10px;font-weight:700;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:6px;padding:6px 8px;min-height:26px;cursor:pointer">ISOLATE MASK</button>
+        <button onClick="{{ onClearSeg }}" style="font-family:inherit;font-size:10px;font-weight:700;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:6px;padding:6px 8px;min-height:26px;cursor:pointer">CLEAR SEG</button>
+        <button onClick="{{ onResetTex }}" style="font-family:inherit;font-size:10px;font-weight:700;color:#8fa4c0;background:rgba(18,27,46,.92);border:1px solid #22314e;border-radius:6px;padding:6px 8px;min-height:26px;cursor:pointer">RESET</button>
+      </div>
+      <div title="Seeded mean-split flood fill in atlas space. Paint and sculpt strokes write to the same parametrization, so geometry and albedo stay in one chart." style="font-size:9px;color:#7f93ad;margin-top:5px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">one chart: geometry + albedo edited together</div>
+    </div>
+
+    
+      <div ref="{{ dockRef }}" style="position:absolute;left:0;right:0;bottom:0;pointer-events:auto;display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:8px 12px;background:rgba(13,18,32,.92);backdrop-filter:blur(6px);border-top:1px solid #1b2a42">
+      <sc-if value="{{ hasRegions }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ onRegion }}" style="flex:1 0 100%;pointer-events:auto;display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+          <span style="font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">objects</span>
+          <sc-for list="{{ regions }}" as="r" hint-placeholder-count="2">
+            <div data-rid="{{ r.id }}" data-act="sel" style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid #22314e;cursor:pointer;background:{{ r.selBg }};opacity:{{ r.dim }}">
+              <button data-rid="{{ r.id }}" data-act="col" title="recolour" style="width:11px;height:11px;flex:none;border-radius:3px;border:1px solid #22314e;cursor:pointer;background:{{ r.hex }}"></button>
+              <span style="font-size:9.5px;font-weight:700;color:#8fa4c0">{{ r.name }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#4a5b73">{{ r.pct }}</span>
+              <button data-rid="{{ r.id }}" data-act="iso" title="isolate" style="font-family:inherit;font-size:8.5px;font-weight:800;background:none;border:none;cursor:pointer;padding:0 1px;color:{{ r.isoOn }}">ISO</button>
+              <button data-rid="{{ r.id }}" data-act="vis" title="hide / show" style="font-family:inherit;font-size:10px;line-height:1;color:#8fa4c0;background:none;border:none;cursor:pointer;padding:0 1px">{{ r.eye }}</button>
+              <button data-rid="{{ r.id }}" data-act="del" title="dissolve" style="font-family:inherit;font-size:11px;line-height:1;color:#5c6f8a;background:none;border:none;cursor:pointer;padding:0 1px">×</button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <span style="flex:none;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#5c6f8a">env</span>
+      <div ref="{{ envRef }}" onClick="{{ onEnv }}" style="flex:none;display:flex;gap:5px">
+        <button data-env="forest" style="font-family:inherit;font-size:11px;font-weight:600;color:#4fc3f7;background:rgba(79,195,247,.12);border:1px solid #4fc3f788;border-radius:15px;padding:7px 13px;cursor:pointer">forest</button>
+        <button data-env="urban" style="font-family:inherit;font-size:11px;font-weight:600;color:#8fa4c0;background:#121b2e;border:1px solid #1b2a42;border-radius:15px;padding:7px 13px;cursor:pointer">urban</button>
+        <button data-env="dust" style="font-family:inherit;font-size:11px;font-weight:600;color:#8fa4c0;background:#121b2e;border:1px solid #1b2a42;border-radius:15px;padding:7px 13px;cursor:pointer">dust</button>
+      </div>
+      <span style="flex:none;width:1px;height:26px;background:#1b2a42"></span>
+      <div ref="{{ modeRef }}" onClick="{{ onMode }}" style="flex:none;display:flex;gap:5px">
+        <button data-mode="splats" style="font-family:inherit;font-size:11px;font-weight:600;color:#4fc3f7;background:rgba(79,195,247,.12);border:1px solid #4fc3f788;border-radius:15px;padding:7px 13px;cursor:pointer">splats</button>
+        <button data-mode="surface" style="font-family:inherit;font-size:11px;font-weight:600;color:#8fa4c0;background:#121b2e;border:1px solid #1b2a42;border-radius:15px;padding:7px 13px;cursor:pointer">surface</button>
+        <button data-mode="wire" style="font-family:inherit;font-size:11px;font-weight:600;color:#8fa4c0;background:#121b2e;border:1px solid #1b2a42;border-radius:15px;padding:7px 13px;cursor:pointer">control net</button>
+      </div>
+      <span style="flex:none;width:1px;height:26px;background:#1b2a42"></span>
+      <div onInput="{{ onSlide }}" style="flex:1 1 460px;display:flex;align-items:center;gap:10px;min-width:300px;flex-wrap:wrap">
+        <label style="flex:1 1 150px;display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#5c6f8a">CNET<input type="range" data-k="cnet" min="24" max="240" step="8" defaultValue="96" style="flex:1;min-width:70px"><b data-out="cnet" style="font-size:10px;color:#4fc3f7;min-width:26px;text-align:right">96</b></label>
+        <label style="flex:1 1 150px;display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#5c6f8a">BUDGET<input type="range" data-k="budget" min="16" max="112" step="8" defaultValue="56" style="flex:1;min-width:70px;accent-color:#ffa726"><b data-out="budget" style="font-size:10px;color:#ffa726;min-width:44px;text-align:right">50k</b></label>
+        <label style="flex:1 1 130px;display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#5c6f8a">BRUSH<input type="range" data-k="brush" min="4" max="56" step="2" defaultValue="18" style="flex:1;min-width:60px"><b data-out="brush" style="font-size:10px;color:#4fc3f7;min-width:24px;text-align:right">18</b></label>
+        <label style="flex:1 1 130px;display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#5c6f8a">SEG τ<input type="range" data-k="thr" min="2" max="40" step="1" defaultValue="12" style="flex:1;min-width:60px"><b data-out="thr" style="font-size:10px;color:#4fc3f7;min-width:30px;text-align:right">0.12</b></label><label style="flex:1 1 130px;display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#5c6f8a">COVER<input type="range" data-k="cover" min="60" max="220" step="5" defaultValue="105" style="flex:1;min-width:60px;accent-color:#69f0ae"><b data-out="cover" style="font-size:10px;color:#69f0ae;min-width:38px;text-align:right">1.05×</b></label>
+      </div>
+      <button onClick="{{ onAuto }}" ref="{{ autoRef }}" style="flex:none;font-family:inherit;font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#8fa4c0;background:#121b2e;border:1px solid #1b2a42;border-radius:8px;padding:9px 13px;min-height:34px;cursor:pointer">ORBIT</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;env&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;forest&quot;,&quot;urban&quot;,&quot;dust&quot;],&quot;default&quot;:&quot;forest&quot;,&quot;tsType&quot;:&quot;'forest'|'urban'|'dust'&quot;},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;splats&quot;,&quot;surface&quot;,&quot;wire&quot;],&quot;default&quot;:&quot;splats&quot;,&quot;tsType&quot;:&quot;'splats'|'surface'|'wire'&quot;},&quot;autoOrbit&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef(); mainRef = React.createRef(); chromeRef = React.createRef();
+  uvRef = React.createRef(); railRef = React.createRef(); envRef = React.createRef();
+  modeRef = React.createRef(); autoRef = React.createRef(); applyRef = React.createRef();
+  hSplats = React.createRef(); hCnet = React.createRef(); hMask = React.createRef();
+  hReg = React.createRef(); dockRef = React.createRef(); panelRef = React.createRef();
+  edit3dRef = React.createRef(); hParam = React.createRef(); roiBtnRef = React.createRef(); hRoi = React.createRef(); hRes = React.createRef(); hRead = React.createRef(); hTool = React.createRef();
+
+  renderVals(){
+    return {
+      rootRef:this.rootRef, mainRef:this.mainRef, chromeRef:this.chromeRef, uvRef:this.uvRef,
+      railRef:this.railRef, envRef:this.envRef, modeRef:this.modeRef, autoRef:this.autoRef,
+      applyRef:this.applyRef, hSplats:this.hSplats, hCnet:this.hCnet, hMask:this.hMask,
+      hReg:this.hReg, hParam:this.hParam, hRes:this.hRes, hRead:this.hRead, hTool:this.hTool,
+      regions:this.regionList(), hasRegions:(this.objs||[]).length>0,
+      onRegion:e=>this.regionAct(e), onNewRegion:()=>this.newRegion(false),
+      edit3dRef:this.edit3dRef, onEdit3d:()=>this.toggleEdit3d(),
+      onTool:e=>this.pickTool(e), onEnv:e=>this.pickEnv(e), onMode:e=>this.pickMode(e),
+      onSlide:e=>this.slide(e), onSwatch:e=>this.pickSwatch(e), onAuto:e=>this.toggleAuto(e),
+      onApply:e=>this.toggleApply(e), onClearSeg:()=>this.clearSeg(), onResetTex:()=>this.resetTex(),
+      onMetric:e=>this.pickMetric(e), dockRef:this.dockRef, panelRef:this.panelRef,
+      roiBtnRef:this.roiBtnRef, hRoi:this.hRoi, onROI:()=>this.toggleROI()
+    };
+  }
+
+  componentDidMount(){
+    this.boot();
+    // keep the static BUDGET label honest with st.S, whatever the slider default is
+    const bi=document.querySelector('input[data-k="budget"]');
+    const el=bi&&bi.parentNode.querySelector('[data-out]');
+    if(bi){ bi.value=Math.round(this.st.S/4); }
+    if(el){ const n=this.st.S*this.st.S; el.textContent = n>=1000 ? Math.round(n/1000)+'k' : n; }
+  }
+  componentWillUnmount(){ this.dead = true; if(this.ro) this.ro.disconnect(); if(this.dockRo) this.dockRo.disconnect(); }
+
+  boot(){
+    if(!window.THREE){ this.tries=(this.tries||0)+1; if(this.tries<300) setTimeout(()=>this.boot(),50); return; }
+    try{ this.init(); }catch(err){ console.error('sim init failed', err); }
+  }
+
+  // ── field: one deterministic rule for BOTH heights and albedo (invariant 1) ──
+  h2(x,y){ const n = Math.sin(x*127.1 + y*311.7)*43758.5453; return n - Math.floor(n); }
+  vn(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi;
+    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    return this.h2(xi,yi)*(1-u)*(1-v) + this.h2(xi+1,yi)*u*(1-v) + this.h2(xi,yi+1)*(1-u)*v + this.h2(xi+1,yi+1)*u*v;
+  }
+  fbm(x,y,o){ let s=0,a=.5,f=1; for(let i=0;i<(o||5);i++){ s+=a*this.vn(x*f,y*f); a*=.5; f*=2; } return s; }
+
+  field(u,v,out){
+    const env=this.st.env, x=u*8, z=v*8;
+    let h, r,g,b;
+    if(env==='forest'){
+      h = this.fbm(x,z,5)*.92 + this.fbm(x*3.1,z*3.1,3)*.12;
+      const rc = Math.abs(v - (.5 + .13*Math.sin(u*6.1) + .05*Math.sin(u*13.7)));
+      const riv = Math.max(0, 1 - rc/.055);
+      h -= riv*.42;
+      const tree = this.vn(x*9.3, z*9.3);
+      if(riv>.35){ r=10; g=77; b=128; }
+      else if(h>.72){ const t=Math.min(1,(h-.72)/.22); r=61+72*t; g=122+6*t; b=41+81*t; }
+      else if(tree>.56){ const a=this.h2(Math.floor(x*9.3),Math.floor(z*9.3));
+        if(a>.86){ r=230; g=135; b=15; } else if(a>.45){ r=28; g=135; b=38; } else { r=43; g=156; b=38; } }
+      else { r=61; g=122; b=41; }
+    } else if(env==='urban'){
+      const bx=Math.floor(u*13), bz=Math.floor(v*13);
+      const fu=u*13-bx, fv=v*13-bz, road = (fu<.19||fu>.81||fv<.19||fv>.81);
+      const hs = this.h2(bx*1.7, bz*2.3);
+      h = .22 + this.fbm(x*.5,z*.5,3)*.14;
+      if(!road) h += .16 + hs*.62;
+      if(road){
+        const lane = (Math.abs(fu-.5)<.5 && (fv<.19?Math.abs(fv-.095):fv>.81?Math.abs(fv-.905):9)<.012);
+        if(lane){ r=191; g=158; b=26; } else { r=33; g=36; b=41; }
+      } else if(hs>.72){ r=64; g=107; b=158; }
+      else if(hs<.16){ r=51; g=173; b=41; h=.22+this.fbm(x*.5,z*.5,3)*.14; }
+      else { r=158; g=77; b=51; }
+    } else {
+      h = this.fbm(x*.7,z*.7,4)*.7 + .12*this.vn(x*4.2,z*4.2);
+      const dune = .5+.5*Math.sin(u*17+this.fbm(x,z,2)*4);
+      h += dune*.1;
+      const t = Math.min(1, h*1.25);
+      r = 118+58*t; g = 92+42*t; b = 58+26*t;
+      const rock = this.vn(x*11, z*11);
+      if(rock>.68){ r=88; g=74; b=58; }
+      const bx=Math.floor(u*9), bz=Math.floor(v*9);
+      if(this.h2(bx*3.1,bz*5.7)>.93){ h+=.18; r=74; g=68; b=54; }
+    }
+    out[0]=Math.max(0,Math.min(1,h)); out[1]=r; out[2]=g; out[3]=b;
+  }
+
+  buildField(){
+    const A=this.A, id=this.albCtx.createImageData(A,A), d=id.data, hh=this.hArr, o=[0,0,0,0];
+    for(let py=0;py<A;py++){
+      const v=py/(A-1);
+      for(let px=0;px<A;px++){
+        this.field(px/(A-1), v, o);
+        const p=py*A+px, i=p*4;
+        hh[p]=o[0]; d[i]=o[1]; d[i+1]=o[2]; d[i+2]=o[3]; d[i+3]=255;
+      }
+    }
+    this.albCtx.putImageData(id,0,0);
+    this.albData = this.albCtx.getImageData(0,0,A,A);
+    this.disp.fill(0);
+  }
+
+  sampleH(u,v){
+    const A=this.A, fx=Math.max(0,Math.min(A-1.001,u*(A-1))), fy=Math.max(0,Math.min(A-1.001,v*(A-1)));
+    const x0=Math.floor(fx), y0=Math.floor(fy), tx=fx-x0, ty=fy-y0;
+    const h=this.hArr, dp=this.disp, W=A;
+    const i00=y0*W+x0, i10=i00+1, i01=i00+W, i11=i01+1;
+    const a=(h[i00]+dp[i00])*(1-tx)+(h[i10]+dp[i10])*tx;
+    const b=(h[i01]+dp[i01])*(1-tx)+(h[i11]+dp[i11])*tx;
+    return (a*(1-ty)+b*ty)*this.HS;
+  }
+
+  composite(){
+    const A=this.A, c=this.compCtx;
+    c.drawImage(this.alb,0,0);
+    const m=this.mask;
+    if(this.maskTotal()>0){
+      const id=c.getImageData(0,0,A,A), d=id.data;
+      for(let p=0;p<m.length;p++) if(m[p]){ const i=p*4, rc=this.regCol(m[p]);
+        const hid=this.regHidden(m[p]) || (this.isoRegion && m[p]!==this.isoRegion), k=hid?.16:.6;
+        d[i]=d[i]*(1-k)+rc[0]*k; d[i+1]=d[i+1]*(1-k)+rc[1]*k; d[i+2]=d[i+2]*(1-k)+rc[2]*k; continue;
+        d[i]=d[i]*.42+255*.58; d[i+1]=d[i+1]*.42+167*.58; d[i+2]=d[i+2]*.42+38*.58; }
+      c.putImageData(id,0,0);
+    }
+    if(this.st.roi && this.win && !this.win.full){
+      const w=this.win;
+      c.save(); c.strokeStyle='rgba(105,240,174,.9)'; c.lineWidth=3; c.setLineDash([10,6]);
+      c.strokeRect(w.u0*A, w.v0*A, (w.u1-w.u0)*A, (w.v1-w.v0)*A);
+      c.setLineDash([]); c.fillStyle='rgba(105,240,174,.08)';
+      c.fillRect(w.u0*A, w.v0*A, (w.u1-w.u0)*A, (w.v1-w.v0)*A);
+      c.fillStyle='#69f0ae'; c.font='700 15px monospace';
+      c.fillText('VIEW CROP', w.u0*A+8, w.v0*A+20);
+      c.restore();
+    }
+    // atlas graticule
+    c.save(); c.globalAlpha=.22; c.strokeStyle='#4fc3f7'; c.lineWidth=1;
+    for(let i=1;i<8;i++){ const t=i*A/8;
+      c.beginPath(); c.moveTo(t,0); c.lineTo(t,A); c.stroke();
+      c.beginPath(); c.moveTo(0,t); c.lineTo(A,t); c.stroke(); }
+    c.restore();
+    this.compTex.needsUpdate = true;
+  }
+
+  // ── adaptive ROI: the commander view crops the atlas, so the budget lands where you look ──
+  frustumWindow(){
+    const T=window.THREE, SZ=this.SZ;
+    this.cam.updateMatrixWorld();
+    const vp=new T.Matrix4().multiplyMatrices(this.cam.projectionMatrix,this.cam.matrixWorldInverse);
+    const p=new T.Vector3();
+    let u0=2,u1=-1,v0=2,v1=-1,seen=0;
+    const M=64, N=M+1, vis=new Uint8Array(N*N);
+    const eye=this.cam.position, h=1/M, e=.5/M;
+    for(let j=0;j<N;j++){ const v=j/M;
+      for(let i=0;i<N;i++){ const u=i/M;
+        const y=this.sampleH(u,v);
+        // outward normal of the height field, in world units
+        const dhu=(this.sampleH(Math.min(1,u+e),v)-this.sampleH(Math.max(0,u-e),v))/(2*e*SZ);
+        const dhv=(this.sampleH(u,Math.min(1,v+e))-this.sampleH(u,Math.max(0,v-e)))/(2*e*SZ);
+        const wx=(u-.5)*SZ, wz=(v-.5)*SZ;
+        // back-facing ⇒ the camera can never see this patch, so it must not claim budget
+        if((eye.x-wx)*(-dhu) + (eye.y-y)*1 + (eye.z-wz)*(-dhv) <= 0) continue;
+        p.set(wx,y,wz).applyMatrix4(vp);
+        if(p.z<-1||p.z>1) continue;
+        if(p.x<-1||p.x>1||p.y<-1||p.y>1) continue;   // exact frustum, no slack
+        vis[j*N+i]=1;
+        if(u<u0)u0=u; if(u>u1)u1=u; if(v<v0)v0=v; if(v>v1)v1=v; seen++;
+      } }
+    const FULL={u0:0,u1:1,v0:0,v1:1,full:true,frac:1,vis:null,N:0};
+    if(seen<8){ this.visGrid=null; return FULL; }
+    u0=Math.max(0,u0-h); u1=Math.min(1,u1+h); v0=Math.max(0,v0-h); v1=Math.min(1,v1+h);
+    // dilate once so silhouette edges don't fray; count the DILATED set so the
+    // budget estimate matches exactly what buildSplats will accept
+    const dil=new Uint8Array(N*N); let vcount=0;
+    for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+      let ok=0;
+      for(let b=-1;b<=1&&!ok;b++) for(let a=-1;a<=1;a++){
+        const x=i+a, y=j+b;
+        if(x<0||y<0||x>=N||y>=N) continue;
+        if(vis[y*N+x]){ ok=1; break; }
+      }
+      if(ok){ dil[j*N+i]=1; vcount++; }
+    }
+    const frac=Math.max(vcount/(N*N), .02);
+    this.visGrid={vis:dil,N};
+    return {u0,u1,v0,v1,full:false,frac,vis:dil,N};
+  }
+  roiTick(){
+    if(!this.st.roi){ if(this.win&&!this.win.full){ this.win=null; this.buildSplats(); this.composite(); } return; }
+    const w=this.frustumWindow(), o=this.win;
+    // facing culling depends on view direction, so the rect alone can't decide staleness
+    let same = !!o && Math.abs(w.u0-o.u0)<.02 && Math.abs(w.u1-o.u1)<.02 &&
+       Math.abs(w.v0-o.v0)<.02 && Math.abs(w.v1-o.v1)<.02;
+    if(same && w.vis && o.vis && w.N===o.N){
+      let diff=0; for(let k=0;k<w.vis.length;k++) if(w.vis[k]!==o.vis[k]) diff++;
+      if(diff > w.vis.length*.004) same=false;
+    } else if(same && (!!w.vis !== !!o.vis)) same=false;
+    this.win=w;
+    if(same) return;
+    this.win=w; this.buildSplats(); this.composite();
+  }
+  toggleROI(){
+    this.st.roi=!this.st.roi;
+    const b=this.roiBtnRef.current;
+    if(b){ b.style.color=this.st.roi?'#04070d':'#8fa4c0';
+      b.style.background=this.st.roi?'#69f0ae':'rgba(18,27,46,.92)';
+      b.style.borderColor=this.st.roi?'#69f0ae':'#22314e'; }
+    this.win=null; this.roiTick(); this.buildSplats(); this.composite();
+    this.say(this.st.roi
+      ? 'adaptive ROI on — the whole budget re-allocates inside the view frustum, so zooming buys resolution'
+      : 'ROI off — the budget spreads over the whole atlas');
+  }
+
+  buildSurface(){
+    const N=this.st.cnet;
+    if(this.mesh){ this.scene.remove(this.mesh); this.mesh.geometry.dispose(); }
+    const n=N+1, pos=new Float32Array(n*n*3), uvs=new Float32Array(n*n*2), idx=[];
+    for(let j=0;j<n;j++){ const v=j/N;
+      for(let i=0;i<n;i++){ const u=i/N, k=j*n+i;
+        pos[k*3]=(u-.5)*this.SZ; pos[k*3+1]=this.sampleH(u,v); pos[k*3+2]=(v-.5)*this.SZ;
+        uvs[k*2]=u; uvs[k*2+1]=1-v;
+      } }
+    for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const a=j*n+i;
+      idx.push(a,a+n,a+1, a+1,a+n,a+n+1); }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    g.setAttribute('uv',new THREE.BufferAttribute(uvs,2));
+    g.setIndex(idx); g.computeVertexNormals();
+    this.mesh=new THREE.Mesh(g,this.terrMat); this.mesh.name='fitSurface';
+    this.scene.add(this.mesh);
+    this.applyMode();
+  }
+
+  buildSplats(){
+    const S=this.st.S, A=this.A, d=this.albData.data, m=this.mask, iso=this.st.iso;
+    const geoM=(this.st.metric==='geodesic'), SZ=this.SZ;
+    const px=[], cx=[], as=[];
+    const yOf=(u,v)=>this.sampleH(u,v);
+    const seg=(u0,v0,u1,v1)=>Math.hypot((u1-u0)*SZ,(v1-v0)*SZ,yOf(u1,v1)-yOf(u0,v0));
+    const walk=(u0,v0,u1,v1)=>{               // geodesic: follow the fitted surface between samples
+      let L=0, M=4;
+      for(let t=0;t<M;t++){
+        const a=t/M, b=(t+1)/M;
+        L+=seg(u0+(u1-u0)*a, v0+(v1-v0)*a, u0+(u1-u0)*b, v0+(v1-v0)*b);
+      }
+      return L;
+    };
+    const w=(this.st.roi&&this.win&&!this.win.full)?this.win:null;
+    const U0=w?w.u0:0, U1=w?w.u1:1, V0=w?w.v0:0, V1=w?w.v1:1;
+    this.roiFrac=w?w.frac:1;
+    // culling removes cells, so oversample the rect until the accepted count fills the budget
+    const rectA=(U1-U0)*(V1-V0);
+    const accept=w&&w.vis ? Math.max(.08,Math.min(1,w.frac/Math.max(1e-4,rectA))) : 1;
+    const SS=Math.min(Math.round(S*Math.min(2.6,.98/Math.sqrt(accept))), 900);
+    for(let j=0;j<SS;j++){ const v=V0+(V1-V0)*(j/(SS-1));
+      for(let i=0;i<SS;i++){ const u=U0+(U1-U0)*(i/(SS-1));
+        const tp=Math.min(A-1,Math.round(v*(A-1)))*A + Math.min(A-1,Math.round(u*(A-1)));
+        if(iso && !m[tp]) continue;
+        const rid=m[tp];
+        if(rid && this.regHidden(rid)) continue;
+        if(this.isoRegion && rid!==this.isoRegion) continue;
+        if(w && w.vis){                       // grid is pre-dilated: exact cell test
+          const N=w.N, gi=Math.min(N-1,Math.round(u*(N-1))), gj=Math.min(N-1,Math.round(v*(N-1)));
+          if(!w.vis[gj*N+gi]) continue;
+        }
+        const hu=(U1-U0)/(SS-1), hv=(V1-V0)/(SS-1);
+        const u2=Math.min(1,u+hu), v2=Math.min(1,v+hv);
+        const du = geoM ? walk(u,v,u2,v) : seg(u,v,u2,v);
+        const dv = geoM ? walk(u,v,u,v2) : seg(u,v,u,v2);
+        const diag=Math.hypot(du,dv);
+        // density field: reps per cell, footprint shrinks so the tiling stays gap-free
+        const q=this.densAt(u,v);
+        let reps=Math.floor(q);
+        const hsh=((i*73856093)^(j*19349663))>>>0, fr=q-reps;
+        if(((hsh%1000)/1000)<fr) reps++;
+        if(reps<1) { if(((hsh%1000)/1000) > q) continue; reps=1; }
+        const foot=diag/Math.sqrt(Math.max(.25,q));
+        const i4=tp*4, mk=rid?1:0, rc=mk?this.regCol(rid):null;
+        for(let t=0;t<reps;t++){
+          const jx=t? (((hsh*(t+7))%997)/997-.5)*hu : 0, jy=t? (((hsh*(t+13))%991)/991-.5)*hv : 0;
+          const uu=Math.max(0,Math.min(1,u+jx)), vv=Math.max(0,Math.min(1,v+jy));
+          px.push((uu-.5)*SZ, yOf(uu,vv), (vv-.5)*SZ);
+          as.push(foot);
+          cx.push(mk?rc[0]/255:(d[i4]/255), mk?rc[1]/255:(d[i4+1]/255), mk?rc[2]/255:(d[i4+2]/255));
+        }
+      } }
+    if(this.pts){ this.scene.remove(this.pts); this.pts.geometry.dispose(); }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(px,3));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(cx,3));
+    g.setAttribute('aSize',new THREE.Float32BufferAttribute(as,1));
+    this.pts=new THREE.Points(g,this.splatMat); this.pts.name='splats';
+    this.scene.add(this.pts);
+    this.nSplats = px.length/3;
+    // achieved density gain vs. spreading the same budget over the whole atlas
+    this.roiGain = (this.nSplats/Math.max(.01,this.roiFrac))/(S*S);
+    if(this.splatMat.uniforms) this.splatMat.uniforms.uSize.value=this.st.cover;
+    this.applyMode();
+  }
+
+  applyMode(){
+    const m=this.st.mode;
+    if(this.pts) this.pts.visible = (m==='splats');
+    if(this.mesh){
+      this.mesh.visible = (m!=='splats');
+      this.terrMat.wireframe = (m==='wire');
+      this.terrMat.needsUpdate = true;
+    }
+  }
+
+  // ── atlas editing ──
+  // ── surface decomposition + density field (shared model with the knot-chart sim) ──
+  REGPAL=[[79,195,247],[206,147,216],[105,240,174],[255,167,38],[255,82,82],[38,198,218]];
+  regOf(id){ return (this.objs||[]).find(r=>r.id===id); }
+  regCol(id){ const r=this.regOf(id); return r?r.col:[255,167,38]; }
+  regHidden(id){ const r=this.regOf(id); return r?!r.vis:false; }
+  regName(id){ const r=this.regOf(id); return r?r.name:'—'; }
+  maskTotal(){ const m=this.mask; if(!m) return 0; let n=0; for(let i=0;i<m.length;i++) if(m[i]) n++; this.maskCount=n; return n; }
+  densAt(u,v){ if(!this.dens) return 1; const A=this.A;
+    const x=Math.min(A-1,Math.max(0,Math.round(u*(A-1)))), y=Math.min(A-1,Math.max(0,Math.round(v*(A-1))));
+    return this.dens[y*A+x]; }
+  densStats(){ const d=this.dens; if(!d) return {min:1,max:1};
+    let mn=9,mx=0; for(let i=0;i<d.length;i++){ const v=d[i]; if(v<mn)mn=v; if(v>mx)mx=v; } return {min:mn,max:mx}; }
+  newRegion(quiet){
+    if(!this.objs) this.objs=[];
+    const id=(this.objs.reduce((m,r)=>Math.max(m,r.id),0))+1;
+    this.objs.push({id, name:'object '+String(id).padStart(2,'0'),
+      col:this.REGPAL[(id-1)%this.REGPAL.length], vis:true, count:0});
+    this.curRegion=id;
+    if(!quiet){ this.forceUpdate(); this.say('new object armed — the next seg+ flood lands in «'+this.regName(id)+'»'); }
+    return id;
+  }
+  recount(){
+    const m=this.mask, c={};
+    for(let p=0;p<m.length;p++) if(m[p]) c[m[p]]=(c[m[p]]||0)+1;
+    (this.objs||[]).forEach(r=>{ r.count=c[r.id]||0; });
+    this.objs=(this.objs||[]).filter(r=>r.count>0 || r.id===this.curRegion);
+    if(this.isoRegion && !this.regOf(this.isoRegion)) this.isoRegion=0;
+    this.regions=this.objs.length;
+    this.forceUpdate();
+  }
+  regionAct(e){
+    const b=e.target.closest('[data-act]'); if(!b) return;
+    const id=+b.dataset.rid, act=b.dataset.act, r=this.regOf(id); if(!r) return;
+    if(act==='vis'){ r.vis=!r.vis; this.say(r.vis?('«'+r.name+'» shown'):('«'+r.name+'» hidden — its splats are dropped, the rest keeps the budget')); }
+    else if(act==='iso'){ this.isoRegion=this.isoRegion===id?0:id;
+      this.say(this.isoRegion?('isolated «'+r.name+'» — everything else is culled'):'isolation off'); }
+    else if(act==='col'){ const i=this.REGPAL.findIndex(c=>c===r.col); r.col=this.REGPAL[(i+1)%this.REGPAL.length]; }
+    else if(act==='sel'){ this.curRegion=id; this.say('«'+r.name+'» is the active object'); }
+    else if(act==='del'){ const m=this.mask;
+      for(let p=0;p<m.length;p++) if(m[p]===id) m[p]=0;
+      this.objs=this.objs.filter(x=>x.id!==id);
+      if(this.curRegion===id) this.curRegion=0;
+      if(this.isoRegion===id) this.isoRegion=0;
+      this.say('«'+r.name+'» dissolved back into the surface'); }
+    this.recount(); this.buildSplats(); this.composite();
+  }
+  regionList(){
+    const tot=(this.A||1024)*(this.A||1024);
+    return (this.objs||[]).map(r=>({ id:r.id, name:r.name, hex:'rgb('+r.col.join(',')+')',
+      pct:(r.count/tot*100).toFixed(1)+'%', eye:r.vis?'●':'○',
+      isoOn:this.isoRegion===r.id?'#ffa726':'#4a5b73',
+      selBg:this.curRegion===r.id?'rgba(255,167,38,.14)':'transparent', dim:r.vis?1:.42 }));
+  }
+  toggleEdit3d(){
+    this.st.edit3d=!this.st.edit3d;
+    const b=this.edit3dRef.current;
+    if(b){ b.textContent='direct 3d '+(this.st.edit3d?'on':'off');
+      b.style.color=this.st.edit3d?'#04070d':'#8fa4c0';
+      b.style.background=this.st.edit3d?'#69f0ae':'rgba(18,27,46,.92)';
+      b.style.borderColor=this.st.edit3d?'#69f0ae':'#22314e'; }
+    this.say(this.st.edit3d
+      ? 'direct 3d editing on — drag on the terrain and the active tool writes into the atlas at that (u,v)'
+      : 'direct 3d editing off — drag orbits the camera again');
+  }
+  pickSurface(ndcV){
+    if(!this.mesh) return null;
+    if(!this.ray) this.ray=new THREE.Raycaster();
+    const wasVis=this.mesh.visible; this.mesh.visible=true;
+    this.ray.setFromCamera(ndcV,this.cam);
+    const h=this.ray.intersectObject(this.mesh,false)[0];
+    this.mesh.visible=wasVis;
+    if(!h) return null;
+    const A=this.A, u=h.point.x/this.SZ+.5, v=h.point.z/this.SZ+.5;
+    if(u<0||u>1||v<0||v>1) return null;
+    return [Math.round(u*(A-1)), Math.round(v*(A-1))];
+  }
+  edit3dAt(ndcV,first){
+    const p=this.pickSurface(ndcV); if(!p) return false;
+    const t=this.st.tool;
+    if(t==='seg+'||t==='seg-'){ if(!first) return true; this.segFill(p[0],p[1],t==='seg+'); this.composite(); this.buildSplats(); }
+    else { this.editCount++; this.stroke(p[0],p[1]);
+      if(this.texDirty){ this.albData=this.albCtx.getImageData(0,0,this.A,this.A); this.texDirty=false; }
+      this.composite(); if(t==='raise'||t==='lower'||t==='dens+'||t==='dens-') this.buildSplats(); }
+    return true;
+  }
+
+  segFill(px,py,add){
+    const A=this.A, d=this.albData.data, W=A, start=py*W+px;
+    const rid = add ? (this.curRegion || this.newRegion(true)) : 0;
+    const i0=start*4, r0=d[i0], g0=d[i0+1], b0=d[i0+2];
+    const thr=this.st.thr*441.7, seen=new Uint8Array(W*W), q=[start];
+    seen[start]=1; let n=0;
+    while(q.length){
+      const p=q.pop(), i=p*4;
+      const dr=d[i]-r0, dg=d[i+1]-g0, db=d[i+2]-b0;
+      if(Math.sqrt(dr*dr+dg*dg+db*db)>thr) continue;
+      this.mask[p] = add ? rid : 0;
+      n++;
+      const x=p%W, y=(p-x)/W;
+      if(x>0 && !seen[p-1]){ seen[p-1]=1; q.push(p-1); }
+      if(x<W-1 && !seen[p+1]){ seen[p+1]=1; q.push(p+1); }
+      if(y>0 && !seen[p-W]){ seen[p-W]=1; q.push(p-W); }
+      if(y<W-1 && !seen[p+W]){ seen[p+W]=1; q.push(p+W); }
+    }
+    this.recount();
+    this.say(add ? ('object «'+this.regName(rid)+'» +'+n.toLocaleString()+' texels · flood fill from seed') : ('region −'+n.toLocaleString()+' texels'));
+  }
+
+  segFillDone(){ this.recount(); }
+  stroke(px,py){
+    const t=this.st.tool, R=this.st.brush, A=this.A;
+    if(t==='dens+'||t==='dens-'){
+      const s=(t==='dens+'?1:-1)*.18;
+      const x0=Math.max(0,px-R|0), x1=Math.min(A-1,px+R|0), y0=Math.max(0,py-R|0), y1=Math.min(A-1,py+R|0);
+      for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+        const dx=x-px, dy=y-py, r=Math.sqrt(dx*dx+dy*dy);
+        if(r>R) continue;
+        const f=Math.cos(r/R*1.5708);
+        this.dens[y*A+x]=Math.max(.25,Math.min(4,this.dens[y*A+x]+s*f*f));
+      }
+      return;
+    }
+    if(t==='paint'||t==='clone'){
+      const c=this.albCtx; c.save();
+      const g=c.createRadialGradient(px,py,0,px,py,R);
+      if(t==='paint'){ g.addColorStop(0,this.st.col); g.addColorStop(.65,this.st.col); g.addColorStop(1,this.st.col+'00'); c.fillStyle=g; }
+      else { c.filter='blur(3px)'; c.globalAlpha=.5; c.drawImage(this.alb,px-R,py-R,R*2,R*2,px-R,py-R,R*2,R*2); c.restore(); this.texDirty=true; return; }
+      c.beginPath(); c.arc(px,py,R,0,6.2832); c.fill(); c.restore();
+      this.texDirty=true;
+    } else if(t==='raise'||t==='lower'){
+      const s=(t==='raise'?1:-1)*.055, dp=this.disp;
+      const x0=Math.max(0,px-R|0), x1=Math.min(A-1,px+R|0), y0=Math.max(0,py-R|0), y1=Math.min(A-1,py+R|0);
+      for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+        const dx=x-px, dy=y-py, r=Math.sqrt(dx*dx+dy*dy);
+        if(r>R) continue;
+        const f=Math.cos(r/R*1.5708);
+        dp[y*A+x]+=s*f*f;
+      }
+      this.geoDirty=true;
+    }
+  }
+
+  flushEdits(){
+    if(this.texDirty){ this.albData=this.albCtx.getImageData(0,0,this.A,this.A); }
+    if(this.geoDirty) this.buildSurface();
+    if(this.texDirty||this.geoDirty){ this.composite(); this.buildSplats(); this.bumpResidual(); }
+    this.texDirty=this.geoDirty=false;
+  }
+
+  bumpResidual(){
+    const base=0.0092, sculpt=Math.min(.06, this.editCount*0.0004);
+    this.residual = base + sculpt + (240-this.st.cnet)*0.00006;
+  }
+
+  say(t){ if(this.hRead.current) this.hRead.current.textContent=t; }
+
+  // ── UI handlers ──
+  markActive(container, attr, val, on, off){
+    if(!container) return;
+    [...container.children].forEach(b=>{
+      const hit = b.dataset[attr]===val;
+      b.style.color = hit?on.c:off.c; b.style.background = hit?on.b:off.b; b.style.borderColor = hit?on.bd:off.bd;
+    });
+  }
+  pickTool(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.tool=b.dataset.tool;
+    this.markActive(this.railRef.current,'tool',this.st.tool,
+      {c:'#04070d',b:'#ffa726',bd:'#ffa726'},{c:'#8fa4c0',b:'rgba(18,27,46,.92)',bd:'#22314e'});
+    if(this.hTool.current) this.hTool.current.textContent=b.textContent;
+    this.say({ 'seg+':'click the atlas to grow a region from a seed',
+      'seg-':'click a region to remove it from the mask',
+      'paint':'drag on the atlas to repaint albedo · pick a swatch below',
+      'clone':'drag to blur albedo detail in atlas space',
+      'raise':'drag to push the fitted surface up through its parametrization',
+      'lower':'drag to pull the fitted surface down' }[this.st.tool]);
+  }
+  pickEnv(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.env=b.dataset.env;
+    this.markActive(this.envRef.current,'env',this.st.env,
+      {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#8fa4c0',b:'#121b2e',bd:'#1b2a42'});
+    this.mask.fill(0); this.maskCount=0; this.regions=0; this.st.iso=false; this.editCount=0;
+    this.buildField(); this.composite(); this.buildSurface(); this.buildSplats(); this.bumpResidual();
+    this.say('scene rebuilt · '+this.st.env+' · atlas and mask cleared');
+  }
+  pickMode(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.mode=b.dataset.mode;
+    this.markActive(this.modeRef.current,'mode',this.st.mode,
+      {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#8fa4c0',b:'#121b2e',bd:'#1b2a42'});
+    this.applyMode();
+  }
+  pickSwatch(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.col=b.dataset.col;
+    [...b.parentNode.children].forEach(x=>x.style.borderColor = x===b?'#ffa726':'#22314e');
+    this.st.tool='paint';
+    this.markActive(this.railRef.current,'tool','paint',
+      {c:'#04070d',b:'#ffa726',bd:'#ffa726'},{c:'#8fa4c0',b:'rgba(18,27,46,.92)',bd:'#22314e'});
+    if(this.hTool.current) this.hTool.current.textContent='PAINT';
+  }
+  slide(e){
+    const inp=e.target, k=inp.dataset.k; if(!k) return;
+    const val=+inp.value, out=inp.parentNode.querySelector('[data-out]');
+    if(k==='cnet'){ this.st.cnet=val; out.textContent=val; this.buildSurface(); this.bumpResidual(); }
+    else if(k==='budget'){ this.st.S=val*4; const n=this.st.S*this.st.S;
+      out.textContent = n>=1000 ? Math.round(n/1000)+'k' : n; this.buildSplats(); }
+    else if(k==='brush'){ this.st.brush=val; out.textContent=val; }
+    else if(k==='thr'){ this.st.thr=val/100; out.textContent=(val/100).toFixed(2); }
+    else if(k==='cover'){ this.st.cover=val/100; out.textContent=(val/100).toFixed(2)+'×';
+      if(this.splatMat.uniforms) this.splatMat.uniforms.uSize.value=this.st.cover; }
+  }
+  pickMetric(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.metric) return;
+    this.st.metric=b.dataset.metric;
+    [...b.parentNode.children].forEach(x=>{ if(!x.dataset.metric) return;
+      const on=x.dataset.metric===this.st.metric;
+      x.style.color=on?'#4fc3f7':'#8fa4c0';
+      x.style.background=on?'rgba(79,195,247,.12)':'#121b2e';
+      x.style.borderColor=on?'#4fc3f788':'#1b2a42'; });
+    this.buildSplats();
+    this.say(this.st.metric==='geodesic'
+      ? 'splat footprints from geodesic neighbour distance — measured across the terrain, so they grow on slopes'
+      : 'splat footprints from euclidean neighbour distance — the straight chord under-covers steep ground');
+  }
+  toggleAuto(e){
+    this.st.auto=!this.st.auto;
+    const b=this.autoRef.current;
+    b.style.color=this.st.auto?'#4fc3f7':'#8fa4c0';
+    b.style.borderColor=this.st.auto?'#4fc3f788':'#1b2a42';
+    b.style.background=this.st.auto?'rgba(79,195,247,.12)':'#121b2e';
+  }
+  toggleApply(){
+    this.st.iso=!this.st.iso;
+    const b=this.applyRef.current;
+    b.textContent=this.st.iso?'SHOW ALL':'ISOLATE MASK';
+    b.style.color=this.st.iso?'#04070d':'#8fa4c0';
+    b.style.background=this.st.iso?'#ffa726':'rgba(18,27,46,.92)';
+    b.style.borderColor=this.st.iso?'#ffa726':'#22314e';
+    if(this.st.mode!=='splats'){ this.st.mode='splats';
+      this.markActive(this.modeRef.current,'mode','splats',
+        {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#8fa4c0',b:'#121b2e',bd:'#1b2a42'}); }
+    this.buildSplats();
+    this.say(this.st.iso?'splat confidence zeroed outside the mask — revertible':'full budget restored');
+  }
+  clearSeg(){
+    this.mask.fill(0); this.maskCount=0; this.regions=0;
+    this.objs=[]; this.curRegion=0; this.isoRegion=0; this.forceUpdate();
+    if(this.st.iso) this.toggleApply(); else this.buildSplats();
+    this.composite(); this.say('mask cleared');
+  }
+  resetTex(){
+    this.editCount=0; this.buildField(); this.composite(); this.buildSurface(); this.buildSplats();
+    this.bumpResidual(); this.say('atlas reset to the procedural fit');
+  }
+
+  init(){
+    const A=512;
+    this.A=A; this.SZ=220; this.HS=34;
+    this.st={ env:this.props.env||'forest', mode:this.props.mode||'splats', cnet:96, S:224,
+      brush:18, thr:.12, tool:'seg+', col:'#1c8726', iso:false, auto:this.props.autoOrbit!==false,
+      metric:'geodesic', cover:1.05, roi:true,
+      yaw:-0.85, pitch:0.44, dist:250 };
+    this.mask=new Uint8Array(A*A); this.maskCount=0; this.regions=0; this.editCount=0;
+    this.objs=[]; this.curRegion=0; this.isoRegion=0;
+    this.dens=new Float32Array(A*A).fill(1);
+    this.hArr=new Float32Array(A*A); this.disp=new Float32Array(A*A);
+
+    this.alb=document.createElement('canvas'); this.alb.width=this.alb.height=A;
+    this.albCtx=this.alb.getContext('2d',{willReadFrequently:true});
+    this.comp=this.uvRef.current; this.comp.width=this.comp.height=A;
+    this.compCtx=this.comp.getContext('2d',{willReadFrequently:true});
+    this.compTex=new THREE.CanvasTexture(this.comp);
+    this.compTex.colorSpace=THREE.SRGBColorSpace;
+    this.compTex.anisotropy=4;
+
+    const sp=document.createElement('canvas'); sp.width=sp.height=64;
+    const sc=sp.getContext('2d'), rg=sc.createRadialGradient(32,32,0,32,32,32);
+    rg.addColorStop(0,'rgba(255,255,255,1)'); rg.addColorStop(.45,'rgba(255,255,255,.7)');
+    rg.addColorStop(1,'rgba(255,255,255,0)');
+    sc.fillStyle=rg; sc.fillRect(0,0,64,64);
+    const spTex=new THREE.CanvasTexture(sp);
+
+    const cv=this.mainRef.current;
+    this.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.renderer.setClearColor(0x07090f,1);
+    this.scene=new THREE.Scene();
+    this.scene.fog=new THREE.Fog(0x07090f, 260, 620);
+    this.cam=new THREE.PerspectiveCamera(46,1,.5,2000);
+    this.target=new THREE.Vector3(0,10,0);
+
+    this.scene.add(new THREE.HemisphereLight(0x9fc4ef,0x0b1017,.85));
+    const dl=new THREE.DirectionalLight(0xfff1dc,1.1); dl.position.set(-140,190,90); this.scene.add(dl);
+
+    const grid=new THREE.GridHelper(this.SZ*1.6, 16, 0x1b2a42, 0x121b2e);
+    grid.position.y=-4; this.scene.add(grid);
+
+    this.terrMat=new THREE.MeshStandardMaterial({map:this.compTex,roughness:.94,metalness:0,side:THREE.DoubleSide});
+    this.splatMat=new THREE.ShaderMaterial({
+      transparent:true, depthWrite:false, blending:THREE.NormalBlending,
+      uniforms:{ uSize:{value:this.st.cover}, uScale:{value:300} },
+      vertexShader:[
+        'attribute vec3 color; attribute float aSize;',
+        'uniform float uSize; uniform float uScale;',
+        'varying vec3 vC;',
+        'void main(){ vC=color;',
+        '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
+        '  gl_Position=projectionMatrix*mv;',
+        '  gl_PointSize=max(1.0,uSize*aSize*(uScale/max(0.001,-mv.z)));',
+        '}'].join('\n'),
+      fragmentShader:[
+        'varying vec3 vC;',
+        'void main(){ vec2 p=gl_PointCoord*2.0-1.0;',
+        '  float r=length(p); if(r>1.0) discard;',
+        '  float a=min(1.0, 1.32*exp(-1.35*r*r)); if(a<0.015) discard;',
+        '  gl_FragColor=vec4(vC,a);',
+        '}'].join('\n')
+    });
+
+    this.buildField(); this.composite(); this.buildSurface(); this.buildSplats(); this.bumpResidual();
+
+    this.markActive(this.envRef.current,'env',this.st.env,
+      {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#8fa4c0',b:'#121b2e',bd:'#1b2a42'});
+    this.markActive(this.modeRef.current,'mode',this.st.mode,
+      {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#8fa4c0',b:'#121b2e',bd:'#1b2a42'});
+    if(this.st.auto) { this.st.auto=false; this.toggleAuto(); }
+
+    // ── orbit ──
+    let drag=false, lx=0, ly=0;
+    let paint3=false;
+    const ndc=e=>{ const r=cv.getBoundingClientRect();
+      return new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1); };
+    cv.addEventListener('pointerdown',e=>{
+      if(this.st.edit3d && this.edit3dAt(ndc(e),true)){ paint3=true; cv.setPointerCapture(e.pointerId); return; }
+      drag=true; lx=e.clientX; ly=e.clientY; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointermove',e=>{
+      if(paint3){ this.edit3dAt(ndc(e),false); return; }
+      if(!drag) return;
+      this.st.yaw -= (e.clientX-lx)*.005; this.st.pitch = Math.max(.06, Math.min(1.35, this.st.pitch + (e.clientY-ly)*.004));
+      lx=e.clientX; ly=e.clientY; });
+    cv.addEventListener('pointerup',e=>{ if(paint3){ paint3=false; this.buildSplats(); } drag=false; });
+    cv.addEventListener('wheel',e=>{ e.preventDefault();
+      this.st.dist = Math.max(this.nearFloor?this.nearFloor():20, Math.min(620, this.st.dist*Math.exp(e.deltaY*.0011))); },{passive:false});
+
+    // ── atlas pointer ──
+    const uvc=this.comp;
+    const at=e=>{ const r=uvc.getBoundingClientRect();
+      return [Math.max(0,Math.min(A-1,Math.floor((e.clientX-r.left)/r.width*A))),
+              Math.max(0,Math.min(A-1,Math.floor((e.clientY-r.top)/r.height*A)))]; };
+    let painting=false;
+    uvc.addEventListener('pointerdown',e=>{
+      const [px,py]=at(e); uvc.setPointerCapture(e.pointerId);
+      const t=this.st.tool;
+      if(t==='seg+'||t==='seg-'){ this.segFill(px,py,t==='seg+'); this.composite(); this.buildSplats(); }
+      else { painting=true; this.editCount++; this.stroke(px,py); this.composite(); }
+    });
+    uvc.addEventListener('pointermove',e=>{ if(!painting) return;
+      const [px,py]=at(e); this.stroke(px,py);
+      if(this.texDirty){ this.albData=this.albCtx.getImageData(0,0,A,A); }
+      this.composite(); });
+    uvc.addEventListener('pointerup',()=>{ if(!painting) return; painting=false; this.flushEdits(); });
+
+    // ── hover-revealed chrome ──
+    const ch=this.chromeRef.current, root=this.rootRef.current;
+    const show=()=>{ ch.style.opacity='1'; clearTimeout(this._ht); };
+    const hide=()=>{ this._ht=setTimeout(()=>{ ch.style.opacity='0.3'; },900); };
+    root.addEventListener('pointerenter',show); root.addEventListener('pointermove',()=>{ show(); hide(); });
+    root.addEventListener('pointerleave',()=>{ ch.style.opacity='0.3'; });
+    hide();
+
+    this.ro=new ResizeObserver(()=>this.resize()); this.ro.observe(root);
+    if(this.dockRef.current){ this.dockRo=new ResizeObserver(()=>this.syncDock()); this.dockRo.observe(this.dockRef.current); }
+    this.resize();
+    this.t0=performance.now(); this.last=this.t0;
+    this.loop();
+  }
+
+  syncDock(){
+    const d=this.dockRef.current, p=this.panelRef.current, root=this.rootRef.current;
+    if(!d||!p||!root) return;
+    const bottom=d.offsetHeight+12;
+    p.style.bottom=bottom+'px';
+    p.style.overflow='hidden';
+    // atlas canvas takes whatever height is left once the chrome rows are placed
+    const avail=root.clientHeight - bottom - 88;
+    const chrome=p.offsetHeight - (this.uvRef.current ? this.uvRef.current.offsetHeight : 0);
+    const side=Math.max(120, Math.min(250, avail-chrome));
+    p.style.width=(side+16)+'px';
+    if(this.uvRef.current) this.uvRef.current.style.height=side+'px';
+  }
+  resize(){
+    const r=this.rootRef.current.getBoundingClientRect();
+    if(!r.width) return;
+    this.syncDock();
+    this.renderer.setSize(r.width, r.height, false);
+    this.cam.aspect=r.width/r.height; this.cam.updateProjectionMatrix();
+    if(this.splatMat && this.splatMat.uniforms)
+      this.splatMat.uniforms.uScale.value =
+        r.height*Math.min(devicePixelRatio,2)*.5 / Math.tan(this.cam.fov*Math.PI/360);
+  }
+
+  loop(){
+    if(this.dead) return;
+    requestAnimationFrame(()=>this.loop());
+    const now=performance.now(), dt=Math.min(.05,(now-this.last)/1000); this.last=now;
+    if(this.st.auto) this.st.yaw += dt*.07;
+    const s=this.st, cp=Math.cos(s.pitch);
+    this.cam.position.set(this.target.x + Math.sin(s.yaw)*cp*s.dist,
+      this.target.y + Math.sin(s.pitch)*s.dist, this.target.z + Math.cos(s.yaw)*cp*s.dist);
+    this.cam.lookAt(this.target);
+    if(this.st.mode==='splats' && now-(this._roi||0)>280){ this._roi=now; this.roiTick(); }
+    if(now-(this._hud||0) > 180){
+      this._hud=now;
+      const S=this.st.S, tot=S*S;
+      if(this.hSplats.current) this.hSplats.current.textContent=this.nSplats.toLocaleString()+' / '+tot.toLocaleString();
+      if(this.hCnet.current) this.hCnet.current.textContent=this.st.cnet+'×'+this.st.cnet+' · CR basis';
+      if(this.hMask.current) this.hMask.current.textContent=(this.maskTotal()/(this.A*this.A)*100).toFixed(1)+'%';
+      if(this.hReg.current) this.hReg.current.textContent=(this.objs||[]).length;
+      if(this.hRes.current) this.hRes.current.textContent=this.residual.toFixed(4);
+      if(this.hRoi.current) this.hRoi.current.textContent=(this.st.roi&&this.win&&!this.win.full)
+        ? ('VIS '+(this.roiFrac*100).toFixed(0)+'% · '+(this.roiGain||1).toFixed(1)+'× DENSITY')
+        : 'ROI OFF · FULL ATLAS';
+    }
+    this.renderer.render(this.scene,this.cam);
+  }
+}
+</script>
+</body>
+</html>

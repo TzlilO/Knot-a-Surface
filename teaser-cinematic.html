@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="src/sim_v4_core.js"></script>
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<script src="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#05080e;overflow:hidden}
+a{color:#69f0ae;text-decoration:none}
+a:hover{color:#a5f7cd}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative;display:flex;flex-direction:column;width:100vw;height:100vh;background:#05080e;color:#eef4fb;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden;user-select:none">
+
+  <div ref="{{ holdRef }}" style="position:relative;flex:1 1 auto;min-height:0;overflow:hidden">
+    <div ref="{{ stageRef }}" onClick="{{ onPlay }}" style="position:absolute;left:50%;top:50%;width:1920px;height:1080px;background:#05080e;overflow:hidden;transform-origin:center center;transform:translate(-50%,-50%);cursor:pointer">
+
+      <div ref="{{ simRef }}" style="position:absolute;inset:0;z-index:1"></div>
+      <canvas ref="{{ diagRef }}" style="position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none"></canvas>
+
+      <div style="position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(124% 96% at 50% 44%,rgba(5,8,14,0) 34%,rgba(5,8,14,.86) 100%)"></div>
+      <div style="position:absolute;left:0;right:0;top:0;height:24%;z-index:3;pointer-events:none;background:linear-gradient(180deg,rgba(5,8,14,.86),rgba(5,8,14,0))"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:34%;z-index:3;pointer-events:none;background:linear-gradient(0deg,rgba(5,8,14,.92),rgba(5,8,14,0))"></div>
+
+      <div ref="{{ capLayer }}" style="position:absolute;inset:0;z-index:4;pointer-events:none;transform-origin:center center">
+
+        <div ref="{{ reelRef }}" style="position:absolute;left:6.4%;top:9.4%;display:flex;align-items:center;gap:18px;opacity:0">
+          <span data-ac="1" data-acbd="1" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;letter-spacing:.26em;color:#69f0ae;border:1px solid #69f0ae;border-radius:999px;padding:6px 14px;white-space:nowrap">ONE TAKE</span>
+          <span ref="{{ dsRef }}" style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;letter-spacing:.22em;color:#93a8c4;white-space:nowrap">TNT · BARN</span>
+          <span data-div="1" style="width:1px;height:18px;background:#22304a"></span>
+          <span ref="{{ tcRef }}" style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:400;letter-spacing:.14em;color:#6f849f;white-space:nowrap">00:00:00</span>
+        </div>
+
+        <div ref="{{ hudRef }}" style="position:absolute;right:6.4%;top:9.4%;width:430px;opacity:0">
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;padding-bottom:13px;border-bottom:1px solid #16223a;margin-bottom:15px">
+            <span data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;letter-spacing:.26em;color:#69f0ae">◆ LIVE SOLVE</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;font-family:'JetBrains Mono',monospace">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">PRIMITIVES</span>
+              <span ref="{{ hN }}" style="font-size:25px;font-weight:700;color:#eef4fb">12,000</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">DoF / PRIM</span>
+              <span ref="{{ hDof }}" data-ac="1" style="font-size:25px;font-weight:700;color:#69f0ae">8</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">FOOTPRINT</span>
+              <span ref="{{ hFoot }}" style="font-size:25px;font-weight:700;color:#eef4fb">— mm</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">CLOSED</span>
+              <span ref="{{ hCov }}" data-ac="1" style="font-size:25px;font-weight:700;color:#69f0ae">—</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">IN VIEW</span>
+              <span ref="{{ hView }}" style="font-size:25px;font-weight:700;color:#eef4fb">—</span>
+            </div>
+            <div ref="{{ hTriRow }}" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;opacity:0">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">TRIS</span>
+              <span ref="{{ hTri }}" style="font-size:25px;font-weight:700;color:#9fe0ff">—</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-top:12px;border-top:1px solid #16223a">
+              <span style="font-size:17px;font-weight:400;letter-spacing:.2em;color:#6f849f;white-space:nowrap">CONTROL NET</span>
+              <span ref="{{ hDisk }}" style="font-size:25px;font-weight:700;color:#eef4fb">18 KB</span>
+            </div>
+          </div>
+        </div>
+
+        <div ref="{{ scrim }}" style="position:absolute;left:0;top:0;width:62%;height:100%;background:linear-gradient(90deg,rgba(3,5,9,.94) 0%,rgba(3,5,9,.86) 34%,rgba(3,5,9,.55) 66%,rgba(3,5,9,0) 100%);opacity:0;pointer-events:none"></div>
+
+        <div ref="{{ cOpen }}" style="position:absolute;left:6.4%;right:38%;top:50%;transform:translateY(-50%);opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:24px">Knot-a-Surface</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:96px;font-weight:700;line-height:1.0;letter-spacing:-.026em;color:#f4f8fd">The surface<br>already knows.</div>
+          <div data-s="1" style="font-size:31px;line-height:1.4;color:#93a8c4;margin-top:26px;max-width:820px;text-wrap:pretty">Place, scale and rotation are read off the geometry — not optimized into it.</div>
+        </div>
+
+        <div ref="{{ c01 }}" style="position:absolute;left:6.4%;right:36%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">01 · The prior</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">Read, not learned.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:860px;text-wrap:pretty">Every primitive takes its frame from the spline chart underneath it. Eight numbers each — position on the chart, albedo, opacity, SH₁.</div>
+        </div>
+
+        <div ref="{{ c02 }}" style="position:absolute;left:6.4%;right:36%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">02 · One object</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">Splats and mesh are<br>the same object.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:860px;text-wrap:pretty">Render it, or hand over the surface. There is no extraction step, and nothing to reconcile afterwards.</div>
+        </div>
+
+        <div ref="{{ c03 }}" style="position:absolute;left:6.4%;right:36%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">03 · Any depth</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">Zoom is free.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:860px;text-wrap:pretty">Primitives re-solve for the depth you are standing at. No pop, no LOD ladder, no second model.</div>
+        </div>
+
+        <div ref="{{ c04 }}" style="position:absolute;left:6.4%;right:44%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">04 · Allocation</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">The budget follows<br>the camera.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:700px;text-wrap:pretty">What you look at gets the density. Everything behind you costs nothing.</div>
+        </div>
+
+        <div ref="{{ c05 }}" style="position:absolute;left:6.4%;right:36%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">05 · No heuristics</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">No densify. No prune.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:860px;text-wrap:pretty">Density is a configured number, not a schedule of thresholds. Change the number and the model obeys — mid-flight.</div>
+        </div>
+
+        <div ref="{{ c06 }}" style="position:absolute;left:6.4%;right:44%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">06 · Knot insertion</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">When the blanket is<br>too short, add knots.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:700px;text-wrap:pretty">Subdivision in U and V, exactly where the residual asks for it. Capacity is earned, never sprayed.</div>
+        </div>
+
+        <div ref="{{ c07 }}" style="position:absolute;left:6.4%;right:44%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">07 · UV is the gift</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">A scene you can<br>read as an image.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:660px;text-wrap:pretty">Geodesic UV order puts neighbours next door — and depth, normals and curvature fall out as channels of one chart.</div>
+          <div ref="{{ modLeg }}" style="display:flex;flex-wrap:wrap;gap:12px 30px;margin-top:26px">
+            <div style="display:flex;align-items:center;gap:11px">
+              <span style="width:52px;height:13px;border-radius:3px;background:linear-gradient(90deg,#1a56c7,#4cdcc7,#fcdc5c)"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;letter-spacing:.16em;color:#93a8c4;white-space:nowrap">DEPTH</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px">
+              <span style="width:52px;height:13px;border-radius:3px;background:linear-gradient(90deg,#ff5a7a,#7dff8a,#5aa8ff)"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;letter-spacing:.16em;color:#93a8c4;white-space:nowrap">NORMALS</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px">
+              <span style="width:52px;height:13px;border-radius:3px;background:linear-gradient(90deg,#2b3346,#ffb457)"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;letter-spacing:.16em;color:#93a8c4;white-space:nowrap">CURVATURE</span>
+            </div>
+          </div>
+        </div>
+
+        <div ref="{{ cStitch }}" style="position:absolute;left:0;right:0;bottom:16%;display:flex;justify-content:center;opacity:0;visibility:hidden">
+          <div data-k="1" style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;letter-spacing:.4em;text-transform:uppercase;color:#93a8c4;white-space:nowrap">same code · new capture · real scan</div>
+        </div>
+
+        <div ref="{{ cClose }}" style="position:absolute;left:6.4%;right:44%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">08 · Closure</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd"><span ref="{{ covBig }}" data-ac="1" style="color:#69f0ae">99.0%</span> closed —<br>and it counts itself.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:720px;text-wrap:pretty">Coverage is measured per surface cell, live, every frame. Nothing here is asserted in a caption.</div>
+        </div>
+
+        <div ref="{{ cBase }}" style="position:absolute;left:6.4%;right:44%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">09 · Same footing</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">Six families.<br>One ledger.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:700px;text-wrap:pretty">Same scene, same camera, same closure test. The only thing that changes is how many numbers a primitive needs.</div>
+        </div>
+
+        <div ref="{{ c08 }}" style="position:absolute;left:6.4%;right:44%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:22px">10 · Stability</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:84px;font-weight:700;line-height:1.02;letter-spacing:-.022em;color:#f4f8fd">SH₁ is enough.</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:640px;text-wrap:pretty">Orbit as fast as you like. Nothing shimmers, because nothing is guessing which way it faces.</div>
+        </div>
+
+        <div ref="{{ cLedger }}" style="position:absolute;right:6.4%;bottom:15%;width:540px;opacity:0;visibility:hidden">
+          <div data-ledhead="1" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;letter-spacing:.28em;color:#6f849f;margin-bottom:20px">PER-PRIMITIVE DoF</div>
+          <div data-dofcol="1" style="display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;letter-spacing:.16em">
+                <span data-ac="1" style="color:#69f0ae">SURFACE PRIOR</span>
+                <span data-ac="1" style="color:#69f0ae;font-size:26px">8</span>
+              </div>
+              <div style="height:9px;background:#101a2c;border-radius:5px;overflow:hidden">
+                <div ref="{{ barA }}" data-acbg="1" style="width:13.6%;height:100%;background:#69f0ae;transform:scaleX(0);transform-origin:left center"></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;letter-spacing:.16em;color:#6f849f">
+                <span>UNSTRUCTURED SPLATS</span>
+                <span style="font-size:26px">59</span>
+              </div>
+              <div style="height:9px;background:#101a2c;border-radius:5px;overflow:hidden">
+                <div ref="{{ barB }}" style="width:100%;height:100%;background:#33445e;transform:scaleX(0);transform-origin:left center"></div>
+              </div>
+            </div>
+          </div>
+          <div data-chipwrap="1" style="margin-top:26px;padding-top:18px;border-top:1px solid #16223a">
+            <div data-chiplab="1" style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;letter-spacing:.26em;color:#6f849f;margin-bottom:14px">MEASURED AGAINST</div>
+            <div data-chiprow="1" style="display:flex;flex-wrap:wrap;align-items:baseline;gap:8px">
+              <span data-chip="1" style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.12em;color:#93a8c4;border:1px solid #22304a;border-radius:999px;padding:6px 12px;white-space:nowrap">SURFACE-ALIGNED</span>
+              <span data-sep="1" style="display:none;font-family:'JetBrains Mono',monospace;font-size:14px;color:#3d4d68">·</span>
+              <span data-chip="1" style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.12em;color:#93a8c4;border:1px solid #22304a;border-radius:999px;padding:6px 12px;white-space:nowrap">2D SPLATS</span>
+              <span data-sep="1" style="display:none;font-family:'JetBrains Mono',monospace;font-size:14px;color:#3d4d68">·</span>
+              <span data-chip="1" style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.12em;color:#93a8c4;border:1px solid #22304a;border-radius:999px;padding:6px 12px;white-space:nowrap">MESH-BOUND</span>
+              <span data-sep="1" style="display:none;font-family:'JetBrains Mono',monospace;font-size:14px;color:#3d4d68">·</span>
+              <span data-chip="1" style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.12em;color:#93a8c4;border:1px solid #22304a;border-radius:999px;padding:6px 12px;white-space:nowrap">3D SPLATS</span>
+              <span data-sep="1" style="display:none;font-family:'JetBrains Mono',monospace;font-size:14px;color:#3d4d68">·</span>
+              <span data-chip="1" style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.12em;color:#93a8c4;border:1px solid #22304a;border-radius:999px;padding:6px 12px;white-space:nowrap">IMPLICIT SDF</span>
+              <span data-sep="1" style="display:none;font-family:'JetBrains Mono',monospace;font-size:14px;color:#3d4d68">·</span>
+              <span data-chip="1" style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.12em;color:#93a8c4;border:1px solid #22304a;border-radius:999px;padding:6px 12px;white-space:nowrap">PHOTOGRAMMETRY</span>
+            </div>
+          </div>
+        </div>
+
+        <div ref="{{ c09 }}" style="position:absolute;left:6.4%;right:40%;bottom:14.5%;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#69f0ae;margin-bottom:18px">11 · Footprint</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:180px;font-weight:700;line-height:0.92;letter-spacing:-.04em;color:#f4f8fd">18 KB</div>
+          <div data-s="1" style="font-size:30px;line-height:1.42;color:#93a8c4;margin-top:22px;max-width:760px;text-wrap:pretty">That is the file: one control net. The primitives are generated from it, on demand, at the resolution you ask for.</div>
+        </div>
+
+        <div ref="{{ cTitle }}" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;opacity:0;visibility:hidden">
+          <div data-k="1" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;letter-spacing:.42em;text-transform:uppercase;color:#69f0ae;margin-bottom:30px;white-space:nowrap">◆ Knot-a-Surface</div>
+          <div data-h="1" style="font-family:'Space Grotesk','Inter',sans-serif;font-size:104px;font-weight:700;line-height:1.0;letter-spacing:-.03em;color:#f4f8fd;text-align:center;white-space:nowrap">A surface prior for<br>gaussian splatting.</div>
+          <div style="width:120px;height:2px;background:#22304a;margin:38px 0 30px"></div>
+          <div data-s="1" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:400;letter-spacing:.2em;color:#93a8c4;text-align:center;line-height:2;white-space:nowrap">8 DoF PER PRIMITIVE · FIXED BUDGET · NO DENSIFY, NO PRUNE<br>MESH AND SPLATS IN ONE OBJECT · CLOSURE MEASURED, NOT CLAIMED<br>18 KB ON DISK</div>
+          <div ref="{{ contactRef }}" data-ac="1" style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;letter-spacing:.22em;color:#69f0ae;margin-top:44px;text-align:center;white-space:nowrap">CVPR 2026 · PREPRINT ON REQUEST — DM FOR THE METHOD</div>
+        </div>
+
+      </div>
+
+      <div ref="{{ blackRef }}" style="position:absolute;inset:0;z-index:5;background:#05080e;pointer-events:none"></div>
+      <div ref="{{ flashRef }}" style="position:absolute;inset:0;z-index:6;background:#dff0ff;opacity:0;pointer-events:none"></div>
+    </div>
+  </div>
+
+  <div style="flex:none;display:flex;align-items:center;gap:22px;padding:15px 26px 19px;border-top:1px solid #101a2c;background:#05080e">
+    <button onClick="{{ onPlay }}" style="flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border:1px solid #22304a;border-radius:50%;background:transparent;color:#eef4fb;font-size:15px;cursor:pointer;padding:0" style-hover="border-color:#69f0ae;color:#69f0ae">
+      <span ref="{{ playGlyph }}" style="font-family:'JetBrains Mono',monospace;line-height:1">❚❚</span>
+    </button>
+    <div ref="{{ trackRef }}" onPointerDown="{{ onScrub }}" style="position:relative;flex:1 1 auto;height:30px;display:flex;align-items:center;cursor:pointer">
+      <div style="position:absolute;left:0;right:0;top:13px;height:4px;background:#101a2c;border-radius:2px"></div>
+      <div ref="{{ fillRef }}" data-acbg="1" style="position:absolute;left:0;top:13px;width:0%;height:4px;background:#69f0ae;border-radius:2px"></div>
+      <div style="position:absolute;left:0.9%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:6.4%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:12.7%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:20.0%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:28.3%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:35.5%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:42.8%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:50.5%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:58.7%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:62.8%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:70.8%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:79.0%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:85.6%;top:9px;width:2px;height:12px;background:#22304a"></div>
+      <div style="position:absolute;left:92.3%;top:9px;width:2px;height:12px;background:#22304a"></div>
+    </div>
+    <span ref="{{ tcBig }}" style="flex:none;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;letter-spacing:.1em;color:#93a8c4;min-width:132px;text-align:right">00:00 / 01:12</span>
+    <div style="flex:none;display:flex;align-items:center;gap:6px;padding-left:8px;border-left:1px solid #101a2c">
+      <button ref="{{ f169 }}" onClick="{{ onWide }}" style="border:1px solid #69f0ae;border-radius:999px;background:transparent;color:#69f0ae;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;padding:8px 13px;cursor:pointer;white-space:nowrap">16:9</button>
+      <button ref="{{ f11 }}" onClick="{{ onSquare }}" style="border:1px solid #22304a;border-radius:999px;background:transparent;color:#6f849f;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;padding:8px 13px;cursor:pointer;white-space:nowrap">1:1</button>
+    </div>
+    <button onClick="{{ onReplay }}" style="flex:none;border:1px solid #22304a;border-radius:999px;background:transparent;color:#93a8c4;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;padding:8px 13px;cursor:pointer;white-space:nowrap" style-hover="border-color:#69f0ae;color:#69f0ae">↺ REPLAY</button>
+    <button onClick="{{ onFull }}" style="flex:none;border:1px solid #22304a;border-radius:999px;background:transparent;color:#93a8c4;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;padding:8px 13px;cursor:pointer;white-space:nowrap" style-hover="border-color:#69f0ae;color:#69f0ae">⤢ FULL FRAME</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;format&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;16:9&quot;,&quot;1:1&quot;],&quot;default&quot;:&quot;16:9&quot;,&quot;tsType&quot;:&quot;'16:9' | '1:1'&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;runtime&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:48,&quot;max&quot;:110,&quot;unit&quot;:&quot;s&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;telemetry&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;autoplay&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#69f0ae&quot;,&quot;#4fc3f7&quot;,&quot;#ffa726&quot;,&quot;#f4f8fd&quot;],&quot;default&quot;:&quot;#ffa726&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look&quot;},&quot;contact&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Tzlil Ovadia  •  Ovadia.Tzlil@gmail.com&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef(); holdRef = React.createRef(); stageRef = React.createRef();
+  simRef = React.createRef(); diagRef = React.createRef(); capLayer = React.createRef();
+  reelRef = React.createRef(); hudRef = React.createRef(); blackRef = React.createRef();
+  flashRef = React.createRef(); cLedger = React.createRef();
+  cOpen = React.createRef(); c01 = React.createRef(); c02 = React.createRef(); c03 = React.createRef();
+  c04 = React.createRef(); c05 = React.createRef(); c06 = React.createRef(); c07 = React.createRef();
+  cStitch = React.createRef(); c08 = React.createRef(); c09 = React.createRef(); cTitle = React.createRef();
+  cClose = React.createRef(); cBase = React.createRef(); covBig = React.createRef();
+  hN = React.createRef(); hDof = React.createRef(); hFoot = React.createRef(); hView = React.createRef();
+  hCov = React.createRef(); hDisk = React.createRef();
+  hTri = React.createRef(); hTriRow = React.createRef(); modLeg = React.createRef(); scrim = React.createRef();
+  dsRef = React.createRef(); tcRef = React.createRef(); tcBig = React.createRef();
+  trackRef = React.createRef(); fillRef = React.createRef(); playGlyph = React.createRef();
+  barA = React.createRef(); barB = React.createRef(); contactRef = React.createRef();
+  f169 = React.createRef(); f11 = React.createRef();
+
+  MASTER = 78;
+  SWAP = 47.0;
+
+  /* t, theta, phi, distScale, zoom, step, gtOpacity, chartOpacity, budget */
+  KEYS = [
+    [0.0, 0.30, 1.16, 1.95, 0.00, 0, 0.00, 0.00, 20500],
+    [3.6, 0.72, 1.06, 1.32, 0.00, 2600, 0.00, 0.06, 20500],
+    [6.0, 0.95, 1.02, 1.20, 0.02, 6000, 0.06, 0.55, 20500],
+    [9.2, 1.28, 0.96, 1.14, 0.05, 11000, 0.10, 0.50, 20500],
+    [12.0, 1.55, 0.86, 1.06, 0.08, 15000, 0.30, 0.22, 20500],
+    [15.0, 1.82, 0.80, 1.02, 0.10, 18000, 0.14, 0.10, 20500],
+    [18.5, 2.05, 0.86, 0.82, 0.60, 21000, 0.05, 0.06, 20500],
+    [21.6, 2.22, 0.92, 0.66, 1.00, 23000, 0.03, 0.05, 20500],
+    [24.5, 2.48, 0.98, 0.78, 0.66, 24000, 0.03, 0.05, 20500],
+    [27.4, 2.72, 1.00, 1.10, 0.28, 25000, 0.03, 0.10, 20500],
+    [30.5, 2.98, 0.94, 1.12, 0.22, 26000, 0.03, 0.16, 51000],
+    [32.8, 3.18, 0.90, 1.08, 0.24, 27000, 0.04, 0.20, 71500],
+    [35.5, 3.42, 0.86, 0.96, 0.34, 27500, 0.04, 0.62, 44000],
+    [38.8, 3.68, 0.84, 0.92, 0.38, 28000, 0.05, 0.58, 37500],
+    [42.0, 3.92, 0.88, 0.98, 0.30, 28500, 0.05, 0.34, 34000],
+    [45.0, 4.18, 0.94, 1.10, 0.18, 29000, 0.04, 0.18, 30500],
+    [46.6, 4.66, 1.00, 1.48, 0.05, 900, 0.00, 0.05, 30500],
+    [48.4, 5.08, 0.98, 1.28, 0.06, 6500, 0.00, 0.10, 30500],
+    [51.0, 5.62, 0.92, 1.06, 0.16, 16000, 0.06, 0.28, 30500],
+    [53.4, 6.00, 0.86, 0.86, 0.34, 24000, 0.06, 0.20, 30500],
+    [55.6, 6.30, 0.90, 0.98, 0.24, 27000, 0.05, 0.16, 30500],
+    [58.6, 6.62, 0.96, 1.10, 0.16, 28500, 0.05, 0.12, 44000],
+    [61.2, 6.92, 0.92, 1.04, 0.18, 29500, 0.05, 0.10, 30500],
+    [64.0, 7.40, 0.82, 0.94, 0.26, 30000, 0.04, 0.08, 30500],
+    [66.4, 7.92, 0.88, 1.00, 0.20, 30000, 0.04, 0.08, 30500],
+    [69.0, 8.30, 0.98, 1.18, 0.10, 30000, 0.04, 0.10, 30500],
+    [71.6, 8.58, 1.04, 1.34, 0.05, 30000, 0.04, 0.08, 30500],
+    [78.8, 9.20, 1.10, 1.58, 0.02, 30000, 0.03, 0.06, 30500]
+  ];
+
+  CAPS = [
+    { r: 'cOpen', t0: 0.7, t1: 4.5 },
+    { r: 'c01', t0: 5.0, t1: 9.4 },
+    { r: 'c02', t0: 9.9, t1: 15.0 },
+    { r: 'c03', t0: 15.6, t1: 21.5 },
+    { r: 'c04', t0: 22.1, t1: 27.1 },
+    { r: 'c05', t0: 27.7, t1: 32.8 },
+    { r: 'c06', t0: 33.4, t1: 38.8 },
+    { r: 'c07', t0: 39.4, t1: 44.8 },
+    { r: 'cStitch', t0: 45.8, t1: 48.5, fin: 0.4, fout: 0.4 },
+    { r: 'cClose', t0: 49.0, t1: 54.6 },
+    { r: 'cBase', t0: 55.2, t1: 61.0 },
+    { r: 'c08', t0: 61.6, t1: 66.2 },
+    { r: 'c09', t0: 66.8, t1: 71.4 },
+    { r: 'cTitle', t0: 72.0, t1: 78.6, fin: 1.1, fout: 1.0 }
+  ];
+
+  renderVals() {
+    return {
+      rootRef: this.rootRef, holdRef: this.holdRef, stageRef: this.stageRef, simRef: this.simRef,
+      diagRef: this.diagRef, capLayer: this.capLayer, reelRef: this.reelRef, hudRef: this.hudRef,
+      blackRef: this.blackRef, flashRef: this.flashRef, cLedger: this.cLedger,
+      cOpen: this.cOpen, c01: this.c01, c02: this.c02, c03: this.c03, c04: this.c04, c05: this.c05,
+      c06: this.c06, c07: this.c07, cStitch: this.cStitch, c08: this.c08, c09: this.c09, cTitle: this.cTitle,
+      cClose: this.cClose, cBase: this.cBase, covBig: this.covBig,
+      hN: this.hN, hDof: this.hDof, hFoot: this.hFoot, hView: this.hView, hCov: this.hCov, hDisk: this.hDisk,
+      hTri: this.hTri, hTriRow: this.hTriRow, modLeg: this.modLeg, scrim: this.scrim,
+      dsRef: this.dsRef, tcRef: this.tcRef, tcBig: this.tcBig, trackRef: this.trackRef,
+      fillRef: this.fillRef, playGlyph: this.playGlyph, barA: this.barA, barB: this.barB,
+      contactRef: this.contactRef, f169: this.f169, f11: this.f11,
+      onPlay: () => this.toggle(), onReplay: () => { this.seek(0); this.playing = true; this.syncPlay(); },
+      onScrub: e => this.scrub(e), onWide: () => this.setFmt('16:9'), onSquare: () => this.setFmt('1:1'),
+      onFull: () => { const r = this.rootRef.current; if (r && r.requestFullscreen) r.requestFullscreen(); }
+    };
+  }
+
+  componentDidMount() {
+    window.__teaser = this;
+    this.fmt = this.props.format === '1:1' ? '1:1' : '16:9';
+    this.t = 0; this.playing = this.props.autoplay !== false; this.k = 1;
+    this.collect();
+    this.layout();
+    this.applyTheme();
+    this.syncPlay();
+    this.dots = [];
+    for (let i = 0, s = 8123; i < 130; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; const a = s / 0x7fffffff; s = (s * 1103515245 + 12345) & 0x7fffffff; this.dots.push([a, s / 0x7fffffff]); }
+    this.onRes = () => this.layout();
+    window.addEventListener('resize', this.onRes);
+    this.onKey = e => {
+      if (e.code === 'Space') { e.preventDefault(); this.toggle(); }
+      else if (e.code === 'ArrowRight') this.seek(this.t + 2);
+      else if (e.code === 'ArrowLeft') this.seek(this.t - 2);
+    };
+    window.addEventListener('keydown', this.onKey);
+    this.boot();
+    this.warm();
+    this.warmT = setInterval(() => { if (this.geoReady || this.dead) { clearInterval(this.warmT); this.warmT = 0; } else this.warm(); }, 2500);
+    this.last = performance.now();
+    this.loop = now => this.frame(now);
+    this.raf = requestAnimationFrame(this.loop);
+  }
+
+  componentDidUpdate(prev) {
+    if (prev.format !== this.props.format) { this.fmt = this.props.format === '1:1' ? '1:1' : '16:9'; this.layout(); }
+    this.applyTheme();
+  }
+
+  componentWillUnmount() {
+    this.dead = true; cancelAnimationFrame(this.raf);
+    window.removeEventListener('resize', this.onRes);
+    window.removeEventListener('keydown', this.onKey);
+    if (this.warmT) clearInterval(this.warmT);
+    if (this.sim) this.sim.dispose();
+  }
+
+  /* ── setup ─────────────────────────────────────────────── */
+  collect() {
+    this.E = {};
+    this.CAPS.forEach(c => {
+      const root = this[c.r] && this[c.r].current; if (!root) return;
+      const sub = root.querySelector('[data-s]');
+      this.E[c.r] = {
+        root, k: root.querySelector('[data-k]'), h: root.querySelector('[data-h]'), s: sub, on: false,
+        right0: root.style.right || '', bottom0: root.style.bottom || '', mw0: sub ? sub.style.maxWidth || '' : ''
+      };
+    });
+  }
+
+  applyTheme() {
+    const r = this.rootRef.current; if (!r) return;
+    const ac = this.props.accent || '#69f0ae';
+    r.querySelectorAll('[data-ac]').forEach(e => { e.style.color = ac; });
+    r.querySelectorAll('[data-acbd]').forEach(e => { e.style.borderColor = ac; });
+    r.querySelectorAll('[data-acbg]').forEach(e => { e.style.background = ac; });
+    this.ac = ac;
+    if (this.contactRef.current && this.props.contact) this.contactRef.current.textContent = this.props.contact;
+    if (this.hudRef.current) this.hudRef.current.style.display = this.props.telemetry === false ? 'none' : 'block';
+    const on = this.f169.current, off = this.f11.current;
+    if (on && off) {
+      const A = this.fmt === '16:9' ? on : off, B = this.fmt === '16:9' ? off : on;
+      A.style.borderColor = ac; A.style.color = ac;
+      B.style.borderColor = '#22304a'; B.style.color = '#6f849f';
+    }
+  }
+
+  layout() {
+    const w = this.fmt === '1:1' ? 1080 : 1920, h = 1080;
+    const st = this.stageRef.current, hold = this.holdRef.current;
+    if (!st || !hold) return;
+    st.style.width = w + 'px'; st.style.height = h + 'px';
+    const k = Math.max(0.05, Math.min(hold.clientWidth / w, hold.clientHeight / h));
+    this.k = k;
+    st.style.transform = 'translate(-50%,-50%) scale(' + k.toFixed(4) + ')';
+    if (this.capLayer.current) this.capLayer.current.style.transform = this.fmt === '1:1' ? 'scale(0.84)' : 'scale(1)';
+    this.reflow();
+    const cv = this.diagRef.current;
+    if (cv) {
+      const px = Math.max(0.6, Math.min(1.9, (window.devicePixelRatio || 1) * k));
+      this.dpx = px; this.dw = w; this.dh = h;
+      cv.width = Math.round(w * px); cv.height = Math.round(h * px);
+      this.dg = cv.getContext('2d');
+    }
+    if (this.sim) this.sim.setDpr(Math.max(0.7, Math.min(1.7, (window.devicePixelRatio || 1) * k)));
+  }
+
+  /* the caption column runs full-width in 1:1, with the instrument panel stacked above it */
+  reflow() {
+    const sq = this.fmt === '1:1';
+    if (this.E) Object.keys(this.E).forEach(k => {
+      if (k === 'cTitle' || k === 'cStitch') return;
+      const E = this.E[k];
+      E.root.style.right = sq ? '6.4%' : E.right0;
+      if (E.bottom0) E.root.style.bottom = sq ? '7%' : E.bottom0;
+      if (E.s) E.s.style.maxWidth = sq ? '900px' : E.mw0;
+    });
+    const L = this.cLedger.current;
+    if (L) {
+      /* square format leaves only ~90 screen px between the HUD and the caption, so the
+         ledger has to SHRINK there, not move: chips collapse to one separated line. */
+      L.style.width = sq ? '920px' : '540px';
+      L.style.bottom = sq ? 'auto' : '15%';
+      L.style.top = sq ? '40%' : 'auto';
+      const hd = L.querySelector('[data-ledhead]'), dc = L.querySelector('[data-dofcol]');
+      const cw = L.querySelector('[data-chipwrap]'), cl = L.querySelector('[data-chiplab]');
+      const cr = L.querySelector('[data-chiprow]');
+      if (hd) hd.style.marginBottom = sq ? '12px' : '20px';
+      if (dc) dc.style.gap = sq ? '12px' : '18px';
+      if (cw) { cw.style.marginTop = sq ? '12px' : '26px'; cw.style.paddingTop = sq ? '8px' : '18px'; }
+      if (cl) cl.style.marginBottom = sq ? '8px' : '14px';
+      if (cr) {
+        cr.style.gap = sq ? '7px' : '8px';
+        cr.style.flexWrap = sq ? 'nowrap' : 'wrap';
+        cr.querySelectorAll('[data-chip]').forEach(el => {
+          el.style.border = sq ? 'none' : '1px solid #22304a';
+          el.style.padding = sq ? '0' : '6px 12px';
+          el.style.fontSize = sq ? '14px' : '15px';
+        });
+        cr.querySelectorAll('[data-sep]').forEach(el => { el.style.display = sq ? 'inline' : 'none'; });
+      }
+    }
+    const H = this.hudRef.current;
+    if (H) H.style.width = sq ? '350px' : '430px';
+    // 1:1 crops the HUD tight against the tensor panel band — the triangle readout is a 16:9 line
+    if (this.hTriRow.current) this.hTriRow.current.style.display = sq ? 'none' : 'flex';
+    const SC = this.scrim.current;
+    if (SC) {
+      // the caption sits left in 16:9 and bottom-centre in 1:1, so the scrim has to follow it
+      SC.style.width = sq ? '100%' : '62%';
+      SC.style.height = sq ? '58%' : '100%';
+      SC.style.top = sq ? 'auto' : '0';
+      SC.style.bottom = sq ? '0' : 'auto';
+      SC.style.background = sq
+        ? 'linear-gradient(0deg,rgba(3,5,9,.94) 0%,rgba(3,5,9,.86) 38%,rgba(3,5,9,.5) 72%,rgba(3,5,9,0) 100%)'
+        : 'linear-gradient(90deg,rgba(3,5,9,.94) 0%,rgba(3,5,9,.86) 34%,rgba(3,5,9,.55) 66%,rgba(3,5,9,0) 100%)';
+    }
+    const r = this.rootRef.current;
+    if (r) {
+      const d = r.querySelector('[data-div]');
+      if (d) d.style.display = sq ? 'none' : 'block';
+      if (this.tcRef.current) this.tcRef.current.style.display = sq ? 'none' : 'inline';
+    }
+  }
+
+  boot() {
+    if (this.dead) return;
+    if (!window.THREE || !window.KnotSurfacePrior) { setTimeout(() => this.boot(), 60); return; }
+    this.KS = window.KnotSurfacePrior;
+    this.sim = this.KS.create(this.simRef.current, {
+      dataset: 'barn', budget: 20000, playing: false, pool: 220000,
+      dpr: Math.max(0.7, Math.min(1.7, (window.devicePixelRatio || 1) * this.k))
+    });
+    this.cur = 'barn';
+    this.sim.setSplit(false); this.sim.setSolo('ours'); this.sim.setShowGT(true); this.sim.setChart(true);
+    this.sim.onStats(s => { this.stats = s; });
+    this.drive(this.t, true);
+  }
+
+  /* preload + parse the real scan so the mid-shot swap is a single install */
+  warm() {
+    const KS = this.KS || window.KnotSurfacePrior, T = window.THREE;
+    if (!KS || !T || !this.KS) { setTimeout(() => this.warm(), 120); return; }
+    const D = KS.DATASETS.scan;
+    if (!D || !D.obj) return;
+    if (D._geo) { this.geoReady = true; return; }
+    if (this.warming) return;
+    this.warming = true;
+    fetch(D.obj.url).then(r => r.text()).then(txt => {
+      const vs = [], pos = [], L = txt.split('\n');
+      for (let i = 0; i < L.length; i++) {
+        const s = L[i];
+        if (s.charCodeAt(0) === 118 && s.charCodeAt(1) === 32) { const a = s.trim().split(/\s+/); vs.push(+a[1], +a[2], +a[3]); }
+        else if (s.charCodeAt(0) === 102 && s.charCodeAt(1) === 32) {
+          const a = s.trim().split(/\s+/), n = vs.length / 3, ix = [];
+          for (let j = 1; j < a.length; j++) { let q = parseInt(a[j].split('/')[0], 10); ix.push(q < 0 ? n + q : q - 1); }
+          for (let j = 1; j < ix.length - 1; j++) {
+            const tri = [ix[0], ix[j], ix[j + 1]];
+            for (let m = 0; m < 3; m++) { const b = tri[m] * 3; pos.push(vs[b], vs[b + 1], vs[b + 2]); }
+          }
+        }
+      }
+      if (pos.length < 9) return;
+      const g = new T.BufferGeometry();
+      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+      g.computeVertexNormals(); g.computeBoundingBox();
+      D._geo = g; this.geoReady = true; this.warming = false;
+    }).catch(e => { this.warming = false; if (window.console) console.warn('scan preload retrying:', e && e.message); });
+  }
+
+  /* ── time ──────────────────────────────────────────────── */
+  dur() { return Math.max(20, this.props.runtime || 72); }
+  ss(x) { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); }
+  env(t, t0, t1, fin, fout) {
+    fin = fin || 0.62; fout = fout || 0.5;
+    if (t <= t0 || t >= t1) return 0;
+    return this.ss(Math.min((t - t0) / fin, (t1 - t) / fout));
+  }
+  sample(t) {
+    const K = this.KEYS; let i = 0;
+    while (i < K.length - 2 && t > K[i + 1][0]) i++;
+    const a = K[i], b = K[i + 1];
+    const u = this.ss((t - a[0]) / Math.max(0.001, b[0] - a[0]));
+    const L = (j) => a[j] + (b[j] - a[j]) * u;
+    return { th: L(1), ph: L(2), ds: L(3), z: L(4), step: L(5), gt: L(6), ch: L(7), bud: L(8) };
+  }
+
+  frame(now) {
+    if (this.dead) return;
+    this.raf = requestAnimationFrame(this.loop);
+    const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
+    if (this.playing) {
+      this.t += dt * (this.MASTER / this.dur());
+      if (this.t >= this.MASTER) { this.t = this.MASTER; this.playing = false; this.syncPlay(); }
+    }
+    this.drive(this.t, false);
+    this.paint(this.t);
+  }
+
+  drive(t, force) {
+    const sim = this.sim; if (!sim) return;
+    const s = this.sample(t);
+    /* the stitch waits for the scanned geometry rather than popping a proxy */
+    if (this.geoReady) this.holdT0 = 0;
+    else if (this.playing && t > 46.2 && t < this.SWAP) {
+      if (!this.holdT0) this.holdT0 = performance.now();
+      if (performance.now() - this.holdT0 < 3000) { this.t = t = 46.2; }   // bounded: never strands the shot
+    }
+    const want = (t >= this.SWAP && (this.geoReady || t > this.SWAP + 3)) ? 'scan' : 'barn';
+    if (want !== this.cur) {
+      this.cur = want; sim.setDataset(want);
+      if (this.dsRef.current) this.dsRef.current.textContent = want === 'scan' ? 'REAL · SCANNED MESH' : 'TNT · BARN';
+      force = true;
+    }
+    sim.setOrbit(s.th, s.ph);
+    /* Beats 06–08 drive the SAME switches the interactive sim exposes — the 2D panel and the
+       3D scene are two views of one state, never separately animated fakes:
+         06 knot insertion  → control-net isolines appear AND the fixed budget migrates into
+                              the refined patch (setKnots, rank-scaled in the shader + solver)
+         07 modality slices → the scene is cut in three and coloured by depth / world normal /
+                              per-axis curvature, straight off the primitives' own attributes
+         stitch → closure   → triangle mesh drawn alongside the splats on its own budget, with
+                              frustum + occlusion culling doing the spending */
+    const kn = this.env(t, 33.5, 39.9, 1.15, 1.0);
+    const md = this.env(t, 39.5, 45.4, 0.95, 0.9) * 0.9;
+    const meshOn = t > 45.7 && t < 55.6;
+    const now = performance.now();
+    if (!force && now - (this.push || 0) < 72) { sim.setDistScale(s.ds); return; }
+    this.push = now;
+    const bud = Math.round(s.bud / 200) * 200;
+    sim.setDrive({
+      zoom: s.z, step: s.step, budget: bud, distScale: s.ds, gtOp: s.gt, chartOp: s.ch,
+      knots: kn, mod: md, modGap: 0.028,
+      render: meshOn ? 'both' : 'splats', triBudget: 15000
+    });
+    this.shownBud = bud;
+  }
+
+  /* ── paint ─────────────────────────────────────────────── */
+  paint(t) {
+    const S = v => String(v);
+    /* the modality slices turn the frame bright and saturated — the caption column would lose
+       its contrast against a lime roof, so a soft left scrim rides the same envelope */
+    if (this.scrim.current) {
+      this.scrim.current.style.opacity = S((this.env(t, 39.5, 45.4, 0.95, 0.9) * 0.62).toFixed(3));
+    }    this.CAPS.forEach(c => {
+      const E = this.E[c.r]; if (!E) return;
+      const a = this.env(t, c.t0, c.t1, c.fin, c.fout);
+      if (a <= 0.002) { if (E.on) { E.on = false; E.root.style.opacity = '0'; E.root.style.visibility = 'hidden'; } return; }
+      if (!E.on) { E.on = true; E.root.style.visibility = 'visible'; }
+      const fin = c.fin || 0.62;
+      const p = this.ss((t - c.t0) / fin);
+      E.root.style.opacity = S(a.toFixed(3));
+      const dy = ((1 - p) * 20).toFixed(2);
+      E.root.style.transform = c.r === 'cOpen' ? 'translateY(calc(-50% + ' + dy + 'px))' : 'translateY(' + dy + 'px)';
+      if (E.h) E.h.style.clipPath = 'inset(-34% ' + ((1 - this.ss((t - c.t0) / (fin + 0.3))) * 100).toFixed(1) + '% -34% -3%)';
+      if (E.k) E.k.style.opacity = S(this.ss((t - c.t0) / 0.34).toFixed(3));
+      if (E.s) E.s.style.opacity = S(this.ss((t - c.t0 - 0.34) / 0.66).toFixed(3));
+    });
+
+    const reel = this.env(t, 1.5, 71.6, 1.2, 1.1);
+    if (this.reelRef.current) this.reelRef.current.style.opacity = S(reel.toFixed(3));
+    const hud = this.env(t, 4.4, 71.6, 1.3, 1.1);
+    const sqNow = this.fmt === '1:1';
+    /* 1:1 puts the instrument panels straight through the HUD column — rather than shrink both
+       into illegibility, the HUD steps aside for whichever panel is on screen */
+    const pan = Math.max(
+      this.env(t, 22.0, 27.2, 0.6, 0.6),
+      this.env(t, 33.3, 38.9, 0.6, 0.6),
+      this.env(t, 39.4, 44.9, 0.6, 0.6),
+      this.env(t, 49.0, 54.7, 0.6, 0.6),
+      this.env(t, 55.6, 61.1, 0.6, 0.5)
+    );
+    const hudDuck = sqNow ? 1 - 0.94 * pan : 1;
+    if (this.hudRef.current && this.props.telemetry !== false) this.hudRef.current.style.opacity = S((hud * hudDuck).toFixed(3));
+
+    const led = this.env(t, 55.6, 61.1, 0.6, 0.5);
+    if (this.cLedger.current) {
+      const L = this.cLedger.current;
+      if (led <= 0.002) { if (this.ledOn) { this.ledOn = false; L.style.opacity = '0'; L.style.visibility = 'hidden'; } }
+      else {
+        if (!this.ledOn) { this.ledOn = true; L.style.visibility = 'visible'; }
+        L.style.opacity = S(led.toFixed(3));
+        const g1 = this.ss((t - 55.8) / 0.7), g2 = this.ss((t - 56.3) / 0.9);
+        if (this.barA.current) this.barA.current.style.transform = 'scaleX(' + g1.toFixed(3) + ')';
+        if (this.barB.current) this.barB.current.style.transform = 'scaleX(' + g2.toFixed(3) + ')';
+      }
+    }
+
+    if (this.blackRef.current) {
+      let b = 1 - this.ss(t / 1.35);
+      const dim = this.ss((t - 71.8) / 1.6) * 0.66;
+      if (dim > b) b = dim;
+      this.blackRef.current.style.opacity = S(b.toFixed(3));
+      this.blackRef.current.style.display = b < 0.003 ? 'none' : 'block';
+    }
+    if (this.flashRef.current) {
+      const f = this.env(t, 46.6, 47.5, 0.16, 0.45) * 0.3;
+      this.flashRef.current.style.opacity = S(f.toFixed(3));
+    }
+
+    if (t - (this.hudT || 0) > 0.11 || t < this.hudT) {
+      this.hudT = t;
+      const st = this.stats;
+      if (st && st.ours) {
+        if (this.hN.current) this.hN.current.textContent = (this.shownBud || st.ours.n).toLocaleString('en-US');
+        if (this.hFoot.current) {
+          const mm = st.ours.foot * 1000;
+          this.hFoot.current.textContent = mm >= 100 ? (mm / 10).toFixed(0) + ' cm' : mm.toFixed(1) + ' mm';
+        }
+        if (this.hView.current) this.hView.current.textContent = st.focusPct + '%';
+        if (st.tri) {
+          if (this.hTriRow.current) this.hTriRow.current.style.opacity = st.tri.on ? '1' : '0';
+          if (this.hTri.current && st.tri.on) this.hTri.current.textContent = (st.tri.n / 1000).toFixed(1) + 'k';
+        }
+        if (st.ours.cov !== undefined) {
+          const cv = st.ours.cov * 100;
+          if (this.hCov.current) this.hCov.current.textContent = cv.toFixed(1) + '%';
+          if (this.covBig.current) this.covBig.current.textContent = cv.toFixed(1) + '%';
+        }
+      }
+      const real = t / this.MASTER * this.dur();
+      if (this.tcRef.current) this.tcRef.current.textContent = this.tc(real);
+      if (this.tcBig.current) this.tcBig.current.textContent = this.mmss(real) + ' / ' + this.mmss(this.dur());
+      if (this.fillRef.current) this.fillRef.current.style.width = (t / this.MASTER * 100).toFixed(2) + '%';
+    }
+
+    this.paintDiag(t);
+  }
+
+  tc(s) {
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60), f = Math.floor((s % 1) * 24);
+    return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0') + ':' + String(f).padStart(2, '0');
+  }
+  mmss(s) { return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
+
+  panel() {
+    const W = this.dw, H = this.dh;
+    if (this.fmt === '1:1') return { x0: W * 0.075, x1: W * 0.925, y0: H * 0.385, y1: H * 0.583 };
+    return { x0: W * 0.525, x1: W * 0.936, y0: H * 0.565, y1: H * 0.855 };
+  }
+  mono(c, px, w) { c.font = (w || 700) + ' ' + px + 'px "JetBrains Mono", ui-monospace, monospace'; }
+
+  paintDiag(t) {
+    const c = this.dg; if (!c) return;
+    const W = this.dw, H = this.dh;
+    c.setTransform(this.dpx, 0, 0, this.dpx, 0, 0);
+    c.clearRect(0, 0, W, H);
+    const ac = this.ac || '#69f0ae';
+    const tk = this.env(t, 1.6, 71.4, 1.4, 1.2) * 0.5;
+    if (tk > 0.01) this.ticks(c, W, H, tk);
+    const R = this.panel();
+    const a1 = this.env(t, 22.0, 27.2, 0.6, 0.6); if (a1 > 0.01) this.cone(c, R, a1, t, ac);
+    const a2 = this.env(t, 33.3, 38.9, 0.6, 0.6); if (a2 > 0.01) this.knots(c, R, a2, (t - 33.3) / 5.0, ac);
+    const a3 = this.env(t, 39.4, 44.9, 0.6, 0.6); if (a3 > 0.01) this.chan(c, R, a3, (t - 39.4) / 4.4, ac);
+    const a4 = this.env(t, 45.9, 47.8, 0.22, 0.4); if (a4 > 0.01) this.wipe(c, W, H, a4, (t - 45.9) / 1.9);
+    const a5 = this.env(t, 49.0, 54.7, 0.6, 0.6); if (a5 > 0.01) this.closure(c, R, a5, (t - 49.2) / 4.2, ac);
+  }
+
+  ticks(c, W, H, a) {
+    const m = W * 0.046, n = H * 0.062, L = 34;
+    c.strokeStyle = 'rgba(214,230,246,' + (a * 0.5).toFixed(3) + ')'; c.lineWidth = 2;
+    const corner = (x, y, sx, sy) => { c.beginPath(); c.moveTo(x + sx * L, y); c.lineTo(x, y); c.lineTo(x, y + sy * L); c.stroke(); };
+    corner(m, n, 1, 1); corner(W - m, n, -1, 1); corner(m, H - n, 1, -1); corner(W - m, H - n, -1, -1);
+    c.beginPath(); c.moveTo(W / 2 - 11, H / 2); c.lineTo(W / 2 + 11, H / 2); c.moveTo(W / 2, H / 2 - 11); c.lineTo(W / 2, H / 2 + 11);
+    c.strokeStyle = 'rgba(214,230,246,' + (a * 0.28).toFixed(3) + ')'; c.stroke();
+  }
+
+  head(c, R, a, label, right) {
+    this.mono(c, 19, 700);
+    c.fillStyle = 'rgba(111,132,159,' + a.toFixed(3) + ')';
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    c.fillText(label, R.x0, R.y0 - 20);
+    c.strokeStyle = 'rgba(34,48,74,' + a.toFixed(3) + ')'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(R.x0, R.y0 - 8); c.lineTo(R.x1, R.y0 - 8); c.stroke();
+    if (right) {
+      c.textAlign = 'right';
+      c.fillText(right, R.x1, this.fmt === '1:1' ? R.y1 - 4 : R.y0 - 20);
+      c.textAlign = 'left';
+    }
+  }
+
+  cone(c, R, a, t, ac) {
+    this.head(c, R, a, 'A L L O C A T I O N', 'BUDGET UNCHANGED');
+    const ax = R.x0 + 18, ay = R.y1 - 62, len = (R.x1 - R.x0) - 60, ha = Math.atan(((R.y1 - R.y0) * 0.44) / len);
+    const p1 = { x: ax + len, y: ay - Math.tan(ha) * len }, p2 = { x: ax + len, y: ay + Math.tan(ha) * len };
+    c.beginPath(); c.moveTo(ax, ay); c.lineTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.closePath();
+    c.fillStyle = this.rgba(ac, a * 0.07); c.fill();
+    c.strokeStyle = this.rgba(ac, a * 0.5); c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(ax, ay); c.lineTo(p1.x, p1.y); c.moveTo(ax, ay); c.lineTo(p2.x, p2.y); c.stroke();
+    c.beginPath(); c.arc(ax, ay, 5, 0, 6.2832); c.fillStyle = this.rgba(ac, a * 0.9); c.fill();
+    const drift = this.ss((t - 22.6) / 2.6);
+    for (let i = 0; i < this.dots.length; i++) {
+      const d = this.dots[i];
+      let x = R.x0 + 26 + d[0] * (len - 10), y = R.y0 + 34 + d[1] * ((R.y1 - 44) - (R.y0 + 34));
+      const span = Math.tan(ha) * (x - ax);
+      const inside = Math.abs(y - ay) < span;
+      if (!inside) {
+        const tgt = ay + (y > ay ? 1 : -1) * span * 0.86;
+        if (i % 3 === 0) y = y + (tgt - y) * drift;
+      }
+      const nowIn = Math.abs(y - ay) < Math.tan(ha) * (x - ax);
+      c.beginPath(); c.arc(x, y, nowIn ? 2.9 : 1.7, 0, 6.2832);
+      c.fillStyle = nowIn ? this.rgba(ac, a * 0.92) : 'rgba(143,164,192,' + (a * 0.3).toFixed(3) + ')';
+      c.fill();
+    }
+    this.mono(c, 18, 400);
+    c.fillStyle = 'rgba(147,168,196,' + (a * 0.9).toFixed(3) + ')';
+    c.fillText('IN-CONE PRIMITIVES COST 9× LESS — THE FIXED BUDGET MIGRATES', R.x0, R.y1 - 8);
+  }
+
+  knots(c, R, a, p, ac) {
+    p = Math.max(0, Math.min(1, p));
+    const gx0 = R.x0 + 44, gy0 = R.y0 + 26, gx1 = R.x1, gy1 = R.y1 - 42;
+    this.head(c, R, a, 'K N O T   I N S E R T I O N', p > 0.55 ? '+3 IN U   ·   +2 IN V' : 'U × V');
+    const U = [0, 0.25, 0.5, 0.75, 1], V = [0, 0.34, 0.67, 1];
+    const ins = [[0.38, 'u', 0.26], [0.58, 'u', 0.42], [0.66, 'u', 0.58], [0.5, 'v', 0.34], [0.8, 'v', 0.62]];
+    const X = u => gx0 + u * (gx1 - gx0), Y = v => gy0 + v * (gy1 - gy0);
+    c.strokeStyle = 'rgba(79,195,247,' + (a * 0.3).toFixed(3) + ')'; c.lineWidth = 1;
+    U.forEach(u => { c.beginPath(); c.moveTo(X(u), Y(0)); c.lineTo(X(u), Y(1)); c.stroke(); });
+    V.forEach(v => { c.beginPath(); c.moveTo(X(0), Y(v)); c.lineTo(X(1), Y(v)); c.stroke(); });
+    const hb = (1 - this.ss((p - 0.1) / 0.55)) * a * 0.55;
+    if (hb > 0.01) {
+      const g = c.createRadialGradient(X(0.56), Y(0.6), 4, X(0.56), Y(0.6), 108);
+      g.addColorStop(0, 'rgba(255,167,38,' + hb.toFixed(3) + ')'); g.addColorStop(1, 'rgba(255,167,38,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(X(0.56), Y(0.6), 108, 0, 6.2832); c.fill();
+    }
+    ins.forEach(k => {
+      const q = this.ss((p - k[2]) / 0.16); if (q <= 0.001) return;
+      const flash = 1 - this.ss((p - k[2]) / 0.34);
+      c.strokeStyle = this.rgba(ac, a * (0.4 + 0.6 * flash)); c.lineWidth = 1.5 + flash * 1.5;
+      if (k[1] === 'u') {
+        const x = X(k[0]), yA = Y(0), yB = Y(0 + q);
+        c.beginPath(); c.moveTo(x, yA); c.lineTo(x, yA + (Y(1) - yA) * q); c.stroke();
+        c.fillStyle = this.rgba(ac, a); c.fillRect(x - 1.5, gy1 + 12, 3, 12);
+      } else {
+        const y = Y(k[0]);
+        c.beginPath(); c.moveTo(X(0), y); c.lineTo(X(0) + (X(1) - X(0)) * q, y); c.stroke();
+        c.fillStyle = this.rgba(ac, a); c.fillRect(gx0 - 26, y - 1.5, 12, 3);
+      }
+    });
+    c.strokeStyle = 'rgba(34,48,74,' + a.toFixed(3) + ')'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(gx0, gy1 + 18); c.lineTo(gx1, gy1 + 18); c.moveTo(gx0 - 20, gy0); c.lineTo(gx0 - 20, gy1); c.stroke();
+    U.forEach(u => c.fillRect(X(u) - 1, gy1 + 13, 2, 10));
+    c.fillStyle = 'rgba(111,132,159,' + a.toFixed(3) + ')';
+    U.forEach(u => { c.fillStyle = 'rgba(111,132,159,' + a.toFixed(3) + ')'; c.fillRect(X(u) - 1, gy1 + 13, 2, 10); });
+    V.forEach(v => c.fillRect(gx0 - 25, Y(v) - 1, 10, 2));
+    this.mono(c, 17, 700);
+    c.fillStyle = 'rgba(111,132,159,' + a.toFixed(3) + ')';
+    c.fillText('U', gx1 - 14, gy1 + 40); c.fillText('V', gx0 - 44, gy0 + 12);
+    this.mono(c, 18, 400);
+    c.fillStyle = 'rgba(147,168,196,' + (a * 0.9).toFixed(3) + ')';
+    c.fillText('SUBDIVIDE WHERE THE RESIDUAL ASKS — NOT EVERYWHERE', gx0, R.y1 - 6);
+  }
+
+  /* the coverage grid the renderer actually grades itself against — cells fill in hash order
+     behind a sweep, and the readout is the live measured value, never a hard-coded one */
+  closure(c, R, a, p, ac) {
+    p = Math.max(0, Math.min(1, p));
+    const S = this.stats && this.stats.ours ? this.stats.ours : null;
+    const live = S && S.cov !== undefined ? S.cov : 0.99;
+    const ovl = S && S.ovl !== undefined ? S.ovl : 2.7;
+    this.head(c, R, a, 'S U R F A C E   C L O S U R E', 'PER-CELL TEST');
+    const x0 = R.x0, x1 = R.x1, y0 = R.y0 + 20, y1 = R.y1 - 74;
+    const NX = 40, NY = 9, cw = (x1 - x0) / NX, chh = (y1 - y0) / NY;
+    if (!this.covOrd) {
+      this.covOrd = [];
+      let h = 2166136261;
+      for (let i = 0; i < NX * NY; i++) { h = ((h ^ (i + 7)) * 16777619) & 0x7fffffff; this.covOrd.push(h / 0x7fffffff); }
+    }
+    const reach = this.ss(p) * live;
+    for (let ix = 0; ix < NX; ix++) for (let iy = 0; iy < NY; iy++) {
+      const o = this.covOrd[iy * NX + ix];
+      const on = o < reach;
+      c.fillStyle = on ? this.rgba(ac, a * (0.26 + 0.46 * (1 - o))) : 'rgba(143,164,192,' + (a * 0.09).toFixed(3) + ')';
+      c.fillRect(x0 + ix * cw + 1, y0 + iy * chh + 1, cw - 2, chh - 2);
+    }
+    const sx = x0 + this.ss(p) * (x1 - x0);
+    c.fillStyle = this.rgba(ac, a * 0.7); c.fillRect(sx - 1, y0, 2, y1 - y0);
+    /* the readout is the MEASUREMENT (counted up once, then held) — only the grid animates,
+       so panel, headline and HUD never disagree on the same beat */
+    const shown = live * this.ss(p / 0.12);
+    this.mono(c, 26, 700);
+    c.textAlign = 'right'; c.textBaseline = 'alphabetic';
+    c.fillStyle = this.rgba(ac, a);
+    c.fillText((shown * 100).toFixed(1) + '% CLOSED', x1, y1 + 32);
+    this.mono(c, 18, 400);
+    c.fillStyle = 'rgba(147,168,196,' + (a * 0.9).toFixed(3) + ')';
+    c.fillText('OVERLAP ×' + ovl.toFixed(1), x1, y1 + 56);
+    c.textAlign = 'left';
+    c.fillText('FLOATERS EARN NO CREDIT — THE CELL MUST SEE THE SURFACE', x0, y1 + 56);
+  }
+
+  chan(c, R, a, p, ac) {
+    p = Math.max(0, Math.min(1, p));
+    this.head(c, R, a, 'S C E N E   A S   T E N S O R', 'H × W × C');
+    const names = ['ALBEDO', 'DEPTH', 'NORMAL', 'SH₁'];
+    const cols = 4, rows = 1;
+    const gap = 16, availW = R.x1 - R.x0, availH = (R.y1 - 34) - (R.y0 + 20);
+    const tw = (availW - gap * (cols - 1)) / cols, th = (availH - (rows > 1 ? gap + 22 : 0)) / rows - 22;
+    const NX = 20, NY = 13;
+    for (let i = 0; i < 4; i++) {
+      const q = this.ss((p - i * 0.14) / 0.3); if (q <= 0.001) continue;
+      const cx = i % cols, cy = Math.floor(i / cols);
+      const x = R.x0 + cx * (tw + gap), y = R.y0 + 20 + cy * (th + 22 + gap);
+      c.save();
+      c.globalAlpha = a * q;
+      c.strokeStyle = 'rgba(34,48,74,1)'; c.lineWidth = 1; c.strokeRect(x, y, tw, th);
+      const cw = tw / NX, chh = th / NY;
+      for (let ix = 0; ix < NX; ix++) for (let iy = 0; iy < NY; iy++) {
+        const u = (ix + 0.5) / NX, v = (iy + 0.5) / NY;
+        const f = 0.5 + 0.5 * Math.sin(u * 7.1 + v * 3.3) * Math.cos(v * 5.2 - u * 2.1);
+        const g2 = 0.5 + 0.5 * Math.sin(u * 12.4 - v * 8.6);
+        let col;
+        if (i === 0) col = 'rgb(' + (150 + f * 84 | 0) + ',' + (132 + f * 72 | 0) + ',' + (104 + f * 54 | 0) + ')';
+        else if (i === 1) { const d = 1 - v * 0.72 - f * 0.2; col = 'rgb(' + (26 + d * 120 | 0) + ',' + (44 + d * 150 | 0) + ',' + (70 + d * 170 | 0) + ')'; }
+        else if (i === 2) col = 'rgb(' + (90 + u * 130 | 0) + ',' + (90 + (1 - v) * 130 | 0) + ',' + (170 + f * 60 | 0) + ')';
+        else { const s = 0.35 + 0.65 * g2 * f; col = 'rgba(105,240,174,' + s.toFixed(3) + ')'; }
+        c.fillStyle = col;
+        c.fillRect(x + ix * cw, y + iy * chh, Math.ceil(cw) + 0.5, Math.ceil(chh) + 0.5);
+      }
+      c.globalAlpha = a * q;
+      this.mono(c, 17, 700);
+      c.fillStyle = i === 3 ? ac : '#93a8c4';
+      c.fillText(names[i], x, y + th + 20);
+      c.restore();
+    }
+    this.mono(c, 18, 400);
+    c.fillStyle = 'rgba(147,168,196,' + (a * 0.9).toFixed(3) + ')';
+    c.fillText('GEODESIC UV ORDER → O(1) NEIGHBOURS · ONE TENSOR, EVERY CHANNEL', R.x0, R.y1 - 4);
+  }
+
+  wipe(c, W, H, a, p) {
+    p = Math.max(0, Math.min(1, p));
+    const y = this.ss(p) * H;
+    const g = c.createLinearGradient(0, y - 90, 0, y + 90);
+    g.addColorStop(0, 'rgba(223,240,255,0)'); g.addColorStop(0.5, 'rgba(223,240,255,' + (a * 0.5).toFixed(3) + ')'); g.addColorStop(1, 'rgba(223,240,255,0)');
+    c.fillStyle = g; c.fillRect(0, y - 90, W, 180);
+    c.fillStyle = 'rgba(240,250,255,' + (a * 0.85).toFixed(3) + ')';
+    c.fillRect(0, y - 1.5, W, 3);
+  }
+
+  rgba(hex, a) {
+    const h = (hex || '#69f0ae').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')';
+  }
+
+  /* ── transport ─────────────────────────────────────────── */
+  toggle() {
+    if (this.t >= this.MASTER - 0.01) { this.seek(0); this.playing = true; }
+    else this.playing = !this.playing;
+    this.syncPlay();
+  }
+  syncPlay() {
+    const g = this.playGlyph.current; if (!g) return;
+    g.textContent = this.t >= this.MASTER - 0.01 ? '↺' : this.playing ? '❚❚' : '▶';
+  }
+  seek(t) {
+    this.t = Math.max(0, Math.min(this.MASTER, t));
+    this.drive(this.t, true); this.paint(this.t); this.syncPlay();
+  }
+  scrub(e) {
+    const tr = this.trackRef.current; if (!tr) return;
+    const go = ev => {
+      const r = tr.getBoundingClientRect();
+      this.seek(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * this.MASTER);
+    };
+    go(e);
+    const up = () => { window.removeEventListener('pointermove', go); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', go); window.addEventListener('pointerup', up);
+    e.stopPropagation();
+  }
+  setFmt(f) { this.fmt = f; this.layout(); this.applyTheme(); this.paint(this.t); }
+}
+</script>
+</body>
+</html>

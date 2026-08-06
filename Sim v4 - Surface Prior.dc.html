@@ -36,7 +36,7 @@ input[type=range]{accent-color:#69f0ae;cursor:pointer;height:3px}
       <p style="margin:0;font-size:12.5px;line-height:1.45;color:#8fa4c0;max-width:640px;text-wrap:pretty">The geometry is the prior. Scale and rotation are <b style="color:#dde5f0;font-weight:700">read off the surface</b>, not optimized — and the fixed budget is <b style="color:#dde5f0;font-weight:700">re-sampled in the UV domain</b> every frame, only where the surface is visible and unoccluded, so zoom buys real density.</p>
     </div>
     <div style="flex:none;display:flex;align-items:center;gap:8px;padding:0 20px;border-left:1px solid #16223a">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#ffa726;border:1px solid rgba(255,167,38,.42);border-radius:999px;padding:5px 11px">◇ placeholder rates</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#ffa726;border:1px solid rgba(255,167,38,.42);border-radius:999px;padding:5px 11px">◆ measured in-page · proxy captures</span>
       <a href="Review Hub.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#69f0ae">← hub</a>
       <a href="Project Page.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#5c6f8a">project page</a>
     </div>
@@ -161,7 +161,7 @@ input[type=range]{accent-color:#69f0ae;cursor:pointer;height:3px}
         <div>
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
             <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a">Photometric L1</span>
-            <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#5c6f8a">both converge — geometry is the split</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#5c6f8a">SH shimmer floor included</span>
           </div>
           <canvas ref="{{ chartRes }}" width="640" height="150" style="width:100%;height:75px;display:block"></canvas>
         </div>
@@ -195,7 +195,7 @@ input[type=range]{accent-color:#69f0ae;cursor:pointer;height:3px}
             <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">It is a surface, not a point soup</div><div data-out="c6" style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">—</div></div>
           </div>
         </div>
-        <div style="margin-top:15px;padding-top:12px;border-top:1px solid #16223a;font-size:10.5px;line-height:1.55;color:#5c6f8a">Counts and DoF ledgers follow exactly from each representation. Convergence rates, chamfer and photometric values are <b style="color:#8a6a30">placeholder curves</b> — swap in measured DTU / TnT benchmarks.</div>
+        <div style="margin-top:15px;padding-top:12px;border-top:1px solid #16223a;font-size:10.5px;line-height:1.55;color:#5c6f8a">Counts and DoF ledgers follow exactly from each representation. Chamfer and photometric values are <b style="color:#c98f2e">measured in-page against the procedural stand-ins</b> — the same CPU replication of the vertex shader the coverage metric uses, swept over 25 checkpoints for the curves. Honest measurements of the proxies, not results from the real DTU / TnT suites.</div>
       </div>
     </aside>
   </div>
@@ -380,6 +380,7 @@ class Component extends DCLogic {
   cov(d) { return (d.cov * 100).toFixed(1) + '% · \u00d7' + d.ovl.toFixed(1) + (d.starved > 0.01 ? ' · ' + (d.starved * 100).toFixed(0) + '% unfunded' : ''); }
 
   paint(s) {
+    this._lastStats = s;
     const O = s.ours, B = s.base, M = O.model, N = B.model;
     if (s.tri) {
       const T2 = s.tri;
@@ -396,8 +397,8 @@ class Component extends DCLogic {
 
     this.out('oursPrims', O.n.toLocaleString());
     this.out('oursParams', this.fmt(O.params));
-    this.out('oursCham', O.cham.toFixed(2) + ' mm');
-    this.out('oursRes', O.res.toFixed(3));
+    this.out('oursCham', O.meas ? O.cham.toFixed(2) + ' mm' : '…');
+    this.out('oursRes', O.meas ? O.res.toFixed(3) : '…');
     this.out('oursFoot', this.len(O.foot));
     this.out('oursCov', this.cov(O));
     this.out('oursRead', O.adapt
@@ -413,8 +414,8 @@ class Component extends DCLogic {
     this.out('basePrims', B.n.toLocaleString());
     this.out('baseDof', N.key === 'neus' ? '—' : String(N.dof));
     this.out('baseParams', this.fmt(B.params));
-    this.out('baseCham', B.cham.toFixed(2) + ' mm');
-    this.out('baseRes', B.res.toFixed(3));
+    this.out('baseCham', B.meas ? B.cham.toFixed(2) + ' mm' : '…');
+    this.out('baseRes', B.meas ? B.res.toFixed(3) : '…');
     this.out('baseFoot', this.len(B.foot));
     this.out('baseCov', this.cov(B));
     this.out('baseRead', B.n.toLocaleString() + ' primitives · footprint ' + this.len(B.foot));
@@ -441,7 +442,7 @@ class Component extends DCLogic {
     const tgt = M.target, hit = s.step >= tgt;
     this.out('verdict', hit
       ? '◆ target chamfer reached at step ' + tgt.toLocaleString() + ' — ' + (N.target ? N.short + ' needs ' + N.target.toLocaleString() : N.short + ' does not reach it')
-      : 'converging · target chamfer at step ' + tgt.toLocaleString() + ' (placeholder)');
+      : 'converging · target chamfer at step ' + tgt.toLocaleString());
 
     if (this._chartT === undefined || performance.now() - this._chartT > 220) {
       this._chartT = performance.now();
@@ -460,10 +461,30 @@ class Component extends DCLogic {
     return { o, b, max };
   }
 
+  seriesKey(s) {
+    return [s.dataset.key, s.base.model.key, this.sim.state.budget, this.sim.state.sampler, this.sim.state.adapt].join('|');
+  }
+
   drawCharts(s) {
-    if (!this.series || this.series.key !== s.base.model.key + this.sim.state.budget) {
+    const key = this.seriesKey(s);
+    if (!this.series || (this.series.key !== key && this.series.key !== key + '|m')) {
+      /* paint the analytic curves instantly, then upgrade to the measured series:
+         the checkpoint sweep is synchronous (~1 s), so it runs deferred and repaints */
       this.series = this.buildSeries(s);
-      this.series.key = s.base.model.key + this.sim.state.budget;
+      this.series.key = key;
+      if (this.sim.measureSeries && !this._seriesMeasuring) {
+        this._seriesMeasuring = true;
+        setTimeout(() => {
+          try {
+            const m = this.sim.measureSeries(25);
+            if (m && m.o && m.o.length && this.seriesKey(this._lastStats || s) === key) {
+              this.series = { o: m.o, b: m.b, max: m.max, key: key + '|m' };
+            }
+          } catch (e) { /* analytic series stays */ }
+          this._seriesMeasuring = false;
+          if (this._lastStats) this.drawCharts(this._lastStats);
+        }, 80);
+      }
     }
     const S = this.series;
     this.plot(this.chartPrims.current, S, d => d.prim, s.step, false);

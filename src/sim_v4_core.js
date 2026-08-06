@@ -5,8 +5,11 @@
    on the same capture, the same step counter, the same camera.
 
    Honest-model note: geometry proxies stand in for DTU / Tanks-and-Temples
-   captures, and every *rate* number (residual, chamfer, steps-to-target)
-   is a PLACEHOLDER curve to be replaced with measured benchmarks.
+   captures. Every *rate* number (residual, chamfer, steps-to-target) is
+   MEASURED in-page against those proxies — the same CPU replication of the
+   vertex-shader displacement that measureCoverage uses, re-run at ~6 Hz on
+   the COV_MS throttle (see measureError). They are honest measurements of
+   the stand-in geometry, not results from the real benchmark suites.
    Primitive counts and DoF ledgers are exact consequences of each
    representation, not placeholders.
 
@@ -32,7 +35,8 @@ window.KnotSurfacePrior = (function () {
   /* ══ representations ════════════════════════════════════════════
      dof   — optimized parameters per primitive
      grow  — primitive count multiplier at convergence (× our budget)
-     tau/floor — placeholder convergence curves (photometric + chamfer)  */
+     tau/floor — analytic convergence fallbacks, quoted only until measureError's
+     first in-page sample lands (see the honest-model note at the top of the file)  */
   const MODELS = {
     ours: {
       key: 'ours', label: 'KNOT-A-SURFACE', short: 'OURS', color: '#69f0ae',
@@ -921,6 +925,10 @@ window.KnotSurfacePrior = (function () {
       spc: new Float32Array(GCELLS), spc2: new Float32Array(GCELLS), spcDisp: new Float32Array(GCELLS), cnt: new Int32Array(GCELLS),
       elig: new Int32Array(GCELLS), areaC: new Float32Array(GCELLS),
       cellOf: new Int32Array(POOL), head: new Int32Array(GCELLS), next: new Int32Array(POOL),
+      /* pHead/pNext — the FULL POOL as a linked list (built once per capture in gridInit),
+         so the model→GT chamfer direction can nearest-neighbour against ground truth the
+         same way head/next (the transient alive set) serves the GT→model direction. */
+      pHead: new Int32Array(GCELLS), pNext: new Int32Array(POOL),
       data: new Float32Array(TEXW * TEXH), tex: null
     };
     G.tex = new T.DataTexture(G.data, TEXW, TEXH, T.RedFormat, T.FloatType);
@@ -946,6 +954,8 @@ window.KnotSurfacePrior = (function () {
         const c = cx + cy * GN + cz * GN * GN;
         G.cellOf[i] = c; G.poolCnt[c]++;
       }
+      G.pHead.fill(-1);
+      for (let i = 0; i < N; i++) { const c2 = G.cellOf[i]; G.pNext[i] = G.pHead[c2]; G.pHead[c2] = i; }
     }
     function gcellOf(x, y, z) {
       const cx = clamp(((x - G.min.x) / G.cell) | 0, 0, GN - 1);
@@ -1093,8 +1103,49 @@ window.KnotSurfacePrior = (function () {
         jitter: S.jitter * foot * (isOurs ? 1 : 1.62 / COVER_K) * (0.25 + 1.9 * (1 - conv)),
         float: S.float * gt.radius * 0.055 * (0.3 + 0.7 * (1 - conv * 0.4)),
         smooth: S.smooth * conv,
-        align: clamp(S.align * conv, 0, 1)
+        align: clamp(S.align * conv, 0, 1),
+        /* needed by the CPU position replication (mkDrawnFn) to reproduce the shader's
+           initial random-cloud mix p = mix(cloud, p, uConv) — without it, early-step
+           chamfer would read a surface the model has not yet grown from the cloud. */
+        conv: conv, cloudR: gt.radius * 0.55
       };
+    }
+
+    /* CPU replication of the vertex shader's drawn position and disk normal for primitive i,
+       shared by measureCoverage and measureError: oversmoothed position, normal jitter,
+       floater displacement, the mix(rnd, aNrm, align·conv) orientation — and the initial
+       random-cloud mix p = mix(cloud, p, uConv), so early-step chamfer reads the cloud the
+       model actually starts from, not a surface it has not yet grown. */
+    function mkDrawnFn(D) {
+      const sm = D.smooth, ns = 1 - sm, a = D.align;
+      const cv = D.conv === undefined ? 1 : D.conv, cR = D.cloudR || 0;
+      const cx0 = gt.center.x, cy0 = gt.center.y, cz0 = gt.center.z;
+      const dp = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0 };
+      const mk = (P, NR, SM, SD) => i => {
+        const s0 = SD[i * 3], s2 = SD[i * 3 + 2];
+        let rx = s0 * 2 - 1 + 0.0021, ry = SD[i * 3 + 1] * 2 - 1 + 0.0013, rz = s2 * 2 - 1 + 0.0037;
+        const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
+        rx /= rl; ry /= rl; rz /= rl;
+        const nx = NR[i * 3], ny = NR[i * 3 + 1], nz = NR[i * 3 + 2];
+        const jt = (s0 - 0.5) * D.jitter, fl = s2 >= 0.87 ? D.float : 0;
+        let px = P[i * 3] * ns + SM[i * 3] * sm + nx * jt + rx * fl;
+        let py = P[i * 3 + 1] * ns + SM[i * 3 + 1] * sm + ny * jt + ry * fl;
+        let pz = P[i * 3 + 2] * ns + SM[i * 3 + 2] * sm + nz * jt + rz * fl;
+        if (cv < 0.999) {                       // vec3 cloud = uCenter + normalize(rnd + aNrm*0.25) * uCloudR * (0.5 + 0.8*aSeed.y)
+          let ux = rx + nx * 0.25, uy = ry + ny * 0.25, uz = rz + nz * 0.25;
+          const ul = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1;
+          const cr = cR * (0.5 + 0.8 * SD[i * 3 + 1]);
+          px = (cx0 + ux / ul * cr) * (1 - cv) + px * cv;
+          py = (cy0 + uy / ul * cr) * (1 - cv) + py * cv;
+          pz = (cz0 + uz / ul * cr) * (1 - cv) + pz * cv;
+        }
+        dp.x = px; dp.y = py; dp.z = pz;
+        let dnx = rx * (1 - a) + nx * a, dny = ry * (1 - a) + ny * a, dnz = rz * (1 - a) + nz * a;
+        const dl = Math.sqrt(dnx * dnx + dny * dny + dnz * dnz) || 1;
+        dp.nx = dnx / dl; dp.ny = dny / dl; dp.nz = dnz / dl;
+        return dp;
+      };
+      return mk;
     }
 
     /* measured coverage: does the model CLOSE THE SURFACE IT DRAWS — no holes, no aliasing.
@@ -1114,27 +1165,7 @@ window.KnotSurfacePrior = (function () {
       const halfMax = 0.548 * 0.5 * (useSpacing ? COVER_K * maxH : globalFoot);
       const reach = halfMax + D.float + Math.abs(D.jitter) * 0.5;
       const rad = clamp(Math.ceil(reach / G.cell), 1, 4);
-      const sm = D.smooth, ns = 1 - sm, a = D.align;
-      /* the vertex shader's position and disk normal for primitive i, so the metric tests
-         exactly what is drawn: oversmoothed position, normal jitter, floater displacement,
-         and mix(rnd, aNrm, align·conv) orientation — a low-align model's disks do not lie in
-         the tangent plane and must not be credited as if they do. */
-      const dp = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0 };
-      const mkDrawn = (P, NR, SM, SD) => i => {
-        const s0 = SD[i * 3], s2 = SD[i * 3 + 2];
-        let rx = s0 * 2 - 1 + 0.0021, ry = SD[i * 3 + 1] * 2 - 1 + 0.0013, rz = s2 * 2 - 1 + 0.0037;
-        const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
-        rx /= rl; ry /= rl; rz /= rl;
-        const nx = NR[i * 3], ny = NR[i * 3 + 1], nz = NR[i * 3 + 2];
-        const jt = (s0 - 0.5) * D.jitter, fl = s2 >= 0.87 ? D.float : 0;
-        dp.x = P[i * 3] * ns + SM[i * 3] * sm + nx * jt + rx * fl;
-        dp.y = P[i * 3 + 1] * ns + SM[i * 3 + 1] * sm + ny * jt + ry * fl;
-        dp.z = P[i * 3 + 2] * ns + SM[i * 3 + 2] * sm + nz * jt + rz * fl;
-        let dnx = rx * (1 - a) + nx * a, dny = ry * (1 - a) + ny * a, dnz = rz * (1 - a) + nz * a;
-        const dl = Math.sqrt(dnx * dnx + dny * dny + dnz * dnz) || 1;
-        dp.nx = dnx / dl; dp.ny = dny / dl; dp.nz = dnz / dl;
-        return dp;
-      };
+      const mkDrawn = mkDrawnFn(D);
       const drawn = mkDrawn(P, NR, SM, SD);
       const drawnQ = SRC ? mkDrawn(QP, QN, QS, QD) : drawn;
       let tested = 0, cov = 0, ovl = 0, starved = 0;
@@ -1177,6 +1208,109 @@ window.KnotSurfacePrior = (function () {
       }
       if (!tested) return { cov: 1, ovl: 1, starved: 0 };
       return { cov: cov / tested, ovl: ovl / tested, starved: starved / tested };
+    }
+
+    /* measured fidelity to ground truth — the numbers the chamfer / L1 readouts and the
+       charts quote. GT→model: for each in-view pool test point, the distance to the nearest
+       DRAWN primitive (displaced exactly as the shader draws it), plus the photometric gap
+       between the GT albedo lit by the GT normal and the nearest primitive's own shader
+       colour (grey-mix, SH shimmer and the misaligned-normal lighting term included, so a
+       model whose disks do not lie in the tangent plane pays here, not only in coverage).
+       model→GT: a stride subsample of the drawn set (the grid lists hold exactly the alive
+       primitives of whichever panel was just bucketed) nearest-neighboured against the
+       full-pool pHead/pNext lists. Symmetric chamfer = mean of the two means, in world
+       units (the page multiplies by mpu×1000 for mm). Scans are windowed: a sample with
+       nothing inside the window is censored at the window edge, so early-step values —
+       the model is still a random cloud — are a lower bound that drops as soon as the
+       surface forms. Test points hidden from the camera are excluded for BOTH panels:
+       hidden surface is deliberately unfunded under view-driven allocation (the same
+       rule the coverage metric applies). */
+    const REVN = 300;
+    const LIGHT_V = new T.Vector3(0.42, 0.84, 0.35).normalize();
+    function measureError(M, D, SRC, aliveN) {
+      const P = sampler.aPos, NR = sampler.aNrm, SD = sampler.aSeed;
+      const QP = SRC ? SRC.P : P, QN = SRC ? SRC.NR : NR, QS = SRC ? SRC.SM : sampler.aSm, QD = SRC ? SRC.SD : SD;
+      const QCL = SRC ? SRC.CL : sampler.aCol;
+      const drawnQ = mkDrawnFn(D)(QP, QN, QS, QD);
+      const conv = D.conv === undefined ? 1 : D.conv;
+      const reach = D.float + Math.abs(D.jitter) + G.cell * 0.5;
+      const rad = clamp(Math.ceil(reach / G.cell), 1, 4);
+      const pen = G.cell * rad * 1.6;
+      const sh = M.shader.sh;
+      const AC = sampler.aCol;
+      let tested = 0, fwd = 0, photo = 0, photoN = 0;
+      for (let ti = 0; ti < TESTN; ti++) {
+        const t = testIdx[ti] % sampler.N;
+        if (!inViewCPU(t) || adHidden(t)) continue;
+        tested++;
+        const tx = P[t * 3], ty = P[t * 3 + 1], tz = P[t * 3 + 2];
+        const c = G.cellOf[t];
+        const cz = (c / (GN * GN)) | 0, cy = ((c / GN) | 0) % GN, cx = c % GN;
+        let best = Infinity, bj = -1;
+        for (let dz = -rad; dz <= rad; dz++) {
+          const z = cz + dz; if (z < 0 || z >= GN) continue;
+          for (let dy = -rad; dy <= rad; dy++) {
+            const y = cy + dy; if (y < 0 || y >= GN) continue;
+            for (let dx = -rad; dx <= rad; dx++) {
+              const x = cx + dx; if (x < 0 || x >= GN) continue;
+              for (let j = G.head[x + y * GN + z * GN * GN]; j !== -1; j = G.next[j]) {
+                const d = drawnQ(j);
+                const ex = d.x - tx, ey = d.y - ty, ez = d.z - tz;
+                const dd = ex * ex + ey * ey + ez * ez;
+                if (dd < best) { best = dd; bj = j; }
+              }
+            }
+          }
+        }
+        if (bj < 0) { fwd += pen; continue; }
+        fwd += Math.sqrt(best);
+        let vx = view.pos.x - tx, vy = view.pos.y - ty, vz = view.pos.z - tz;
+        const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1; vx /= vl; vy /= vl; vz /= vl;
+        const nx0 = NR[t * 3], ny0 = NR[t * 3 + 1], nz0 = NR[t * 3 + 2];
+        const lamG = 0.52 + 0.48 * Math.max(nx0 * LIGHT_V.x + ny0 * LIGHT_V.y + nz0 * LIGHT_V.z, 0)
+          + 0.16 * Math.pow(Math.max(1 - Math.abs(nx0 * vx + ny0 * vy + nz0 * vz), 0), 2);
+        const d = drawnQ(bj), j3 = bj * 3, t3 = t * 3;
+        const cr = 0.30 * (1 - conv) + QCL[j3] * conv, cg = 0.33 * (1 - conv) + QCL[j3 + 1] * conv, cb = 0.38 * (1 - conv) + QCL[j3 + 2] * conv;
+        const shim = sh * Math.sin((QN[j3] * vx + QN[j3 + 1] * vy + QN[j3 + 2] * vz) * 9.0 + QD[j3] * 6.283) * 1.2;
+        const lamM = 0.52 + 0.48 * Math.max(d.nx * LIGHT_V.x + d.ny * LIGHT_V.y + d.nz * LIGHT_V.z, 0)
+          + 0.16 * Math.pow(Math.max(1 - Math.abs(d.nx * vx + d.ny * vy + d.nz * vz), 0), 2);
+        photo += (Math.abs(clamp((cr + shim) * lamM, 0, 1.4) - clamp(AC[t3] * lamG, 0, 1.4))
+          + Math.abs(clamp((cg + shim) * lamM, 0, 1.4) - clamp(AC[t3 + 1] * lamG, 0, 1.4))
+          + Math.abs(clamp((cb + shim) * lamM, 0, 1.4) - clamp(AC[t3 + 2] * lamG, 0, 1.4))) / 3;
+        photoN++;
+      }
+      const rad2 = 2, pen2 = G.cell * (rad2 + 0.75);
+      let rev = 0, revN = 0, seen = 0;
+      const stride = Math.max(1, Math.round((aliveN || 1) / REVN));
+      outer:
+      for (let c2 = 0; c2 < GCELLS; c2++) {
+        for (let j = G.head[c2]; j !== -1; j = G.next[j]) {
+          if ((seen++ % stride) !== 0) continue;
+          const d = drawnQ(j);
+          const jc = gcellOf(d.x, d.y, d.z);
+          const jz = (jc / (GN * GN)) | 0, jy = ((jc / GN) | 0) % GN, jx = jc % GN;
+          let best2 = Infinity;
+          for (let dz = -rad2; dz <= rad2; dz++) {
+            const z = jz + dz; if (z < 0 || z >= GN) continue;
+            for (let dy = -rad2; dy <= rad2; dy++) {
+              const y = jy + dy; if (y < 0 || y >= GN) continue;
+              for (let dx = -rad2; dx <= rad2; dx++) {
+                const x = jx + dx; if (x < 0 || x >= GN) continue;
+                for (let k = G.pHead[x + y * GN + z * GN * GN]; k !== -1; k = G.pNext[k]) {
+                  const ex = P[k * 3] - d.x, ey = P[k * 3 + 1] - d.y, ez = P[k * 3 + 2] - d.z;
+                  const dd = ex * ex + ey * ey + ez * ez;
+                  if (dd < best2) best2 = dd;
+                }
+              }
+            }
+          }
+          rev += best2 === Infinity ? pen2 : Math.sqrt(best2);
+          if (++revN >= REVN) break outer;
+        }
+      }
+      if (!tested) return null;
+      const f = fwd / tested, r = revN ? rev / revN : f;
+      return { cham: 0.5 * (f + r), res: photoN ? photo / photoN : 0, fwd: f, rev: r };
     }
 
     function disposeObj(o) {
@@ -1795,7 +1929,7 @@ window.KnotSurfacePrior = (function () {
       aBirth: AD.zero, aBirthU: AD.zero, aScale: AD.usz, aFade: AD.fade,
       aCurv: AD.curv, aVoid: AD.one, N: ADCAP
     };
-    const ADCOV = { P: AD.tgt, NR: AD.tnr, SM: AD.tgt, SD: AD.seed };
+    const ADCOV = { P: AD.tgt, NR: AD.tnr, SM: AD.tgt, SD: AD.seed, CL: AD.tcl };
     const adOn = () => st.adapt !== false && AD.count > 0;
 
     /* built once per capture: the Morton ordering that makes the domain coordinate spatially
@@ -2908,6 +3042,10 @@ window.KnotSurfacePrior = (function () {
        the spacing field and uniforms still update every frame, so the render is unaffected. */
     const COV_MS = 160;
     let covCache = null, covAt = -1e9;
+    /* chamfer/L1 rides its own, slower cadence: two ~1-2 ms scans per panel, cheap next to
+       the coverage pass but pointless to re-run between adjacent frames for the same reason. */
+    const ERR_MS = 320;
+    let errCache = null, errAt = -1e9;
     const TGT = { threshO: 0.3, outO: 0.01, footO: 0.2, convO: 0, threshB: 0.3, footB: 0.2, convB: 0 };
     const DISP = { threshO: 0.3, outO: 0.01, footO: 0.2, convO: 0, threshB: 0.3, footB: 0.2, convB: 0 };
     function refresh(hard) {
@@ -2923,6 +3061,7 @@ window.KnotSurfacePrior = (function () {
       lastRefreshAt = now;
       const maxIt = hard ? FB_MAX : (moving ? 1 : 2);
       const remeasure = hard || !covCache || now - covAt > COV_MS;
+      const remeasureErr = hard || !errCache || now - errAt > ERR_MS;
 
       // ── ours: fixed budget, reallocated into the view cone, footprint from neighbours ──
       /* iterate solve→count to tolerance WITHIN this refresh: refresh() is event-driven, not
@@ -2985,6 +3124,11 @@ window.KnotSurfacePrior = (function () {
       const covO = remeasure
         ? measureCoverage(true, footOurs * 1.55, maxH, dispOf(M, footOurs * 1.55, convO, true), ADON ? ADCOV : null)
         : covCache.o;
+      /* grid lists still hold OUR alive set here — measureError must run before the
+         baseline re-buckets below */
+      const errO = remeasureErr
+        ? measureError(M, dispOf(M, footOurs * 1.55, convO, true), ADON ? ADCOV : null, aliveO.n)
+        : (errCache && errCache.o);
       if (ADON) {
         AD.conc = (AD.nIn / AD.visArea) / Math.max(oursN / sampler.area, 1e-9);
         /* reported footprint = the primitive-weighted mean of the LOCAL spacing the shader
@@ -3030,7 +3174,11 @@ window.KnotSurfacePrior = (function () {
       const covB = remeasure
         ? measureCoverage(false, footBase * COVER_K, 0, dispOf(B, footBase * COVER_K, convB, false))
         : covCache.b;
+      const errB = remeasureErr
+        ? measureError(B, dispOf(B, footBase * COVER_K, convB, false), null, aliveB.n)
+        : (errCache && errCache.b);
       if (remeasure) { covCache = { o: covO, b: covB }; covAt = now; }
+      if (remeasureErr) { errCache = { o: errO, b: errB }; errAt = now; }
       TGT.threshB = sb.threshIn; TGT.footB = footBase * COVER_K; TGT.convB = convB;
 
       if (hard) {
@@ -3046,7 +3194,10 @@ window.KnotSurfacePrior = (function () {
         version: VERSION, step: s, maxStep: st.maxStep, dataset: D, zoom: st.zoom, mag: mag,
         focusPct: Math.round(so.inFocusFrac * 100),
         ours: {
-          model: M, n: aliveO.n, params: params(M, aliveO.n), res: curve(M, s), cham: chamfer(M, s),
+          model: M, n: aliveO.n, params: params(M, aliveO.n),
+          /* measured against the GT pool when a sample has landed (world→mm via mpu);
+             the analytic curves are only a first-frames fallback */
+          res: errO ? errO.res : curve(M, s), cham: errO ? errO.cham * mpu * 1000 : chamfer(M, s), meas: !!errO,
           foot: (ADON ? AD.hMean : footOurs) * mpu, hitTarget: s >= M.target, target: M.target,
           roiPct: Math.round(aliveO.nIn / Math.max(aliveO.n, 1) * 100),
           /* adaptive resampling ledger: how much of the parameter domain is actually observed,
@@ -3063,7 +3214,8 @@ window.KnotSurfacePrior = (function () {
           capped: !ADON && (st.budget > sampler.N || oursN > so.maxReach * 0.98)
         },
         base: {
-          model: B, n: aliveB.n, params: params(B, aliveB.n), res: curve(B, s), cham: chamfer(B, s),
+          model: B, n: aliveB.n, params: params(B, aliveB.n),
+          res: errB ? errB.res : curve(B, s), cham: errB ? errB.cham * mpu * 1000 : chamfer(B, s), meas: !!errB,
           foot: footBase * mpu, hitTarget: B.target > 0 && s >= B.target, target: B.target,
           cov: covB.cov, ovl: covB.ovl, starved: covB.starved, capped: baseWant > baseDrawable
         },
@@ -3245,13 +3397,38 @@ window.KnotSurfacePrior = (function () {
       if (now - hudT > 240 && !st.playing) hudT = now;
     }
 
+    /* measured convergence series for the charts: sweep K checkpoints deterministically
+       (seeded RNG, current camera), hard-refreshing at each so the measured metrics re-land
+       at that step, then restore the live state. Synchronous — roughly a second at K=25 —
+       so the page triggers it lazily, once per configuration, and caches by key. Values are
+       in DISPLAY units (cham already ×mpu×1000), matching what the readouts quote. */
+    let seriesCache = null;
+    function measureSeries(K) {
+      const pts = clamp(K | 0 || 25, 5, 91);
+      const key = [st.dataset, st.baseline, st.budget, st.sampler, st.adapt, st.closure].join('|');
+      if (seriesCache && seriesCache.key === key) return seriesCache.data;
+      const savedStep = st.step, savedPlaying = st.playing;
+      st.playing = false;
+      const o = [], b = [], max = st.maxStep;
+      for (let i = 0; i < pts; i++) {
+        st.step = (i / (pts - 1)) * max;
+        refresh(true);
+        o.push({ x: st.step, prim: stats.ours.n, cham: stats.ours.cham, res: stats.ours.res });
+        b.push({ x: st.step, prim: stats.base.n, cham: stats.base.cham, res: stats.base.res });
+      }
+      st.step = savedStep; st.playing = savedPlaying;
+      refresh(true);
+      seriesCache = { key: key, data: { o: o, b: b, max: max } };
+      return seriesCache.data;
+    }
+
     loadDataset(st.dataset);
     raf = requestAnimationFrame(frame);
 
     return {
       MODELS, DATASETS, BASELINES, curve, chamfer, prims, params,
       state: st,
-      _dbg: { AD, ATLAS, view, orbit, camera, refresh, updateCamera, adWeights, adSample, adEase, get TRI() { return TRI; }, get gt() { return gt; } },
+      _dbg: { AD, ATLAS, view, orbit, camera, refresh, updateCamera, adWeights, adSample, adEase, get TRI() { return TRI; }, get gt() { return gt; }, get err() { return errCache; } },
       setDataset(k) { if (DATASETS[k]) loadDataset(k); },
       setBaseline(k) { if (MODELS[k]) { st.baseline = k; refresh(); } },
       setStep(s) { st.step = clamp(s, 0, st.maxStep); refresh(); },
@@ -3335,6 +3512,7 @@ window.KnotSurfacePrior = (function () {
       reset() { st.step = 0; refresh(); },
       onStats(cb) { onStats = cb; if (stats.step !== undefined) cb(stats); },
       onZoom(cb) { onZoom = cb; },
+      measureSeries(k) { return measureSeries(k); },
       dispose() {
         dead = true; cancelAnimationFrame(raf);
         ro.disconnect();

@@ -1,20 +1,27 @@
 # Knot-a-Surface — Swarm Simulator & Thesis Deck
 
-Live: https://tzlilo.github.io/Knot-a-Surface/ (simulator) · /deck.html (reveal.js interview deck)
+Live: https://tzlilo.github.io/Knot-a-Surface/ (landing page) · /terrain.html (swarm simulator) · /deck.html (reveal.js interview deck)
 
 ## What this is
 A single-file three.js simulator illustrating the Knot-a-Surface thesis (NURBS-grounded
 Gaussian splatting): a drone swarm reconstructs battlefield scenes as a spline-coupled
 splat surface under a fixed Gaussian budget. The deck embeds the same simulator as a slide.
+The site root is a landing page with method + measured results; three more sims (UV atlas,
+knot chart, surface-prior bench) ship as sibling pages.
 
 ## Build & deploy
-- Source of truth: `src/` — never edit `index.html`/`deck.html`/`arena.html` directly (generated).
-- `python3 build.py` injects `src/sim_core.js` + `src/sim_style.css` into the two
-  templates (`/*__SIM_CORE__*/`, `/*__SIM_CSS__*/` markers) → `index.html`, `deck.html`,
-  and `src/arena_core.js` + `src/arena_style.css` into `src/arena_template.html`
-  (`/*__ARENA_CORE__*/`, `/*__ARENA_CSS__*/`) → `arena.html`.
-- Deploy = commit + push to `main`; GitHub Pages serves in ~1 min (cache-control 600 s —
-  hard-refresh or add `?v=N` to see changes).
+- Page source of truth: the `*.dc.html` design files. `python3 deploy/flatten.py` rewrites
+  links and emits the deployed pages (`index.html`, `terrain.html`, `knot.html`,
+  `terrain-atlas.html`, `surface-prior.html`, `teaser-*.html`, `review/index.html`) —
+  never edit those outputs directly. They sibling-load `support.js`, `_ds/` tokens and
+  the `src/` cores, so there is no bundle to keep fresh.
+- `python3 build.py` injects `src/sim_core.js` + `src/sim_style.css` + tokens into
+  `src/deck_a/b/c.html` → `deck.html`, and `src/arena_core.js` + `src/arena_style.css`
+  into `src/arena_template.html` → `arena.html`. It no longer emits `index.html`
+  (`src/swarm_simulator_template.html` is kept for reference only).
+- Deploy = `bash deploy/deploy-site.sh` (flatten + build + commit + push `main`).
+  GitHub Pages serves in ~1 min (cache-control 600 s — hard-refresh or add `?v=N`).
+  Root `.nojekyll` is required or Pages skips `_ds/`.
 - Deck parts: `src/deck_a.html` (head+theme+slides 1-11) · `deck_b.html` (slides 12-21) ·
   `deck_c.html` (all deck JS: widgets, charts, reveal init).
 

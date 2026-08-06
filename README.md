@@ -1,7 +1,41 @@
-# Knot-a-Surface — Swarm Simulator + Thesis Deck
+# Knot-a-Surface
 
-- `index.html` — Swarm Resolution-Knob Simulator (warzone FOB, oblique view, facade splats, commander toolkit)
-- `arena.html` — Arena: live 4D match reconstruction (fixed broadcast swarm, basketball/football, fly through the reconstruction)
-- `deck.html`  — Interview deck (reveal.js), simulator embedded as slide 14
+NURBS-grounded Gaussian splatting: splat positions are never free in 3D — they are
+derived from a single (u,v) parametrization of the underlying surface.
 
-All are single-file apps; dependencies (three.js, reveal.js, KaTeX, Chart.js) load from CDNs, so the host only serves static HTML.
+Live: **https://tzlilo.github.io/Knot-a-Surface/**
+
+## The site
+
+| URL | Page |
+| --- | --- |
+| `/` | Landing page — hero, embedded teaser, simulator cards, method, **measured results** |
+| `/terrain.html` | Sim v1 — Swarm Resolution-Knob simulator (drone swarm, fixed splat budget, commander toolkit) |
+| `/terrain-atlas.html` | Sim v2 — UV-atlas editing (segment, paint, sculpt in the chart) |
+| `/knot.html` | Sim v3 — Knot Chart (8 parametric surfaces, control cage, geometry layers) |
+| `/surface-prior.html` | Sim v4 — Surface Prior bench: ours vs PGSR / 2DGS / SuGaR / 3DGS / NeuS / MVS, all rates **measured in-page** against the procedural ground truth |
+| `/v4.html` | Sampler lab for the uvUniform / uvAdaptive (u,v)-atlas samplers |
+| `/teaser-{v1,bold,modest,cinematic}.html` | Four teaser cuts |
+| `/review/` | Review hub for the cuts + sims |
+| `/deck.html` | Interview deck (reveal.js), simulator embedded as slide 14 |
+| `/arena.html` | Arena: live 4D match reconstruction (second application of the thesis) |
+| `/project.html` | Retired predecessor landing page (kept live, unlinked) |
+
+## Developing
+
+- **Source of truth for the pages**: the `*.dc.html` design files. The deployed pages
+  are flattened from them by `python3 deploy/flatten.py` (link rewrites only — no
+  bundling; everything sibling-loads `support.js`, `_ds/` tokens and the `src/` cores).
+  Never edit the flattened outputs (`index.html`, `terrain.html`, …) by hand.
+- **Simulator cores**: `src/sim_core.js` (swarm sim), `src/sim_v4_core.js` (v4 bench),
+  `src/arena_core.js`. `python3 build.py` injects sim_core/sim_style into `deck.html`
+  and arena_core/arena_style into `arena.html` (the only remaining build step; the site
+  pages themselves sibling-load the cores).
+- **Deploy**: `bash deploy/deploy-site.sh` = flatten + build + commit + push to `main`
+  (GitHub Pages, root `.nojekyll` required for `_ds/`). See `deploy/README.md`.
+
+## Conventions
+
+Design tokens in `_ds/…/tokens/design_tokens.css` — instrument palette for HUD chrome,
+never invent new colors. Working agreements for the cores live in `CLAUDE.md`; repo
+state receipts in `github.md`; the original design-handoff doc in `docs/HANDOFF.md`.
