@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<script src="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="src/sim_v4_core.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#05080e;overflow:hidden}
+a{color:#69f0ae;text-decoration:none}
+a:hover{color:#a5f7cd}
+input[type=range]{accent-color:#69f0ae;cursor:pointer;height:3px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#1b2a42;border-radius:3px}
+@keyframes kspPulse{0%,100%{opacity:1}50%{opacity:.42}}
+</style>
+</helmet>
+<div style="display:flex;flex-direction:column;width:100vw;height:100vh;background:#05080e;color:#dde5f0;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+
+  <header style="flex:none;display:flex;align-items:stretch;gap:0;border-bottom:1px solid #16223a;background:linear-gradient(90deg,#080d16 0%,#0b1220 52%,#080d16 100%)">
+    <div style="flex:none;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:13px 22px;border-right:1px solid #16223a">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:#69f0ae">Sim v4 · Knot-a-Surface</div>
+      <div style="font-family:'Space Grotesk','Inter',sans-serif;font-size:27px;font-weight:700;letter-spacing:-.025em;line-height:1.08;color:#f2f7fc;white-space:nowrap">SURFACE PRIOR</div>
+    </div>
+    <div style="flex:1 1 auto;display:flex;align-items:center;padding:0 22px;min-width:0">
+      <p style="margin:0;font-size:12.5px;line-height:1.45;color:#8fa4c0;max-width:640px;text-wrap:pretty">The geometry is the prior. Scale and rotation are <b style="color:#dde5f0;font-weight:700">read off the surface</b>, not optimized — and the fixed budget is <b style="color:#dde5f0;font-weight:700">re-sampled in the UV domain</b> every frame, only where the surface is visible and unoccluded, so zoom buys real density.</p>
+    </div>
+    <div style="flex:none;display:flex;align-items:center;gap:8px;padding:0 20px;border-left:1px solid #16223a">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#ffa726;border:1px solid rgba(255,167,38,.42);border-radius:999px;padding:5px 11px">◇ placeholder rates</span>
+      <a href="Review Hub.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#69f0ae">← hub</a>
+      <a href="Project Page.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#5c6f8a">project page</a>
+    </div>
+  </header>
+
+  <div style="flex:1 1 auto;display:flex;min-height:0">
+
+    <div style="flex:1 1 auto;position:relative;min-width:0;background:#05080e">
+      <div ref="{{ stageRef }}" style="position:absolute;inset:0"></div>
+
+      <div ref="{{ dividerRef }}" style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:linear-gradient(180deg,rgba(105,240,174,0) 0%,rgba(120,160,200,.42) 18%,rgba(120,160,200,.42) 82%,rgba(105,240,174,0) 100%);pointer-events:none"></div>
+
+      <div style="position:absolute;left:0;right:0;top:0;display:flex;pointer-events:none">
+        <div style="flex:1 1 0;padding:14px 18px;min-width:0;overflow:hidden">
+          <div style="display:inline-flex;align-items:center;gap:9px;max-width:100%;overflow:hidden;background:rgba(6,12,10,.82);border:1px solid rgba(105,240,174,.45);border-radius:999px;padding:6px 14px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#69f0ae;animation:kspPulse 1.9s ease-in-out infinite"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:#69f0ae;white-space:nowrap">KNOT-A-SURFACE</span>
+            <span data-out="oursSub" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f8f78;white-space:nowrap">8 DoF · fixed budget</span>
+          </div>
+          <div data-out="oursRead" style="margin-top:9px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#8fa4c0;text-shadow:0 1px 6px #05080e">—</div>
+        </div>
+        <div ref="{{ baseHeadRef }}" style="flex:1 1 0;padding:14px 18px;min-width:0;overflow:hidden;text-align:right">
+          <div style="display:inline-flex;align-items:center;gap:9px;max-width:100%;overflow:hidden;background:rgba(14,9,4,.82);border:1px solid rgba(255,167,38,.42);border-radius:999px;padding:6px 14px">
+            <span data-out="baseName" style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:#ffa726">3DGS</span>
+            <span data-out="baseSub" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#a5794a">59 DoF · densifying</span>
+          </div>
+          <div data-out="baseRead" style="margin-top:9px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#8fa4c0;text-shadow:0 1px 6px #05080e">—</div>
+        </div>
+      </div>
+
+      <div onClick="{{ onDataset }}" style="position:absolute;left:18px;right:18px;bottom:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a;padding-left:2px;text-shadow:0 1px 6px #05080e">Tanks &amp; Temples</span>
+          <div style="display:flex;gap:5px">
+            <button data-ds="barn" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8fa4c0;background:rgba(8,13,22,.9);border:1px solid #1b2a42;border-radius:8px;padding:7px 13px;cursor:pointer;white-space:nowrap">Barn</button>
+            <button data-ds="truck" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8fa4c0;background:rgba(8,13,22,.9);border:1px solid #1b2a42;border-radius:8px;padding:7px 13px;cursor:pointer;white-space:nowrap">Truck</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a;padding-left:2px;text-shadow:0 1px 6px #05080e">DTU</span>
+          <div style="display:flex;gap:5px">
+            <button data-ds="bust" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8fa4c0;background:rgba(8,13,22,.9);border:1px solid #1b2a42;border-radius:8px;padding:7px 13px;cursor:pointer;white-space:nowrap">scan110</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a;padding-left:2px;text-shadow:0 1px 6px #05080e">Real capture</span>
+          <div style="display:flex;gap:5px">
+            <button data-ds="scan" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4fc3f7;background:rgba(8,13,22,.9);border:1px solid #22415e;border-radius:8px;padding:7px 13px;cursor:pointer;white-space:nowrap">◆ scanned OBJ</button>
+          </div>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#5c6f8a;white-space:nowrap;padding-bottom:8px;text-shadow:0 1px 6px #05080e">drag to orbit · scroll to zoom</span>
+        <div data-out="verdict" style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.6;color:#5c6f8a;text-align:right;text-shadow:0 1px 6px #05080e;padding-bottom:4px"></div>
+      </div>
+    </div>
+
+    <aside ref="{{ railRef }}" style="flex:none;width:352px;border-left:1px solid #16223a;background:#080d16;overflow-y:auto;display:flex;flex-direction:column">
+
+      <div style="flex:none;padding:14px 16px 12px;border-bottom:1px solid #16223a">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#5c6f8a;margin-bottom:9px">Compare against</div>
+        <div onClick="{{ onBaseline }}" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+          <button data-bl="pgsr" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 4px;cursor:pointer">PGSR</button>
+          <button data-bl="2dgs" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 4px;cursor:pointer">2DGS</button>
+          <button data-bl="sugar" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 4px;cursor:pointer">SuGaR</button>
+          <button data-bl="3dgs" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 4px;cursor:pointer">3DGS</button>
+          <button data-bl="neus" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 4px;cursor:pointer">NeuS</button>
+          <button data-bl="mvs" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 4px;cursor:pointer">MVS</button>
+        </div>
+        <div data-out="baseFamily" style="margin-top:9px;font-size:11px;line-height:1.5;color:#5c6f8a">—</div>
+      </div>
+
+      <div style="flex:none;display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #16223a">
+        <div style="padding:13px 16px;border-right:1px solid #16223a">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:#69f0ae;margin-bottom:8px">OURS</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;line-height:1;color:#f2f7fc" data-out="oursPrims">—</div>
+          <div style="font-size:10px;color:#5c6f8a;margin-top:3px">primitives · <b data-out="oursDof" style="color:#69f0ae">8</b> DoF each</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8fa4c0;margin-top:10px;line-height:1.7">
+            <div>params <b data-out="oursParams" style="color:#dde5f0">—</b></div>
+            <div>chamfer <b data-out="oursCham" style="color:#69f0ae">—</b></div>
+            <div>L1 photo <b data-out="oursRes" style="color:#dde5f0">—</b></div>
+            <div style="display:flex;align-items:center;gap:6px;margin:7px 0 5px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">measured</span>
+              <span style="flex:1;height:1px;background:#16223a"></span>
+            </div>
+            <div>footprint <b data-out="oursFoot" style="color:#4fc3f7">—</b></div>
+            <div>closed <b data-out="oursCov" style="color:#69f0ae">—</b></div>
+            <div data-out="triRead" style="margin-top:7px;padding-top:7px;border-top:1px solid #16223a;font-size:10.5px;line-height:1.6;color:#5c6f8a">mesh mode off</div>
+          </div>
+        </div>
+        <div style="padding:13px 16px">
+          <div data-out="baseTag" style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:#ffa726;margin-bottom:8px">3DGS</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;line-height:1;color:#f2f7fc" data-out="basePrims">—</div>
+          <div style="font-size:10px;color:#5c6f8a;margin-top:3px">primitives · <b data-out="baseDof" style="color:#ffa726">59</b> DoF each</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8fa4c0;margin-top:10px;line-height:1.7">
+            <div>params <b data-out="baseParams" style="color:#dde5f0">—</b></div>
+            <div>chamfer <b data-out="baseCham" style="color:#ffa726">—</b></div>
+            <div>L1 photo <b data-out="baseRes" style="color:#dde5f0">—</b></div>
+            <div style="display:flex;align-items:center;gap:6px;margin:7px 0 5px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">measured</span>
+              <span style="flex:1;height:1px;background:#16223a"></span>
+            </div>
+            <div>footprint <b data-out="baseFoot" style="color:#8fa4c0">—</b></div>
+            <div>closed <b data-out="baseCov" style="color:#ffa726">—</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:none;padding:14px 16px;border-bottom:1px solid #16223a;display:flex;flex-direction:column;gap:14px">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a">Primitive count</span>
+            <span data-out="growNote" style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#ffa726">—</span>
+          </div>
+          <canvas ref="{{ chartPrims }}" width="640" height="150" style="width:100%;height:75px;display:block"></canvas>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a">Geometry error · chamfer</span>
+            <span data-out="chamNote" style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#69f0ae">—</span>
+          </div>
+          <canvas ref="{{ chartCham }}" width="640" height="150" style="width:100%;height:75px;display:block"></canvas>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a">Photometric L1</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#5c6f8a">both converge — geometry is the split</span>
+          </div>
+          <canvas ref="{{ chartRes }}" width="640" height="150" style="width:100%;height:75px;display:block"></canvas>
+        </div>
+      </div>
+
+      <div ref="{{ claimsRef }}" style="flex:1 1 auto;padding:14px 16px 18px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#5c6f8a;margin-bottom:11px">What the split shows</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div style="display:grid;grid-template-columns:14px 1fr;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#69f0ae">01</span>
+            <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">No densify. No prune.</div><div data-out="c1" style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">—</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:14px 1fr;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#69f0ae">02</span>
+            <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">Scale and rotation are inferred, not learned</div><div data-out="c2" style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">—</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:14px 1fr;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#69f0ae">03</span>
+            <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">SH₁ is enough</div><div style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">A surface consistent across all training views has nothing left for high-order SH to compensate. Baselines spend 42–48 of their DoF on view-dependent colour; watch the shimmer on the right when you orbit.</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:14px 1fr;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#69f0ae">04</span>
+            <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">The sample positions follow the camera</div><div data-out="c4" style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">—</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:14px 1fr;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#69f0ae">05</span>
+            <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">Zoom is free</div><div data-out="c5" style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">—</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:14px 1fr;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#69f0ae">06</span>
+            <div><div style="font-size:12.5px;font-weight:700;color:#dde5f0">It is a surface, not a point soup</div><div data-out="c6" style="font-size:11px;line-height:1.5;color:#5c6f8a;margin-top:2px">—</div></div>
+          </div>
+        </div>
+        <div style="margin-top:15px;padding-top:12px;border-top:1px solid #16223a;font-size:10.5px;line-height:1.55;color:#5c6f8a">Counts and DoF ledgers follow exactly from each representation. Convergence rates, chamfer and photometric values are <b style="color:#8a6a30">placeholder curves</b> — swap in measured DTU / TnT benchmarks.</div>
+      </div>
+    </aside>
+  </div>
+
+  <footer style="flex:none;display:flex;align-items:center;gap:16px 18px;flex-wrap:wrap;padding:11px 20px;border-top:1px solid #16223a;background:#080d16">
+    <div style="display:flex;align-items:center;gap:7px">
+      <button ref="{{ playRef }}" onClick="{{ onPlay }}" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.1em;color:#05080e;background:#69f0ae;border:none;border-radius:8px;padding:9px 16px;cursor:pointer">❚❚ PAUSE</button>
+      <button onClick="{{ onReset }}" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.1em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:8px;padding:9px 14px;cursor:pointer">↺</button>
+    </div>
+    <label style="flex:1 1 auto;display:flex;align-items:center;gap:10px;min-width:180px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">step</span>
+      <input ref="{{ stepRef }}" type="range" min="0" max="30000" step="50" defaultValue="0" onInput="{{ onStep }}" style="flex:1">
+      <b data-out="stepVal" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#dde5f0;min-width:58px;text-align:right">0</b>
+    </label>
+    <label style="flex:0 0 200px;display:flex;align-items:center;gap:10px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">budget</span>
+      <input type="range" min="3000" max="56000" step="1000" defaultValue="12000" onInput="{{ onBudget }}" style="flex:1">
+      <b data-out="budgetVal" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#dde5f0;min-width:44px;text-align:right">12k</b>
+    </label>
+    <label style="flex:0 0 190px;display:flex;align-items:center;gap:10px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">zoom</span>
+      <input ref="{{ zoomRef }}" type="range" min="0" max="100" step="1" defaultValue="0" onInput="{{ onZoom }}" style="flex:1;accent-color:#4fc3f7">
+      <b data-out="zoomVal" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4fc3f7;min-width:38px;text-align:right">×1.0</b>
+    </label>
+    <div onClick="{{ onToggle }}" style="display:flex;gap:6px">
+      <button data-tg="gt" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 12px;cursor:pointer;white-space:nowrap">GT ghost</button>
+      <button data-tg="chart" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 12px;cursor:pointer;white-space:nowrap">chart net</button>
+      <button data-tg="split" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#05080e;background:#69f0ae;border:1px solid #69f0ae;border-radius:7px;padding:8px 12px;cursor:pointer">split</button>
+      <button data-tg="solo" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 12px;cursor:pointer">solo ours</button>
+    </div>
+    <div style="flex:1 1 100%;height:1px;background:#16223a"></div>
+    <div onClick="{{ onToggle }}" style="display:flex;align-items:center;gap:6px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a;margin-right:2px">draw</span>
+      <button data-tg="r-splats" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#05080e;background:#4fc3f7;border:1px solid #4fc3f7;border-radius:7px;padding:8px 12px;cursor:pointer">splats</button>
+      <button data-tg="r-mesh" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 12px;cursor:pointer">mesh</button>
+      <button data-tg="r-both" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 12px;cursor:pointer">both</button>
+      <button data-tg="wire" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#05080e;background:#4fc3f7;border:1px solid #4fc3f7;border-radius:7px;padding:8px 12px;cursor:pointer;margin-left:4px">wire</button>
+      <button data-tg="mod" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8fa4c0;background:#0d1524;border:1px solid #1b2a42;border-radius:7px;padding:8px 12px;cursor:pointer;margin-left:4px;white-space:nowrap">modality slices</button>
+      <button data-tg="adapt" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#05080e;background:#69f0ae;border:1px solid #69f0ae;border-radius:7px;padding:8px 12px;cursor:pointer;margin-left:4px;white-space:nowrap">uv-adaptive</button>
+    </div>
+    <label style="flex:0 0 196px;display:flex;align-items:center;gap:10px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">tri budget</span>
+      <input type="range" min="1000" max="60000" step="1000" defaultValue="12000" onInput="{{ onTri }}" style="flex:1;accent-color:#9fe0ff">
+      <b data-out="triVal" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9fe0ff;min-width:44px;text-align:right">12k</b>
+    </label>
+    <label style="flex:0 0 186px;display:flex;align-items:center;gap:10px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">knots</span>
+      <input type="range" min="0" max="100" step="1" defaultValue="0" onInput="{{ onKnots }}" style="flex:1;accent-color:#69f0ae">
+      <b data-out="knotVal" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#69f0ae;min-width:38px;text-align:right">off</b>
+    </label>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;dataset&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;barn&quot;,&quot;truck&quot;,&quot;bust&quot;,&quot;scan&quot;],&quot;default&quot;:&quot;truck&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Capture&quot;},&quot;baseline&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;pgsr&quot;,&quot;2dgs&quot;,&quot;sugar&quot;,&quot;3dgs&quot;,&quot;neus&quot;,&quot;mvs&quot;],&quot;default&quot;:&quot;3dgs&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Capture&quot;},&quot;budget&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:12000,&quot;min&quot;:3000,&quot;max&quot;:56000,&quot;step&quot;:1000,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Model&quot;},&quot;adaptive&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Model&quot;},&quot;closure&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0,&quot;max&quot;:1,&quot;step&quot;:0.5,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Footprint&quot;},&quot;roiTight&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:2,&quot;min&quot;:1,&quot;max&quot;:2,&quot;step&quot;:0.5,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Footprint&quot;},&quot;autoplay&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Model&quot;}}">
+class Component extends DCLogic {
+  stageRef = React.createRef(); railRef = React.createRef(); claimsRef = React.createRef();
+  dividerRef = React.createRef(); baseHeadRef = React.createRef(); playRef = React.createRef();
+  stepRef = React.createRef(); zoomRef = React.createRef();
+  chartPrims = React.createRef(); chartCham = React.createRef(); chartRes = React.createRef();
+
+  renderVals() {
+    return {
+      stageRef: this.stageRef, railRef: this.railRef, claimsRef: this.claimsRef,
+      dividerRef: this.dividerRef, baseHeadRef: this.baseHeadRef, playRef: this.playRef,
+      stepRef: this.stepRef, zoomRef: this.zoomRef,
+      chartPrims: this.chartPrims, chartCham: this.chartCham, chartRes: this.chartRes,
+      onDataset: e => { const b = e.target.closest('[data-ds]'); if (b && this.sim) { this.sim.setDataset(b.dataset.ds); this.mark('[data-ds]', 'ds', b.dataset.ds, '#4fc3f7'); } },
+      onBaseline: e => { const b = e.target.closest('[data-bl]'); if (b && this.sim) { this.sim.setBaseline(b.dataset.bl); this.mark('[data-bl]', 'bl', b.dataset.bl, '#ffa726'); this.series = null; } },
+      onPlay: () => { if (!this.sim) return; const p = !this.sim.state.playing; this.sim.setPlaying(p); this.playRef.current.textContent = p ? '❚❚ PAUSE' : '▶ RUN'; },
+      onReset: () => { if (this.sim) { this.sim.reset(); if (this.stepRef.current) this.stepRef.current.value = 0; } },
+      onStep: e => { if (this.sim) { this.sim.setPlaying(false); this.playRef.current.textContent = '▶ RUN'; this.sim.setStep(+e.target.value); } },
+      onBudget: e => { if (this.sim) { this.sim.setBudget(+e.target.value); this.series = null; } },
+      onZoom: e => { if (this.sim) this.sim.setZoom(+e.target.value / 100); },
+      onTri: e => {
+        if (!this.sim) return;
+        const v = +e.target.value;
+        this.sim.setTriBudget(v);
+        this.out('triVal', v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v);
+      },
+      onKnots: e => {
+        if (!this.sim) return;
+        const v = +e.target.value / 100;
+        this.sim.setKnots(v);
+        this.out('knotVal', v < 0.005 ? 'off' : Math.round(v * 100) + '%');
+      },
+      onToggle: e => {
+        const b = e.target.closest('[data-tg]'); if (!b || !this.sim) return;
+        const k = b.dataset.tg;
+        if (k === 'gt') { const on = !this.sim.state.showGT; this.sim.setShowGT(on); this.style(b, on, '#4fc3f7'); }
+        else if (k === 'chart') { const on = !this.sim.state.chart; this.sim.setChart(on); this.style(b, on, '#4fc3f7'); }
+        else if (k === 'wire') { const on = !this.sim.state.wire; this.sim.setWire(on); this.style(b, on, '#4fc3f7'); }
+        else if (k === 'mod') { const on = !(this.sim.state.mod > 0.5); this.sim.setModality(on ? 1 : 0); this.style(b, on, '#9fe0ff'); }
+        else if (k === 'adapt') { const on = !this.sim.state.adapt; this.sim.setAdapt(on); this.style(b, on, '#69f0ae'); }
+        else if (k.indexOf('r-') === 0) {
+          this.sim.setRender(k.slice(2));
+          this.mark('[data-tg^="r-"]', 'tg', k, '#4fc3f7');
+        }
+        else {
+          const split = k === 'split';
+          this.sim.setSplit(split); this.sim.setSolo('ours');
+          this.mark('[data-tg="split"],[data-tg="solo"]', 'tg', k, '#69f0ae');
+          if (this.dividerRef.current) this.dividerRef.current.style.display = split ? 'block' : 'none';
+          if (this.baseHeadRef.current) this.baseHeadRef.current.style.opacity = split ? '1' : '.25';
+        }
+      }
+    };
+  }
+
+  style(b, on, col) {
+    b.style.background = on ? col : '#0d1524';
+    b.style.color = on ? '#05080e' : '#8fa4c0';
+    b.style.borderColor = on ? col : '#1b2a42';
+  }
+  mark(sel, key, val, col) {
+    const root = this.stageRef.current && this.stageRef.current.closest('div').parentElement.parentElement.parentElement;
+    (root || document).querySelectorAll(sel).forEach(b => this.style(b, b.dataset[key] === val, col));
+  }
+  out(k, v) { const n = this.node(k); if (n) n.textContent = v; }
+  node(k) {
+    if (!this._cache) this._cache = {};
+    if (!this._cache[k] || !this._cache[k].isConnected) {
+      const host = this.stageRef.current ? this.stageRef.current.ownerDocument : document;
+      this._cache[k] = host.querySelector('[data-out="' + k + '"]');
+    }
+    return this._cache[k];
+  }
+
+  componentDidMount() {
+    this.boot();
+    this.fit = () => {
+      const el = this.stageRef.current; if (!el) return;
+      const narrow = el.clientWidth / 2 < 340;
+      for (const k of ['oursSub', 'baseSub']) { const n = this.node(k); if (n) n.style.display = narrow ? 'none' : 'inline'; }
+    };
+    this.ro = new ResizeObserver(this.fit);
+    if (this.stageRef.current) this.ro.observe(this.stageRef.current);
+    this.fit();
+  }
+  componentDidUpdate(prev) {
+    if (!this.sim) return;
+    const P = this.props;
+    if (prev.dataset !== P.dataset && P.dataset) { this.sim.setDataset(P.dataset); this.mark('[data-ds]', 'ds', P.dataset, '#4fc3f7'); }
+    if (prev.baseline !== P.baseline && P.baseline) { this.sim.setBaseline(P.baseline); this.mark('[data-bl]', 'bl', P.baseline, '#ffa726'); this.series = null; }
+    if (prev.budget !== P.budget && P.budget) { this.sim.setBudget(+P.budget); this.series = null; }
+    if (prev.roiTight !== P.roiTight) this.sim.setRoiTight(+(P.roiTight || 1));
+    if (prev.closure !== P.closure) this.sim.setClosure(P.closure === undefined ? 0.5 : +P.closure);
+    if (prev.adaptive !== P.adaptive) this.sim.setAdapt(P.adaptive !== false);
+  }
+  componentWillUnmount() { this.dead = true; try { this.ro && this.ro.disconnect(); this.sim && this.sim.dispose(); } catch (e) {} }
+
+  boot() {
+    if (this.dead) return;
+    if (!window.THREE || !window.KnotSurfacePrior) {
+      this.tries = (this.tries || 0) + 1;
+      if (this.tries < 400) return void setTimeout(() => this.boot(), 50);
+      return;
+    }
+    const el = this.stageRef.current;
+    if (!el) return void setTimeout(() => this.boot(), 60);
+    const P = this.props;
+    this.sim = window.KnotSurfacePrior.create(el, {
+      dataset: P.dataset || 'barn',
+      baseline: P.baseline || '3dgs',
+      budget: +(P.budget || 12000),
+      roiTight: +(P.roiTight || 1),
+      closure: P.closure === undefined ? 0.5 : +P.closure,
+      adapt: P.adaptive !== false,
+      playing: P.autoplay === undefined ? true : !!P.autoplay
+    });
+    this.mark('[data-ds]', 'ds', this.sim.state.dataset, '#4fc3f7');
+    this.mark('[data-bl]', 'bl', this.sim.state.baseline, '#ffa726');
+    this.sim.onZoom(z => { if (this.zoomRef.current) this.zoomRef.current.value = Math.round(z * 100); });
+    this.sim.onStats(s => this.paint(s));
+    if (this.playRef.current) this.playRef.current.textContent = this.sim.state.playing ? '❚❚ PAUSE' : '▶ RUN';
+  }
+
+  fmt(n) { return n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + ' k' : String(Math.round(n)); }
+  len(m) { return m >= 1 ? m.toFixed(2) + ' m' : m >= 0.01 ? (m * 100).toFixed(1) + ' cm' : (m * 1000).toFixed(1) + ' mm'; }
+  /* measured on the disks that actually survived, both models on the same in-view
+     test points: % of surface closed · mean disks per point. Kept short enough to fit the
+     140px ledger column on one line, so it aligns with the sibling metrics. */
+  cov(d) { return (d.cov * 100).toFixed(1) + '% · \u00d7' + d.ovl.toFixed(1) + (d.starved > 0.01 ? ' · ' + (d.starved * 100).toFixed(0) + '% unfunded' : ''); }
+
+  paint(s) {
+    const O = s.ours, B = s.base, M = O.model, N = B.model;
+    if (s.tri) {
+      const T2 = s.tri;
+      this.out('triRead', T2.on
+        ? 'triangles ' + T2.n.toLocaleString() + ' / ' + T2.budget.toLocaleString()
+          + ' · frustum −' + T2.frustum.toLocaleString()
+          + ' · occluded −' + T2.occluded.toLocaleString()
+        : 'mesh mode off');
+    }
+    this.out('stepVal', Math.round(s.step).toLocaleString());
+    if (this.stepRef.current && this.sim.state.playing) this.stepRef.current.value = Math.round(s.step);
+    this.out('budgetVal', this.fmt(this.sim.state.budget));
+    this.out('zoomVal', '×' + (s.mag || 1).toFixed(1));
+
+    this.out('oursPrims', O.n.toLocaleString());
+    this.out('oursParams', this.fmt(O.params));
+    this.out('oursCham', O.cham.toFixed(2) + ' mm');
+    this.out('oursRes', O.res.toFixed(3));
+    this.out('oursFoot', this.len(O.foot));
+    this.out('oursCov', this.cov(O));
+    this.out('oursRead', O.adapt
+      ? O.n.toLocaleString() + ' splats · footprint ' + this.len(O.foot)
+        + ' · uv domain ' + (O.uvVis * 100).toFixed(1) + '% observed · ×' + O.conc.toFixed(1) + ' density'
+        + (O.occl > 0.005 ? ' · hidden −' + (O.occl * 100).toFixed(0) + '%' : '')
+      : O.n.toLocaleString() + ' splats · footprint ' + this.len(O.foot));
+    this.out('oursSub', M.dof + ' DoF · ' + (O.adapt ? 'uv-adaptive' : 'budget locked'));
+
+    this.out('baseName', N.short); this.out('baseTag', N.short);
+    this.out('baseSub', (N.key === 'neus' ? '2.1 M weights' : N.dof + ' DoF') + (N.densify ? ' · densifying' : ' · fixed'));
+    this.out('baseFamily', N.label + ' — ' + N.family + '. ' + N.dofNote + '.');
+    this.out('basePrims', B.n.toLocaleString());
+    this.out('baseDof', N.key === 'neus' ? '—' : String(N.dof));
+    this.out('baseParams', this.fmt(B.params));
+    this.out('baseCham', B.cham.toFixed(2) + ' mm');
+    this.out('baseRes', B.res.toFixed(3));
+    this.out('baseFoot', this.len(B.foot));
+    this.out('baseCov', this.cov(B));
+    this.out('baseRead', B.n.toLocaleString() + ' primitives · footprint ' + this.len(B.foot));
+    this.out('oursDof', String(M.dof));
+
+    const ratio = B.n / Math.max(1, O.n), pRatio = B.params / Math.max(1, O.params);
+    // a pool-clamped panel draws fewer primitives than its model claims, so say so rather
+    // than let the ratio quietly understate the baseline's real cost
+    this.out('growNote', (O.capped || B.capped) ? 'ROI/pool ceiling — lower budget or zoom out' : ratio >= 1.05 ? '×' + ratio.toFixed(1) + ' ours' : 'flat');
+    this.out('chamNote', (B.cham / Math.max(0.01, O.cham)).toFixed(1) + '× our error');
+    this.out('c1', N.densify
+      ? N.short + ' has grown to ' + B.n.toLocaleString() + ' primitives (×' + ratio.toFixed(1) + ') under adaptive density control. Ours is still ' + O.n.toLocaleString() + ' — the number you set.'
+      : N.short + ' holds ' + B.n.toLocaleString() + ' primitives; ours holds ' + O.n.toLocaleString() + ' at ' + pRatio.toFixed(2) + '× the parameter count.');
+    this.out('c2', 'Ours optimizes ' + this.fmt(O.params) + ' parameters against ' + this.fmt(B.params) + ' — ' + (pRatio >= 1 ? pRatio.toFixed(1) + '× fewer' : (1 / pRatio).toFixed(1) + '× more') + '. Every disk on the left sits in the tangent frame of the fitted B-spline chart; nothing had to learn to lie flat. Hit “chart net” to see the control lattice they are read from.');
+    this.out('c4', O.adapt
+      ? 'The sampling domain is the surface\'s own [0,1]² parameter space, and it is re-drawn every frame: ' + (O.uvVis * 100).toFixed(1) + '% of it is inside the frustum, facing the camera and not hidden'
+        + (O.occl > 0.005 ? ' (' + (O.occl * 100).toFixed(0) + '% of what is in frame sits behind nearer surface and is skipped)' : '')
+        + ', and ' + O.roiPct + '% of the budget is placed there — ×' + O.conc.toFixed(1) + ' the density a uniform allocation would give. The samples slide across the surface as you orbit; they are not culled. '
+        + N.short + ' spends the same primitives everywhere.'
+      : s.focusPct + '% of the surface is inside the view volume, and ' + (O.roiPct === undefined ? 'that' : O.roiPct + '% of the budget') + ' went there — the ROI crops with zoom, so the same count lands on less surface. ' + N.short + ' spends the same primitives everywhere.');
+    this.out('c5', 'Footprint at ×' + (s.mag || 1).toFixed(1) + ': ' + this.len(O.foot) + ' from ' + this.fmt(O.params) + ' parameters, against ' + this.len(B.foot) + ' from ' + this.fmt(B.params) + '. Push the zoom slider — the domain re-warps, so the same fixed budget is re-drawn at higher density on a smaller patch and the footprint shrinks with the crop; the baseline keeps the single global footprint it froze at training time, at ' + (B.params / Math.max(O.params, 1)).toFixed(1) + '× the parameters.');
+    this.out('c6', 'Chamfer ' + O.cham.toFixed(2) + ' mm vs ' + B.cham.toFixed(2) + ' mm at step ' + Math.round(s.step).toLocaleString() + '. Mesh-in-the-loop keeps the primitives on one manifold instead of near one.');
+
+    const tgt = M.target, hit = s.step >= tgt;
+    this.out('verdict', hit
+      ? '◆ target chamfer reached at step ' + tgt.toLocaleString() + ' — ' + (N.target ? N.short + ' needs ' + N.target.toLocaleString() : N.short + ' does not reach it')
+      : 'converging · target chamfer at step ' + tgt.toLocaleString() + ' (placeholder)');
+
+    if (this._chartT === undefined || performance.now() - this._chartT > 220) {
+      this._chartT = performance.now();
+      this.drawCharts(s);
+    }
+  }
+
+  buildSeries(s) {
+    const K = window.KnotSurfacePrior, M = s.ours.model, N = s.base.model, B = this.sim.state.budget;
+    const pts = 90, max = s.maxStep, o = [], b = [];
+    for (let i = 0; i <= pts; i++) {
+      const x = (i / pts) * max;
+      o.push({ x, prim: K.prims(M, x, B), cham: K.chamfer(M, x), res: K.curve(M, x) });
+      b.push({ x, prim: K.prims(N, x, B), cham: K.chamfer(N, x), res: K.curve(N, x) });
+    }
+    return { o, b, max };
+  }
+
+  drawCharts(s) {
+    if (!this.series || this.series.key !== s.base.model.key + this.sim.state.budget) {
+      this.series = this.buildSeries(s);
+      this.series.key = s.base.model.key + this.sim.state.budget;
+    }
+    const S = this.series;
+    this.plot(this.chartPrims.current, S, d => d.prim, s.step, false);
+    this.plot(this.chartCham.current, S, d => d.cham, s.step, true);
+    this.plot(this.chartRes.current, S, d => d.res, s.step, true);
+  }
+
+  plot(cv, S, get, step, lowGood) {
+    if (!cv) return;
+    const ctx = cv.getContext('2d'), W = cv.width, H = cv.height, pad = 6;
+    ctx.clearRect(0, 0, W, H);
+    let hi = 0, lo = Infinity;
+    for (const d of S.o.concat(S.b)) { const v = get(d); if (v > hi) hi = v; if (v < lo) lo = v; }
+    if (!(hi > lo)) hi = lo + 1;
+    lo = lowGood ? Math.max(0, lo - (hi - lo) * 0.18) : 0;
+    const X = x => pad + (x / S.max) * (W - pad * 2);
+    const Y = v => H - pad - ((v - lo) / (hi - lo)) * (H - pad * 2);
+    ctx.strokeStyle = 'rgba(34,49,78,.55)'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 3; i++) { const y = pad + (i / 3) * (H - pad * 2); ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke(); }
+    const line = (arr, col, w) => {
+      ctx.beginPath(); ctx.lineWidth = w; ctx.strokeStyle = col;
+      arr.forEach((d, i) => { const x = X(d.x), y = Y(get(d)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke();
+    };
+    line(S.b, '#ffa726', 2.4);
+    line(S.o, '#69f0ae', 3.4);
+    const px = X(Math.min(step, S.max));
+    ctx.strokeStyle = 'rgba(221,229,240,.5)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(px, pad * 0.4); ctx.lineTo(px, H - pad * 0.4); ctx.stroke();
+    const dot = (arr, col) => {
+      const i = Math.min(arr.length - 1, Math.round((step / S.max) * (arr.length - 1)));
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(arr[i].x), Y(get(arr[i])), 4.2, 0, 6.283); ctx.fill();
+    };
+    dot(S.b, '#ffa726'); dot(S.o, '#69f0ae');
+  }
+}
+</script>
+</body>
+</html>

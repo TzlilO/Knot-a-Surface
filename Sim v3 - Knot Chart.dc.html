@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<script src="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#04070d;overflow:hidden}
+a{color:#ce93d8;text-decoration:none}
+a:hover{color:#e6bff0}
+input[type=range]{accent-color:#ce93d8;cursor:pointer}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative;width:100vw;height:100vh;background:radial-gradient(ellipse at 50% 42%,#0d1220 0%,#04070d 62%,#020409 100%);color:#dde5f0;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+  <canvas ref="{{ mainRef }}" style="position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none"></canvas>
+
+  <div ref="{{ chromeRef }}" style="position:absolute;inset:0;pointer-events:none;opacity:1;transition:opacity .45s ease">
+
+    <div style="position:absolute;left:26px;top:24px">
+      <div style="font-family:'Space Grotesk','Inter',sans-serif;font-size:15px;font-weight:700;letter-spacing:.38em;text-transform:uppercase;color:#dde5f0">Knot Chart</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:#6d5a8a;margin-top:5px">single UV chart · <span ref="{{ hPQ }}" style="color:#ce93d8">⟨2,3⟩</span></div>
+      <div style="display:flex;gap:12px;margin-top:8px;pointer-events:auto;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase"><a href="Review Hub.dc.html" style="color:#4fc3f7">← hub</a><a href="Project Page.dc.html" style="color:#5c6f8a">project page</a></div>
+    </div>
+
+    <div ref="{{ leftColRef }}" style="position:absolute;left:26px;top:94px;bottom:214px;width:440px;display:flex;flex-direction:column;gap:7px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;pointer-events:none">
+      <div style="flex:none;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:#7f93ad;font-variant-numeric:tabular-nums">
+        <div>splats <b ref="{{ hSplats }}" style="color:#dde5f0;font-weight:700">—</b></div>
+        <div>tessellation <b ref="{{ hTess }}" style="color:#dde5f0;font-weight:700">—</b></div>
+        <div>chart masked <b ref="{{ hMask }}" style="color:#ce93d8;font-weight:700">0.0%</b></div>
+        <div ref="{{ hArcRow }}">span <b ref="{{ hArc }}" style="color:#4fc3f7;font-weight:700">—</b></div>
+        <div ref="{{ hRoi }}" style="color:#69f0ae">ROI off · full chart</div>
+        <div ref="{{ hParam }}" style="color:#a8762a">— ctrl pts → — splats</div>
+      </div>
+      <div ref="{{ hProbe }}" style="flex:none;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.45;color:#ffa726;max-width:270px;height:26px;overflow:hidden">hover the chart strip → the same point is pinned in 3D</div>
+      <div ref="{{ hRead }}" style="flex:none;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.45;color:#4a5b73;max-width:300px;height:26px;overflow:hidden">drag to orbit · scroll to zoom · paint the chart strip below</div>
+    </div>
+
+    <div ref="{{ cpPanelRef }}" style="display:none;position:absolute;right:26px;top:120px;width:226px;max-height:216px;overflow-y:auto;overflow-x:hidden;pointer-events:auto;flex-direction:column;gap:6px;background:rgba(6,10,18,.94);border:1px solid rgba(255,167,38,.5);border-radius:12px;padding:10px 11px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span ref="{{ cpTitleRef }}" style="font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#ffa726">control point</span>
+        <button onClick="{{ onCPClose }}" style="font-family:inherit;font-size:12px;line-height:1;color:#8fa4c0;background:none;border:none;cursor:pointer">×</button>
+      </div>
+      <div onInput="{{ onCP }}" style="display:flex;flex-direction:column;gap:6px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">lift<input type="range" data-k="cw" min="-80" max="160" step="1" defaultValue="0" style="flex:1;accent-color:#ffa726"><b data-out="cw" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">scale u<input type="range" data-k="crx" min="8" max="160" step="1" defaultValue="50" style="flex:1;accent-color:#ffa726"><b data-out="crx" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">scale v<input type="range" data-k="cry" min="8" max="160" step="1" defaultValue="50" style="flex:1;accent-color:#ffa726"><b data-out="cry" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">orient<input type="range" data-k="crot" min="-90" max="90" step="1" defaultValue="0" style="flex:1;accent-color:#ffa726"><b data-out="crot" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">splat<input type="range" data-k="csz" min="30" max="260" step="1" defaultValue="100" style="flex:1;accent-color:#ffa726"><b data-out="csz" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">opacity<input type="range" data-k="cop" min="0" max="100" step="1" defaultValue="100" style="flex:1;accent-color:#ffa726"><b data-out="cop" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:34px;text-align:right">—</b></label>
+      </div>
+      <div onClick="{{ onCPCol }}" style="display:flex;gap:5px;align-items:center">
+        <button data-cpcol="#4fc3f7" style="flex:1;height:16px;border-radius:4px;border:1px solid #22314e;background:#4fc3f7;cursor:pointer"></button>
+        <button data-cpcol="#ce93d8" style="flex:1;height:16px;border-radius:4px;border:1px solid #22314e;background:#ce93d8;cursor:pointer"></button>
+        <button data-cpcol="#69f0ae" style="flex:1;height:16px;border-radius:4px;border:1px solid #22314e;background:#69f0ae;cursor:pointer"></button>
+        <button data-cpcol="#ffa726" style="flex:1;height:16px;border-radius:4px;border:1px solid #22314e;background:#ffa726;cursor:pointer"></button>
+        <button data-cpcol="none" style="flex:1;height:16px;border-radius:4px;border:1px dashed #4a5b73;background:transparent;cursor:pointer"></button>
+      </div>
+      <button onClick="{{ onCPReset }}" style="font-family:inherit;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 8px;cursor:pointer">reset point</button>
+      <div style="font-size:9px;color:#4a5b73;line-height:1.45">scale · orientation · opacity · colour are per-point 3DGS parameters; the surface stays continuous between them.</div>
+    </div>
+
+
+    <div ref="{{ styleRef }}" style="display:none;position:absolute;right:26px;top:120px;width:238px;max-height:216px;overflow-y:auto;overflow-x:hidden;pointer-events:auto;flex-direction:column;gap:6px;background:rgba(6,10,18,.94);border:1px solid rgba(105,240,174,.5);border-radius:12px;padding:10px 11px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#69f0ae">style transfer</span>
+        <span ref="{{ hStyle }}" style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#4a5b73">none</span>
+      </div>
+      <div onClick="{{ onPat }}" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+        <button data-pat="cow" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">cow</button>
+        <button data-pat="zebra" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">zebra</button>
+        <button data-pat="giraffe" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">giraffe</button>
+        <button data-pat="leopard" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">leopard</button>
+        <button data-pat="pineapple" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">pineapple</button>
+        <button data-pat="dragonfruit" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">pitaya</button>
+      </div>
+      <div style="display:flex;gap:5px;align-items:center">
+        <button onClick="{{ onPick }}" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#69f0ae;background:rgba(105,240,174,.1);border:1px solid rgba(105,240,174,.45);border-radius:6px;padding:7px 6px;cursor:pointer">load image…</button>
+        <button data-pat="none" onClick="{{ onPat }}" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 8px;cursor:pointer">clear</button>
+      </div>
+      <input ref="{{ fileRef }}" onChange="{{ onFile }}" type="file" accept="image/*" style="display:none">
+      <div onInput="{{ onPatSlide }}" style="display:flex;flex-direction:column;gap:6px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">scale u<input type="range" data-k="psu" min="10" max="600" step="1" defaultValue="100" style="flex:1;accent-color:#69f0ae"><b data-out="psu" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">scale v<input type="range" data-k="psv" min="10" max="600" step="1" defaultValue="100" style="flex:1;accent-color:#69f0ae"><b data-out="psv" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">rotate<input type="range" data-k="prot" min="-90" max="90" step="1" defaultValue="0" style="flex:1;accent-color:#69f0ae"><b data-out="prot" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">offset u<input type="range" data-k="pou" min="-100" max="100" step="1" defaultValue="0" style="flex:1;accent-color:#69f0ae"><b data-out="pou" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">offset v<input type="range" data-k="pov" min="-100" max="100" step="1" defaultValue="0" style="flex:1;accent-color:#69f0ae"><b data-out="pov" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">—</b></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">blend<input type="range" data-k="pmix" min="0" max="100" step="1" defaultValue="85" style="flex:1;accent-color:#69f0ae"><b data-out="pmix" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">—</b></label>
+      </div>
+      <div onClick="{{ onPatMode }}" style="display:flex;gap:4px">
+        <button data-pmode="multiply" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">multiply</button>
+        <button data-pmode="source-over" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #69f0ae;border-radius:6px;padding:6px 4px;cursor:pointer">replace</button>
+        <button data-pmode="overlay" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">overlay</button>
+      </div>
+      <div style="font-size:9px;color:#4a5b73;line-height:1.45">mapping convention: pattern pixels are placed in chart space by (scale, rotate, offset) on (u,v) — so the same knob moves the texture over every shape.</div>
+    </div>
+
+
+    <div ref="{{ layersRef }}" style="display:none;position:absolute;right:26px;top:120px;width:238px;max-height:216px;overflow-y:auto;overflow-x:hidden;pointer-events:auto;flex-direction:column;gap:6px;background:rgba(6,10,18,.94);border:1px solid rgba(79,195,247,.5);border-radius:12px;padding:10px 11px">
+      <div style="font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#4fc3f7">information layers</div>
+      <div onClick="{{ onLayer }}" style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        <button data-layer="norm" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 4px;cursor:pointer">normals n</button>
+        <button data-layer="curv" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 4px;cursor:pointer">curvature</button>
+        <button data-layer="tanu" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 4px;cursor:pointer">tangent ∂u</button>
+        <button data-layer="tanv" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 4px;cursor:pointer">tangent ∂v</button>
+      </div>
+      <div onClick="{{ onLayer }}" style="display:flex">
+        <button data-layer="err" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 4px;cursor:pointer">splat error · peak distance</button>
+      </div>
+      <div onInput="{{ onLayerSlide }}" style="display:flex">
+        <label style="display:flex;align-items:center;gap:8px;width:100%;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5c6f8a">vector<input type="range" data-k="vec" min="20" max="300" step="5" defaultValue="100" style="flex:1;accent-color:#4fc3f7"><b data-out="vec" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4fc3f7;min-width:30px;text-align:right">1.00</b></label>
+      </div>
+      <div ref="{{ hErr }}" style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#4a5b73;line-height:1.5">error layer off</div>
+      <div style="font-size:9px;color:#4a5b73;line-height:1.45">error ≈ ⅛·κ·r² — the sagitta between a splat of footprint r and the curved surface it approximates. cold = faithful, hot = the Gaussian cannot follow the surface.</div>
+    </div>
+
+    <div ref="{{ camRef }}" onClick="{{ onCam }}" style="position:absolute;right:26px;top:24px;pointer-events:auto;display:flex;gap:6px">
+      <button data-cam="orbit" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#ce93d8;background:rgba(206,147,216,.14);border:1px solid rgba(206,147,216,.6);border-radius:999px;padding:8px 16px;cursor:pointer">orbit</button>
+      <button data-cam="fly" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a;background:rgba(13,18,32,.7);border:1px solid #22314e;border-radius:999px;padding:8px 16px;cursor:pointer">fly inside</button>
+      <button data-cam="chase" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a;background:rgba(13,18,32,.7);border:1px solid #22314e;border-radius:999px;padding:8px 16px;cursor:pointer">chase</button>
+    </div>
+
+    <div ref="{{ modeRef }}" onClick="{{ onMode }}" style="position:absolute;right:26px;top:74px;pointer-events:auto;display:flex;gap:6px">
+      <button data-mode="surface" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#4fc3f7;background:rgba(79,195,247,.12);border:1px solid #4fc3f788;border-radius:999px;padding:7px 14px;cursor:pointer">surface</button>
+      <button data-mode="splats" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a;background:rgba(13,18,32,.7);border:1px solid #22314e;border-radius:999px;padding:7px 14px;cursor:pointer">splats</button>
+      <button data-mode="wire" style="font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#5c6f8a;background:rgba(13,18,32,.7);border:1px solid #22314e;border-radius:999px;padding:7px 14px;cursor:pointer">lattice</button>
+    </div>
+
+    
+
+    <div ref="{{ slidersRef }}" onInput="{{ onSlide }}" style="position:absolute;right:26px;top:120px;bottom:214px;pointer-events:auto;width:244px;max-height:420px;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:7px;background:rgba(6,10,18,.82);border:1px solid #22314e;border-radius:12px;padding:12px 13px">
+      <div title="what the parametrization does to the edit domain" style="font-size:9px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#6d5a8a;margin-bottom:5px">topology · how the chart behaves</div>
+        <div ref="{{ shapeRef }}" onClick="{{ onShape }}" style="pointer-events:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(52px,1fr));gap:5px;width:100%">
+          <button data-shape="knot" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">knot</button>
+          <button data-shape="torus" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">torus</button>
+          <button data-shape="sphere" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">sphere</button>
+          <button data-shape="vase" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">vase</button>
+          <button data-shape="mobius" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">möbius</button>
+        </div>
+        <div title="spline-backed scans: re-segment, retexture and reshape after reconstruction" style="pointer-events:auto;font-size:9px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#a8762a;margin:10px 0 5px">reconstruction subjects · editing after the fit</div>
+        <div ref="{{ shapeRef2 }}" onClick="{{ onShape }}" style="pointer-events:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+          <button data-shape="figurine" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">figurine</button>
+          <button data-shape="house" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">house</button>
+          <button data-shape="bowl" style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:7px 4px;cursor:pointer;min-width:0;overflow:hidden">bowl</button>
+        </div>
+        
+      
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">p<input type="range" data-k="p" min="1" max="9" step="1" defaultValue="2" style="flex:1"><b data-out="p" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ce93d8;min-width:22px;text-align:right">2</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">q<input type="range" data-k="q" min="1" max="11" step="1" defaultValue="3" style="flex:1"><b data-out="q" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ce93d8;min-width:22px;text-align:right">3</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">tube<input type="range" data-k="rad" min="6" max="46" step="1" defaultValue="17" style="flex:1;accent-color:#4fc3f7"><b data-out="rad" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4fc3f7;min-width:22px;text-align:right">1.7</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">tess<input type="range" data-k="tess" min="80" max="900" step="20" defaultValue="420" style="flex:1;accent-color:#4fc3f7"><b data-out="tess" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4fc3f7;min-width:22px;text-align:right">420</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">glow<input type="range" data-k="glow" min="0" max="30" step="1" defaultValue="14" style="flex:1"><b data-out="glow" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ce93d8;min-width:22px;text-align:right">1.4</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">brush<input type="range" data-k="brush" min="4" max="40" step="2" defaultValue="14" style="flex:1"><b data-out="brush" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ce93d8;min-width:22px;text-align:right">14</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">cover<input type="range" data-k="cover" min="60" max="220" step="5" defaultValue="105" style="flex:1;accent-color:#69f0ae"><b data-out="cover" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:34px;text-align:right">1.05×</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">splats<input type="range" data-k="budget" min="2" max="140" step="2" defaultValue="46" style="flex:1;accent-color:#69f0ae"><b data-out="budget" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#69f0ae;min-width:30px;text-align:right">46k</b></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a">seg τ<input type="range" data-k="segthr" min="10" max="140" step="2" defaultValue="54" style="flex:1;accent-color:#ffa726"><b data-out="segthr" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffa726;min-width:30px;text-align:right">54</b></label>
+      <div style="font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a;margin-top:2px">splat footprint from NN distance</div>
+      <div onClick="{{ onMetric }}" style="display:flex;gap:5px">
+        <button data-metric="geodesic" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#04070d;background:#69f0ae;border:1px solid #69f0ae;border-radius:6px;padding:6px 4px;cursor:pointer">geodesic</button>
+        <button data-metric="euclid" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">euclidean</button>
+      </div>
+      
+      <div style="font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#5c6f8a;margin-top:2px">density field · paint the budget</div>
+      <div ref="{{ densRef }}" onClick="{{ onTool }}" style="display:flex;gap:5px">
+        <button data-tool="dens+" title="concentrate splat budget here" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">dens +</button>
+        <button data-tool="dens-" title="thin splat budget here" style="flex:1;font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:6px 4px;cursor:pointer">dens −</button>
+      </div>
+      <button ref="{{ edit3dRef }}" onClick="{{ onEdit3d }}" title="paint / segment directly on the object; the edit lands in the chart" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:6px;padding:7px 4px;cursor:pointer;margin-top:2px">direct 3d editing · off</button>
+      <div style="margin-top:4px;pointer-events:auto;display:flex;flex-direction:column;gap:7px;background:rgba(6,10,18,.94);border:1px solid rgba(206,147,216,.42);border-radius:12px;padding:10px 11px">
+      <div style="font-size:9px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#ce93d8">objects · decomposition</div>
+      <sc-if value="{{ hasRegions }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ onRegion }}" style="display:flex;flex-direction:column;gap:4px;max-height:154px;overflow-y:auto">
+          <sc-for list="{{ regions }}" as="r" hint-placeholder-count="2">
+            <div data-rid="{{ r.id }}" data-act="sel" style="display:flex;align-items:center;gap:6px;padding:4px 5px;border-radius:6px;cursor:pointer;background:{{ r.selBg }};opacity:{{ r.dim }}">
+              <button data-rid="{{ r.id }}" data-act="col" title="recolour" style="width:13px;height:13px;flex:none;border-radius:4px;border:1px solid #22314e;cursor:pointer;background:{{ r.hex }}"></button>
+              <span style="flex:1;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#8fa4c0">{{ r.name }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#4a5b73">{{ r.pct }}</span>
+              <button data-rid="{{ r.id }}" data-act="iso" title="isolate" style="font-family:inherit;font-size:8.5px;font-weight:800;letter-spacing:.08em;background:none;border:none;cursor:pointer;padding:0 2px;color:{{ r.isoOn }}">ISO</button>
+              <button data-rid="{{ r.id }}" data-act="vis" title="hide / show" style="font-family:inherit;font-size:10px;line-height:1;color:#8fa4c0;background:none;border:none;cursor:pointer;padding:0 2px">{{ r.eye }}</button>
+              <button data-rid="{{ r.id }}" data-act="del" title="dissolve" style="font-family:inherit;font-size:11px;line-height:1;color:#5c6f8a;background:none;border:none;cursor:pointer;padding:0 2px">×</button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <button onClick="{{ onNewRegion }}" style="font-family:inherit;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ce93d8;background:rgba(206,147,216,.1);border:1px solid rgba(206,147,216,.42);border-radius:7px;padding:7px 8px;cursor:pointer">new object · arm seg+</button>
+      <div style="font-size:9px;color:#4a5b73;line-height:1.45">each colour flood becomes an addressable object: isolate, hide or recolour it — hidden objects give their splat budget back to the rest.</div>
+    </div>
+    </div>
+
+    <div ref="{{ barRef }}" style="position:absolute;left:0;right:0;bottom:0;pointer-events:auto;padding:14px 26px 18px;background:linear-gradient(to top,rgba(4,7,13,.96) 30%,rgba(4,7,13,0))">
+      <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:5px;margin-bottom:6px;margin-left:auto;width:fit-content">
+        <button ref="{{ cageBtnRef }}" onClick="{{ onCage }}" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#04070d;background:#ffa726;border:1px solid #ffa726;border-radius:7px;padding:6px 7px;cursor:pointer">cage</button>
+        <button ref="{{ styleBtnRef }}" onClick="{{ onStyle }}" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">style</button>
+        <button ref="{{ layersBtnRef }}" onClick="{{ onLayers }}" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">layers</button>
+        <button ref="{{ roiBtnRef }}" onClick="{{ onROI }}" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#04070d;background:#69f0ae;border:1px solid #69f0ae;border-radius:7px;padding:6px 7px;cursor:pointer">roi</button>
+        <button onClick="{{ onReset }}" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">reset chart</button>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:7px">
+        <div ref="{{ hAxes }}" style="flex:0 1 auto;min-width:0;font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#6d5a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">chart strip · u = arclength, v = around the tube</div>
+        <div ref="{{ toolRef }}" onClick="{{ onTool }}" style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px">
+          <button data-tool="seg+" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#04070d;background:#ce93d8;border:1px solid #ce93d8;border-radius:7px;padding:6px 7px;cursor:pointer">seg+</button>
+          <button data-tool="seg-" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">seg−</button>
+          <button data-tool="paint" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">paint</button>
+          <button data-tool="glow" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">emit</button>
+          <button data-tool="swell" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">swell</button>
+          <button data-tool="pinch" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">pinch</button>
+          <button data-tool="cage" style="font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:7px;padding:6px 7px;cursor:pointer">move cp</button>
+          
+          
+          
+          
+          
+          
+        </div>
+      </div>
+      <canvas ref="{{ uvRef }}" style="width:100%;height:104px;display:block;border:1px solid #22314e;border-radius:8px;background:#04070d;cursor:crosshair;touch-action:none"></canvas>
+      <div onClick="{{ onSwatch }}" style="display:flex;gap:6px;margin-top:8px;align-items:center">
+        <button data-col="#155fd4" style="width:34px;height:16px;border-radius:4px;border:1px solid #ce93d8;background:#155fd4;cursor:pointer"></button>
+        <button data-col="#ce93d8" style="width:34px;height:16px;border-radius:4px;border:1px solid #22314e;background:#ce93d8;cursor:pointer"></button>
+        <button data-col="#69f0ae" style="width:34px;height:16px;border-radius:4px;border:1px solid #22314e;background:#69f0ae;cursor:pointer"></button>
+        <button data-col="#ffa726" style="width:34px;height:16px;border-radius:4px;border:1px solid #22314e;background:#ffa726;cursor:pointer"></button>
+        <button data-col="#0d1220" style="width:34px;height:16px;border-radius:4px;border:1px solid #22314e;background:#0d1220;cursor:pointer"></button>
+        <span style="font-size:9.5px;color:#4a5b73;margin-left:10px;line-height:1.5">Every surface here carries ONE chart, so an edit at (u,v) lands at exactly one place in 3D — and swell/pinch move geometry along that same parametrization.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;shape&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;knot&quot;,&quot;torus&quot;,&quot;sphere&quot;,&quot;vase&quot;,&quot;mobius&quot;,&quot;figurine&quot;,&quot;house&quot;,&quot;bowl&quot;],&quot;default&quot;:&quot;bowl&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;p&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:5,&quot;min&quot;:1,&quot;max&quot;:9,&quot;tsType&quot;:&quot;number&quot;},&quot;q&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:3,&quot;min&quot;:1,&quot;max&quot;:11,&quot;tsType&quot;:&quot;number&quot;},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;surface&quot;,&quot;splats&quot;,&quot;wire&quot;],&quot;default&quot;:&quot;surface&quot;,&quot;tsType&quot;:&quot;'surface'|'splats'|'wire'&quot;},&quot;camera&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;orbit&quot;,&quot;fly&quot;,&quot;chase&quot;],&quot;default&quot;:&quot;fly&quot;,&quot;tsType&quot;:&quot;'orbit'|'fly'|'chase'&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef(); mainRef = React.createRef(); chromeRef = React.createRef();
+  uvRef = React.createRef(); toolRef = React.createRef(); modeRef = React.createRef();
+  camRef = React.createRef(); shapeRef = React.createRef(); hProbe = React.createRef();
+  hAxes = React.createRef(); hArcRow = React.createRef(); shapeRef2 = React.createRef();
+  slidersRef = React.createRef(); cpPanelRef = React.createRef(); cpTitleRef = React.createRef();
+  cageBtnRef = React.createRef(); styleRef = React.createRef(); styleBtnRef = React.createRef();
+  hStyle = React.createRef(); fileRef = React.createRef();
+  layersRef = React.createRef(); layersBtnRef = React.createRef(); hErr = React.createRef();
+  roiBtnRef = React.createRef(); hRoi = React.createRef();
+  hPQ = React.createRef(); hSplats = React.createRef(); hTess = React.createRef();
+  hMask = React.createRef(); hArc = React.createRef(); hRead = React.createRef();
+  hParam = React.createRef(); densRef = React.createRef(); edit3dRef = React.createRef();
+  barRef = React.createRef(); leftColRef = React.createRef();
+
+  renderVals(){
+    return {
+      rootRef:this.rootRef, mainRef:this.mainRef, chromeRef:this.chromeRef, uvRef:this.uvRef,
+      toolRef:this.toolRef, modeRef:this.modeRef, camRef:this.camRef,
+      shapeRef:this.shapeRef, shapeRef2:this.shapeRef2, hProbe:this.hProbe, hAxes:this.hAxes, hArcRow:this.hArcRow, onShape:e=>this.pickShape(e),
+      hPQ:this.hPQ, hSplats:this.hSplats, hTess:this.hTess, hMask:this.hMask, hArc:this.hArc, hRead:this.hRead, hParam:this.hParam, densRef:this.densRef, edit3dRef:this.edit3dRef, barRef:this.barRef, leftColRef:this.leftColRef, onEdit3d:()=>this.toggleEdit3d(),
+      onTool:e=>this.pickTool(e), onMode:e=>this.pickMode(e), onCam:e=>this.pickCam(e),
+      onSlide:e=>this.slide(e), onSwatch:e=>this.pickSwatch(e), onReset:()=>this.resetChart(),
+      regions:this.regionList(), hasRegions:(this.regions||[]).length>0,
+      onRegion:e=>this.regionAct(e), onNewRegion:()=>this.newRegion(false),
+      slidersRef:this.slidersRef, cpPanelRef:this.cpPanelRef, cpTitleRef:this.cpTitleRef,
+      cageBtnRef:this.cageBtnRef, onCage:()=>this.toggleCage(),
+      onCP:e=>this.cpInput(e), onCPCol:e=>this.cpColor(e),
+      onCPReset:()=>this.cpReset(), onCPClose:()=>this.closeCP(),
+      styleRef:this.styleRef, styleBtnRef:this.styleBtnRef, hStyle:this.hStyle, fileRef:this.fileRef,
+      onStyle:()=>this.toggleStyle(), onPat:e=>this.pickPattern(e), onPatSlide:e=>this.styleInput(e),
+      onPatMode:e=>this.styleMode(e), onFile:e=>this.loadUserImage(e),
+      onPick:()=>{ if(this.fileRef.current) this.fileRef.current.click(); },
+      layersRef:this.layersRef, layersBtnRef:this.layersBtnRef, hErr:this.hErr,
+      onLayers:()=>this.toggleLayers(), onLayer:e=>this.toggleLayer(e), onLayerSlide:e=>this.layerSlide(e),
+      onMetric:e=>this.pickMetric(e), roiBtnRef:this.roiBtnRef, hRoi:this.hRoi, onROI:()=>this.toggleROI()
+    };
+  }
+
+  componentDidMount(){ this.boot(); }
+  componentWillUnmount(){ this.dead=true; if(this.ro) this.ro.disconnect(); }
+  boot(){
+    if(!window.THREE){ this.tries=(this.tries||0)+1; if(this.tries<300) setTimeout(()=>this.boot(),50); return; }
+    try{ this.init(); }catch(err){ console.error('knot init failed', err); }
+  }
+
+  makeCurve(){
+    const p=this.st.p, q=this.st.q, R=24;
+    const c=new THREE.Curve();
+    c.getPoint=function(t,opt){
+      const v=opt||new THREE.Vector3(), u=t*Math.PI*2*p, cu=Math.cos(u), su=Math.sin(u);
+      const qu=q*u/p, cs=2+Math.cos(qu);
+      return v.set(R*.5*cs*cu, R*.5*Math.sin(qu), R*.5*cs*su);
+    };
+    return c;
+  }
+
+  // ── shape library: every surface is ONE (u,v) chart, so all chart tools transfer ──
+  shapeFn(name){
+    const T=Math.PI*2;
+    const nz=(a,b)=>Math.sin(a*3.1+Math.cos(b*2.3)*2.1)*Math.sin(b*4.7+a*1.7);
+    const sq=(x,e)=>Math.sign(x)*Math.pow(Math.abs(x),e);
+    const F={
+      torus:(u,v,o)=>{ const a=u*T,b=v*T,r=14+5*Math.cos(b);
+        o.set(r*Math.cos(a), 5*Math.sin(b), r*Math.sin(a)); },
+      sphere:(u,v,o)=>{ const a=u*T,b=v*Math.PI,r=15;
+        o.set(r*Math.sin(b)*Math.cos(a), r*Math.cos(b), r*Math.sin(b)*Math.sin(a)); },
+      vase:(u,v,o)=>{ const a=u*T;
+        const r=5.4+3.6*Math.sin(v*Math.PI*2.15)+2.6*v+1.6*v*Math.sin(v*Math.PI*6);
+        o.set(r*Math.cos(a),(v-.5)*30, r*Math.sin(a)); },
+      mobius:(u,v,o)=>{ const a=u*T, w=(v-.5)*9, h=a/2, R=14;
+        o.set((R+w*Math.cos(h))*Math.cos(a), w*Math.sin(h), (R+w*Math.cos(h))*Math.sin(a)); },
+      figurine:(u,v,o)=>{ const a=u*T, b=v*Math.PI;
+        const lobe=1+.24*Math.sin(b*3.1)+.13*nz(a*2.2,b*3.4)+.07*nz(a*5.1,b*6.2);
+        const r=13.5*lobe*(.72+.42*Math.sin(b));
+        o.set(r*Math.sin(b)*Math.cos(a), 16*Math.cos(b)*lobe*.92, r*Math.sin(b)*Math.sin(a)); },
+      house:(u,v,o)=>{ const a=u*T, b=v*Math.PI, e1=.3, e2=.3;
+        let x=sq(Math.sin(b),e1)*sq(Math.cos(a),e2)*13,
+            y=sq(Math.cos(b),e1)*11,
+            z=sq(Math.sin(b),e1)*sq(Math.sin(a),e2)*9.5;
+        if(v<.24){ const t=1-v/.24; y+=t*8; x*=1-t*.6; z*=1-t*.6; }
+        o.set(x,y,z); },
+      bowl:(u,v,o)=>{ const a=u*T;
+        const r=13*Math.sin(Math.min(1,v*1.05)*Math.PI*.62)+1.4;
+        o.set(r*Math.cos(a), -9+16*Math.pow(v,1.55), r*Math.sin(a)); }
+    };
+    return F[name];
+  }
+
+  paramGeo(name){
+    const f=this.shapeFn(name), NU=Math.max(64,Math.min(520,this.st.tess)), NV=54;
+    const nu=NU+1, nv=NV+1, pos=new Float32Array(nu*nv*3), uvs=new Float32Array(nu*nv*2), idx=[];
+    const o=new THREE.Vector3();
+    for(let i=0;i<nu;i++){ const u=i/NU;
+      for(let j=0;j<nv;j++){ const v=j/NV, k=i*nv+j;
+        f(u,v,o);
+        pos[k*3]=o.x; pos[k*3+1]=o.y; pos[k*3+2]=o.z;
+        uvs[k*2]=u; uvs[k*2+1]=v; } }
+    for(let i=0;i<NU;i++) for(let j=0;j<NV;j++){ const a=i*nv+j; idx.push(a,a+nv,a+1,a+1,a+nv,a+nv+1); }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    g.setAttribute('uv',new THREE.BufferAttribute(uvs,2));
+    g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
+    this.gridA=nu; this.gridB=nv;
+    return g;
+  }
+
+  // ── UV ↔ world probe: the chart point and the world point are the same sample ──
+  probeAt(u,v){
+    const g=this.geo, p=g.attributes.position;
+    const i=Math.min(this.gridA-1,Math.max(0,Math.round(u*(this.gridA-1))));
+    const j=Math.min(this.gridB-1,Math.max(0,Math.round(v*(this.gridB-1))));
+    const k=i*this.gridB+j;
+    if(!this.probe){
+      this.probe=new THREE.Mesh(new THREE.SphereGeometry(.85,18,12),
+        new THREE.MeshBasicMaterial({color:0xffa726,depthTest:false}));
+      this.probe.renderOrder=999;
+      this.probe.name='uvProbe'; this.scene.add(this.probe);
+      this.probeRing=new THREE.Mesh(new THREE.RingGeometry(1.5,2,30),
+        new THREE.MeshBasicMaterial({color:0xffa726,transparent:true,opacity:.55,side:THREE.DoubleSide,depthTest:false}));
+      this.probeRing.renderOrder=999;
+      this.probeRing.name='uvProbeRing'; this.scene.add(this.probeRing);
+    }
+    const x=p.array[k*3], y=p.array[k*3+1], z=p.array[k*3+2];
+    this.probe.visible=this.probeRing.visible=true;
+    this.probe.position.set(x,y,z);
+    this.probeRing.position.set(x,y,z);
+    this.probeRing.lookAt(this.cam.position);
+    if(this.hProbe.current) this.hProbe.current.textContent =
+      'u '+u.toFixed(3)+' · v '+v.toFixed(3)+'  →  x '+x.toFixed(1)+'  y '+y.toFixed(1)+'  z '+z.toFixed(1);
+  }
+  probeOff(){
+    if(this.probe){ this.probe.visible=false; this.probeRing.visible=false; }
+    if(this.hProbe.current) this.hProbe.current.textContent='hover the chart strip → the same point is pinned in 3D';
+  }
+
+  // ── chart texture: base albedo drawn procedurally, then user strokes ──
+  drawBase(){
+    const W=this.CW, H=this.CH, c=this.albCtx, sh=this.st.shape;
+    this._sd=99173;
+    const R=()=>this.rnd();
+    c.globalAlpha=1; c.setTransform(1,0,0,1,0,0);
+    c.clearRect(0,0,W,H);
+    if(sh==='figurine'){
+      // cast-bronze figurine: warm metal with verdigris patina in the crevices
+      const g=c.createLinearGradient(0,0,0,H);
+      g.addColorStop(0,'#5d4a2e'); g.addColorStop(.45,'#8a6a3a'); g.addColorStop(.78,'#6d5330'); g.addColorStop(1,'#3f3120');
+      c.fillStyle=g; c.fillRect(0,0,W,H);
+      for(let i=0;i<300;i++){
+        const x=R()*W, y=R()*H, rr=6+R()*34;
+        c.fillStyle='rgba('+(60+R()*40|0)+','+(110+R()*50|0)+','+(90+R()*40|0)+','+(.05+R()*.16).toFixed(3)+')';
+        c.beginPath(); c.ellipse(x,y,rr,rr*(.4+R()*.7),R()*3.14,0,6.2832); c.fill();
+      }
+      for(let i=0;i<520;i++){
+        const x=R()*W, y=R()*H;
+        c.fillStyle='rgba(28,20,12,'+(.06+R()*.18).toFixed(3)+')';
+        c.beginPath(); c.ellipse(x,y,1+R()*4,1+R()*9,R()*3.14,0,6.2832); c.fill();
+      }
+      for(let i=0;i<130;i++){
+        const x=R()*W, y=R()*H;
+        c.fillStyle='rgba(255,226,160,'+(.05+R()*.14).toFixed(3)+')';
+        c.beginPath(); c.arc(x,y,1+R()*3,0,6.2832); c.fill();
+      }
+    } else if(sh==='house'){
+      // scanned building: roof band (low v), plaster + brick facade, window grid, stone plinth
+      c.fillStyle='#d9cbb2'; c.fillRect(0,0,W,H);
+      const roofH=H*.24;
+      c.fillStyle='#b1502f'; c.fillRect(0,0,W,roofH);
+      for(let x=0;x<W;x+=9){
+        c.fillStyle='rgba(88,32,18,'+(.18+((x/9)%3)*.06).toFixed(2)+')';
+        c.fillRect(x,0,4,roofH);
+      }
+      for(let y=0;y<roofH;y+=7){ c.fillStyle='rgba(255,214,180,.10)'; c.fillRect(0,y,W,1); }
+      c.fillStyle='#6a6459'; c.fillRect(0,H*.9,W,H*.1);
+      for(let i=0;i<170;i++){       // brick patches where the plaster has fallen away
+        const x=R()*W, y=roofH+R()*(H*.62), bw=14+R()*38, bh=8+R()*16;
+        c.fillStyle='rgba(150,84,60,'+(.25+R()*.4).toFixed(2)+')';
+        c.fillRect(x,y,bw,bh);
+        for(let by=0;by<bh;by+=4){ c.fillStyle='rgba(90,50,36,.35)'; c.fillRect(x,y+by,bw,1); }
+      }
+      const bays=16;
+      for(let b=0;b<bays;b++){
+        for(let r=0;r<2;r++){
+          const wx=(b+.5)*W/bays-10, wy=roofH+12+r*(H*.30), ww=20, wh=H*.20;
+          c.fillStyle='#26303e'; c.fillRect(wx,wy,ww,wh);
+          if(R()>.55){ c.fillStyle='rgba(255,205,130,'+(.35+R()*.5).toFixed(2)+')'; c.fillRect(wx+2,wy+2,ww-4,wh-4); }
+          c.strokeStyle='rgba(245,240,230,.55)'; c.lineWidth=1.4; c.strokeRect(wx,wy,ww,wh);
+          c.beginPath(); c.moveTo(wx+ww/2,wy); c.lineTo(wx+ww/2,wy+wh); c.stroke();
+        }
+      }
+      for(let i=0;i<400;i++){ const x=R()*W,y=R()*H;
+        c.fillStyle='rgba(60,52,40,'+(.03+R()*.07).toFixed(3)+')';
+        c.beginPath(); c.arc(x,y,1+R()*3,0,6.2832); c.fill(); }
+    } else if(sh==='bowl'){
+      // glazed ceramic bowl: cobalt floral band, cream glaze, darker interior toward the base
+      const g=c.createLinearGradient(0,H,0,0);
+      g.addColorStop(0,'#b9b1a2'); g.addColorStop(.35,'#e7e2d6'); g.addColorStop(.86,'#f4f1e9'); g.addColorStop(1,'#cfc7b6');
+      c.fillStyle=g; c.fillRect(0,0,W,H);
+      c.fillStyle='#1d4e89'; c.fillRect(0,H*.06,W,4);
+      c.fillStyle='rgba(29,78,137,.75)'; c.fillRect(0,H*.15,W,2);
+      for(let i=0;i<26;i++){        // cobalt petals band
+        const cx=(i+.5)*W/26, cy=H*.42;
+        c.strokeStyle='rgba(29,78,137,.8)'; c.lineWidth=2;
+        for(let p=0;p<5;p++){
+          const a=p/5*6.2832;
+          c.beginPath(); c.ellipse(cx+Math.cos(a)*9, cy+Math.sin(a)*9, 7, 4, a, 0, 6.2832); c.stroke();
+        }
+        c.fillStyle='rgba(29,78,137,.55)';
+        c.beginPath(); c.arc(cx,cy,3.4,0,6.2832); c.fill();
+      }
+      for(let i=0;i<18;i++){        // scroll motif near the base
+        const cx=(i+.5)*W/18;
+        c.strokeStyle='rgba(29,78,137,.45)'; c.lineWidth=1.6;
+        c.beginPath(); c.arc(cx,H*.86,10,3.34,6.08); c.stroke();
+      }
+      for(let i=0;i<260;i++){ const x=R()*W,y=R()*H;
+        c.fillStyle='rgba(120,120,130,'+(.02+R()*.06).toFixed(3)+')';
+        c.beginPath(); c.arc(x,y,1+R()*2.6,0,6.2832); c.fill(); }
+    } else {
+      const g=c.createLinearGradient(0,0,W,0);
+      g.addColorStop(0,'#1d3357'); g.addColorStop(.34,'#2a4a78'); g.addColorStop(.62,'#3a2d68'); g.addColorStop(1,'#1d3357');
+      c.fillStyle=g; c.fillRect(0,0,W,H);
+      for(let y=0;y<H;y+=1){
+        const t=y/H, a=.06+.26*Math.pow(Math.sin(t*Math.PI),2);
+        c.fillStyle='rgba(79,195,247,'+a.toFixed(3)+')'; c.fillRect(0,y,W,1);
+      }
+      for(let i=0;i<64;i++){
+        const x=i*W/64, big=(i%8===0);
+        c.fillStyle = big?'rgba(206,147,216,.55)':'rgba(206,147,216,.16)';
+        c.fillRect(x, big?0:H*.34, big?2:1, big?H:H*.32);
+      }
+      for(let i=0;i<2600;i++){
+        const x=R()*W, y=R()*H, r=R()*2.4+.3;
+        c.fillStyle='rgba(105,240,174,'+(R()*.10).toFixed(3)+')';
+        c.beginPath(); c.arc(x,y,r,0,6.2832); c.fill();
+      }
+    }
+    this.renderAlbedo();
+  }
+
+  composite(){
+    const W=this.CW, H=this.CH, c=this.compCtx, m=this.mask;
+    c.drawImage(this.albEff,0,0);
+    if(this.maskTotal()>0){
+      const id=c.getImageData(0,0,W,H), d=id.data;
+      for(let p=0;p<m.length;p++) if(m[p]){ const i=p*4, rc=this.regCol(m[p]);
+        const hid=this.regHidden(m[p]) || (this.isoRegion && m[p]!==this.isoRegion);
+        const k=hid?.16:.6;
+        d[i]=d[i]*(1-k)+rc[0]*k; d[i+1]=d[i+1]*(1-k)+rc[1]*k; d[i+2]=d[i+2]*(1-k)+rc[2]*k; }
+      c.putImageData(id,0,0);
+    }
+    this.compTex.needsUpdate=true;
+    // emissive: mask ∪ emit strokes, composited into emiSrc (the texture source)
+    const e=this.emiCtx2;
+    e.fillStyle='#000'; e.fillRect(0,0,W,H);
+    if(this.maskTotal()>0){
+      const id=e.getImageData(0,0,W,H), d=id.data;
+      for(let p=0;p<m.length;p++) if(m[p]){ const i=p*4; d[i]=190; d[i+1]=120; d[i+2]=210; d[i+3]=255; }
+      e.putImageData(id,0,0);
+    }
+    e.drawImage(this.emit,0,0);
+    this.emiTex.needsUpdate=true;
+    if(this.viewCtx) this.drawView();
+  }
+
+  build(){
+    const st=this.st;
+    let geo;
+    if(st.shape==='knot'){
+      this.curve=this.makeCurve();
+      geo=new THREE.TubeGeometry(this.curve, st.tess, st.rad, 26, true);
+      this.gridA=st.tess+1; this.gridB=27;
+    } else {
+      geo=this.paramGeo(st.shape);
+      const R=(geo.boundingSphere?geo.boundingSphere.radius:16);
+      const c=new THREE.Curve();
+      c.orbitR=R*3.4; c.orbitY=R*.6;
+      c.getPoint=function(t,opt){ const v=opt||new THREE.Vector3(), a=t*Math.PI*2;
+        return v.set(Math.cos(a)*this.orbitR, Math.sin(a*2)*this.orbitY, Math.sin(a)*this.orbitR); };
+      this.curve=c;
+    }
+    this.base = { pos: geo.attributes.position.array.slice(0), nrm: geo.attributes.normal.array.slice(0) };
+    if(this.mesh){ this.scene.remove(this.mesh); this.mesh.geometry.dispose(); }
+    this.geo=geo;
+    this.mesh=new THREE.Mesh(geo,this.mat); this.mesh.name='knotSurface';
+    this.scene.add(this.mesh);
+    if(this.spine){ this.scene.remove(this.spine); this.spine.geometry.dispose(); }
+    const sp=new THREE.BufferGeometry().setFromPoints(this.curve.getPoints(st.tess));
+    this.spine=new THREE.Line(sp,new THREE.LineBasicMaterial({color:0xffa726,transparent:true,opacity:.5}));
+    this.spine.name='spine'; this.scene.add(this.spine);
+    if(this.probe){ this.probe.visible=false; this.probeRing.visible=false; }
+    this.arc = this.curve.getLength();
+    this.applyDisp();
+    this.buildExtras();
+    this.buildSplats();
+    if(this.cageMesh) this.updateCage();
+    if(this.lnN) this.updateInfo();
+    this.applyMode();
+  }
+
+  applyDisp(){
+    const g=this.geo, p=g.attributes.position, n=this.base.nrm, b=this.base.pos, uv=g.attributes.uv;
+    const DW=this.DW, DH=this.DH, dp=this.disp;
+    for(let i=0;i<p.count;i++){
+      const u=uv.getX(i), v=uv.getY(i);
+      const dx=Math.min(DW-1,Math.max(0,Math.round(u*(DW-1)))), dy=Math.min(DH-1,Math.max(0,Math.round((1-v)*(DH-1))));
+      const q=dy*DW+dx;
+      const d=(dp[q]+(this.cpDisp?this.cpDisp[q]:0))*this.st.rad;
+      p.array[i*3]   = b[i*3]   + n[i*3]  *d;
+      p.array[i*3+1] = b[i*3+1] + n[i*3+1]*d;
+      p.array[i*3+2] = b[i*3+2] + n[i*3+2]*d;
+    }
+    p.needsUpdate=true; g.computeVertexNormals();
+    if(this.lnN) this.updateInfo();
+  }
+
+  buildSplats(){
+    const g=this.geo, p=g.attributes.position, uv=g.attributes.uv, W=this.CW, H=this.CH, d=this.albData.data;
+    const A=this.gridA, B=this.gridB, P=p.array, UV=uv.array;
+    const target=Math.max(500,this.st.budget);
+    const w=(this.st.roi && this.win && !this.win.full) ? this.win : null;
+    const iA=w?Math.max(0,Math.floor(w.u0*(A-1))):0, iB=w?Math.min(A-1,Math.ceil(w.u1*(A-1))):A-1;
+    // chart v is canvas-space: geometry rows run the other way
+    const jA=w?Math.max(0,Math.floor((1-w.v1)*(B-1))):0, jB=w?Math.min(B-1,Math.ceil((1-w.v0)*(B-1))):B-1;
+    const iCount=w ? (w.wrap ? ((iB-iA+A)%A) : Math.max(1,iB-iA)) : (A-1);
+    const jCount=Math.max(1,jB-jA);
+    const cells=Math.max(1,iCount*jCount);
+    const S=Math.max(1, Math.round(Math.sqrt(cells/target)));
+    const k=(S===1) ? Math.max(1,Math.min(4,Math.round(Math.sqrt(target/cells)))) : 1;
+    const geoM=(this.st.metric==='geodesic');
+    const at=(i,j)=>(((i%A)+A)%A)*B + Math.max(0,Math.min(B-1,j));
+    const dist=(a,b)=>Math.hypot(P[b*3]-P[a*3],P[b*3+1]-P[a*3+1],P[b*3+2]-P[a*3+2]);
+    const px=[], cx=[], as=[], mul=[], aa=[], ar=[], ap=[], sp=[], errs=[];
+    if(this.st.layers.err){ this.computeCurv();
+      const R=g.boundingSphere?g.boundingSphere.radius:20;
+      this.errRef=Math.max(1e-5, R*.0016); }
+    const o=this._cpo||(this._cpo=[1,1,0,1,0,0,0,0]);
+    let spSum=0;
+    for(let ci=0;ci<iCount;ci+=S){ const i=(iA+ci)%A;
+    for(let j=jA;j<jB;j+=S){
+      const i2=i+S, j2=Math.min(B-1,j+S), a=at(i,j);
+      let du, dv;
+      if(geoM){                                  // along the manifold: sum the fine grid edges
+        du=0; for(let m=i;m<i2;m++) du+=dist(at(m,j),at(m+1,j));
+        dv=0; for(let m=j;m<j2;m++) dv+=dist(at(i,m),at(i,m+1));
+      } else {                                   // straight-line neighbour distance in R³
+        du=dist(a,at(i2,j)); dv=dist(a,at(i,j2));
+      }
+      const b=at(i2,j), c2=at(i,j2), e=at(i2,j2);
+      // local density field: the same budget concentrates where the chart is painted dense
+      const kk=Math.max(1, Math.min(k*3, Math.round(k*Math.sqrt(this.densAt(UV[a*2], 1-UV[a*2+1])))));
+      const spacing=Math.hypot(du,dv)/kk;   // cell diagonal — guarantees corner-to-corner coverage
+      for(let sy=0;sy<kk;sy++) for(let sx=0;sx<kk;sx++){
+        const fu=sx/kk, fv=sy/kk;
+        const uu=UV[a*2]+(UV[b*2]-UV[a*2])*fu, vv=UV[a*2+1]+(UV[c2*2+1]-UV[a*2+1])*fv;
+        const tx=Math.min(W-1,Math.max(0,Math.round(uu*(W-1)))), ty=Math.min(H-1,Math.max(0,Math.round((1-vv)*(H-1))));
+        const tp=ty*W+tx, i4=tp*4, rid=this.mask[tp], mk=rid?1:0;
+        // decomposition: a hidden object, or anything outside the isolated object, owns no splats
+        if(rid && this.regHidden(rid)) continue;
+        if(this.isoRegion && rid!==this.isoRegion) continue;
+        const X=(P[a*3]*(1-fu)+P[b*3]*fu)*(1-fv)+(P[c2*3]*(1-fu)+P[e*3]*fu)*fv;
+        const Y=(P[a*3+1]*(1-fu)+P[b*3+1]*fu)*(1-fv)+(P[c2*3+1]*(1-fu)+P[e*3+1]*fu)*fv;
+        const Z=(P[a*3+2]*(1-fu)+P[b*3+2]*fu)*(1-fv)+(P[c2*3+2]*(1-fu)+P[e*3+2]*fu)*fv;
+        px.push(X,Y,Z);
+        let rr=d[i4]/255*(mk?1:1.06), gg=d[i4+1]/255*1.02, bb=d[i4+2]/255*(mk?1:1.06);
+        if(mk){ const rc=this.regCol(rid); rr=rr*.32+rc[0]/255*.68; gg=gg*.32+rc[1]/255*.68; bb=bb*.32+rc[2]/255*.68; }
+        this.cpSample(uu, 1-vv, o);
+        if(o[7]>0){ const t=Math.min(.8,o[7]*.8); rr=rr*(1-t)+o[4]*t; gg=gg*(1-t)+o[5]*t; bb=bb*(1-t)+o[6]*t; }
+        mul.push(o[1]); aa.push(o[0]); ar.push(o[2]); ap.push(o[3]);
+        sp.push(spacing); spSum+=spacing;
+        if(this.st.layers.err){
+          const kap=this.curv?this.curv[a]:0;
+          const rad=spacing*.707*Math.max(.4,o[1]);
+          const err=.125*kap*rad*rad;
+          errs.push(err);
+          const cc=this.ramp(Math.pow(Math.min(1,err/this.errRef),.7),'err');
+          cx.push(cc[0],cc[1],cc[2]);
+        } else cx.push(rr,gg,bb);
+      }
+    } }
+    this.roiFrac = w ? Math.min(1, cells/((A-1)*(B-1))) : 1;
+    const n=sp.length, ref=n?spSum/n:1;
+    this.spacingRef=ref;
+    for(let q=0;q<n;q++) as.push(sp[q]*mul[q]);   // world footprint = neighbour distance
+    if(this.pts){ this.scene.remove(this.pts); this.pts.geometry.dispose(); }
+    const pg=new THREE.BufferGeometry();
+    pg.setAttribute('position',new THREE.Float32BufferAttribute(px,3));
+    pg.setAttribute('color',new THREE.Float32BufferAttribute(cx,3));
+    pg.setAttribute('aSize',new THREE.Float32BufferAttribute(as,1));
+    pg.setAttribute('aA',new THREE.Float32BufferAttribute(aa,1));
+    pg.setAttribute('aRot',new THREE.Float32BufferAttribute(ar,1));
+    pg.setAttribute('aAsp',new THREE.Float32BufferAttribute(ap,1));
+    this.pts=new THREE.Points(pg,this.splatMat); this.pts.name='splats';
+    this.scene.add(this.pts);
+    this.nSplats=n;
+    // world footprint of one average splat drives the global gain, so budget changes stay covered
+    // √2 covers the cell diagonal, so adjacent Gaussians tile the surface with no voids
+    if(this.splatMat.uniforms) this.splatMat.uniforms.uSize.value=this.st.cover;
+    if(errs.length){ let sm=0, mx=0;
+      for(const e of errs){ sm+=e; if(e>mx) mx=e; }
+      this.errMean=sm/errs.length; this.errMax=mx;
+    } else { this.errMean=this.errMax=0; }
+    this.buildExtraSplats();
+    this.applyMode();
+  }
+
+  // ── density field over the chart: where you paint dense, splats concentrate ──
+  densAt(u,v){
+    if(!this.dens) return 1;
+    const DW=this.DW, DH=this.DH;
+    const x=Math.min(DW-1,Math.max(0,Math.round(u*(DW-1)))), y=Math.min(DH-1,Math.max(0,Math.round(v*(DH-1))));
+    return this.dens[y*DW+x];
+  }
+  densStats(){
+    const d=this.dens; if(!d) return {min:1,max:1,painted:0};
+    let mn=9, mx=0, np=0;
+    for(let i=0;i<d.length;i++){ const v=d[i]; if(v<mn)mn=v; if(v>mx)mx=v; if(Math.abs(v-1)>.02) np++; }
+    return {min:mn,max:mx,painted:np/d.length};
+  }
+
+  applyMode(){
+    const m=this.st.mode;
+    if(this.pts) this.pts.visible=(m==='splats');
+    if(this.extraPts) this.extraPts.visible=(m==='splats');
+    if(this.extras) this.extras.forEach(o=>{ o.visible=(m!=='splats');
+      if(o.material && 'wireframe' in o.material) o.material.wireframe=(m==='wire'); });
+    if(this.mesh){ this.mesh.visible=(m!=='splats');
+      this.mat.wireframe=(m==='wire'); this.mat.needsUpdate=true;
+      if(this.curvMat){ this.curvMat.wireframe=(m==='wire'); this.curvMat.needsUpdate=true; } }
+    if(this.spine) this.spine.visible=(m!=='wire' && this.st.shape==='knot');
+  }
+
+  // ── chart edits ──
+  segFill(px,py,add){
+    const W=this.CW, H=this.CH, d=this.albData.data, start=py*W+px;
+    const i0=start*4, r0=d[i0], g0=d[i0+1], b0=d[i0+2];
+    const thr=this.st.segThr, seen=new Uint8Array(W*H), q=[start]; seen[start]=1; let n=0;
+    const rid = add ? (this.curRegion || this.newRegion(true)) : 0;
+    while(q.length){
+      const p=q.pop(), i=p*4;
+      // perceptually weighted colour distance — segmentation decides on colour
+      const dr=(d[i]-r0)*.9, dg=(d[i+1]-g0)*1.15, db=(d[i+2]-b0)*.75;
+      if(Math.sqrt(dr*dr+dg*dg+db*db)>thr) continue;
+      this.mask[p] = add ? rid : 0;
+      n++;
+      const x=p%W, y=(p-x)/W;
+      const l = x>0?p-1:(p+W-1), r = x<W-1?p+1:(p-W+1); // u wraps: the knot is closed
+      if(!seen[l]){ seen[l]=1; q.push(l); }
+      if(!seen[r]){ seen[r]=1; q.push(r); }
+      if(y>0 && !seen[p-W]){ seen[p-W]=1; q.push(p-W); }
+      if(y<H-1 && !seen[p+W]){ seen[p+W]=1; q.push(p+W); }
+    }
+    this.recount();
+    this.say((add?('object «'+(this.regName(rid))+'» +'):'region −')+n.toLocaleString()+' texels · colour distance ≤ '+this.st.segThr+' · wraps at u = 0 ≡ 1');
+  }
+
+  // ── direct 3d editing: raycast → uv → the same chart the 2d panel writes ──
+  toggleEdit3d(){
+    this.st.edit3d=!this.st.edit3d;
+    const b=this.edit3dRef.current;
+    if(b){ b.textContent='direct 3d editing · '+(this.st.edit3d?'on':'off');
+      b.style.color=this.st.edit3d?'#04070d':'#8fa4c0';
+      b.style.background=this.st.edit3d?'#69f0ae':'rgba(18,27,46,.9)';
+      b.style.borderColor=this.st.edit3d?'#69f0ae':'#22314e'; }
+    this.say(this.st.edit3d
+      ? 'direct 3d editing on — drag on the object and the active tool writes into the chart at that (u,v)'
+      : 'direct 3d editing off — drag orbits the camera again');
+  }
+  pickSurface(ndcV){
+    if(!this.mesh) return null;
+    const wasVis=this.mesh.visible; this.mesh.visible=true;   // splat mode hides the mesh, but it is still the parametrization
+    this.ray.setFromCamera(ndcV, this.cam);
+    const h=this.ray.intersectObject(this.mesh,false)[0];
+    this.mesh.visible=wasVis;
+    if(!h||!h.uv) return null;
+    return [Math.max(0,Math.min(this.CW-1, Math.round(h.uv.x*(this.CW-1)))),
+            Math.max(0,Math.min(this.CH-1, Math.round((1-h.uv.y)*(this.CH-1))))];
+  }
+  edit3dAt(ndcV,first){
+    const p=this.pickSurface(ndcV); if(!p) return false;
+    const t=this.st.tool;
+    if(t==='seg+'||t==='seg-'){ if(!first) return true; this.segFill(p[0],p[1],t==='seg+'); this.composite(); this.buildSplats(); }
+    else if(t==='cage'){ return false; }
+    else { this.stroke(p[0],p[1]); if(this.texDirty) this.renderAlbedo(); this.composite(); }
+    if(this.hProbe.current) this.hProbe.current.textContent='3d edit → chart (u,v) = '+(p[0]/(this.CW-1)).toFixed(3)+', '+(1-p[1]/(this.CH-1)).toFixed(3);
+    return true;
+  }
+
+  // ── surface decomposition: every colour-flood is an addressable object ──
+  REGPAL=[[79,195,247],[206,147,216],[105,240,174],[255,167,38],[255,82,82],[38,198,218]];
+  fitColumns(){
+    const bar=this.barRef.current, L=this.leftColRef.current, R=this.slidersRef.current;
+    if(!bar) return;
+    const h=Math.round(bar.getBoundingClientRect().height)+10;   // the bar owns the bottom; columns end above it
+    if(L) L.style.bottom=h+'px';
+    if(R) R.style.bottom=h+'px';
+  }
+  maskTotal(){ const m=this.mask; if(!m) return 0; let n=0; for(let i=0;i<m.length;i++) if(m[i]) n++; this.maskCount=n; return n; }
+  regOf(id){ return (this.regions||[]).find(r=>r.id===id); }
+  regCol(id){ const r=this.regOf(id); return r?r.col:[206,147,216]; }
+  regHidden(id){ const r=this.regOf(id); return r?!r.vis:false; }
+  regName(id){ const r=this.regOf(id); return r?r.name:'—'; }
+  newRegion(quiet){
+    if(!this.regions) this.regions=[];
+    const id=(this.regions.reduce((m,r)=>Math.max(m,r.id),0))+1;
+    this.regions.push({id, name:'object '+String(id).padStart(2,'0'),
+      col:this.REGPAL[(id-1)%this.REGPAL.length], vis:true, count:0});
+    this.curRegion=id;
+    if(!quiet){ this.forceUpdate(); this.say('new object armed — the next seg+ flood lands in «'+this.regName(id)+'»'); }
+    return id;
+  }
+  recount(){
+    const m=this.mask, c={};
+    for(let p=0;p<m.length;p++) if(m[p]) c[m[p]]=(c[m[p]]||0)+1;
+    (this.regions||[]).forEach(r=>{ r.count=c[r.id]||0; });
+    this.maskCount=Object.values(c).reduce((a,b)=>a+b,0);
+    this.regions=(this.regions||[]).filter(r=>r.count>0 || r.id===this.curRegion);
+    if(this.isoRegion && !this.regOf(this.isoRegion)) this.isoRegion=0;
+    this.forceUpdate();
+  }
+  regionAct(e){
+    const b=e.target.closest('[data-act]'); if(!b) return;
+    const id=+b.dataset.rid, act=b.dataset.act, r=this.regOf(id); if(!r) return;
+    if(act==='vis'){ r.vis=!r.vis; this.say(r.vis?('«'+r.name+'» shown'):('«'+r.name+'» hidden — its splats are dropped, the rest keeps the budget')); }
+    else if(act==='iso'){ this.isoRegion = this.isoRegion===id?0:id;
+      this.say(this.isoRegion?('isolated «'+r.name+'» — everything else is culled from the splat set'):'isolation off'); }
+    else if(act==='col'){ const i=this.REGPAL.findIndex(c=>c===r.col);
+      r.col=this.REGPAL[(i+1)%this.REGPAL.length]; this.say('«'+r.name+'» recoloured'); }
+    else if(act==='sel'){ this.curRegion=id; this.say('«'+r.name+'» is the active object — seg+ floods add to it'); }
+    else if(act==='del'){ const m=this.mask;
+      for(let p=0;p<m.length;p++) if(m[p]===id){ m[p]=0; this.maskCount--; }
+      this.regions=this.regions.filter(x=>x.id!==id);
+      if(this.curRegion===id) this.curRegion=0;
+      if(this.isoRegion===id) this.isoRegion=0;
+      this.say('«'+r.name+'» dissolved back into the surface');
+    }
+    this.forceUpdate(); this.buildSplats(); this.composite();
+  }
+  regionList(){
+    const tot=(this.CW||1024)*(this.CH||128);
+    return (this.regions||[]).map(r=>({ id:r.id, name:r.name,
+      hex:'rgb('+r.col.join(',')+')',
+      pct:(r.count/tot*100).toFixed(1)+'%',
+      eye:r.vis?'●':'○',
+      isoOn:this.isoRegion===r.id?'#ffa726':'#4a5b73',
+      selBg:this.curRegion===r.id?'rgba(206,147,216,.14)':'transparent',
+      dim:r.vis?1:.42 }));
+  }
+
+  stroke(px,py){
+    const t=this.st.tool, R=this.st.brush;
+    if(t==='paint'){
+      const c=this.albCtx, g=c.createRadialGradient(px,py,0,px,py,R);
+      g.addColorStop(0,this.st.col); g.addColorStop(.6,this.st.col); g.addColorStop(1,this.st.col+'00');
+      c.fillStyle=g; c.beginPath(); c.arc(px,py,R,0,6.2832); c.fill();
+      this.texDirty=true;
+    } else if(t==='glow'){
+      const c=this.emiCtx0, g=c.createRadialGradient(px,py,0,px,py,R);
+      g.addColorStop(0,'rgba(206,147,216,.9)'); g.addColorStop(1,'rgba(206,147,216,0)');
+      c.fillStyle=g; c.beginPath(); c.arc(px,py,R,0,6.2832); c.fill();
+      this.emiDirty=true;
+    } else if(t==='dens+'||t==='dens-'){
+      const s=(t==='dens+'?1:-1)*.16, DW=this.DW, DH=this.DH;
+      const cx=px/this.CW*DW, cy=py/this.CH*DH, rr=R/this.CW*DW*1.6;
+      for(let y=Math.max(0,cy-rr|0); y<=Math.min(DH-1,cy+rr|0); y++)
+        for(let x=Math.max(0,cx-rr|0); x<=Math.min(DW-1,cx+rr|0); x++){
+          const dx=x-cx, dy=y-cy, r=Math.sqrt(dx*dx+dy*dy);
+          if(r>rr) continue;
+          const f=Math.cos(r/rr*1.5708);
+          this.dens[y*DW+x]=Math.max(.25,Math.min(4,this.dens[y*DW+x]+s*f*f));
+        }
+      this.densDirty=true;
+    } else {
+      const s=(t==='swell'?1:-1)*.06, DW=this.DW, DH=this.DH;
+      const cx=px/this.CW*DW, cy=py/this.CH*DH, rr=R/this.CW*DW*1.4;
+      for(let y=Math.max(0,cy-rr|0); y<=Math.min(DH-1,cy+rr|0); y++)
+        for(let x=Math.max(0,cx-rr|0); x<=Math.min(DW-1,cx+rr|0); x++){
+          const dx=x-cx, dy=y-cy, r=Math.sqrt(dx*dx+dy*dy);
+          if(r>rr) continue;
+          const f=Math.cos(r/rr*1.5708);
+          this.disp[y*DW+x]=Math.max(-.8,Math.min(1.6,this.disp[y*DW+x]+s*f*f));
+        }
+      this.geoDirty=true;
+    }
+  }
+
+  flush(){
+    if(this.texDirty) this.renderAlbedo();
+    if(this.geoDirty) this.applyDisp();
+    this.composite(); this.buildSplats();
+    this.texDirty=this.emiDirty=this.geoDirty=false;
+  }
+
+  say(t){ if(this.hRead.current) this.hRead.current.textContent=t; }
+  markActive(c,attr,val,on,off){
+    if(!c) return;
+    [...c.children].forEach(b=>{ if(b.tagName!=='BUTTON'||!b.dataset[attr]) return;
+      const hit=b.dataset[attr]===val;
+      b.style.color=hit?on.c:off.c; b.style.background=hit?on.b:off.b; b.style.borderColor=hit?on.bd:off.bd; });
+  }
+
+  pickTool(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.tool) return;
+    this.st.tool=b.dataset.tool;
+    const on={c:'#04070d',b:'#ce93d8',bd:'#ce93d8'}, off={c:'#8fa4c0',b:'rgba(18,27,46,.9)',bd:'#22314e'};
+    this.markActive(this.toolRef.current,'tool',this.st.tool,on,off);
+    // the density tools live in the control column, outside the tool row
+    if(this.densRef && this.densRef.current) this.markActive(this.densRef.current,'tool',this.st.tool,on,off);
+    this.say({'seg+':'click the strip to grow a region — the fill wraps around the closed knot',
+      'seg-':'click a region to drop it from the mask',
+      'paint':'drag to repaint albedo in chart space',
+      'glow':'drag to paint emission — masked regions glow on their own',
+      'swell':'drag to inflate the tube radially along the chart',
+      'pinch':'drag to constrict the tube radially along the chart',
+      'dens+':'drag to raise splat density here — the budget concentrates without changing the surface',
+      'dens-':'drag to thin splat density here — freed budget flows to the dense regions',
+      'cage':'drag a control point across the chart · double-click one to edit its splat parameters'}[this.st.tool]);
+  }
+  pickMode(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.mode=b.dataset.mode;
+    this.markActive(this.modeRef.current,'mode',this.st.mode,
+      {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#5c6f8a',b:'rgba(13,18,32,.7)',bd:'#22314e'});
+    this.applyMode();
+  }
+  markShape(){
+    const off={c:'#8fa4c0',b:'rgba(18,27,46,.9)',bd:'#22314e'};
+    this.markActive(this.shapeRef.current,'shape',this.st.shape,
+      {c:'#04070d',b:'#ce93d8',bd:'#ce93d8'},off);
+    this.markActive(this.shapeRef2.current,'shape',this.st.shape,
+      {c:'#04070d',b:'#ffa726',bd:'#ffa726'},off);
+  }
+  setAxes(){
+    const A={ knot:'u = arclength · v = around the tube',
+      torus:'u = major sweep · v = around the ring',
+      sphere:'u = longitude · v = latitude',
+      vase:'u = sweep · v = profile height',
+      mobius:'u = sweep · v = across the band',
+      figurine:'u = azimuth · v = polar angle',
+      house:'u = azimuth · v = base-to-roof',
+      bowl:'u = sweep · v = base-to-rim' }[this.st.shape];
+    if(this.hAxes.current) this.hAxes.current.textContent='chart strip · '+A;
+  }
+  syncCamBtns(){
+    const c=this.camRef.current; if(!c) return;
+    const knot=(this.st.shape==='knot');
+    [...c.children].forEach(b=>{
+      if(b.dataset.cam!=='fly') return;
+      b.style.opacity = knot ? '1' : '.45';
+      b.title = knot ? '' : 'interior fly-through is defined for the closed knot tube — other surfaces get a close pass';
+    });
+  }
+  pickShape(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.shape) return;
+    this.st.shape=b.dataset.shape;
+    this.markShape();
+    if(this.hPQ.current) this.hPQ.current.textContent =
+      this.st.shape==='knot' ? '⟨'+this.st.p+','+this.st.q+'⟩' : this.st.shape.toUpperCase();
+    this.drawBase(); this.composite();
+    this.build(); this.probeOff(); this.setAxes(); this.syncCamBtns();
+    this.say({knot:'closed tube around a ('+this.st.p+','+this.st.q+') torus knot — chart wraps in u',
+      torus:'torus — chart wraps in both u and v',
+      sphere:'sphere — u is longitude, v is latitude; poles are the chart seams',
+      vase:'lathe surface of revolution — v is the profile, u the sweep',
+      mobius:'Möbius band — one-sided, so the chart closes onto its own flip',
+      figurine:'scanned figurine — segment a limb, retexture it, swell it: post-reconstruction edits on the spline',
+      house:'scanned building — repaint a facade or pull the roof out without re-fitting the scan',
+      bowl:'scanned bowl — open surface: edit the glaze and the rim profile from one chart'}[this.st.shape]);
+  }
+  pickMetric(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.metric) return;
+    this.st.metric=b.dataset.metric;
+    [...b.parentNode.children].forEach(x=>{ if(!x.dataset.metric) return;
+      const on=x.dataset.metric===this.st.metric;
+      x.style.color=on?'#04070d':'#8fa4c0';
+      x.style.background=on?'#69f0ae':'rgba(18,27,46,.9)';
+      x.style.borderColor=on?'#69f0ae':'#22314e'; });
+    if(this.st.mode!=='splats'){ this.st.mode='splats';
+      this.markActive(this.modeRef.current,'mode','splats',
+        {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#5c6f8a',b:'rgba(13,18,32,.7)',bd:'#22314e'}); }
+    this.buildSplats();
+    this.say(this.st.metric==='geodesic'
+      ? 'splat footprints from geodesic neighbour distance — measured along the manifold, so they grow where the surface bends away'
+      : 'splat footprints from euclidean neighbour distance — the straight chord, which under-covers curved regions');
+  }
+  pickCam(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.cam=b.dataset.cam;
+    this.markActive(this.camRef.current,'cam',this.st.cam,
+      {c:'#ce93d8',b:'rgba(206,147,216,.14)',bd:'rgba(206,147,216,.6)'},{c:'#5c6f8a',b:'rgba(13,18,32,.7)',bd:'#22314e'});
+    this.mat.side = this.st.cam==='fly' ? THREE.BackSide : THREE.DoubleSide;
+    this.mat.needsUpdate=true;
+    this.say(this.st.cam==='fly'
+      ? (this.st.shape==='knot' ? 'flying the inside of the tube — the chart wraps past you'
+                                : 'close pass around the subject — the interior fly-through is knot-only')
+      : this.st.cam==='chase' ? 'wide pass, framed on the subject' : 'free orbit');
+  }
+  pickSwatch(e){
+    const b=e.target.closest('button'); if(!b) return;
+    this.st.col=b.dataset.col;
+    [...b.parentNode.children].forEach(x=>{ if(x.tagName==='BUTTON') x.style.borderColor = x===b?'#ce93d8':'#22314e'; });
+    this.st.tool='paint';
+    this.markActive(this.toolRef.current,'tool','paint',
+      {c:'#04070d',b:'#ce93d8',bd:'#ce93d8'},{c:'#8fa4c0',b:'rgba(18,27,46,.9)',bd:'#22314e'});
+  }
+  slide(e){
+    const inp=e.target, k=inp.dataset.k; if(!k) return;
+    const val=+inp.value, out=inp.parentNode.querySelector('[data-out]');
+    if(k==='p'||k==='q'){ this.st[k]=val; out.textContent=val;
+      if(this.hPQ.current) this.hPQ.current.textContent='⟨'+this.st.p+','+this.st.q+'⟩';
+      this.build(); this.say('rebuilt as the ('+this.st.p+','+this.st.q+') torus knot'); }
+    else if(k==='rad'){ this.st.rad=val/10; out.textContent=(val/10).toFixed(1); this.build(); }
+    else if(k==='tess'){ this.st.tess=val; out.textContent=val; this.build(); }
+    else if(k==='glow'){ this.st.glowV=val/10; out.textContent=(val/10).toFixed(1);
+      this.mat.emissiveIntensity=this.st.glowV; }
+    else if(k==='brush'){ this.st.brush=val; out.textContent=val; }
+    else if(k==='budget'){ this.st.budget=val*1000; out.textContent=val+'k'; this.buildSplats(); }
+    else if(k==='segthr'){ this.st.segThr=val; out.textContent=val; }
+    else if(k==='cover'){ this.st.cover=val/100; out.textContent=(val/100).toFixed(2)+'×';
+      if(this.splatMat.uniforms) this.splatMat.uniforms.uSize.value=this.st.cover; }
+  }
+  resetChart(){
+    this.mask.fill(0); this.maskCount=0; this.disp.fill(0); this.dens.fill(1);
+    this.regions=[]; this.curRegion=0; this.isoRegion=0; this.forceUpdate();
+    this.emiCtx0.clearRect(0,0,this.CW,this.CH);
+    this.initCPs(); this.closeCP();
+    this.drawBase(); this.applyDisp(); this.composite(); this.buildSplats(); this.updateCage();
+    this.say('chart reset — albedo, emission, mask and radial field cleared');
+  }
+
+  // ── sparse control-point lattice: one cage shared by the chart and the 3D surface ──
+  initCPs(){
+    const NU=this.CPU, NV=this.CPV;
+    this.rx0=.9/NU; this.ry0=.9/NV;
+    this.cps=[];
+    for(let j=0;j<NV;j++) for(let i=0;i<NU;i++)
+      this.cps.push({ u:(i+.5)/NU, v:(j+.5)/NV, w:0, rx:this.rx0, ry:this.ry0, rot:0, op:1, size:1, col:null });
+    this.selCP=-1;
+    this.rasterCP();
+  }
+  rasterCP(){
+    const DW=this.DW, DH=this.DH, n=DW*DH;
+    if(!this.cpW){ this.cpDisp=new Float32Array(n); this.cpW=new Float32Array(n);
+      this.cpA=new Float32Array(n); this.cpS=new Float32Array(n);
+      this.cpRot=new Float32Array(n); this.cpAsp=new Float32Array(n); this.cpCol=new Float32Array(n*3); }
+    this.cpDisp.fill(0); this.cpW.fill(0); this.cpA.fill(0); this.cpS.fill(0);
+    this.cpRot.fill(0); this.cpAsp.fill(0); this.cpCol.fill(0);
+    for(const c of this.cps){
+      const rx=Math.max(.006,c.rx), ry=Math.max(.006,c.ry);
+      const cs=Math.cos(c.rot), sn=Math.sin(c.rot);
+      const asp=(rx/ry)/(this.rx0/this.ry0);
+      const sX=Math.ceil(2.2*Math.max(rx,ry)*DW), sY=Math.ceil(2.2*Math.max(rx,ry)*DH);
+      const cx=c.u*DW, cy=c.v*DH;
+      for(let y=Math.round(cy-sY); y<=Math.round(cy+sY); y++){
+        if(y<0||y>=DH) continue;
+        for(let xx=Math.round(cx-sX); xx<=Math.round(cx+sX); xx++){
+          const du=(xx/DW)-c.u, dv=(y/DH)-c.v;
+          const a=du*cs+dv*sn, b=-du*sn+dv*cs;
+          const g=Math.exp(-2.0*((a*a)/(rx*rx)+(b*b)/(ry*ry)));
+          if(g<.004) continue;
+          const x=((xx%DW)+DW)%DW, p=y*DW+x;
+          this.cpDisp[p]+=c.w*g; this.cpW[p]+=g;
+          this.cpA[p]+=c.op*g; this.cpS[p]+=c.size*g;
+          this.cpRot[p]+=c.rot*g; this.cpAsp[p]+=asp*g;
+          if(c.col){ this.cpCol[p*3]+=c.col[0]*g; this.cpCol[p*3+1]+=c.col[1]*g; this.cpCol[p*3+2]+=c.col[2]*g; }
+        }
+      }
+    }
+  }
+  cpSample(u,v,o){
+    const DW=this.DW, DH=this.DH;
+    const x=Math.min(DW-1,Math.max(0,Math.round(u*(DW-1)))), y=Math.min(DH-1,Math.max(0,Math.round(v*(DH-1))));
+    const p=y*DW+x, w=this.cpW[p];
+    if(w<=1e-4){ o[0]=1; o[1]=1; o[2]=0; o[3]=1; o[7]=0; return o; }
+    o[0]=this.cpA[p]/w; o[1]=this.cpS[p]/w; o[2]=this.cpRot[p]/w; o[3]=this.cpAsp[p]/w;
+    o[4]=this.cpCol[p*3]/w; o[5]=this.cpCol[p*3+1]/w; o[6]=this.cpCol[p*3+2]/w;
+    o[7]=(o[4]+o[5]+o[6])>0.004 ? Math.min(1,w) : 0;
+    return o;
+  }
+  cpFrame(c){
+    const g=this.geo, P=g.attributes.position.array, N=g.attributes.normal.array, A=this.gridA, B=this.gridB;
+    const i=Math.min(A-1,Math.max(0,Math.round(c.u*(A-1))));
+    const j=Math.min(B-1,Math.max(0,Math.round((1-c.v)*(B-1))));
+    const k=i*B+j, k1=Math.min(A-1,i+1)*B+j, k2=i*B+Math.min(B-1,j+1);
+    const p=new THREE.Vector3(P[k*3],P[k*3+1],P[k*3+2]);
+    const n=new THREE.Vector3(N[k*3],N[k*3+1],N[k*3+2]);
+    if(n.lengthSq()<1e-8) n.set(0,1,0); else n.normalize();
+    const t1=new THREE.Vector3(P[k1*3]-p.x,P[k1*3+1]-p.y,P[k1*3+2]-p.z);
+    if(t1.lengthSq()<1e-8) t1.set(P[k2*3]-p.x,P[k2*3+1]-p.y,P[k2*3+2]-p.z);
+    if(t1.lengthSq()<1e-8) t1.set(1,0,0);
+    t1.normalize();
+    const t2=new THREE.Vector3().crossVectors(n,t1).normalize();
+    return {p,t1,t2,n};
+  }
+  buildCage(){
+    if(this.cageMesh){ this.scene.remove(this.cageMesh); this.cageMesh.geometry.dispose(); }
+    if(this.cageLines){ this.scene.remove(this.cageLines); this.cageLines.geometry.dispose(); }
+    const gm=new THREE.SphereGeometry(1,14,10);
+    this.cageMesh=new THREE.InstancedMesh(gm,
+      new THREE.MeshBasicMaterial({transparent:true,opacity:.4,depthWrite:false}), this.cps.length);
+    this.cageMesh.name='controlPoints';
+    this.cageMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.scene.add(this.cageMesh);
+    const segs=this.CPU*this.CPV + this.CPU*(this.CPV-1);
+    const lg=new THREE.BufferGeometry();
+    lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(segs*6),3));
+    this.cageLines=new THREE.LineSegments(lg,
+      new THREE.LineBasicMaterial({color:0x4fc3f7,transparent:true,opacity:.18,depthWrite:false}));
+    this.cageLines.name='cagingMesh'; this.scene.add(this.cageLines);
+    this.updateCage();
+  }
+  updateCage(){
+    if(!this.cageMesh) return;
+    const R=this.geo.boundingSphere ? this.geo.boundingSphere.radius : 20;
+    const base=R*.05, m=new THREE.Matrix4(), col=new THREE.Color();
+    const frames=this.cps.map(c=>this.cpFrame(c));
+    for(let k=0;k<this.cps.length;k++){
+      const c=this.cps[k], f=frames[k], cs=Math.cos(c.rot), sn=Math.sin(c.rot);
+      const e1=f.t1.clone().multiplyScalar(cs).addScaledVector(f.t2,sn).multiplyScalar(base*(c.rx/this.rx0)*c.size);
+      const e2=f.t2.clone().multiplyScalar(cs).addScaledVector(f.t1,-sn).multiplyScalar(base*(c.ry/this.ry0)*c.size);
+      const e3=f.n.clone().multiplyScalar(base*.4*c.size);
+      m.makeBasis(e1,e3,e2); m.setPosition(f.p);
+      this.cageMesh.setMatrixAt(k,m);
+      if(k===this.selCP) col.set('#ffa726');
+      else if(c.col) col.setRGB(c.col[0],c.col[1],c.col[2]);
+      else col.set('#4fc3f7');
+      col.multiplyScalar(.35+.65*c.op);
+      this.cageMesh.setColorAt(k,col);
+    }
+    this.cageMesh.instanceMatrix.needsUpdate=true;
+    if(this.cageMesh.instanceColor) this.cageMesh.instanceColor.needsUpdate=true;
+    const arr=this.cageLines.geometry.attributes.position.array, NU=this.CPU, NV=this.CPV;
+    let o=0;
+    const put=(a,b)=>{ arr[o++]=a.x;arr[o++]=a.y;arr[o++]=a.z; arr[o++]=b.x;arr[o++]=b.y;arr[o++]=b.z; };
+    for(let j=0;j<NV;j++) for(let i=0;i<NU;i++){
+      const a=frames[j*NU+i].p;
+      put(a, frames[j*NU+((i+1)%NU)].p);
+      if(j+1<NV) put(a, frames[(j+1)*NU+i].p);
+    }
+    this.cageLines.geometry.attributes.position.needsUpdate=true;
+    this.cageMesh.visible=this.cageLines.visible=!!this.st.cage;
+  }
+  drawView(){
+    const v=this.viewCtx, W=this.CW, H=this.CH;
+    v.clearRect(0,0,W,H); v.drawImage(this.comp,0,0);
+    if(this.dens){                       // density field: amber = concentrated, blue = thinned
+      const DW=this.DW, DH=this.DH, sx=W/DW, sy=H/DH;
+      v.save();
+      for(let y=0;y<DH;y++) for(let x=0;x<DW;x++){
+        const q=this.dens[y*DW+x];
+        if(Math.abs(q-1)<.04) continue;
+        v.fillStyle = q>1 ? 'rgba(255,167,38,'+Math.min(.5,(q-1)*.34)+')'
+                          : 'rgba(79,195,247,'+Math.min(.5,(1-q)*.5)+')';
+        v.fillRect(x*sx, y*sy, sx+1, sy+1);
+      }
+      v.restore();
+    }
+    if(this.st.roi && this.win && !this.win.full){
+      const w=this.win, y0=w.v0*H, y1=w.v1*H;
+      v.save(); v.strokeStyle='rgba(105,240,174,.85)'; v.lineWidth=2; v.setLineDash([6,4]);
+      if(w.wrap){
+        v.strokeRect(w.u0*W, y0, (1-w.u0)*W, y1-y0);
+        v.strokeRect(0, y0, w.u1*W, y1-y0);
+        v.fillStyle='rgba(105,240,174,.07)';
+        v.fillRect(w.u0*W,y0,(1-w.u0)*W,y1-y0); v.fillRect(0,y0,w.u1*W,y1-y0);
+      } else {
+        v.strokeRect(w.u0*W, y0, (w.u1-w.u0)*W, y1-y0);
+        v.fillStyle='rgba(105,240,174,.07)';
+        v.fillRect(w.u0*W,y0,(w.u1-w.u0)*W,y1-y0);
+      }
+      v.setLineDash([]);
+      v.fillStyle='#69f0ae'; v.font='700 11px JetBrains Mono, monospace';
+      v.fillText('VIEW CROP', (w.wrap?0:w.u0*W)+6, Math.max(12,y0+13));
+      v.restore();
+    }
+    if(!this.st.cage || !this.cps) return;
+    const NU=this.CPU, NV=this.CPV;
+    v.save();
+    v.lineWidth=1; v.strokeStyle='rgba(79,195,247,.28)';
+    for(let j=0;j<NV;j++) for(let i=0;i<NU;i++){
+      const a=this.cps[j*NU+i];
+      if(i+1<NU){ const b=this.cps[j*NU+i+1];
+        v.beginPath(); v.moveTo(a.u*W,a.v*H); v.lineTo(b.u*W,b.v*H); v.stroke(); }
+      if(j+1<NV){ const b=this.cps[(j+1)*NU+i];
+        v.beginPath(); v.moveTo(a.u*W,a.v*H); v.lineTo(b.u*W,b.v*H); v.stroke(); }
+    }
+    for(let k=0;k<this.cps.length;k++){
+      const c=this.cps[k], x=c.u*W, y=c.v*H, sel=(k===this.selCP);
+      const rx=Math.max(3,c.rx*W*.85*c.size), ry=Math.max(3,c.ry*H*.85*c.size);
+      const col=c.col ? 'rgb('+c.col.map(t=>Math.round(t*255)).join(',')+')' : '#4fc3f7';
+      v.save(); v.translate(x,y); v.rotate(c.rot);
+      v.beginPath(); v.ellipse(0,0,rx,ry,0,0,6.2832);
+      v.globalAlpha=.05+.16*c.op; v.fillStyle=col; v.fill();
+      v.globalAlpha=sel?.95:.45; v.strokeStyle=sel?'#ffa726':col; v.lineWidth=sel?1.6:1; v.stroke();
+      v.restore();
+      v.globalAlpha=1;
+      v.beginPath(); v.arc(x,y,sel?3.2:2,0,6.2832);
+      v.fillStyle=sel?'#ffa726':(c.w>.01?'#69f0ae':c.w<-.01?'#ef5350':'#cfe0f0'); v.fill();
+    }
+    v.restore();
+  }
+  cpApply(splats){
+    this.rasterCP(); this.applyDisp(); this.updateCage(); this.drawView();
+    if(splats!==false) this.buildSplats();
+  }
+  cpPick(u,v){
+    let best=-1, bd=1e9;
+    for(let k=0;k<this.cps.length;k++){
+      const c=this.cps[k];
+      let du=Math.abs(c.u-u); du=Math.min(du,1-du);
+      const dv=(c.v-v)*(this.CH/this.CW);
+      const d=du*du+dv*dv;
+      if(d<bd){ bd=d; best=k; }
+    }
+    return Math.sqrt(bd)<.05 ? best : -1;
+  }
+  cpFmt(k,val){ const v=+val;
+    return k==='crot' ? Math.round(v)+'°' :
+      (k==='crx'||k==='cry') ? (v/1000).toFixed(3) :
+      k==='cop' ? Math.round(v)+'%' : (v/100).toFixed(2); }
+  openCP(i){
+    if(i<0) return;
+    this.selCP=i;
+    const c=this.cps[i], P=this.cpPanelRef.current;
+    if(this.layersRef.current) this.layersRef.current.style.display='none';
+    if(this.layersBtnRef.current){ const b=this.layersBtnRef.current;
+      b.style.color='#8fa4c0'; b.style.background='rgba(18,27,46,.9)'; b.style.borderColor='#22314e'; }
+    if(this.styleRef.current) this.styleRef.current.style.display='none';
+    if(this.styleBtnRef.current){ const b=this.styleBtnRef.current;
+      b.style.color='#8fa4c0'; b.style.background='rgba(18,27,46,.9)'; b.style.borderColor='#22314e'; }
+    if(this.slidersRef.current) this.slidersRef.current.style.display='none';
+    P.style.display='flex';
+    if(this.cpTitleRef.current) this.cpTitleRef.current.textContent='control point '+(i+1)+' / '+this.cps.length;
+    const vals={ cw:Math.round(c.w*100), crx:Math.round(c.rx*1000), cry:Math.round(c.ry*1000),
+      crot:Math.round(c.rot*57.2958), csz:Math.round(c.size*100), cop:Math.round(c.op*100) };
+    Object.keys(vals).forEach(k=>{
+      const inp=P.querySelector('[data-k="'+k+'"]'); if(!inp) return;
+      inp.value=vals[k];
+      const out=inp.parentNode.querySelector('[data-out]'); if(out) out.textContent=this.cpFmt(k,vals[k]);
+    });
+    [...P.querySelectorAll('[data-cpcol]')].forEach(b=>{
+      const on = c.col ? b.dataset.cpcol!=='none' && b.dataset.cpcol.toLowerCase()===('#'+
+        c.col.map(t=>Math.round(t*255).toString(16).padStart(2,'0')).join('')) : b.dataset.cpcol==='none';
+      b.style.borderColor = on ? '#ffa726' : (b.dataset.cpcol==='none'?'#4a5b73':'#22314e');
+    });
+    this.updateCage(); this.drawView();
+    this.say('point '+(i+1)+': lift moves it off the surface, scale/orient/opacity/colour drive the splats it owns');
+  }
+  closeCP(){
+    this.selCP=-1;
+    if(this.cpPanelRef.current) this.cpPanelRef.current.style.display='none';
+    const other=(this.styleRef.current&&this.styleRef.current.style.display==='flex')||(this.layersRef.current&&this.layersRef.current.style.display==='flex');
+    if(this.slidersRef.current && !other)
+      this.slidersRef.current.style.display='flex';
+    this.updateCage(); this.drawView();
+  }
+  cpInput(e){
+    const inp=e.target, k=inp.dataset.k;
+    if(!k||this.selCP<0) return;
+    const c=this.cps[this.selCP], val=+inp.value;
+    if(k==='cw') c.w=val/100;
+    else if(k==='crx') c.rx=val/1000;
+    else if(k==='cry') c.ry=val/1000;
+    else if(k==='crot') c.rot=val/57.2958;
+    else if(k==='csz') c.size=val/100;
+    else if(k==='cop') c.op=val/100;
+    const out=inp.parentNode.querySelector('[data-out]'); if(out) out.textContent=this.cpFmt(k,val);
+    this.cpApply();
+  }
+  cpColor(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.cpcol||this.selCP<0) return;
+    const c=this.cps[this.selCP], hex=b.dataset.cpcol;
+    c.col = hex==='none' ? null : [parseInt(hex.slice(1,3),16)/255,parseInt(hex.slice(3,5),16)/255,parseInt(hex.slice(5,7),16)/255];
+    [...b.parentNode.children].forEach(x=>{ x.style.borderColor = x===b?'#ffa726':(x.dataset.cpcol==='none'?'#4a5b73':'#22314e'); });
+    this.cpApply();
+  }
+  cpReset(){
+    if(this.selCP<0) return;
+    const c=this.cps[this.selCP], NU=this.CPU, i=this.selCP%NU, j=(this.selCP-i)/NU;
+    Object.assign(c,{ u:(i+.5)/NU, v:(j+.5)/this.CPV, w:0, rx:this.rx0, ry:this.ry0, rot:0, op:1, size:1, col:null });
+    this.openCP(this.selCP); this.cpApply();
+  }
+  toggleCage(){
+    this.st.cage=!this.st.cage;
+    const b=this.cageBtnRef.current;
+    if(b){ b.style.color=this.st.cage?'#04070d':'#8fa4c0';
+      b.style.background=this.st.cage?'#ffa726':'rgba(18,27,46,.9)';
+      b.style.borderColor=this.st.cage?'#ffa726':'#22314e'; }
+    this.updateCage(); this.drawView();
+    this.say(this.st.cage?'cage on — sparse control points over the continuous surface':'cage hidden');
+  }
+
+  // ── style transfer: a 2D pattern mapped into the chart by an affine (u,v) convention ──
+  renderAlbedo(){
+    const W=this.CW, H=this.CH, c=this.aeCtx, p=this.pat;
+    c.globalAlpha=1; c.globalCompositeOperation='source-over';
+    c.clearRect(0,0,W,H); c.drawImage(this.alb,0,0);
+    if(p && p.canvas && p.mix>0){
+      const pt=c.createPattern(p.canvas,'repeat');
+      try{
+        const m=new DOMMatrix();
+        m.translateSelf(p.ou*W, p.ov*H);
+        m.rotateSelf(p.rot*57.2958);
+        m.scaleSelf(p.su, p.sv);
+        pt.setTransform(m);
+      }catch(_){}
+      c.globalAlpha=p.mix; c.globalCompositeOperation=p.mode;
+      c.fillStyle=pt; c.fillRect(0,0,W,H);
+      c.globalAlpha=1; c.globalCompositeOperation='source-over';
+    }
+    this.albData=c.getImageData(0,0,W,H);
+  }
+  rnd(){ this._sd=(this._sd*1664525+1013904223)>>>0; return this._sd/4294967296; }
+  makePattern(kind){
+    const N=256, cv=document.createElement('canvas'); cv.width=cv.height=N;
+    const c=cv.getContext('2d');
+    this._sd=20260727;
+    const R=()=>this.rnd();
+    if(kind==='cow'){
+      c.fillStyle='#efe9dd'; c.fillRect(0,0,N,N);
+      c.fillStyle='#1b1a19';
+      for(let i=0;i<7;i++){
+        const x=R()*N, y=R()*N;
+        for(let j=0;j<9;j++){
+          const a=R()*6.2832, d=R()*30;
+          c.beginPath();
+          c.ellipse(x+Math.cos(a)*d, y+Math.sin(a)*d, 12+R()*22, 10+R()*18, R()*3.14, 0, 6.2832);
+          c.fill();
+          c.beginPath();
+          c.ellipse(x+Math.cos(a)*d-N, y+Math.sin(a)*d, 12+R()*22, 10+R()*18, R()*3.14, 0, 6.2832);
+          c.fill();
+        }
+      }
+    } else if(kind==='zebra'){
+      c.fillStyle='#f3efe6'; c.fillRect(0,0,N,N);
+      c.fillStyle='#141312';
+      for(let i=0;i<11;i++){
+        const y0=i*N/11 + R()*6;
+        c.beginPath();
+        c.moveTo(-10,y0);
+        for(let x=-10;x<=N+10;x+=16) c.lineTo(x, y0 + Math.sin(x*.06+i)*7 + R()*3);
+        for(let x=N+10;x>=-10;x-=16) c.lineTo(x, y0 + Math.sin(x*.06+i)*7 + (5+R()*9));
+        c.closePath(); c.fill();
+      }
+    } else if(kind==='giraffe'){
+      c.fillStyle='#e8d3a9'; c.fillRect(0,0,N,N);
+      c.fillStyle='#8a5322';
+      const G=6, s=N/G;
+      for(let j=0;j<G;j++) for(let i=0;i<G;i++){
+        const cx=(i+.5)*s+(R()-.5)*s*.3, cy=(j+.5)*s+(R()-.5)*s*.3, k=5+Math.floor(R()*3);
+        c.beginPath();
+        for(let t=0;t<k;t++){
+          const a=t/k*6.2832, r=s*(.30+R()*.16);
+          const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+          t?c.lineTo(x,y):c.moveTo(x,y);
+        }
+        c.closePath(); c.fill();
+      }
+    } else if(kind==='leopard'){
+      c.fillStyle='#d8a441'; c.fillRect(0,0,N,N);
+      for(let i=0;i<46;i++){
+        const x=R()*N, y=R()*N, r=7+R()*7;
+        c.strokeStyle='rgba(46,29,14,.92)'; c.lineWidth=4+R()*3;
+        c.beginPath(); c.ellipse(x,y,r,r*(.7+R()*.5),R()*3.14,0,6.2832); c.stroke();
+        c.fillStyle='rgba(150,96,32,.55)';
+        c.beginPath(); c.ellipse(x,y,r*.7,r*.6,0,0,6.2832); c.fill();
+      }
+    } else if(kind==='pineapple'){
+      c.fillStyle='#c9922b'; c.fillRect(0,0,N,N);
+      const s=N/8;
+      for(let j=-1;j<9;j++) for(let i=-1;i<9;i++){
+        const cx=i*s+(j%2?s/2:0), cy=j*s*.62;
+        c.beginPath(); c.moveTo(cx,cy-s*.34); c.lineTo(cx+s*.5,cy); c.lineTo(cx,cy+s*.34); c.lineTo(cx-s*.5,cy);
+        c.closePath();
+        c.fillStyle='rgba(122,84,20,'+(.35+((i+j)%3)*.12).toFixed(2)+')'; c.fill();
+        c.strokeStyle='rgba(240,214,150,.55)'; c.lineWidth=1.6; c.stroke();
+      }
+    } else if(kind==='dragonfruit'){
+      c.fillStyle='#d92b62'; c.fillRect(0,0,N,N);
+      for(let i=0;i<160;i++){
+        const x=R()*N, y=R()*N, r=1.2+R()*2.4;
+        c.fillStyle='rgba(24,10,16,.85)';
+        c.beginPath(); c.arc(x,y,r,0,6.2832); c.fill();
+        c.fillStyle='rgba(255,240,246,.5)';
+        c.beginPath(); c.arc(x+r*.7,y-r*.7,r*.7,0,6.2832); c.fill();
+      }
+    } else return null;
+    return cv;
+  }
+  setPattern(kind){
+    this.pat.kind=kind;
+    this.pat.canvas = kind==='none' ? null : (kind==='custom' ? this.pat.canvas : this.makePattern(kind));
+    this.renderAlbedo(); this.composite(); this.buildSplats();
+    if(this.hStyle && this.hStyle.current) this.hStyle.current.textContent=kind;
+    this.say(kind==='none' ? 'style cleared — back to the reconstructed albedo'
+      : 'style "'+kind+'" mapped through the chart: (u,v) → pattern space by scale, rotation and offset');
+  }
+  pickPattern(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.pat) return;
+    [...b.parentNode.children].forEach(x=>{ if(x.dataset.pat)
+      x.style.borderColor = x===b?'#69f0ae':'#22314e'; });
+    this.setPattern(b.dataset.pat);
+  }
+  loadUserImage(e){
+    const f=e.target.files && e.target.files[0]; if(!f) return;
+    const url=URL.createObjectURL(f), img=new Image();
+    img.onload=()=>{
+      const N=512, cv=document.createElement('canvas');
+      const sc=Math.min(N/img.width, N/img.height, 1);
+      cv.width=Math.max(2,Math.round(img.width*sc)); cv.height=Math.max(2,Math.round(img.height*sc));
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(url);
+      this.pat.canvas=cv; this.pat.kind='custom';
+      [...(this.styleRef.current?this.styleRef.current.querySelectorAll('[data-pat]'):[])]
+        .forEach(x=>{ x.style.borderColor='#22314e'; });
+      this.renderAlbedo(); this.composite(); this.buildSplats();
+      if(this.hStyle && this.hStyle.current) this.hStyle.current.textContent='custom · '+f.name.slice(0,18);
+      this.say('your image is now the style source — adjust the mapping with scale, rotate and offset');
+    };
+    img.onerror=()=>this.say('could not read that image — try a PNG or JPEG');
+    img.src=url;
+  }
+  styleInput(e){
+    const inp=e.target, k=inp.dataset.k; if(!k) return;
+    const val=+inp.value, p=this.pat;
+    if(k==='psu') p.su=val/100; else if(k==='psv') p.sv=val/100;
+    else if(k==='prot') p.rot=val/57.2958;
+    else if(k==='pou') p.ou=val/100; else if(k==='pov') p.ov=val/100;
+    else if(k==='pmix') p.mix=val/100;
+    const out=inp.parentNode.querySelector('[data-out]');
+    if(out) out.textContent = k==='prot' ? Math.round(val)+'°' : (k==='pmix' ? Math.round(val)+'%' : (val/100).toFixed(2));
+    this.renderAlbedo(); this.composite(); this.buildSplats();
+  }
+  styleMode(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.pmode) return;
+    this.pat.mode=b.dataset.pmode;
+    [...b.parentNode.children].forEach(x=>{ if(x.dataset.pmode)
+      x.style.borderColor = x===b?'#69f0ae':'#22314e'; });
+    this.renderAlbedo(); this.composite(); this.buildSplats();
+  }
+  toggleStyle(){
+    const P=this.styleRef.current, open=P.style.display!=='flex';
+    if(open){ this.closeCP();
+      if(this.layersRef.current) this.layersRef.current.style.display='none';
+      if(this.layersBtnRef.current){ const lb=this.layersBtnRef.current;
+        lb.style.color='#8fa4c0'; lb.style.background='rgba(18,27,46,.9)'; lb.style.borderColor='#22314e'; } if(this.slidersRef.current) this.slidersRef.current.style.display='none'; P.style.display='flex'; }
+    else { P.style.display='none'; if(this.slidersRef.current) this.slidersRef.current.style.display='flex'; }
+    const b=this.styleBtnRef.current;
+    if(b){ b.style.color=open?'#04070d':'#8fa4c0'; b.style.background=open?'#69f0ae':'rgba(18,27,46,.9)';
+      b.style.borderColor=open?'#69f0ae':'#22314e'; }
+  }
+
+  // ── information layers: differential geometry + per-splat approximation error ──
+  computeCurv(){
+    const g=this.geo, P=g.attributes.position.array, N=g.attributes.normal.array, A=this.gridA, B=this.gridB;
+    if(!this.curv || this.curv.length!==A*B) this.curv=new Float32Array(A*B);
+    let mx=0;
+    for(let i=0;i<A;i++) for(let j=0;j<B;j++){
+      const k=i*B+j;
+      const ip=((i+1)%A)*B+j, im=((i-1+A)%A)*B+j;
+      const jp=i*B+Math.min(B-1,j+1), jm=i*B+Math.max(0,j-1);
+      const du=Math.hypot(P[ip*3]-P[im*3],P[ip*3+1]-P[im*3+1],P[ip*3+2]-P[im*3+2])||1e-3;
+      const dv=Math.hypot(P[jp*3]-P[jm*3],P[jp*3+1]-P[jm*3+1],P[jp*3+2]-P[jm*3+2])||1e-3;
+      const dnu=Math.hypot(N[ip*3]-N[im*3],N[ip*3+1]-N[im*3+1],N[ip*3+2]-N[im*3+2]);
+      const dnv=Math.hypot(N[jp*3]-N[jm*3],N[jp*3+1]-N[jm*3+1],N[jp*3+2]-N[jm*3+2]);
+      const c=(dnu/du + dnv/dv)*.5;
+      this.curv[k]=c; if(c>mx) mx=c;
+      if(i===0&&j===0) this.spanU=du; // representative spacing
+    }
+    this.curvMax=Math.max(1e-5,mx);
+  }
+  ramp(t,kind){
+    t=Math.max(0,Math.min(1,t));
+    const stops = kind==='err'
+      ? [[.16,.24,.40],[.08,.37,.83],[.31,.76,.96],[1,.88,.30],[.94,.33,.31]]
+      : [[.08,.37,.83],[.31,.76,.96],[.81,.58,.85],[1,.65,.15],[.94,.33,.31]];
+    const f=t*(stops.length-1), i=Math.min(stops.length-2,Math.floor(f)), a=f-i;
+    const s0=stops[i], s1=stops[i+1];
+    return [s0[0]+(s1[0]-s0[0])*a, s0[1]+(s1[1]-s0[1])*a, s0[2]+(s1[2]-s0[2])*a];
+  }
+  buildInfo(){
+    const mk=(hex,op)=>{
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(3),3));
+      const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:op,depthWrite:false}));
+      l.visible=false; this.scene.add(l); return l;
+    };
+    if(!this.lnN){
+      this.lnN=mk(0x4fc3f7,.55); this.lnN.name='normals';
+      this.lnU=mk(0xffa726,.55); this.lnU.name='tangentU';
+      this.lnV=mk(0x69f0ae,.55); this.lnV.name='tangentV';
+    }
+    this.curvMat=this.curvMat||new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide});
+    this.updateInfo();
+  }
+  updateInfo(){
+    if(!this.lnN) return;
+    const L=this.st.layers, g=this.geo, P=g.attributes.position.array, N=g.attributes.normal.array;
+    const A=this.gridA, B=this.gridB;
+    const want = L.norm||L.tanu||L.tanv;
+    this.lnN.visible=!!L.norm; this.lnU.visible=!!L.tanu; this.lnV.visible=!!L.tanv;
+    if(want){
+      const target=900;
+      const si=Math.max(1,Math.round(A/Math.sqrt(target*A/B))), sj=Math.max(1,Math.round(B/Math.sqrt(target*B/A)));
+      const R=this.geo.boundingSphere?this.geo.boundingSphere.radius:20;
+      const len=R*.05*this.st.vecLen;
+      const pn=[], pu=[], pv=[];
+      for(let i=0;i<A-1;i+=si) for(let j=0;j<B-1;j+=sj){
+        const k=i*B+j, ip=((i+1)%A)*B+j, jp=i*B+Math.min(B-1,j+1);
+        const x=P[k*3], y=P[k*3+1], z=P[k*3+2];
+        pn.push(x,y,z, x+N[k*3]*len, y+N[k*3+1]*len, z+N[k*3+2]*len);
+        const t1=[P[ip*3]-x,P[ip*3+1]-y,P[ip*3+2]-z], m1=Math.hypot(t1[0],t1[1],t1[2])||1;
+        pu.push(x,y,z, x+t1[0]/m1*len, y+t1[1]/m1*len, z+t1[2]/m1*len);
+        const t2=[P[jp*3]-x,P[jp*3+1]-y,P[jp*3+2]-z], m2=Math.hypot(t2[0],t2[1],t2[2])||1;
+        pv.push(x,y,z, x+t2[0]/m2*len, y+t2[1]/m2*len, z+t2[2]/m2*len);
+      }
+      const set=(l,arr)=>{ l.geometry.dispose();
+        const ng=new THREE.BufferGeometry();
+        ng.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));
+        l.geometry=ng; };
+      set(this.lnN,pn); set(this.lnU,pu); set(this.lnV,pv);
+    }
+    // curvature shading on the continuous surface
+    if(L.curv){
+      this.computeCurv();
+      const n=g.attributes.position.count;
+      let ca=g.attributes.color;
+      if(!ca || ca.count!==n){ ca=new THREE.BufferAttribute(new Float32Array(n*3),3); g.setAttribute('color',ca); }
+      for(let i=0;i<A;i++) for(let j=0;j<B;j++){
+        const k=i*B+j, c=this.ramp(Math.pow(this.curv[k]/this.curvMax,.55),'curv');
+        ca.array[k*3]=c[0]; ca.array[k*3+1]=c[1]; ca.array[k*3+2]=c[2];
+      }
+      ca.needsUpdate=true;
+      if(this.mesh) this.mesh.material=this.curvMat;
+    } else if(this.mesh && this.mesh.material===this.curvMat){
+      this.mesh.material=this.mat;
+    }
+  }
+  toggleLayer(e){
+    const b=e.target.closest('button'); if(!b||!b.dataset.layer) return;
+    const k=b.dataset.layer, L=this.st.layers;
+    L[k]=!L[k];
+    b.style.color=L[k]?'#04070d':'#8fa4c0';
+    b.style.background=L[k]?(k==='err'?'#ffe14d':k==='curv'?'#ce93d8':k==='tanu'?'#ffa726':k==='tanv'?'#69f0ae':'#4fc3f7'):'rgba(18,27,46,.9)';
+    b.style.borderColor=L[k]?b.style.background:'#22314e';
+    this.updateInfo();
+    if(k==='err'){
+      if(L.err && this.st.mode!=='splats'){ this.st.mode='splats';
+        this.markActive(this.modeRef.current,'mode','splats',
+          {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#5c6f8a',b:'rgba(13,18,32,.7)',bd:'#22314e'}); }
+      this.buildSplats(); this.applyMode();
+    }
+    this.say({norm:'surface normals — one arrow per sampled control cell',
+      tanu:'∂p/∂u tangents — the chart u direction drawn on the surface',
+      tanv:'∂p/∂v tangents — the chart v direction drawn on the surface',
+      curv:'curvature shading — |dn/ds| averaged over both chart directions',
+      err:'splat error — sagitta of each Gaussian against the local curvature radius'}[k]);
+  }
+  layerSlide(e){
+    const inp=e.target; if(inp.dataset.k!=='vec') return;
+    this.st.vecLen=+inp.value/100;
+    const o=inp.parentNode.querySelector('[data-out]'); if(o) o.textContent=this.st.vecLen.toFixed(2);
+    this.updateInfo();
+  }
+  toggleLayers(){
+    const P=this.layersRef.current, open=P.style.display!=='flex';
+    if(open){ this.closeCP();
+      if(this.styleRef.current) this.styleRef.current.style.display='none';
+      if(this.styleBtnRef.current){ const b=this.styleBtnRef.current;
+        b.style.color='#8fa4c0'; b.style.background='rgba(18,27,46,.9)'; b.style.borderColor='#22314e'; }
+      if(this.slidersRef.current) this.slidersRef.current.style.display='none';
+      P.style.display='flex';
+    } else {
+      P.style.display='none';
+      if(this.slidersRef.current) this.slidersRef.current.style.display='flex';
+    }
+    const b=this.layersBtnRef.current;
+    if(b){ b.style.color=open?'#04070d':'#8fa4c0'; b.style.background=open?'#4fc3f7':'rgba(18,27,46,.9)';
+      b.style.borderColor=open?'#4fc3f7':'#22314e'; }
+  }
+
+  // ── fruit still-life: separate scanned objects sharing the splat representation ──
+  fruitGeo(kind,r,seed){
+    const g=new THREE.SphereGeometry(r,26,18);
+    const p=g.attributes.position;
+    this._sd=seed;
+    for(let i=0;i<p.count;i++){
+      const x=p.getX(i), y=p.getY(i), z=p.getZ(i);
+      let sx=1, sy=1, sz=1, yy=y;
+      if(kind==='apple'){ sy=.9; if(y>0) yy=y-.16*r*Math.cos(y/r*1.4); if(y<-r*.7) yy=y*.94; }
+      else if(kind==='pear'){ const t=Math.max(0,Math.min(1,(y/r+1)/2)); sx=sz=.55+.6*Math.pow(t,1.7); sy=1.2; }
+      else if(kind==='lemon'){ sy=1.28; sx=sz=.8; }
+      else if(kind==='plum'){ sx=1.04; sz=.96; }
+      const lump=1+.03*Math.sin(x*3.3/r)*Math.sin(z*2.9/r)+.018*Math.sin(y*5.1/r+seed);
+      p.setXYZ(i, x*sx*lump, yy*sy*lump, z*sz*lump);
+    }
+    g.computeVertexNormals(); g.computeBoundingSphere();
+    return g;
+  }
+  fruitMat(kind,hex){
+    const rough={apple:.28,pear:.55,lemon:.72,plum:.34,grape:.30,orange:.86}[kind]||.4;
+    return new THREE.MeshStandardMaterial({color:new THREE.Color(hex),roughness:rough,metalness:.03});
+  }
+  buildExtras(){
+    if(this.extras){ this.extras.forEach(m=>{ this.scene.remove(m); m.geometry.dispose(); }); }
+    this.extras=[];
+    if(this.st.shape!=='bowl'){ this.buildExtraSplats(); return; }
+    const spec=[
+      {k:'apple', r:3.0, c:'#b3271f', p:[-3.6,3.2,-1.4], s:11},
+      {k:'orange',r:2.8, c:'#e0780f', p:[2.9,3.0,1.6],  s:23},
+      {k:'apple', r:2.6, c:'#6f9c22', p:[.4,2.8,-4.0],  s:37},
+      {k:'pear',  r:2.4, c:'#b8c24a', p:[4.4,4.4,-2.2], s:51},
+      {k:'lemon', r:1.9, c:'#e3c437', p:[-1.2,4.6,2.9], s:67},
+      {k:'plum',  r:1.8, c:'#6b3f8f', p:[-4.6,4.4,1.8], s:83}
+    ];
+    for(const f of spec){
+      const m=new THREE.Mesh(this.fruitGeo(f.k,f.r,f.s), this.fruitMat(f.k,f.c));
+      m.position.set(f.p[0],f.p[1],f.p[2]);
+      m.rotation.set(Math.sin(f.s)*.4, f.s*.7, Math.cos(f.s)*.3);
+      m.name='fruit_'+f.k;
+      this.scene.add(m); this.extras.push(m);
+      if(f.k==='apple'||f.k==='pear'){
+        const st=new THREE.Mesh(new THREE.CylinderGeometry(.10,.14,f.r*.7,8),
+          new THREE.MeshStandardMaterial({color:0x5a3c22,roughness:.9}));
+        st.position.set(f.p[0], f.p[1]+f.r*.92, f.p[2]);
+        st.rotation.z=.22; st.name='fruit_stem';
+        this.scene.add(st); this.extras.push(st);
+      }
+    }
+    // a small grape cluster
+    const gm=this.fruitMat('grape','#5d3d86');
+    for(let i=0;i<9;i++){
+      const a=i*2.4, rr=1.5+ (i%3)*.35;
+      const b=new THREE.Mesh(new THREE.SphereGeometry(.85,14,10), gm);
+      b.position.set(1.0+Math.cos(a)*rr*.6, 5.6+ (i%3)*.7, 4.0+Math.sin(a)*rr*.5);
+      b.name='fruit_grape';
+      this.scene.add(b); this.extras.push(b);
+    }
+    this.buildExtraSplats();
+  }
+  buildExtraSplats(){
+    if(this.extraPts){ this.scene.remove(this.extraPts); this.extraPts.geometry.dispose(); this.extraPts=null; }
+    if(!this.extras || !this.extras.length) return;
+    const px=[], cx=[], as=[], aa=[], ar=[], ap=[];
+    const per=Math.max(160, Math.round(this.st.budget*.22/this.extras.length));
+    const ref=this.spacingRef||1;
+    for(const m of this.extras){
+      const p=m.geometry.attributes.position, cnt=p.count;
+      const stride=Math.max(1, Math.round(cnt/per));
+      const col=m.material.color;
+      const r=(m.geometry.boundingSphere?m.geometry.boundingSphere.radius:1);
+      const spacing=2*Math.PI*r/26;
+      m.updateMatrixWorld(true);
+      const v=new THREE.Vector3();
+      for(let i=0;i<cnt;i+=stride){
+        v.set(p.getX(i),p.getY(i),p.getZ(i)).applyMatrix4(m.matrixWorld);
+        px.push(v.x,v.y,v.z);
+        const sh=.82+.35*((i*2654435761)%1000)/1000;
+        cx.push(Math.min(1,col.r*sh), Math.min(1,col.g*sh), Math.min(1,col.b*sh));
+        as.push(spacing); aa.push(1); ar.push(0); ap.push(1);
+      }
+    }
+    const pg=new THREE.BufferGeometry();
+    pg.setAttribute('position',new THREE.Float32BufferAttribute(px,3));
+    pg.setAttribute('color',new THREE.Float32BufferAttribute(cx,3));
+    pg.setAttribute('aSize',new THREE.Float32BufferAttribute(as,1));
+    pg.setAttribute('aA',new THREE.Float32BufferAttribute(aa,1));
+    pg.setAttribute('aRot',new THREE.Float32BufferAttribute(ar,1));
+    pg.setAttribute('aAsp',new THREE.Float32BufferAttribute(ap,1));
+    this.extraPts=new THREE.Points(pg,this.splatMat); this.extraPts.name='fruitSplats';
+    this.scene.add(this.extraPts);
+    this.nExtra=px.length/3;
+    this.applyMode();
+  }
+
+  // ── adaptive ROI: the view frustum crops the chart, so the budget lands where you look ──
+  frustumWindow(){
+    const g=this.geo, p=g.attributes.position, uv=g.attributes.uv, A=this.gridA, B=this.gridB;
+    const P=p.array, UV=uv.array, N=g.attributes.normal.array;
+    this.cam.updateMatrixWorld();
+    const cp=this.cam.position;
+    const vp=new THREE.Matrix4().multiplyMatrices(this.cam.projectionMatrix, this.cam.matrixWorldInverse);
+    const t=new THREE.Vector3();
+    const us=[]; let v0=2, v1=-1;
+    const si=Math.max(1,Math.floor(A/72)), sj=Math.max(1,Math.floor(B/26));
+    for(let i=0;i<A;i+=si) for(let j=0;j<B;j+=sj){
+      const k=i*B+j;
+      t.set(P[k*3],P[k*3+1],P[k*3+2]).applyMatrix4(vp);
+      if(t.z<-1||t.z>1) continue;
+      if(t.x<-1.12||t.x>1.12||t.y<-1.12||t.y>1.12) continue;
+      // only the facing side is reconstructed for this view
+      const dx=cp.x-P[k*3], dy=cp.y-P[k*3+1], dz=cp.z-P[k*3+2];
+      if(N[k*3]*dx+N[k*3+1]*dy+N[k*3+2]*dz <= 0) continue;
+      us.push(UV[k*2]);
+      const vv=1-UV[k*2+1];
+      if(vv<v0)v0=vv; if(vv>v1)v1=vv;
+    }
+    const FULL={u0:0,u1:1,v0:0,v1:1,full:true,wrap:false,frac:1};
+    if(us.length<6) return FULL;
+    us.sort((a,b)=>a-b);
+    let gap=us[0]+1-us[us.length-1], gi=us.length-1;   // wrap-around gap
+    for(let i=1;i<us.length;i++){ const d=us[i]-us[i-1]; if(d>gap){ gap=d; gi=i-1; } }
+    let u0,u1,wrap=false;
+    if(gap>.10){ u0=us[(gi+1)%us.length]; u1=us[gi]; wrap=(u0>u1); }
+    else { u0=0; u1=1; }
+    const uSpan = wrap ? (u1+1-u0) : (u1-u0);
+    const mu=uSpan*.10+.008, mv=(v1-v0)*.12+.008;
+    if(!(u0===0&&u1===1)){ u0=u0-mu; u1=u1+mu;
+      if(u1-u0>=1){ u0=0; u1=1; wrap=false; }
+      else { if(u0<0){u0+=1;wrap=true;} if(u1>1){u1-=1;wrap=true;} } }
+    v0=Math.max(0,v0-mv); v1=Math.min(1,v1+mv);
+    const span=(wrap?(u1+1-u0):(u1-u0))*(v1-v0);
+    if(span>.86) return FULL;
+    return {u0,u1,v0,v1,full:false,wrap,frac:Math.max(.004,span)};
+  }
+  roiTick(){
+    if(!this.st.roi){ if(this.win && !this.win.full){ this.win=null; this.buildSplats(); } return; }
+    const w=this.frustumWindow(), o=this.win;
+    const moved = !o || Math.abs(w.u0-o.u0)>.02 || Math.abs(w.u1-o.u1)>.02 ||
+                  Math.abs(w.v0-o.v0)>.02 || Math.abs(w.v1-o.v1)>.02;
+    if(!moved) return;
+    this.win=w; this.buildSplats(); this.drawView();
+  }
+  toggleROI(){
+    this.st.roi=!this.st.roi;
+    const b=this.roiBtnRef.current;
+    if(b){ b.style.color=this.st.roi?'#04070d':'#8fa4c0';
+      b.style.background=this.st.roi?'#69f0ae':'rgba(18,27,46,.9)';
+      b.style.borderColor=this.st.roi?'#69f0ae':'#22314e'; }
+    this.win=null; this.roiTick(); this.buildSplats(); this.drawView();
+    this.say(this.st.roi
+      ? 'adaptive ROI on — the whole splat budget is re-allocated inside the view frustum, so zooming in buys resolution instead of more points'
+      : 'ROI off — the budget spreads over the entire chart');
+  }
+
+  init(){
+    const CW=1024, CH=128;
+    this.CW=CW; this.CH=CH; this.DW=256; this.DH=48;
+    this.st={ p:this.props.p||2, q:this.props.q||3, rad:1.7, tess:420, glowV:1.4, brush:14,
+      shape:this.props.shape||'knot', cage:this.props.cage!==false,
+      layers:{norm:false,tanu:false,tanv:false,curv:false,err:false}, vecLen:1,
+      budget:46000, metric:'geodesic', segThr:54, cover:1.05, roi:true,
+      tool:'seg+', col:'#155fd4', mode:this.props.mode||'surface', cam:this.props.camera||'orbit',
+      yaw:.6, pitch:.42, dist:118, flyT:0 };
+    this.CPU=18; this.CPV=6;
+    this.mask=new Uint8Array(CW*CH); this.maskCount=0;
+    this.dens=new Float32Array(this.DW*this.DH).fill(1);
+    this.regions=[]; this.curRegion=0; this.isoRegion=0;
+    this.disp=new Float32Array(this.DW*this.DH);
+
+    this.alb=document.createElement('canvas'); this.alb.width=CW; this.alb.height=CH;
+    this.albCtx=this.alb.getContext('2d',{willReadFrequently:true});
+    this.albEff=document.createElement('canvas'); this.albEff.width=CW; this.albEff.height=CH;
+    this.aeCtx=this.albEff.getContext('2d',{willReadFrequently:true});
+    this.pat={ kind:'none', canvas:null, su:1, sv:1, ou:0, ov:0, rot:0, mix:.85, mode:'source-over' };
+    this.emit=document.createElement('canvas'); this.emit.width=CW; this.emit.height=CH;
+    this.emiCtx0=this.emit.getContext('2d');
+    this.emiCtx=this.emiCtx0;
+    this.emiSrc=document.createElement('canvas'); this.emiSrc.width=CW; this.emiSrc.height=CH;
+    this.emiCtx2=this.emiSrc.getContext('2d',{willReadFrequently:true});
+
+    this.comp=document.createElement('canvas'); this.comp.width=CW; this.comp.height=CH;
+    this.compCtx=this.comp.getContext('2d',{willReadFrequently:true});
+    this.view=this.uvRef.current; this.view.width=CW; this.view.height=CH;
+    this.viewCtx=this.view.getContext('2d');
+    this.compTex=new THREE.CanvasTexture(this.comp);
+    this.compTex.colorSpace=THREE.SRGBColorSpace;
+    this.compTex.wrapS=THREE.RepeatWrapping;
+    this.emiTex=new THREE.CanvasTexture(this.emiSrc);
+    this.emiTex.colorSpace=THREE.SRGBColorSpace;
+    this.emiTex.wrapS=THREE.RepeatWrapping;
+    // emissive compositing target is emiSrc; strokes live on `emit`
+    this.emiCtx=this.emiCtx0;
+
+    const sp=document.createElement('canvas'); sp.width=sp.height=64;
+    const sc=sp.getContext('2d'), rg=sc.createRadialGradient(32,32,0,32,32,32);
+    rg.addColorStop(0,'rgba(255,255,255,1)'); rg.addColorStop(.4,'rgba(255,255,255,.65)');
+    rg.addColorStop(1,'rgba(255,255,255,0)');
+    sc.fillStyle=rg; sc.fillRect(0,0,64,64);
+    const spTex=new THREE.CanvasTexture(sp);
+
+    const cv=this.mainRef.current;
+    this.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.renderer.setClearColor(0x000000,0);
+    this.scene=new THREE.Scene();
+    this.cam=new THREE.PerspectiveCamera(52,1,.05,4000);
+    this.target=new THREE.Vector3(0,0,0);
+
+    this.scene.add(new THREE.HemisphereLight(0x8fb6ef,0x1a1030,1.15));
+    const k=new THREE.DirectionalLight(0xdfe9ff,1.5); k.position.set(60,80,40); this.scene.add(k);
+    const rim=new THREE.DirectionalLight(0xce93d8,.85); rim.position.set(-70,-30,-50); this.scene.add(rim);
+    const pt=new THREE.PointLight(0x4fc3f7,.9,240); pt.position.set(0,0,0); this.scene.add(pt);
+
+    this.mat=new THREE.MeshStandardMaterial({map:this.compTex,emissive:0xffffff,emissiveMap:this.emiTex,
+      emissiveIntensity:this.st.glowV,roughness:.36,metalness:.22,side:THREE.DoubleSide});
+    this.splatMat=new THREE.ShaderMaterial({
+      transparent:true, depthWrite:false, blending:THREE.NormalBlending,
+      uniforms:{ uSize:{value:1.05}, uScale:{value:270} },
+      vertexShader:[
+        'attribute vec3 color; attribute float aSize; attribute float aA; attribute float aRot; attribute float aAsp;',
+        'uniform float uSize; uniform float uScale;',
+        'varying vec3 vC; varying float vA; varying float vR; varying float vP;',
+        'void main(){ vC=color; vA=aA; vR=aRot; vP=aAsp;',
+        '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
+        '  gl_Position=projectionMatrix*mv;',
+        '  gl_PointSize=max(1.0,uSize*aSize*(uScale/max(0.001,-mv.z)));',
+        '}'].join('\n'),
+      fragmentShader:[
+        'varying vec3 vC; varying float vA; varying float vR; varying float vP;',
+        'void main(){ vec2 p=gl_PointCoord*2.0-1.0;',
+        '  float c=cos(vR), s=sin(vR);',
+        '  vec2 q=vec2(c*p.x+s*p.y,-s*p.x+c*p.y);',
+        '  q.x/=clamp(vP,0.35,2.8);',
+        '  float r=length(q); if(r>1.0) discard;',
+        '  float a=vA*min(1.0, 1.32*exp(-1.35*r*r)); if(a<0.015) discard;',
+        '  gl_FragColor=vec4(vC,a);',
+        '}'].join('\n')
+    });
+
+    this.drawBase(); this.composite();
+    this.initCPs();
+    this.build();
+    this.buildCage();
+    this.buildInfo();
+    this.drawView();
+    this.ray=new THREE.Raycaster();
+    this.fitColumns();
+    if(window.ResizeObserver && this.barRef.current){
+      this.barRo=new ResizeObserver(()=>this.fitColumns());
+      this.barRo.observe(this.barRef.current);
+    }
+    if(this.hPQ.current) this.hPQ.current.textContent =
+      this.st.shape==='knot' ? '⟨'+this.st.p+','+this.st.q+'⟩' : this.st.shape.toUpperCase();
+    this.markShape();
+    this.setAxes();
+    this.syncCamBtns();
+    this.markActive(this.modeRef.current,'mode',this.st.mode,
+      {c:'#4fc3f7',b:'rgba(79,195,247,.12)',bd:'#4fc3f788'},{c:'#5c6f8a',b:'rgba(13,18,32,.7)',bd:'#22314e'});
+    this.markActive(this.camRef.current,'cam',this.st.cam,
+      {c:'#ce93d8',b:'rgba(206,147,216,.14)',bd:'rgba(206,147,216,.6)'},{c:'#5c6f8a',b:'rgba(13,18,32,.7)',bd:'#22314e'});
+
+    let drag=false, lx=0, ly=0, liftCP=-1;
+    const ndc=e=>{ const r=cv.getBoundingClientRect();
+      return new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1); };
+    const pick3=e=>{
+      if(!this.st.cage||!this.cageMesh||!this.cageMesh.visible) return -1;
+      this.ray.setFromCamera(ndc(e), this.cam);
+      const h=this.ray.intersectObject(this.cageMesh,false)[0];
+      return (h && h.instanceId!=null) ? h.instanceId : -1;
+    };
+    cv.addEventListener('dblclick',e=>{ const i=pick3(e); if(i>=0) this.openCP(i); });
+    let paint3=false;
+    cv.addEventListener('pointerdown',e=>{
+      if(this.st.edit3d && this.edit3dAt(ndc(e),true)){
+        paint3=true; lx=e.clientX; ly=e.clientY;
+        try{ cv.setPointerCapture(e.pointerId); }catch(_){}
+        return;
+      }
+      liftCP=pick3(e);
+      if(liftCP>=0){ this.selCP=liftCP; this.updateCage(); this.drawView();
+        this.say('control point '+(liftCP+1)+' — drag to move it freely across the surface · shift-drag to lift it off · double-click for its splat parameters'); }
+      else drag=true;
+      lx=e.clientX; ly=e.clientY;
+      try{ cv.setPointerCapture(e.pointerId); }catch(_){} });
+    cv.addEventListener('pointermove',e=>{
+      if(paint3){ this.edit3dAt(ndc(e),false); return; }
+      if(liftCP>=0){
+        const c=this.cps[liftCP];
+        // free-form: the point follows the cursor across the surface; shift-drag lifts it off
+        const hit=(!e.shiftKey) ? this.pickSurface(ndc(e)) : null;
+        if(hit){ c.u=hit[0]/(this.CW-1); c.v=hit[1]/(this.CH-1); }
+        else c.w=Math.max(-.8,Math.min(1.8, c.w - (e.clientY-ly)*.006));
+        ly=e.clientY; lx=e.clientX;
+        this.cpApply(false);
+        if(this.cpPanelRef.current && this.selCP===liftCP){
+          const inp=this.cpPanelRef.current.querySelector('[data-k="cw"]');
+          if(inp){ inp.value=Math.round(c.w*100);
+            const o=inp.parentNode.querySelector('[data-out]'); if(o) o.textContent=this.cpFmt('cw',inp.value); }
+        }
+        return;
+      }
+      if(!drag) return;
+      this.st.yaw -= (e.clientX-lx)*.006;
+      this.st.pitch = Math.max(-1.4, Math.min(1.4, this.st.pitch + (e.clientY-ly)*.005));
+      lx=e.clientX; ly=e.clientY; });
+    cv.addEventListener('pointerup',()=>{
+      if(paint3){ paint3=false; this.flush(); }
+      if(liftCP>=0){ liftCP=-1; this.buildSplats(); } drag=false; });
+    cv.addEventListener('wheel',e=>{ e.preventDefault();
+      this.st.dist=Math.max(this.nearFloor?this.nearFloor():7.5,Math.min(320,this.st.dist*Math.exp(e.deltaY*.0011))); },{passive:false});
+
+    const uvc=this.view;
+    const at=e=>{ const r=uvc.getBoundingClientRect();
+      return [Math.max(0,Math.min(CW-1,Math.floor((e.clientX-r.left)/r.width*CW))),
+              Math.max(0,Math.min(CH-1,Math.floor((e.clientY-r.top)/r.height*CH)))]; };
+    let painting=false, moveCP=-1;
+    uvc.addEventListener('pointerdown',e=>{
+      const [px,py]=at(e); try{ uvc.setPointerCapture(e.pointerId); }catch(_){}
+      if(this.st.tool==='cage'){
+        moveCP=this.cpPick(px/CW, py/CH);
+        if(moveCP>=0){ this.selCP=moveCP; this.updateCage(); this.drawView();
+          this.say('dragging control point '+(moveCP+1)+' across the chart — the surface follows continuously'); }
+        return;
+      }
+      if(this.st.tool==='seg+'||this.st.tool==='seg-'){
+        this.segFill(px,py,this.st.tool==='seg+'); this.composite(); this.buildSplats();
+      } else { painting=true; this.stroke(px,py); this.composite(); }
+    });
+    uvc.addEventListener('dblclick',e=>{
+      const [px,py]=at(e);
+      const i=this.cpPick(px/CW, py/CH);
+      if(i>=0) this.openCP(i);
+    });
+    uvc.addEventListener('pointermove',e=>{
+      const [px,py]=at(e);
+      this.probeAt(px/(CW-1), 1-py/(CH-1));
+      if(moveCP>=0){
+        const c=this.cps[moveCP];
+        c.u=((px/CW)%1+1)%1; c.v=Math.max(.02,Math.min(.98,py/CH));
+        this.cpApply(this.st.mode==='splats');
+        return;
+      }
+      if(!painting) return;
+      this.stroke(px,py);
+      if(this.texDirty) this.renderAlbedo();
+      this.composite(); });
+    uvc.addEventListener('pointerup',()=>{
+      if(moveCP>=0){ moveCP=-1; this.buildSplats(); return; }
+      if(!painting) return; painting=false; this.flush(); });
+    uvc.addEventListener('pointerleave',()=>this.probeOff());
+
+    const ch=this.chromeRef.current, root=this.rootRef.current;
+    const show=()=>{ ch.style.opacity='1'; clearTimeout(this._ht); };
+    const hide=()=>{ this._ht=setTimeout(()=>{ ch.style.opacity='0.3'; },1100); };
+    root.addEventListener('pointerenter',show);
+    root.addEventListener('pointermove',()=>{ show(); hide(); });
+    root.addEventListener('pointerleave',()=>{ ch.style.opacity='0.3'; });
+    hide();
+
+    window.__kss=this;   // debug handle, mirrors the repo convention
+    this.ro=new ResizeObserver(()=>this.resize()); this.ro.observe(root);
+    this.resize(); this.last=performance.now(); this.loop();
+  }
+
+  resize(){
+    const r=this.rootRef.current.getBoundingClientRect();
+    if(!r.width) return;
+    this.renderer.setSize(r.width,r.height,false);
+    this.cam.aspect=r.width/r.height; this.cam.updateProjectionMatrix();
+    if(this.splatMat && this.splatMat.uniforms)
+      this.splatMat.uniforms.uScale.value =
+        r.height*Math.min(devicePixelRatio,2)*.5 / Math.tan(this.cam.fov*Math.PI/360);
+  }
+
+  loop(){
+    if(this.dead) return;
+    requestAnimationFrame(()=>this.loop());
+    const now=performance.now(), dt=Math.min(.05,(now-this.last)/1000); this.last=now;
+    const s=this.st;
+    if(s.cam==='orbit'){
+      s.yaw += dt*.06;
+      const cp=Math.cos(s.pitch);
+      this.cam.position.set(Math.sin(s.yaw)*cp*s.dist, Math.sin(s.pitch)*s.dist, Math.cos(s.yaw)*cp*s.dist);
+      this.cam.lookAt(this.target);
+    } else {
+      s.flyT = (s.flyT + dt*0.035) % 1;
+      const a=this.curve.getPointAt(s.flyT), b=this.curve.getPointAt((s.flyT+0.006)%1);
+      const R=(this.geo && this.geo.boundingSphere) ? this.geo.boundingSphere.radius : 16;
+      if(s.shape==='knot'){
+        if(s.cam==='fly'){ this.cam.position.copy(a); this.cam.lookAt(b); }
+        else {
+          const dir=b.clone().sub(a).normalize();
+          const off=new THREE.Vector3(0,1,0).cross(dir).normalize().multiplyScalar(s.rad*4.5);
+          this.cam.position.copy(a).add(off).add(new THREE.Vector3(0,s.rad*3.2,0));
+          this.cam.lookAt(b);
+        }
+      } else {
+        // open/closed surfaces have no interior spine: fly = close pass, chase = wide pass, both framed on the subject
+        const kf = (s.cam==='fly') ? .72 : 1.0;
+        this.cam.position.set(a.x*kf, a.y*kf + R*(s.cam==='fly'?.12:.42), a.z*kf);
+        this.cam.lookAt(this.target);
+      }
+    }
+    if(this.probeRing && this.probeRing.visible) this.probeRing.lookAt(this.cam.position);
+    if(this.st.mode==='splats' && now-(this._roi||0)>260){ this._roi=now; this.roiTick(); }
+    if(now-(this._h||0)>200){
+      this._h=now;
+      if(this.hRoi && this.hRoi.current) this.hRoi.current.textContent =
+        (this.st.roi && this.win && !this.win.full)
+          ? ('crop '+(this.roiFrac*100).toFixed(1)+'% of chart · '+(1/Math.max(.004,this.roiFrac)).toFixed(0)+'× density')
+          : 'ROI off · full chart';
+      if(this.hSplats.current) this.hSplats.current.textContent =
+        (this.nSplats+(this.nExtra||0)).toLocaleString()+' · '+(this.st.metric==='geodesic'?'geodesic':'euclidean');
+      if(this.hTess.current) this.hTess.current.textContent=(this.gridA-1)+' × '+(this.gridB-1);
+      if(this.hMask.current) this.hMask.current.textContent=(this.maskTotal()/(this.CW*this.CH)*100).toFixed(1)+'%';
+      if(this.hParam.current){
+        const cps=this.CPU*this.CPV, ns=this.nSplats+(this.nExtra||0);
+        const ds=this.densStats();
+        // sparse parameters (the editable model) vs. the dense splat set they generate
+        const kb=(ns*40)/1024, cpkb=(cps*32)/1024;
+        this.hParam.current.textContent=cps+' ctrl pts · '+cpkb.toFixed(1)+' KB → '+
+          ns.toLocaleString()+' splats · '+(kb>1024?(kb/1024).toFixed(2)+' MB':kb.toFixed(0)+' KB')+
+          ' · density ×'+ds.min.toFixed(2)+'–×'+ds.max.toFixed(2);
+      }
+      if(this.hErr.current) this.hErr.current.textContent = this.st.layers.err
+        ? ('mean '+this.errMean.toFixed(4)+' u · max '+this.errMax.toFixed(4)+' u')
+        : 'error layer off';
+      if(this.hArc.current) this.hArc.current.textContent = this.st.shape==='knot'
+        ? this.arc.toFixed(0)+' u'
+        : (this.geo.boundingSphere ? (2*this.geo.boundingSphere.radius).toFixed(0)+' u' : '—');
+    }
+    this.renderer.render(this.scene,this.cam);
+  }
+}
+</script>
+</body>
+</html>

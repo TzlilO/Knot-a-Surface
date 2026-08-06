@@ -844,7 +844,7 @@ window.KnotSwarmSim = (function () {
       (() => { const L = new T.DirectionalLight(0xbfd8ff, 1.1); L.position.copy(SUN).multiplyScalar(100); return L; })());
 
     const orbit = { th: -0.7, ph: 0.52, r: 118, cx: 0, cz: 0 };
-    const cOrbit = { th: 0.6, ph: 0.62, r: 60, auto: true, tx: ENV_HOME.forest.x, ty: 0, tz: ENV_HOME.forest.z };  // free camera: target = crop centre
+    const cOrbit = { th: 0.6, ph: 0.62, r: 60, auto: false, tx: ENV_HOME.forest.x, ty: 0, tz: ENV_HOME.forest.z };  // free camera: target = crop centre (never self-driven)
     function applyCam() {
       const y = orbit.r * Math.sin(orbit.ph), rr = orbit.r * Math.cos(orbit.ph);
       cam.position.set(orbit.cx + rr * Math.cos(orbit.th), y, orbit.cz + rr * Math.sin(orbit.th));
@@ -2996,8 +2996,10 @@ window.KnotSwarmSim = (function () {
        Control axes: fwd/back, strafe, yaw, climb — summed from every input. */
     const joy = { x: 0, y: 0 }, joyL = { x: 0, y: 0 }, joyR = { x: 0, y: 0 }, elev = { v: 0 };
     const drone = { px: ENV_HOME.forest.x, pz: ENV_HOME.forest.z, hd: 0, alt: 26,
-                    lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2, auto: true, idleT: 0, init: false,
-                    gp: null };   // manual gimbal pitch (rad below horizon); null = terrain-follow gaze
+                    lx: ENV_HOME.forest.x, lz: ENV_HOME.forest.z, ly: 2, auto: false, idleT: 0, init: false,
+                    gp: 0.64 };   // gimbal pitch (rad below horizon); null = terrain-follow gaze.
+                                  // 0.64 ≈ 37° — a stable oblique framing, since the camera no
+                                  // longer patrols nothing re-aims it away from the scene.
     let _moveT = 0;
     function setMoving(on) {                          // zen-on-move: show nothing but the frame
       if (on) { _moveT = st.t; container.classList.add('kss-moving'); }
@@ -3018,7 +3020,8 @@ window.KnotSwarmSim = (function () {
       fwd = clamp(fwd, -1, 1); strafe = clamp(strafe, -1, 1); yaw = clamp(yaw, -1, 1); climb = clamp(climb, -1, 1);
       const active = Math.abs(fwd) > 0.02 || Math.abs(strafe) > 0.02 || Math.abs(yaw) > 0.02 || Math.abs(climb) > 0.02;
       if (active) { drone.auto = false; drone.idleT = st.t; }
-      else if (!drone.auto && st.t - drone.idleT > 5) drone.auto = true;   // resume patrol after idle
+      // the observer camera is NEVER taken over by the sim: no autonomous patrol,
+      // no idle resume. The swarm only maintains the reconstruction we fly through.
       if (drone.auto) {
         // gentle patrol: bank toward a ~30 m ring around the site home
         const toHome = Math.atan2(H.z - drone.pz, H.x - drone.px);
@@ -3442,7 +3445,7 @@ window.KnotSwarmSim = (function () {
     function syncJoy() { container.classList.toggle('kss-drone-on', st.drone); if (!st.drone) container.classList.remove('kss-moving'); }
     droneBtn.addEventListener('click', e => {
       e.stopPropagation(); st.drone = !st.drone; droneBtn.classList.toggle('kss-on', st.drone);
-      if (!st.drone) cOrbit.auto = true; else drone.auto = true;
+      cOrbit.auto = false; drone.auto = false;   // toggling the POV never hands the camera to the sim
       syncJoy();
     });
     syncJoy();

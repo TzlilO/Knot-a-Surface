@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_components.css">
+<link rel="stylesheet" href="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/tokens/design_tokens.css">
+<script src="_ds/knot-a-surface-design-system-c0d79262-2073-48fc-ab0f-9cf8e0f32758/_ds_bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#04070d;overflow:hidden}
+a{color:#4fc3f7;text-decoration:none}
+a:hover{color:#8ad4fa}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative;width:100vw;height:100vh;background:#04070d;color:#dde5f0;font-family:'Inter',ui-sans-serif,system-ui;overflow:hidden;user-select:none">
+  <canvas ref="{{ mainRef }}" style="position:absolute;inset:0;width:100%;height:100%;display:block;z-index:1"></canvas>
+  <canvas ref="{{ diagRef }}" style="position:absolute;inset:0;width:100%;height:100%;display:block;z-index:2;pointer-events:none"></canvas>
+
+  <div style="position:absolute;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at 50% 46%,rgba(79,195,247,.06) 0%,rgba(4,7,13,0) 48%,rgba(2,4,9,.7) 100%)"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:9%;background:#04070d;pointer-events:none;z-index:5"></div>
+  <div style="position:absolute;left:0;right:0;bottom:0;height:9%;background:#04070d;pointer-events:none;z-index:5"></div>
+
+  <div style="position:absolute;left:0;right:0;top:9%;bottom:9%;pointer-events:none;z-index:4">
+
+    <div ref="{{ hud }}" style="position:absolute;right:34px;bottom:14px;text-align:right;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px;color:#4a5b73;font-variant-numeric:tabular-nums;opacity:0">
+      <b ref="{{ hSplats }}" style="color:#dde5f0;font-weight:700">—</b> Splats · Footprint <b ref="{{ hFoot }}" style="color:#4fc3f7;font-weight:700">—</b> · <span ref="{{ hNote }}" style="color:#69f0ae">&nbsp;</span><b ref="{{ hChart }}" style="display:none">1024 × 128</b>
+    </div>
+
+    <div ref="{{ rail }}" style="position:absolute;left:44px;top:24px;display:flex;align-items:center;gap:7px;opacity:0">
+      <span ref="{{ railNum }}" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#4a5b73;margin-right:5px">01 / 07</span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+      <span style="width:22px;height:3px;border-radius:2px;background:#22314e"></span>
+    </div>
+
+    <div ref="{{ cap0 }}" style="position:absolute;left:44px;bottom:118px;max-width:640px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#4fc3f7;margin-bottom:12px">Knot A Surface</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:42px;font-weight:700;line-height:1.06;letter-spacing:-.015em;color:#dde5f0">One Surface.<br>Every Representation.</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:12px;max-width:56ch">Continuous, Gaussian Splats And Mesh Are One Spline — Only The Sampling Density Differs.</div>
+    </div>
+
+    <div ref="{{ cap1 }}" style="position:absolute;left:44px;bottom:118px;max-width:600px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#ce93d8;margin-bottom:10px">01 · Linked Structures</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:#dde5f0">Three Structures, One Address</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:10px;max-width:56ch">One Point In The 2D Map Names One Sample On The Surface And One Cell Of The Cage.</div>
+    </div>
+
+    <div ref="{{ cap2 }}" style="position:absolute;left:44px;bottom:118px;max-width:600px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#4fc3f7;margin-bottom:10px">02 · Infinite Resolution</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:#dde5f0">Splats Are Derived, Never Stored</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:10px;max-width:56ch">∂U, ∂V And The Normal Give Rotation. Geodesic Probing Gives Scale. Nothing Is Fitted.</div>
+    </div>
+
+    <div ref="{{ capFit }}" style="position:absolute;left:44px;bottom:118px;max-width:640px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:var(--instr-warn);margin-bottom:10px">03 · Reconstruction</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:var(--instr-text)">Differentiable End To End</div>
+      <div style="font-size:14px;line-height:1.55;color:var(--instr-dim);margin-top:10px;max-width:60ch">Splats Fill The Surface For A Stock 3DGS Rasteriser; The Gradient Flows Back Into The Control Points. 18 KB On Disk, Unbounded Splats On Demand.</div>
+    </div>
+
+    <div ref="{{ cap3 }}" style="position:absolute;left:44px;bottom:118px;max-width:600px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#69f0ae;margin-bottom:10px">04 · Duality</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:#dde5f0">Splats And Mesh, Same Object</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:10px;max-width:56ch">A 2×2 Kernel Stitches Two Triangles Per Step. Geodesic Order Gives Adjacency For Free.</div>
+    </div>
+
+    <div ref="{{ cap4 }}" style="position:absolute;left:44px;bottom:118px;max-width:600px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#ffa726;margin-bottom:10px">04 · Adaptive Sampling</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:#dde5f0">The Budget Follows The Camera</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:10px;max-width:52ch">The Frustum Crops The Scene Map And Back-Faces Drop Out. Survivors Keep The Whole Budget.</div>
+    </div>
+
+    <div ref="{{ cap5 }}" style="position:absolute;left:44px;bottom:118px;max-width:600px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#ffa726;margin-bottom:10px">05 · Densification</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:#dde5f0">Paint Where Detail Should Live</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:10px;max-width:52ch">A Density Field Over The 2D Map Pulls Samples Under The Brush. One Stroke, No Re-Fit.</div>
+    </div>
+
+    <div ref="{{ cap6 }}" style="position:absolute;left:44px;bottom:118px;max-width:600px;opacity:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#ce93d8;margin-bottom:10px">06 · Editing</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1.14;color:#dde5f0">Segment, Isolate, Edit, Render</div>
+      <div style="font-size:14px;line-height:1.55;color:#8fa4c0;margin-top:10px;max-width:56ch">Texture Is Painted In The 2D Map, So The Edit Is Addressed — Never Sculpted.</div>
+    </div>
+
+    <div ref="{{ capEnd }}" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;opacity:0;padding:0 32px 40px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:40px;font-weight:700;line-height:1.12;letter-spacing:-.015em;color:#dde5f0;text-align:center;max-width:80%">Edit The 2D Map.<br>The Surface Follows.</div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;pointer-events:auto">
+        <a href="Sim v2 - UV Atlas.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;color:#4fc3f7;background:rgba(4,7,13,.78);border:1px solid rgba(79,195,247,.5);border-radius:999px;padding:10px 18px">Terrain · UV Atlas</a>
+        <a href="Sim v3 - Knot Chart.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;color:#ce93d8;background:rgba(4,7,13,.78);border:1px solid rgba(206,147,216,.5);border-radius:999px;padding:10px 18px">Knot · 2D Map</a>
+        <a href="Sim v4 - Surface Prior.dc.html" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;color:#ffa726;background:rgba(4,7,13,.78);border:1px solid rgba(255,167,38,.5);border-radius:999px;padding:10px 18px">Surface · Prior</a>
+      </div>
+    </div>
+
+    <div ref="{{ stripWrap }}" style="position:absolute;left:44px;right:44px;bottom:6px;opacity:0;transform:translateY(28px)">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:4px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#6d5a8a">UV Parametrization Domain · U = Arclength, V = Around The Tube</span>
+        <span ref="{{ stripNote }}" style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#4a5b73">&nbsp;</span>
+      </div>
+      <canvas ref="{{ stripRef }}" style="width:100%;height:54px;display:block;border:1px solid #22314e;border-radius:8px;background:#04070d"></canvas>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;align-items:center;gap:14px;padding:14px 22px;pointer-events:auto;background:linear-gradient(to top,rgba(4,7,13,.9),rgba(4,7,13,0))">
+    <button ref="{{ playBtn }}" onClick="{{ onPlay }}" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#04070d;background:#4fc3f7;border:none;border-radius:999px;padding:8px 16px;cursor:pointer">pause</button>
+    <button onClick="{{ onReplay }}" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8fa4c0;background:rgba(18,27,46,.9);border:1px solid #22314e;border-radius:999px;padding:8px 16px;cursor:pointer">replay</button>
+    <div ref="{{ trackRef }}" onClick="{{ onScrub }}" style="flex:1;height:3px;border-radius:2px;background:#1b2a42;cursor:pointer">
+      <div ref="{{ fillRef }}" style="width:0%;height:100%;border-radius:2px;background:#4fc3f7"></div>
+    </div>
+    <span ref="{{ timeRef }}" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4a5b73;min-width:78px;text-align:right">0:00 / 1:13</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:720}}">
+class Component extends DCLogic {
+  rootRef=React.createRef(); mainRef=React.createRef(); diagRef=React.createRef(); stripRef=React.createRef();
+  hud=React.createRef(); hSplats=React.createRef(); hFoot=React.createRef(); hChart=React.createRef(); hNote=React.createRef();
+  cap0=React.createRef(); cap1=React.createRef(); cap2=React.createRef(); cap3=React.createRef();
+  cap4=React.createRef(); cap5=React.createRef(); cap6=React.createRef(); capFit=React.createRef(); capEnd=React.createRef();
+  stripWrap=React.createRef(); stripNote=React.createRef();
+  rail=React.createRef(); railNum=React.createRef();
+  playBtn=React.createRef(); trackRef=React.createRef(); fillRef=React.createRef(); timeRef=React.createRef();
+
+  DUR=73; R=8.2; rr=1.7;
+  CH=[[0.4,10.4],[10.6,18.6],[18.8,26.4],[26.6,36.4],[36.6,44.2],[44.4,53.0],[53.2,60.6],[60.8,68.4]];
+  C={cy:'#4fc3f7',gr:'#69f0ae',am:'#ffa726',pu:'#ce93d8',dim:'#4a5b73',txt:'#dde5f0',sub:'#8fa4c0'};
+
+  renderVals(){
+    return { rootRef:this.rootRef, mainRef:this.mainRef, diagRef:this.diagRef, stripRef:this.stripRef,
+      hud:this.hud, hSplats:this.hSplats, hFoot:this.hFoot, hChart:this.hChart, hNote:this.hNote,
+      cap0:this.cap0, cap1:this.cap1, cap2:this.cap2, cap3:this.cap3, cap4:this.cap4, cap5:this.cap5, cap6:this.cap6,
+      capFit:this.capFit, capEnd:this.capEnd, stripWrap:this.stripWrap, stripNote:this.stripNote, rail:this.rail, railNum:this.railNum,
+      playBtn:this.playBtn, trackRef:this.trackRef, fillRef:this.fillRef, timeRef:this.timeRef,
+      onPlay:()=>this.togglePlay(), onReplay:()=>this.seek(0,true), onScrub:e=>this.scrub(e) };
+  }
+  componentDidMount(){ this.boot(); }
+  componentWillUnmount(){ this.dead=true; if(this.ro) this.ro.disconnect(); }
+
+  // ── geometry (single source of truth, y is up) ──
+  curve(t,o){ const a=2*t,b=3*t,m=(2+Math.cos(b))*0.5*this.R;
+    o[0]=m*Math.cos(a); o[1]=Math.sin(b)*this.R*0.5; o[2]=m*Math.sin(a); return o; }
+  sp(u,v){
+    const t=u*Math.PI*2,d=1e-3,p1=[0,0,0],p2=[0,0,0],P=[0,0,0];
+    this.curve(t-d,p1); this.curve(t+d,p2); this.curve(t,P);
+    let T=[p2[0]-p1[0],p2[1]-p1[1],p2[2]-p1[2]]; const nt=Math.hypot(T[0],T[1],T[2]); T=[T[0]/nt,T[1]/nt,T[2]/nt];
+    let B=[T[2],0,-T[0]]; const nb=Math.hypot(B[0],B[1],B[2])||1; B=[B[0]/nb,B[1]/nb,B[2]/nb];
+    const N=[B[1]*T[2]-B[2]*T[1], B[2]*T[0]-B[0]*T[2], B[0]*T[1]-B[1]*T[0]];
+    const a=v*Math.PI*2, ca=Math.cos(a), sa=Math.sin(a);
+    const n=[N[0]*ca+B[0]*sa, N[1]*ca+B[1]*sa, N[2]*ca+B[2]*sa];
+    return {p:[P[0]+n[0]*this.rr, P[1]+n[1]*this.rr, P[2]+n[2]*this.rr], n:n, c:P};
+  }
+  pr(p,o){ const cy=Math.cos(o.yaw),sy=Math.sin(o.yaw),cp=Math.cos(o.pit),sp=Math.sin(o.pit);
+    const X=p[0]*cy-p[2]*sy, Z=p[0]*sy+p[2]*cy, Y=p[1];
+    return [o.ox+X*o.s, o.oy-(Y*cp-Z*sp)*o.s, Z*cp+Y*sp]; }
+  // fit a set of world points into a rect under a fixed yaw/pitch
+  fit(list,rect,pad,yaw,pit){
+    const o={yaw:yaw,pit:pit,s:1,ox:0,oy:0};
+    let a=1e9,b=-1e9,c=1e9,d=-1e9;
+    for(const p of list){ const q=this.pr(p,o);
+      if(q[0]<a)a=q[0]; if(q[0]>b)b=q[0]; if(q[1]<c)c=q[1]; if(q[1]>d)d=q[1]; }
+    const s=Math.min((rect.w-2*pad)/Math.max(1e-3,b-a),(rect.h-2*pad)/Math.max(1e-3,d-c));
+    o.s=s; o.ox=rect.x+rect.w/2-(a+b)/2*s; o.oy=rect.y+rect.h/2-(c+d)/2*s;
+    return o;
+  }
+
+  // ── three.js hero ──
+  boot(){
+    if(!window.THREE){ setTimeout(()=>this.boot(),120); return; }
+    const T=window.THREE;
+    this.renderer=new T.WebGLRenderer({canvas:this.mainRef.current,antialias:true,alpha:false});
+    this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+    this.scene=new T.Scene(); this.scene.fog=new T.FogExp2(0x04070d,0.010);
+    this.cam=new T.PerspectiveCamera(38,1,0.1,600);
+    this.buildCloud(); this.buildWires();
+    this.resize();
+    this.ro=new ResizeObserver(()=>this.resize()); this.ro.observe(this.rootRef.current);
+    const saved=parseFloat(localStorage.getItem('kas-teaser-modest2-t')||'0');
+    this.t=(saved>0&&saved<this.DUR-0.4)?saved:0;
+    this.playing=true; this.last=performance.now(); this.loop();
+  }
+
+  buildCloud(){
+    const T=window.THREE, NU=768, NV=96, N=NU*NV;
+    const pos=new Float32Array(N*3), nrm=new Float32Array(N*3), uvs=new Float32Array(N*2), lvl=new Float32Array(N);
+    const tz=n=>{ if(n===0) return 6; let c=0; while(!(n&1)){ n>>=1; c++; } return Math.min(6,c); };
+    let k=0;
+    for(let i=0;i<NU;i++){ const li=tz(i);
+      for(let j=0;j<NV;j++){
+        const s=this.sp(i/NU, j/NV);
+        pos[k*3]=s.p[0]; pos[k*3+1]=s.p[1]; pos[k*3+2]=s.p[2];
+        nrm[k*3]=s.n[0]; nrm[k*3+1]=s.n[1]; nrm[k*3+2]=s.n[2];
+        uvs[k*2]=i/NU; uvs[k*2+1]=j/NV; lvl[k]=Math.min(li,tz(j)); k++;
+      } }
+    this.NU=NU; this.NV=NV; this.total=N;
+    const g=new T.BufferGeometry();
+    g.setAttribute('position',new T.BufferAttribute(pos,3));
+    g.setAttribute('aNrm',new T.BufferAttribute(nrm,3));
+    g.setAttribute('aUV',new T.BufferAttribute(uvs,2));
+    g.setAttribute('aLvl',new T.BufferAttribute(lvl,1));
+    this.uni={ uLvl:{value:0}, uScale:{value:2.1}, uPix:{value:1},
+      uDenC:{value:-1}, uDenAmt:{value:0}, uDenW:{value:0.055},
+      uBack:{value:0}, uSeg:{value:0}, uIso:{value:0}, uRecol:{value:0}, uThirds:{value:0},
+      uCam:{value:new T.Vector3()}, uDim:{value:0},
+      uCircum:{value:2*Math.PI*this.rr}, uArc:{value:2*Math.PI*this.R*1.15}, uNU:{value:NU}, uNV:{value:NV} };
+    const mat=new T.ShaderMaterial({ uniforms:this.uni, transparent:true, depthWrite:false, blending:T.NormalBlending,
+      vertexShader:`
+        attribute vec3 aNrm; attribute vec2 aUV; attribute float aLvl;
+        uniform float uLvl,uScale,uPix,uDenC,uDenAmt,uDenW,uBack,uSeg,uIso,uRecol,uDim,uThirds;
+        uniform float uCircum,uArc,uNU,uNV; uniform vec3 uCam;
+        varying vec3 vCol; varying float vA;
+        float band(float u,float c,float w){ float d=abs(fract(u-c+0.5)-0.5); return exp(-(d*d)/(w*w)); }
+        void main(){
+          float dens = uDenAmt*band(aUV.x,uDenC,uDenW);
+          float third = floor(clamp(aUV.x,0.0,0.9999)*3.0);
+          float need = max(0.0, uLvl - dens);
+          float sizeMul = 1.0;
+          if(uThirds>0.5){
+            if(third<0.5){ need = 0.0; sizeMul = 1.05; }
+            else if(third>1.5){ need = min(6.0, need+0.9); sizeMul = 0.34; }
+          }
+          float keep = step(need, aLvl+0.001);
+          vec4 mv = modelViewMatrix*vec4(position,1.0);
+          vec3 vdir = normalize(uCam-position);
+          float face = dot(normalize(aNrm), vdir);
+          float backAlpha = mix(1.0, smoothstep(-0.06,0.14,face)*0.94+0.06, uBack);
+          float rA = step(0.13,aUV.x)*step(aUV.x,0.29);
+          float rB = step(0.55,aUV.x)*step(aUV.x,0.74)*step(0.15,aUV.y)*step(aUV.y,0.85);
+          vec3 base = mix(vec3(0.64,0.72,0.84), vec3(0.42,0.55,0.72), aUV.y);
+          if(uThirds>0.5){
+            vec3 tint = third<0.5 ? vec3(0.94,0.96,1.00) : (third<1.5 ? vec3(0.31,0.76,0.97) : vec3(0.41,0.94,0.68));
+            base = mix(base, tint, 0.80*uThirds);
+          }
+          vec3 cA = mix(vec3(0.81,0.58,0.85), vec3(0.31,0.94,0.68), uRecol);
+          vec3 col = base;
+          col = mix(col, cA, rA*uSeg);
+          col = mix(col, vec3(1.00,0.65,0.15), rB*uSeg);
+          float isoDim = mix(1.0, mix(0.06,1.0,rA), uIso);
+          vA = keep*backAlpha*isoDim*(1.0-uDim);
+          vCol = col;
+          gl_Position = projectionMatrix*mv;
+          float st = pow(2.0, ceil(need));
+          float cellV = uCircum*st/uNV;
+          float cellU = uArc*st/uNU;
+          float cell = max(cellV, cellU)*1.18;
+          gl_PointSize = clamp(sizeMul*uScale*uPix*cell/max(0.6,-mv.z), 2.5, 60.0);
+          if(vA<0.02) gl_Position=vec4(2.0,2.0,2.0,1.0);
+        }`,
+      fragmentShader:`
+        varying vec3 vCol; varying float vA;
+        void main(){
+          vec2 d=gl_PointCoord-0.5; float r2=dot(d,d);
+          if(r2>0.25) discard;
+          float a=exp(-r2*3.2);
+          gl_FragColor=vec4(vCol*(0.80+0.38*a), a*vA);
+        }`});
+    this.pts=new T.Points(g,mat); this.scene.add(this.pts);
+  }
+
+  buildWires(){
+    const T=window.THREE; this.wires=[];
+    [4,8,16].forEach(step=>{
+      const seg=[], NU=this.NU, NV=this.NV, cache=new Map();
+      const pt=(i,j)=>{ const key=i+'_'+j; let s=cache.get(key); if(!s){ s=this.sp((i%NU)/NU,(j%NV)/NV); cache.set(key,s); } return s.p; };
+      for(let i=Math.round(NU*2/3);i<NU;i+=step){
+        for(let j=0;j<NV;j+=step){
+          const a=pt(i,j), b=pt(i+step,j), c=pt(i,j+step);
+          if(i+step<=NU-1) seg.push(a[0],a[1],a[2],b[0],b[1],b[2]);
+          seg.push(a[0],a[1],a[2],c[0],c[1],c[2]);
+          if(i+step<=NU-1) seg.push(b[0],b[1],b[2],c[0],c[1],c[2]);
+        } }
+      const g=new T.BufferGeometry();
+      g.setAttribute('position',new T.BufferAttribute(new Float32Array(seg),3));
+      const m=new T.LineBasicMaterial({color:0x7fa4cf,transparent:true,opacity:0,depthWrite:false});
+      const l=new T.LineSegments(g,m); l.visible=false; this.scene.add(l); this.wires.push(l);
+    });
+  }
+
+  resize(){
+    const el=this.rootRef.current; if(!el||!this.renderer) return;
+    const w=el.clientWidth,h=el.clientHeight;
+    this.renderer.setSize(w,h,false);
+    this.cam.aspect=w/Math.max(1,h); this.cam.updateProjectionMatrix();
+    this.uni.uPix.value=h/(2*Math.tan(this.cam.fov*Math.PI/360));
+    const dpr=Math.min(2,window.devicePixelRatio||1);
+    const d=this.diagRef.current; if(d){ d.width=w*dpr; d.height=h*dpr; this.dctx=d.getContext('2d'); this.dpr=dpr; this.DW=w; this.DH=h; }
+    const sc=this.stripRef.current; if(sc){ sc.width=1024; sc.height=110; this.sctx=sc.getContext('2d'); }
+  }
+
+  ease(a,b,t){ const x=Math.max(0,Math.min(1,(t-a)/(b-a))); return x*x*(3-2*x); }
+  win(t,a,b,f){ f=f||0.7; return Math.min(this.ease(a,a+f,t), 1-this.ease(b-f,b,t)); }
+
+  camAt(t){
+    const K=[{t:0,r:44,a:0.30,e:0.30},{t:2.6,r:31,a:0.42,e:0.28},{t:10.4,r:30,a:0.70,e:0.28},
+      {t:10.8,r:27,a:0.86,e:0.26},{t:18.6,r:27,a:0.86,e:0.26},
+      {t:19.0,r:26,a:1.26,e:0.24},{t:26.4,r:26,a:1.26,e:0.24},
+      {t:26.8,r:26,a:1.64,e:0.22},{t:36.4,r:26,a:1.70,e:0.22},
+      {t:36.8,r:26,a:1.88,e:0.22},{t:44.2,r:26,a:1.92,e:0.22},
+      {t:44.8,r:16,a:2.30,e:0.20},{t:53.0,r:15,a:3.00,e:0.26},
+      {t:53.4,r:30,a:3.12,e:0.24},{t:60.6,r:29,a:3.56,e:0.24},
+      {t:61.0,r:27,a:3.76,e:0.24},{t:68.4,r:27,a:3.78,e:0.24},
+      {t:69.0,r:27,a:3.92,e:0.26},{t:73,r:34,a:4.22,e:0.30}];
+    let i=0; while(i<K.length-2 && t>K[i+1].t) i++;
+    const A=K[i],B=K[i+1],k=this.ease(A.t,B.t,t);
+    return {r:A.r+(B.r-A.r)*k, a:A.a+(B.a-A.a)*k, e:A.e+(B.e-A.e)*k};
+  }
+
+  frame(t){
+    const u=this.uni;
+    // ladder: four discrete sampling steps, held long enough to read
+    const lvlOpen=1.2*(this.ease(4.0,4.7,t)+this.ease(6.2,6.9,t)+this.ease(8.4,9.1,t));
+    const lvlMain=2.5-0.6*this.ease(45,48,t);
+    u.uLvl.value=lvlOpen+(lvlMain-lvlOpen)*this.ease(10.2,11.4,t);
+    u.uThirds.value=this.ease(1.6,3.0,t)-this.ease(10.0,11.0,t);
+    u.uBack.value=this.ease(44.8,46.6,t)-this.ease(52.4,53.4,t);
+    const sweep=this.ease(53.8,59.4,t);
+    u.uDenC.value=0.08+sweep*0.86;
+    u.uDenAmt.value=2.6*(this.ease(53.2,54.6,t)-this.ease(59.6,60.6,t));
+    u.uSeg.value=this.ease(61.0,63.2,t);
+    u.uIso.value=this.ease(63.8,65.2,t)-this.ease(70.0,71.0,t);
+    u.uRecol.value=this.ease(65.8,67.2,t);
+
+    const diag={s1:this.win(t,10.6,18.6),s2:this.win(t,18.8,26.4),sF:this.win(t,26.6,36.4),
+      s3:this.win(t,36.6,44.2),s4:this.win(t,44.6,53.0),s6:this.win(t,60.8,68.4)};
+    const heroDim=Math.max(diag.s1*0.92,diag.s2*0.92,diag.sF*0.95,diag.s3*0.92,diag.s4*0.34,diag.s6*0.92);
+    u.uDim.value=Math.max(heroDim, this.ease(68.6,70.4,t)*0.74);
+
+    const c=this.camAt(t), n=t*0.35;
+    const az=c.a+Math.sin(n*1.7)*0.012+Math.sin(n*0.9)*0.008, el=c.e+Math.sin(n*1.3)*0.01;
+    this.cam.position.set(Math.cos(az)*Math.cos(el)*c.r, Math.sin(el)*c.r, Math.sin(az)*Math.cos(el)*c.r);
+    this.cam.up.set(0,1,0); this.cam.lookAt(0,0,0);
+    u.uCam.value.copy(this.cam.position);
+
+    const wi=Math.max(0,Math.min(2,Math.round(u.uLvl.value)-1));
+    this.wires.forEach((w,i)=>{ const on=i===wi&&u.uThirds.value>0.05;
+      w.visible=on; w.material.opacity=on?0.5*u.uThirds.value:0; });
+
+    const set=(ref,o,slide)=>{ const e=ref.current; if(!e) return;
+      e.style.opacity=o.toFixed(3); e.style.transform='translateY('+((1-o)*(slide||14)).toFixed(1)+'px)'; };
+    const caps=[this.cap0,this.cap1,this.cap2,this.capFit,this.cap3,this.cap4,this.cap5,this.cap6];
+    let active=-1;
+    caps.forEach((r,i)=>{ const o=this.win(t,this.CH[i][0],this.CH[i][1],i?0.7:0.9);
+      set(r,o); if(o>0.5) active=i; });
+    set(this.capEnd,this.ease(68.6,70.0,t),22);
+    if(this.rail.current){
+      this.rail.current.style.opacity=this.win(t,1.2,68.6,1.0).toFixed(3);
+      const kids=this.rail.current.children;
+      for(let i=1;i<kids.length;i++){ const on=(i-1)<=Math.max(active,0);
+        kids[i].style.background=(i-1)===active?'#4fc3f7':(on?'#31506f':'#22314e'); }
+      if(active>=0) this._lastAct=active;
+      const shownAct=active>=0?active:(this._lastAct||0);
+      for(let i=1;i<kids.length;i++){ const idx=i-1;
+        kids[i].style.background=idx===shownAct?'#4fc3f7':(idx<shownAct?'#31506f':'#22314e'); }
+      if(this.railNum.current) this.railNum.current.textContent=String(shownAct+1).padStart(2,'0')+' / 08';
+    }
+
+    const stripO=this.win(t,53.0,60.8,0.9);
+    if(this.hud.current) this.hud.current.style.opacity=(this.win(t,10.6,68.4,1.0)*(1-stripO)).toFixed(3);
+    const sw=this.stripWrap.current;
+    if(sw){ sw.style.opacity=stripO.toFixed(3); sw.style.transform='translateY('+((1-stripO)*28).toFixed(1)+'px)'; }
+    if(stripO>0.02) this.drawStrip();
+
+    this.draw2D(t,diag);
+
+    const shown=this.shownCount(u.uLvl.value,u.uDenAmt.value);
+    if(this.hSplats.current) this.hSplats.current.textContent=shown.toLocaleString();
+    if(this.hFoot.current){
+      const st=Math.pow(2,Math.ceil(Math.max(0,u.uLvl.value-u.uDenAmt.value*0.5)));
+      const cv=(2*Math.PI*this.rr)*st/this.NV, cu=(2*Math.PI*this.R*1.15)*st/this.NU;
+      this.hFoot.current.textContent=Math.max(cv,cu).toFixed(3)+' u'; }
+    if(this.hNote.current){
+      let s='\u00a0';
+      if(t<18.6) s='2D Map ↔ Surface ↔ Cage';
+      else if(t<26.4) s='Rotation = [∂U, ∂V, N]';
+      else if(t<34.2) s='2×2 Kernel · No KNN';
+      else if(t<43) s='Frustum Crop · Back-Faces Culled';
+      else if(t<58.4) s='2 Objects · 2D Map Clusters';
+      this.hNote.current.textContent=s; }
+  }
+
+  shownCount(lvl,dens){
+    const base=this.total/Math.pow(4,Math.max(0,lvl));
+    return Math.round(Math.min(this.total, base*(1+dens*0.22)));
+  }
+
+  // ── 2D diagram layer ──
+  rrect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+  card(c,x,y,w,h,title,accent,a){
+    c.globalAlpha=a; c.fillStyle='rgba(7,11,20,.93)'; c.strokeStyle='rgba(34,49,78,.95)'; c.lineWidth=1;
+    this.rrect(c,x,y,w,h,10); c.fill(); c.stroke();
+    c.font='700 10px "JetBrains Mono", monospace'; c.fillStyle=accent;
+    c.fillText(title.toUpperCase(),x+14,y+21); c.globalAlpha=1;
+  }
+  clip(c,x,y,w,h,fn){ c.save(); this.rrect(c,x+1,y+1,w-2,h-2,9); c.clip(); fn(); c.restore(); }
+  lab(c,x,y,s,col,size,weight){ c.font=(weight||400)+' '+(size||10)+'px "JetBrains Mono", monospace'; c.fillStyle=col; c.fillText(s,x,y); }
+
+  draw2D(t,d){
+    const c=this.dctx; if(!c) return;
+    const W=this.DW,H=this.DH;
+    c.setTransform(this.dpr,0,0,this.dpr,0,0);
+    c.clearRect(0,0,W,H);
+    const top=H*0.09+56, bot=H*0.91-256;
+    const box={x:44,y:top,w:W-88,h:Math.max(140,bot-top)};
+    // scrim under the caption column while the hero is at full brightness
+    const heroLive=Math.max(0,1-this.uni.uDim.value/0.9)*this.win(t,0.2,60.4,0.9);
+    if(heroLive>0.02){
+      const host=this.rootRef.current.getBoundingClientRect();
+      let capRight=0;
+      [this.cap0,this.cap1,this.cap2,this.cap3,this.cap4,this.cap5,this.cap6].forEach(r=>{
+        const e=r&&r.current; if(!e||parseFloat(e.style.opacity||'0')<0.05) return;
+        capRight=Math.max(capRight, e.getBoundingClientRect().right-host.left);
+      });
+      if(capRight<10) capRight=Math.min(W*0.55,680);
+      const solid=capRight+40, cw=Math.min(W, solid+180);
+      const g=c.createLinearGradient(0,0,cw,0);
+      g.addColorStop(0,'rgba(4,7,13,'+(0.92*heroLive).toFixed(3)+')');
+      g.addColorStop(Math.max(0.01,Math.min(0.99,solid/cw)),'rgba(4,7,13,'+(0.86*heroLive).toFixed(3)+')');
+      g.addColorStop(1,'rgba(4,7,13,0)');
+      c.fillStyle=g; c.fillRect(0,0,cw,H);
+    }
+    if(d.s1>0.02) this.dS1(c,box,d.s1,(t-10.6)/8.0);
+    if(d.s2>0.02) this.dS2(c,box,d.s2,(t-18.8)/7.6);
+    if(d.sF>0.02) this.dFit(c,box,d.sF,(t-26.6)/9.8);
+    if(d.s3>0.02) this.dS3(c,box,d.s3,(t-36.6)/7.6);
+    if(d.s4>0.02) this.dS4(c,box,d.s4,(t-44.6)/8.4);
+    if(d.s6>0.02) this.dS6(c,box,d.s6,(t-60.8)/7.6);
+    if(this.uni.uThirds.value>0.05) this.dLadder(c,this.uni.uThirds.value,t);
+  }
+
+  // ladder legend: names the three representations and the sampling step
+  dLadder(c,a,t){
+    const W=this.DW,H=this.DH, y=H*0.09+46;
+    const items=[['Continuous','#eef3fb'],['Gaussian Splats','#4fc3f7'],['Mesh','#69f0ae']];
+    c.globalAlpha=a*0.92; c.fillStyle='rgba(5,8,15,.88)'; c.strokeStyle='rgba(34,49,78,.9)'; c.lineWidth=1;
+    this.rrect(c,W/2-216,y-30,432,112,10); c.fill(); c.stroke();
+    c.globalAlpha=a;
+    let x=W/2-170;
+    items.forEach(it=>{
+      c.fillStyle=it[1]; c.fillRect(x,y-8,10,10);
+      this.lab(c,x+16,y+1,it[0].toUpperCase(),it[1],10,700);
+      x+=c.measureText(it[0].toUpperCase()).width+42;
+    });
+    const steps=[['73k',''],['18k',''],['4.6k',''],['1.2k','']];
+    const idx=Math.max(0,Math.min(3,Math.round(this.uni.uLvl.value/1.2)));
+    const bx=W/2-190, by=y+26;
+    this.lab(c,bx,by+13,'SPLATS ON THE SURFACE','#4a5b73',10,700);
+    let sx=bx+150;
+    steps.forEach((s,i)=>{
+      const on=i===idx, done=i<idx;
+      c.globalAlpha=a*(on?1:(done?0.45:0.22));
+      c.strokeStyle=on?'#4fc3f7':'#22314e'; c.lineWidth=on?1.6:1;
+      this.rrect(c,sx,by,58,20,10); c.stroke();
+      c.textAlign='center'; this.lab(c,sx+29,by+14,s[0],on?'#dde5f0':'#4a5b73',10,700); c.textAlign='left';
+      sx+=66;
+    });
+    c.globalAlpha=a;
+    this.lab(c,W/2-190,by+42,'SAME SURFACE · SAME SPLINE · FEWER SAMPLES','#4a5b73',10,700);
+    c.globalAlpha=1;
+  }
+
+  dThirdLabels(c,a){
+    const T=window.THREE, names=[['Continuous','#dde5f0'],['Gaussian Splats','#4fc3f7'],['Mesh','#69f0ae']];
+    const v=new T.Vector3(), cam=this.cam.position;
+    for(let i=0;i<3;i++){
+      let best=null;
+      for(let j=0;j<24;j++){
+        const s=this.sp((i+0.5)/3, j/24);
+        const face=(cam.x-s.p[0])*s.n[0]+(cam.y-s.p[1])*s.n[1]+(cam.z-s.p[2])*s.n[2];
+        if(face>0){ v.set(s.p[0],s.p[1],s.p[2]).project(this.cam);
+          if(v.z<1 && (!best||v.y>best.y)) best={x:v.x,y:v.y}; }
+      }
+      if(!best) continue;
+      const x=(best.x*0.5+0.5)*this.DW, y=(-best.y*0.5+0.5)*this.DH;
+      if(y<this.DH*0.14) continue;
+      c.globalAlpha=a*0.5; c.strokeStyle=names[i][1]; c.lineWidth=1;
+      c.beginPath(); c.moveTo(x,y); c.lineTo(x,y-24); c.stroke();
+      c.globalAlpha=a;
+      c.textAlign='center'; this.lab(c,x,y-32,names[i][0].toUpperCase(),names[i][1],10,700); c.textAlign='left';
+      c.globalAlpha=1;
+    }
+  }
+
+  // 01 — 2D map ↔ surface ↔ control cage
+  dS1(c,b,a,k){
+    k=Math.max(0,Math.min(1,k));
+    const gap=16, w=(b.w-gap*2)/3, h=b.h;
+    const cols=[this.C.cy,this.C.gr,this.C.am,this.C.pu];
+    const pts=[[0.18,0.24],[0.44,0.66],[0.67,0.38],[0.87,0.78]];
+    const act=Math.min(3,Math.floor(k*4.4));
+    const shown=i=>k*4.4>i+0.15;
+    const A={x:b.x,y:b.y,w:w,h:h}, B={x:b.x+w+gap,y:b.y,w:w,h:h}, D={x:b.x+(w+gap)*2,y:b.y,w:w,h:h};
+    this.card(c,A.x,A.y,A.w,A.h,'UV Parametrization Domain · 2D Map',this.C.pu,a);
+    this.card(c,B.x,B.y,B.w,B.h,'3D World · Surface Sampling',this.C.cy,a);
+    this.card(c,D.x,D.y,D.w,D.h,'3D Control-Point Cage',this.C.gr,a);
+    c.globalAlpha=a;
+    const gx=A.x+18, gy=A.y+40, gw=A.w-36, gh=A.h-76;
+    this.clip(c,A.x,A.y,A.w,A.h,()=>{
+      c.strokeStyle='rgba(206,147,216,.16)'; c.lineWidth=1;
+      for(let i=0;i<=16;i++){ const x=gx+i*gw/16; c.beginPath(); c.moveTo(x,gy); c.lineTo(x,gy+gh); c.stroke(); }
+      for(let j=0;j<=8;j++){ const y=gy+j*gh/8; c.beginPath(); c.moveTo(gx,y); c.lineTo(gx+gw,y); c.stroke(); }
+      c.fillStyle='rgba(140,160,190,.28)';
+      for(let i=0;i<=16;i++) for(let j=0;j<=8;j++) c.fillRect(gx+i*gw/16-0.9,gy+j*gh/8-0.9,1.8,1.8);
+      this.lab(c,gx,gy+gh+16,'U →',this.C.dim,9,700);
+      this.lab(c,gx+gw-24,gy+gh+16,'V ↓',this.C.dim,9,700);
+    });
+    const aPos=pts.map(p=>[gx+p[0]*gw, gy+p[1]*gh]);
+    const yaw=0.7+k*0.5, pit=0.42;
+    // surface card
+    const world=[], surfRect={x:B.x,y:B.y+30,w:B.w,h:B.h-52};
+    for(let i=0;i<120;i++) for(let j=0;j<8;j++) world.push(this.sp(i/120,j/8).p);
+    const o=this.fit(world,surfRect,14,yaw,pit);
+    const bPos=pts.map(p=>this.pr(this.sp(p[0],p[1]).p,o));
+    this.clip(c,B.x,B.y,B.w,B.h,()=>{
+      const dots=[];
+      for(let i=0;i<170;i++) for(let j=0;j<16;j++) dots.push(this.pr(this.sp(i/170,j/16).p,o));
+      dots.sort((p,q)=>p[2]-q[2]);
+      dots.forEach(p=>{ const sh=0.25+0.6*Math.max(0,Math.min(1,(p[2]+9)/18));
+        c.fillStyle='rgba(150,175,205,'+(sh*0.5).toFixed(3)+')'; c.fillRect(p[0]-1.1,p[1]-1.1,2.2,2.2); });
+    });
+    // cage card
+    const CU=26, CV=8, cageW=[];
+    for(let i=0;i<CU;i++){ cageW.push([]);
+      for(let j=0;j<CV;j++){ const s=this.sp(i/CU,j/CV);
+        cageW[i].push([s.p[0]+s.n[0]*0.8, s.p[1]+s.n[1]*0.8, s.p[2]+s.n[2]*0.8]); } }
+    const flatW=[].concat.apply([],cageW);
+    const oc=this.fit(flatW,{x:D.x,y:D.y+30,w:D.w,h:D.h-52},14,yaw,pit);
+    const cage=cageW.map(r=>r.map(p=>this.pr(p,oc)));
+    this.clip(c,D.x,D.y,D.w,D.h,()=>{
+      c.strokeStyle='rgba(105,240,174,.22)'; c.lineWidth=1;
+      for(let i=0;i<CU;i++) for(let j=0;j<CV;j++){
+        const p=cage[i][j], q=cage[(i+1)%CU][j], r=cage[i][(j+1)%CV];
+        c.beginPath(); c.moveTo(p[0],p[1]); c.lineTo(q[0],q[1]); c.moveTo(p[0],p[1]); c.lineTo(r[0],r[1]); c.stroke(); }
+      c.fillStyle='rgba(105,240,174,.55)';
+      for(let i=0;i<CU;i++) for(let j=0;j<CV;j++) c.fillRect(cage[i][j][0]-1.3,cage[i][j][1]-1.3,2.6,2.6);
+    });
+    pts.forEach((p,i)=>{
+      if(!shown(i)) return;
+      const col=cols[i], em=i===act?1:0.5;
+      const ci=Math.round(p[0]*CU)%CU, cj=Math.round(p[1]*CV)%CV, cp=cage[ci][cj];
+      const marks=[[aPos[i],A],[bPos[i],B],[cp,D]];
+      marks.forEach(([q,rect])=>{ this.clip(c,rect.x,rect.y,rect.w,rect.h,()=>{
+        c.globalAlpha=a*em; c.strokeStyle=col; c.lineWidth=1.6;
+        c.beginPath(); c.arc(q[0],q[1],7,0,7); c.stroke();
+        c.fillStyle=col; c.globalAlpha=a*em*0.9; c.beginPath(); c.arc(q[0],q[1],2.6,0,7); c.fill();
+        c.globalAlpha=a*em*0.15; c.beginPath(); c.arc(q[0],q[1],17,0,7); c.fill(); c.globalAlpha=a; }); });
+      c.globalAlpha=a*em*0.5; c.strokeStyle=col; c.lineWidth=1; c.setLineDash([3,4]);
+      c.beginPath(); c.moveTo(aPos[i][0]+8,aPos[i][1]); c.lineTo(bPos[i][0]-8,bPos[i][1]);
+      c.moveTo(bPos[i][0]+8,bPos[i][1]); c.lineTo(cp[0]-8,cp[1]); c.stroke(); c.setLineDash([]);
+      c.globalAlpha=a;
+      this.clip(c,A.x,A.y,A.w,A.h,()=>this.lab(c,aPos[i][0]+11,aPos[i][1]-9,'('+p[0].toFixed(2)+', '+p[1].toFixed(2)+')',col,9,700));
+    });
+    c.globalAlpha=a;
+    this.lab(c,A.x+18,A.y+A.h-13,'PICK ONCE IN 2D',this.C.dim,9,700);
+    this.lab(c,B.x+18,B.y+B.h-13,'RESOLVES ONCE IN 3D',this.C.dim,9,700);
+    this.lab(c,D.x+18,D.y+D.h-13,'DEFORMS THE SPLINE',this.C.dim,9,700);
+    c.globalAlpha=1;
+  }
+
+  // 02 — rotation from ∂U,∂V,N; scale from geodesic probing
+  dS2(c,b,a,k){
+    k=Math.max(0,Math.min(1,k));
+    const gap=16, lw=b.w*0.47, rw=b.w-lw-gap;
+    const L={x:b.x,y:b.y,w:lw,h:b.h}, R={x:b.x+lw+gap,y:b.y,w:rw,h:b.h};
+    this.card(c,L.x,L.y,L.w,L.h,'Continuous Surface · Analysis Layer',this.C.cy,a);
+    this.card(c,R.x,R.y,R.w,R.h,'Geodesic Probing → Gaussian',this.C.gr,a);
+    c.globalAlpha=a;
+    const u0=0.10,u1=0.26,v0=0.02,v1=0.98, NI=46, NJ=26;
+    const world=[];
+    for(let i=0;i<=NI;i++) for(let j=0;j<=NJ;j++) world.push(this.sp(u0+(u1-u0)*i/NI, v0+(v1-v0)*j/NJ).p);
+    const o=this.fit(world,{x:L.x,y:L.y+30,w:L.w,h:L.h-52},12,0.95,0.34);
+    const uu=u0+(u1-u0)*0.5, vv=v0+(v1-v0)*(0.34+0.08*Math.sin(k*4));
+    const P=this.sp(uu,vv), du=this.sp(uu+0.006,vv), dv=this.sp(uu,vv+0.035);
+    this.clip(c,L.x,L.y,L.w,L.h,()=>{
+      world.forEach(p=>{ const q=this.pr(p,o);
+        const sh=0.22+0.6*Math.max(0,Math.min(1,(q[2]+6)/12));
+        c.fillStyle='rgba(158,182,212,'+(sh*0.5).toFixed(3)+')'; c.fillRect(q[0]-1.2,q[1]-1.2,2.4,2.4); });
+      const sp0=this.pr(P.p,o), spU=this.pr(du.p,o), spV=this.pr(dv.p,o);
+      const nEnd=this.pr([P.p[0]+P.n[0]*1.6,P.p[1]+P.n[1]*1.6,P.p[2]+P.n[2]*1.6],o);
+      const ex=[(spU[0]-sp0[0])*3.2,(spU[1]-sp0[1])*3.2], ey=[(spV[0]-sp0[0])*2.0,(spV[1]-sp0[1])*2.0];
+      const exl=Math.max(1e-3,Math.hypot(ex[0],ex[1]));
+      c.save(); c.translate(sp0[0],sp0[1]); c.transform(ex[0],ex[1],ey[0],ey[1],0,0);
+      const rg=c.createRadialGradient(0,0,0,0,0,1);
+      rg.addColorStop(0,'rgba(79,195,247,.55)'); rg.addColorStop(1,'rgba(79,195,247,0)');
+      c.fillStyle=rg; c.beginPath(); c.arc(0,0,1,0,7); c.fill();
+      c.lineWidth=1/exl; c.strokeStyle='rgba(79,195,247,.85)'; c.beginPath(); c.arc(0,0,1,0,7); c.stroke();
+      c.restore();
+      const arrow=(from,to,col,label)=>{
+        c.strokeStyle=col; c.lineWidth=2; c.beginPath(); c.moveTo(from[0],from[1]); c.lineTo(to[0],to[1]); c.stroke();
+        const ang=Math.atan2(to[1]-from[1],to[0]-from[0]);
+        c.fillStyle=col; c.beginPath(); c.moveTo(to[0],to[1]);
+        c.lineTo(to[0]-8*Math.cos(ang-0.4),to[1]-8*Math.sin(ang-0.4));
+        c.lineTo(to[0]-8*Math.cos(ang+0.4),to[1]-8*Math.sin(ang+0.4)); c.closePath(); c.fill();
+        this.lab(c,to[0]+6,to[1]-4,label,col,10,700); };
+      arrow(sp0,[sp0[0]+ex[0]*1.4,sp0[1]+ex[1]*1.4],this.C.cy,'∂U');
+      arrow(sp0,[sp0[0]+ey[0]*1.7,sp0[1]+ey[1]*1.7],this.C.gr,'∂V');
+      arrow(sp0,nEnd,this.C.am,'N');
+      c.fillStyle='#fff'; c.beginPath(); c.arc(sp0[0],sp0[1],2.6,0,7); c.fill();
+    });
+    this.lab(c,L.x+18,L.y+L.h-13,'ROTATION = ORTHONORMAL [∂U, ∂V, N]',this.C.dim,9,700);
+    this.clip(c,R.x,R.y,R.w,R.h,()=>{
+      const px=R.x+20, pw=R.w-40; let py=R.y+48;
+      const probe=(label,col,val,frac,dir)=>{
+        this.lab(c,px,py,label,col,10,700);
+        const y=py+18, w=pw-10;
+        c.strokeStyle='rgba(255,255,255,.10)'; c.lineWidth=1;
+        c.beginPath(); c.moveTo(px,y); c.lineTo(px+w,y); c.stroke();
+        const g=Math.max(0,Math.min(1,(k-0.15)*2.2))*frac;
+        c.strokeStyle=col; c.lineWidth=2; c.beginPath(); c.moveTo(px,y); c.lineTo(px+w*g,y); c.stroke();
+        for(let i=0;i<=8;i++){ const x=px+w*frac*i/8; c.globalAlpha=a*(x<=px+w*g?0.8:0.18);
+          c.strokeStyle=col; c.lineWidth=1.4; c.beginPath(); c.moveTo(x,y-5); c.lineTo(x,y+5); c.stroke(); }
+        c.globalAlpha=a;
+        this.lab(c,px,y+18,dir+'   Δs = '+val,this.C.sub,10,400);
+        py=y+42; };
+      probe('GEODESIC PROBE · U',this.C.cy,'0.077 u',0.62,'ALONG ARCLENGTH');
+      probe('GEODESIC PROBE · V',this.C.gr,'0.111 u',0.90,'AROUND THE TUBE');
+      c.strokeStyle='rgba(255,255,255,.10)'; c.beginPath(); c.moveTo(px,py-6); c.lineTo(px+pw-10,py-6); c.stroke();
+      this.lab(c,px,py+12,'SCALE = (Δs_U, Δs_V) · NO SEARCH, NO FIT',this.C.am,10,700);
+      const avail=(R.y+R.h-30)-(py+22);
+      if(avail>44){
+        const rad=Math.min(avail/2, 46);
+        c.save(); c.translate(R.x+R.w*0.5, py+22+avail/2); c.rotate(-0.35); c.scale(rad*1.6,rad*0.92);
+        const rg2=c.createRadialGradient(0,0,0,0,0,1);
+        rg2.addColorStop(0,'rgba(255,167,38,.5)'); rg2.addColorStop(1,'rgba(255,167,38,0)');
+        c.fillStyle=rg2; c.beginPath(); c.arc(0,0,1,0,7); c.fill();
+        c.lineWidth=1/rad; c.strokeStyle='rgba(255,167,38,.85)'; c.beginPath(); c.arc(0,0,1,0,7); c.stroke(); c.restore();
+      }
+      this.lab(c,R.x+20,R.y+R.h-13,'ONE SPLAT, DERIVED',this.C.dim,9,700);
+    });
+    c.globalAlpha=1;
+  }
+
+  // 03 — differentiable reconstruction loop + disk footprint
+  dFit(c,b,a,k){
+    k=Math.max(0,Math.min(1,k));
+    const n=4, gap=12, w=(b.w-gap*(n-1))/n, h=Math.min(b.h,232), y=b.y;
+    const titles=['Target Views','Splat Fill','Differentiable Raster','∇ To Control Points'];
+    const cols=[this.C.sub,this.C.cy,this.C.am,this.C.gr];
+    const iter=Math.min(1,k*1.4), loss=Math.pow(1-iter,1.9);
+    const hotIdx=Math.min(3,Math.floor((k*7.5)%4));
+    for(let s=0;s<n;s++){
+      const x=b.x+s*(w+gap), hot=s===hotIdx;
+      this.card(c,x,y,w,h,titles[s],cols[s],a*(hot?1:0.7));
+      if(hot){ c.globalAlpha=a*0.85; c.strokeStyle=cols[s]; c.lineWidth=1.5; this.rrect(c,x-2,y-2,w+4,h+4,11); c.stroke(); }
+      c.globalAlpha=a;
+      const gx=x+14, gy=y+38, gw=w-28, gh=h-64;
+      this.clip(c,x,y,w,h,()=>{
+        if(s===0){
+          for(let i=0;i<3;i++){ const cw=gw*0.44, ch=gh*0.44, ox=gx+(i%2)*(gw-cw)*0.9, oy=gy+i*(gh-ch)*0.44;
+            c.fillStyle='rgba(18,27,46,.85)'; c.strokeStyle='rgba(143,164,192,.45)'; c.lineWidth=1;
+            c.fillRect(ox,oy,cw,ch); c.strokeRect(ox,oy,cw,ch);
+            c.strokeStyle='rgba(143,164,192,.26)';
+            c.beginPath(); c.arc(ox+cw*0.5,oy+ch*0.56,Math.min(cw,ch)*0.27,0,7); c.stroke(); }
+          this.lab(c,gx,y+h-13,'MULTI-VIEW PHOTOS',this.C.dim,9,700);
+        } else if(s===1){
+          const cxp=gx+gw/2, cyp=gy+gh/2, rad=Math.min(gw,gh)*0.44;
+          for(let i=0;i<110;i++){
+            const ang=i*2.399, rr2=rad*Math.sqrt((i+0.5)/110);
+            const px=cxp+Math.cos(ang)*rr2*1.25, py=cyp+Math.sin(ang)*rr2*0.72;
+            const g2=c.createRadialGradient(px,py,0,px,py,6);
+            g2.addColorStop(0,'rgba(79,195,247,.36)'); g2.addColorStop(1,'rgba(79,195,247,0)');
+            c.fillStyle=g2; c.beginPath(); c.arc(px,py,6,0,7); c.fill(); }
+          this.lab(c,gx,y+h-13,'GAP-FREE COVERAGE',this.C.dim,9,700);
+        } else if(s===2){
+          const bw=gw/18;
+          for(let i=0;i<18;i++) for(let j=0;j<8;j++){
+            const v=Math.max(0,1-Math.hypot(i-9,(j-3.5)*1.7)/8);
+            c.fillStyle='rgba(255,167,38,'+(0.06+v*0.5*(0.35+0.65*iter)).toFixed(3)+')';
+            c.fillRect(gx+i*bw, gy+j*gh/8, bw-1, gh/8-1); }
+          this.lab(c,gx,y+h-13,'STOCK 3DGS PIPELINE',this.C.dim,9,700);
+        } else {
+          const CU2=12, oy2=gy+gh/2;
+          c.strokeStyle='rgba(105,240,174,.4)'; c.lineWidth=1.2; c.beginPath();
+          for(let i=0;i<=CU2;i++){ const px=gx+i*gw/CU2, py=oy2+Math.sin(i*0.85+k*3)*gh*0.17*(0.25+loss);
+            i?c.lineTo(px,py):c.moveTo(px,py); } c.stroke();
+          for(let i=0;i<=CU2;i+=2){ const px=gx+i*gw/CU2, py=oy2+Math.sin(i*0.85+k*3)*gh*0.17*(0.25+loss);
+            c.fillStyle='#69f0ae'; c.fillRect(px-2.2,py-2.2,4.4,4.4);
+            const dy=-Math.cos(i*0.85+k*3)*12*loss;
+            c.strokeStyle='rgba(255,167,38,.75)'; c.lineWidth=1.3;
+            c.beginPath(); c.moveTo(px,py); c.lineTo(px,py+dy); c.stroke(); }
+          this.lab(c,gx,y+h-13,'ONLY THE CAGE IS OPTIMISED',this.C.dim,9,700);
+        }
+      });
+      if(s<n-1){ c.globalAlpha=a*0.65; c.strokeStyle=cols[s]; c.lineWidth=1.4;
+        const ax=x+w+2, ay=y+h/2;
+        c.beginPath(); c.moveTo(ax,ay); c.lineTo(ax+gap-5,ay); c.stroke();
+        c.beginPath(); c.moveTo(ax+gap-4,ay); c.lineTo(ax+gap-9,ay-4); c.lineTo(ax+gap-9,ay+4); c.closePath();
+        c.fillStyle=cols[s]; c.fill(); }
+      c.globalAlpha=1;
+    }
+    const fy=y+h+18;
+    c.globalAlpha=a*0.8; c.strokeStyle='rgba(255,167,38,.7)'; c.lineWidth=1.4; c.setLineDash([5,4]);
+    c.beginPath(); c.moveTo(b.x+b.w-w/2, y+h+3); c.lineTo(b.x+b.w-w/2, fy);
+    c.lineTo(b.x+w/2, fy); c.lineTo(b.x+w/2, y+h+3); c.stroke(); c.setLineDash([]);
+    c.beginPath(); c.moveTo(b.x+w/2, y+h+2); c.lineTo(b.x+w/2-4,fy-11); c.lineTo(b.x+w/2+4,fy-11); c.closePath();
+    c.fillStyle='rgba(255,167,38,.85)'; c.fill();
+    c.globalAlpha=a; c.textAlign='center';
+    this.lab(c,b.x+b.w/2,fy-7,'PHOTOMETRIC LOSS · BACKPROP THROUGH THE SPLATS INTO THE SPLINE',this.C.am,9,700);
+    c.textAlign='left';
+    c.globalAlpha=a;
+    this.lab(c,b.x,fy+22,'ON DISK',this.C.dim,9,700);
+    c.font='700 20px "Space Grotesk", sans-serif'; c.fillStyle=this.C.gr;
+    c.fillText('18 KB', b.x+62, fy+24);
+    this.lab(c,b.x+140,fy+22,'CONTROL POINTS ONLY · NO SPLATS STORED · UNBOUNDED SPLATS ON DEMAND',this.C.dim,9,700);
+    c.globalAlpha=1;
+  }
+
+  // 04 — duality: a 2×2 kernel stitches triangles in 2D and on the surface
+  dS3(c,b,a,k){
+    k=Math.max(0,Math.min(1,k));
+    const gap=16, lw=b.w*0.44, rw=b.w-lw-gap;
+    const L={x:b.x,y:b.y,w:lw,h:b.h}, R={x:b.x+lw+gap,y:b.y,w:rw,h:b.h};
+    this.card(c,L.x,L.y,L.w,L.h,'2D Map · Lattice Order',this.C.pu,a);
+    this.card(c,R.x,R.y,R.w,R.h,'Surface · Stitched Tessellation',this.C.gr,a);
+    c.globalAlpha=a;
+    const GU=14, GV=7;
+    const gx=L.x+22, gy=L.y+42, gw=L.w-44, gh=L.h-78;
+    const A=(i,j)=>[gx+i*gw/GU, gy+j*gh/GV];
+    const u0=0.02,u1=0.20;
+    const world=[];
+    for(let i=0;i<=GU;i++) for(let j=0;j<=GV;j++) world.push(this.sp(u0+(u1-u0)*i/GU, j/GV).p);
+    const o=this.fit(world,{x:R.x,y:R.y+30,w:R.w,h:R.h-52},14,1.15,0.36);
+    const S=(i,j)=>this.pr(this.sp(u0+(u1-u0)*i/GU, (j%(GV+1))/GV).p,o);
+    const steps=GU*GV, done=Math.floor(k*steps*1.05);
+    const cellOf=n=>[n%GU, Math.floor(n/GU)%GV];
+    const quad=(f,i,j,fill,stroke)=>{
+      const p=f(i,j),q=f(i+1,j),r=f(i+1,j+1),s=f(i,j+1);
+      if(fill){ c.fillStyle=fill; c.beginPath(); c.moveTo(p[0],p[1]); c.lineTo(q[0],q[1]); c.lineTo(r[0],r[1]); c.lineTo(s[0],s[1]); c.closePath(); c.fill(); }
+      c.strokeStyle=stroke; c.lineWidth=1;
+      c.beginPath(); c.moveTo(p[0],p[1]); c.lineTo(q[0],q[1]); c.lineTo(r[0],r[1]); c.lineTo(s[0],s[1]); c.closePath();
+      c.moveTo(p[0],p[1]); c.lineTo(r[0],r[1]); c.stroke(); };
+    this.clip(c,L.x,L.y,L.w,L.h,()=>{
+      c.strokeStyle='rgba(206,147,216,.14)'; c.lineWidth=1;
+      for(let i=0;i<=GU;i++){ const p=A(i,0),q=A(i,GV); c.beginPath(); c.moveTo(p[0],p[1]); c.lineTo(q[0],q[1]); c.stroke(); }
+      for(let j=0;j<=GV;j++){ const p=A(0,j),q=A(GU,j); c.beginPath(); c.moveTo(p[0],p[1]); c.lineTo(q[0],q[1]); c.stroke(); }
+      for(let n=0;n<Math.min(done,steps);n++){ const ij=cellOf(n); quad(A,ij[0],ij[1],'rgba(105,240,174,.08)','rgba(105,240,174,.45)'); }
+      if(done<steps){ const ij=cellOf(Math.max(0,done));
+        quad(A,ij[0],ij[1],'rgba(79,195,247,.20)','#4fc3f7');
+        const p=A(ij[0],ij[1]),q=A(ij[0]+1,ij[1]+1);
+        c.strokeStyle='#4fc3f7'; c.lineWidth=2; c.setLineDash([4,3]);
+        c.strokeRect(p[0]-5,p[1]-5,(q[0]-p[0])+10,(q[1]-p[1])+10); c.setLineDash([]);
+        this.lab(c,gx,gy-10,'2×2 KERNEL · (i,j) → (i+1,j+1)','#4fc3f7',9,700); }
+    });
+    this.clip(c,R.x,R.y,R.w,R.h,()=>{
+      for(let i=0;i<=GU;i++) for(let j=0;j<=GV;j++){ const p=S(i,j);
+        c.fillStyle='rgba(150,175,205,.35)'; c.fillRect(p[0]-1.4,p[1]-1.4,2.8,2.8); }
+      for(let n=0;n<Math.min(done,steps);n++){ const ij=cellOf(n); quad(S,ij[0],ij[1],'rgba(105,240,174,.10)','rgba(105,240,174,.55)'); }
+      if(done<steps){ const ij=cellOf(Math.max(0,done)); quad(S,ij[0],ij[1],'rgba(79,195,247,.22)','#4fc3f7'); }
+    });
+    this.lab(c,L.x+22,L.y+L.h-13,'ADJACENCY = INDEX ARITHMETIC',this.C.pu,9,700);
+    this.lab(c,R.x+22,R.y+R.h-13,'NO KNN · NO NEIGHBOUR SEARCH',this.C.gr,9,700);
+    c.textAlign='right'; this.lab(c,R.x+R.w-20,R.y+21,'TRIANGLES  '+(Math.min(done,steps)*2),this.C.sub,10,700); c.textAlign='left';
+    c.globalAlpha=1;
+  }
+
+  // 04 — scene map + camera frustum crop
+  dS4(c,b,a,k){
+    const h=Math.min(b.h,320), y=b.y;
+    const w=Math.min(b.w*0.54,540), x=b.x+b.w-w;
+    const gap=12, lw=w*0.58, rw=w-lw-gap;
+    this.card(c,x,y,lw,h,'Scene · 2D Map (Plan View)',this.C.am,a);
+    this.card(c,x+lw+gap,y,rw,h,'UV Domain · Survivors',this.C.pu,a);
+    c.globalAlpha=a;
+    const cam=this.cam.position;
+    const keepU=new Array(96).fill(0);
+    const T=window.THREE, v3=new T.Vector3();
+    const curvePts=[]; this._acc=[0,0];
+    for(let i=0;i<288;i++){ const uu=i/288, s=this.sp(uu,0.0);
+      let vis=0;
+      for(let j=0;j<8;j++){
+        const q=this.sp(uu,j/8);
+        v3.set(q.p[0],q.p[1],q.p[2]).project(this.cam);
+        const inFr=v3.x>-1&&v3.x<1&&v3.y>-1&&v3.y<1&&v3.z<1;
+        const face=(cam.x-q.p[0])*q.n[0]+(cam.y-q.p[1])*q.n[1]+(cam.z-q.p[2])*q.n[2];
+        if(inFr&&face>0) vis++;
+      }
+      const bi=Math.floor(uu*96); keepU[bi]=Math.max(keepU[bi],vis/8); if(!this._acc) this._acc=[0,0]; this._acc[0]+=vis; this._acc[1]+=8;
+      curvePts.push([s.c[0],s.c[2],vis/8]);
+    }
+    this.clip(c,x,y,lw,h,()=>{
+      const pad=30, span=Math.max(Math.hypot(cam.x,cam.z)*1.05, 12);
+      const sc=Math.min((lw-pad*2)/(span*2),(h-pad*2-14)/(span*2));
+      const cx=x+lw/2, cy=y+h/2+10;
+      const M=(px,pz)=>[cx+px*sc, cy+pz*sc];
+      const camP=M(cam.x,cam.z);
+      const dir=Math.atan2(-cam.z,-cam.x);
+      const half=Math.atan(Math.tan(this.cam.fov*Math.PI/360)*this.cam.aspect);
+      const far=Math.hypot(cam.x,cam.z)*sc*2.1;
+      const wg=ang=>[camP[0]+Math.cos(ang)*far, camP[1]+Math.sin(ang)*far];
+      const w1=wg(dir-half), w2=wg(dir+half);
+      c.fillStyle='rgba(255,167,38,.10)'; c.strokeStyle='rgba(255,167,38,.55)'; c.lineWidth=1;
+      c.beginPath(); c.moveTo(camP[0],camP[1]); c.lineTo(w1[0],w1[1]); c.lineTo(w2[0],w2[1]); c.closePath(); c.fill(); c.stroke();
+      curvePts.forEach(p=>{ const q=M(p[0],p[1]);
+        c.fillStyle= p[2]>0 ? 'rgba(79,195,247,'+(0.35+0.6*p[2]).toFixed(2)+')' : 'rgba(120,140,170,.20)';
+        c.fillRect(q[0]-1.6,q[1]-1.6,3.2,3.2); });
+      c.fillStyle='#ffa726'; c.beginPath(); c.arc(camP[0],camP[1],4.5,0,7); c.fill();
+      this.lab(c,camP[0]+9,camP[1]+4,'CAMERA','#ffa726',9,700);
+    });
+    this.lab(c,x+16,y+h-13,'FRUSTUM + BACK-FACE CULL · '+Math.round(this._acc[0]/Math.max(1,this._acc[1])*100)+'% KEPT',this.C.dim,9,700);
+    this.clip(c,x+lw+gap,y,rw,h,()=>{
+      const gx=x+lw+gap+16, gy=y+42, gw=rw-32, gh=h-80;
+      c.fillStyle='rgba(10,15,26,.9)'; c.fillRect(gx,gy,gw,gh);
+      for(let i=0;i<96;i++){ const kv=keepU[i];
+        c.fillStyle= kv>0 ? 'rgba(79,195,247,'+(0.15+0.65*kv).toFixed(2)+')' : 'rgba(120,140,170,.07)';
+        c.fillRect(gx+i*gw/96, gy, gw/96+0.6, gh); }
+      c.strokeStyle='rgba(206,147,216,.35)'; c.lineWidth=1; c.strokeRect(gx,gy,gw,gh);
+      this.lab(c,gx,gy+gh+15,'U →',this.C.dim,9,700);
+    });
+    this.lab(c,x+lw+gap+16,y+h-13,'BUDGET RE-FLOWS TO SURVIVORS',this.C.dim,9,700);
+    c.globalAlpha=1;
+  }
+
+  // 06 — segmentation → isolation → edit → render
+  dS6(c,b,a,k){
+    k=Math.max(0,Math.min(1,k));
+    const gap=14, n=4, w=(b.w-gap*(n-1))/n, h=Math.min(b.h,320);
+    const titles=['1 · Segmentation','2 · Isolation','3 · Edit · Texture','4 · Render'];
+    const cols=[this.C.pu,this.C.cy,this.C.am,this.C.gr];
+    const stage=Math.min(3,Math.floor(k*4.3));
+    for(let s=0;s<n;s++){
+      const x=b.x+s*(w+gap), y=b.y;
+      const on=s<=stage, aa=a*(on?1:0.34);
+      this.card(c,x,y,w,h,titles[s],cols[s],aa);
+      if(s===stage){ c.globalAlpha=a*0.9; c.strokeStyle=cols[s]; c.lineWidth=1.6; this.rrect(c,x-2,y-2,w+4,h+4,11); c.stroke(); }
+      c.globalAlpha=aa;
+      const gx=x+16, gy=y+40, gw=w-32, gh=h-82;
+      const rA=[gx+gw*0.10,gy+gh*0.16,gw*0.34,gh*0.52], rB=[gx+gw*0.56,gy+gh*0.42,gw*0.32,gh*0.42];
+      this.clip(c,x,y,w,h,()=>{
+        if(s<3){
+          c.fillStyle='rgba(10,15,26,.92)'; c.fillRect(gx,gy,gw,gh);
+          c.strokeStyle='rgba(255,255,255,.06)'; c.lineWidth=1;
+          for(let i=1;i<8;i++){ c.beginPath(); c.moveTo(gx+i*gw/8,gy); c.lineTo(gx+i*gw/8,gy+gh); c.stroke(); }
+          for(let j=1;j<5;j++){ c.beginPath(); c.moveTo(gx,gy+j*gh/5); c.lineTo(gx+gw,gy+j*gh/5); c.stroke(); }
+        }
+        if(s===0){
+          const grow=Math.max(0,Math.min(1,k*4.3*1.6));
+          c.fillStyle='rgba(206,147,216,.30)'; c.fillRect(rA[0],rA[1],rA[2]*grow,rA[3]);
+          c.fillStyle='rgba(255,167,38,.26)'; c.fillRect(rB[0],rB[1],rB[2]*grow,rB[3]);
+          c.strokeStyle='rgba(206,147,216,.8)'; c.lineWidth=1; c.strokeRect(rA[0],rA[1],rA[2],rA[3]);
+          c.strokeStyle='rgba(255,167,38,.7)'; c.strokeRect(rB[0],rB[1],rB[2],rB[3]);
+          this.lab(c,rA[0]+4,rA[1]+13,'OBJ 01',this.C.pu,9,700);
+          this.lab(c,rB[0]+4,rB[1]+13,'OBJ 02',this.C.am,9,700);
+          this.lab(c,gx,y+h-13,'FLOOD FILL IN 2D',this.C.dim,9,700);
+        } else if(s===1){
+          c.fillStyle='rgba(4,7,13,.72)'; c.fillRect(gx,gy,gw,gh);
+          c.fillStyle='rgba(206,147,216,.34)'; c.fillRect(rA[0],rA[1],rA[2],rA[3]);
+          c.strokeStyle='#ce93d8'; c.lineWidth=1.4; c.strokeRect(rA[0],rA[1],rA[2],rA[3]);
+          this.lab(c,gx,y+h-13,'1 OBJECT · 12.4K SPLATS',this.C.dim,9,700);
+        } else if(s===2){
+          c.save(); c.beginPath(); c.rect(rA[0],rA[1],rA[2],rA[3]); c.clip();
+          const off=(k*140)%16;
+          for(let i=-20;i<40;i++){ c.strokeStyle=i%2?'rgba(105,240,174,.55)':'rgba(79,195,247,.42)'; c.lineWidth=5;
+            c.beginPath(); c.moveTo(rA[0]+i*10+off,rA[1]-10); c.lineTo(rA[0]+i*10+off-30,rA[1]+rA[3]+10); c.stroke(); }
+          c.restore();
+          c.strokeStyle='#69f0ae'; c.lineWidth=1.4; c.strokeRect(rA[0],rA[1],rA[2],rA[3]);
+          ['#69f0ae','#4fc3f7','#ce93d8','#ffa726'].forEach((cc,i)=>{ c.fillStyle=cc; c.fillRect(gx+i*22, gy+gh+8, 16,7); });
+          this.lab(c,gx,y+h-13,'TEXTURE PAINTED IN UV',this.C.dim,9,700);
+        } else {
+          const world=[];
+          for(let i=0;i<90;i++) for(let j=0;j<6;j++) world.push(this.sp(i/90,j/6).p);
+          const o=this.fit(world,{x:x,y:y+30,w:w,h:h-56},8,0.9,0.34);
+          const dots=[];
+          for(let i=0;i<200;i++) for(let j=0;j<14;j++){
+            const uu=i/200, vv=j/14, q=this.pr(this.sp(uu,vv).p,o);
+            dots.push([q[0],q[1],q[2],uu>0.10&&uu<0.29,uu,vv]); }
+          dots.sort((p,q)=>p[2]-q[2]);
+          dots.forEach(p=>{
+            if(p[3]){ const stripe=Math.floor(p[4]*40+p[5]*6)%2;
+              c.fillStyle= stripe?'rgba(105,240,174,.85)':'rgba(79,195,247,.8)'; c.fillRect(p[0]-1.8,p[1]-1.8,3.6,3.6); }
+            else { c.fillStyle='rgba(140,165,195,.26)'; c.fillRect(p[0]-1.3,p[1]-1.3,2.6,2.6); } });
+          this.lab(c,gx,y+h-13,'SAME BUDGET · NO RE-FIT',this.C.dim,9,700);
+        }
+      });
+      if(s<n-1){ c.globalAlpha=a*0.6; c.strokeStyle=this.C.dim; c.lineWidth=1.4;
+        const ax=x+w+2, ay=y+h/2;
+        c.beginPath(); c.moveTo(ax,ay); c.lineTo(ax+gap-4,ay); c.stroke();
+        c.beginPath(); c.moveTo(ax+gap-4,ay); c.lineTo(ax+gap-9,ay-4); c.lineTo(ax+gap-9,ay+4); c.closePath();
+        c.fillStyle=this.C.dim; c.fill(); }
+      c.globalAlpha=1;
+    }
+  }
+
+  drawStrip(){
+    const c=this.sctx; if(!c) return;
+    const W=1024,H=110,u=this.uni;
+    c.clearRect(0,0,W,H);
+    const g=c.createLinearGradient(0,0,0,H); g.addColorStop(0,'#0d1220'); g.addColorStop(1,'#080d18');
+    c.fillStyle=g; c.fillRect(0,0,W,H);
+    c.strokeStyle='rgba(79,195,247,.12)'; c.lineWidth=1;
+    for(let i=1;i<16;i++){ const x=i*W/16; c.beginPath(); c.moveTo(x,0); c.lineTo(x,H); c.stroke(); }
+    for(let i=1;i<4;i++){ const y=i*H/4; c.beginPath(); c.moveTo(0,y); c.lineTo(W,y); c.stroke(); }
+    if(u.uDenAmt.value>0.02){
+      const cx=u.uDenC.value*W, w=u.uDenW.value*W*2.2;
+      const gg=c.createLinearGradient(cx-w,0,cx+w,0);
+      gg.addColorStop(0,'rgba(255,167,38,0)');
+      gg.addColorStop(.5,'rgba(255,167,38,'+(0.10*u.uDenAmt.value).toFixed(3)+')');
+      gg.addColorStop(1,'rgba(255,167,38,0)');
+      c.fillStyle=gg; c.fillRect(cx-w,0,w*2,H);
+      c.strokeStyle='rgba(255,167,38,.55)'; c.beginPath(); c.moveTo(cx,0); c.lineTo(cx,H); c.stroke();
+    }
+    if(this.stripNote.current)
+      this.stripNote.current.textContent = u.uDenAmt.value>0.3 ? 'Density Field · ×'+(1+u.uDenAmt.value).toFixed(1) : '\u00a0';
+  }
+
+  loop(){
+    if(this.dead) return;
+    requestAnimationFrame(()=>this.loop());
+    const now=performance.now(), dt=Math.min(0.06,(now-this.last)/1000); this.last=now;
+    if(this.playing){
+      this.t+=dt;
+      if(this.t>=this.DUR){ this.t=this.DUR; this.playing=false; this.syncBtn(); }
+      if(now-(this._save||0)>900){ this._save=now; localStorage.setItem('kas-teaser-modest2-t',this.t.toFixed(2)); }
+    }
+    this.frame(this.t);
+    const p=this.t/this.DUR;
+    if(this.fillRef.current) this.fillRef.current.style.width=(p*100).toFixed(2)+'%';
+    if(this.timeRef.current){ const s=Math.floor(this.t),m=Math.floor(s/60);
+      this.timeRef.current.textContent=m+':'+String(s%60).padStart(2,'0')+' / 1:13'; }
+    this.renderer.render(this.scene,this.cam);
+  }
+  syncBtn(){ const b=this.playBtn.current; if(!b) return;
+    b.textContent=this.playing?'pause':(this.t>=this.DUR?'replay':'play');
+    b.style.background=this.playing?'#4fc3f7':'#69f0ae'; }
+  togglePlay(){ if(this.t>=this.DUR) return this.seek(0,true);
+    this.playing=!this.playing; this.last=performance.now(); this.syncBtn(); }
+  seek(t,play){ this.t=Math.max(0,Math.min(this.DUR,t)); if(play!==undefined) this.playing=play;
+    this.last=performance.now(); this.syncBtn(); }
+  scrub(e){ const el=this.trackRef.current; if(!el) return;
+    const r=el.getBoundingClientRect(); this.seek((e.clientX-r.left)/r.width*this.DUR); }
+}
+</script>
+</body>
+</html>
