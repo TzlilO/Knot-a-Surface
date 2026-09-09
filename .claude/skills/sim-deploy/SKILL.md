@@ -21,6 +21,10 @@ https://tzlilo.github.io/Knot-a-Surface/).
 ## Gotchas
 - Never commit generated files without rebuilding first — src/ and index.html
   must not drift.
+- `index.html` boots into the pre-run onboarding gallery (`KnotSwarmSim.onboard`);
+  `deck.html`'s embedded slide calls `KnotSwarmSim.create` directly and skips it.
+  Both paths embed the same sim core — verify both, don't assume a fix visible in
+  one applies to the other's boot sequence.
 - deck.html embeds the same sim core; build.py keeps them in sync automatically.
 - All CDN deps (three.js r158 non-module, reveal.js 5, KaTeX, Chart.js) — the host
   only serves static HTML; presenting requires internet.

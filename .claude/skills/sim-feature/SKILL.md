@@ -36,16 +36,37 @@ Read `CLAUDE.md` first — especially the architecture map and the five invarian
 - **New dock menu**: menu div in `.kss-menus` + `data-open` button in `.kss-dock`;
   existing wiring handles open/close/fold automatically.
 - **Optimization change**: keep rates time-based; weights flow through
-  `computeWeights` (covW/peW); geometry supervision is the bidirectional-Chamfer
-  term in `optimStep` (`GEO`, gated by `st.geoSup`, residual `fit.gres`); anything
-  that reshapes the domain must call `setFitDomain(..., keepCur=true)` and set
-  `reconDirty`.
+  `computeWeights` (covW/peW/mvW — the last is multi-view photo-consistency, gated
+  post-warm-up); geometry supervision is the bidirectional-Chamfer term in
+  `optimStep` (`GEO`, gated by `st.geoSup`, residual `fit.gres`); anything that
+  reshapes the domain must call `setFitDomain(..., keepCur=true)` and set
+  `reconDirty` directly (domain reshapes are a discrete change, not camera-follow —
+  don't route them through `camDirty`).
+- **Camera-follow vs. discrete resample**: anything that moves/resizes the sampling
+  window because the COMMANDER VIEW is panning/rotating/flying (frustum tracking)
+  must set `camDirty = true` (+ `_lastCamMoveT = st.t`), not `reconDirty` — `loop()`'s
+  gate promotes it on settle/timer/drift (tunables in `__kss.st.resample`). Only
+  discrete state changes (env/mode/budget/basis switch, subdivision, explicit UI
+  toggle) should set `reconDirty` directly for an immediate rebuild.
 - **Per-splat data**: extend the arrays allocated in `allocRecon`
   (posArr/nrmArr/errArr pattern), fill in `updateRecon` AND `reconFluidPass`.
 - **Drone / camera control**: `droneStep(dt)` owns the main POV. Add an input axis
   by wiring a UI element into `joy/joyL/joyR/elev` (see `makeStick`) or the `keys`
   map, then read it in `droneStep` — keep integration time-based and in the heading
-  frame. Anything gating flight uses `st.drone && !st.warm.active`.
+  frame. Anything gating flight uses `st.drone && !st.warm.active`. Pitch/gimbal
+  controls must branch on `st.drone`: when the observer drone owns the POV, write
+  `drone.gp` (manual gimbal pitch; `null` = terrain-follow via `impliedGp()`), NOT
+  `cOrbit.ph` — `droneStep` only reads `cOrbit` when the drone is off.
+- **Onboarding gallery** (`onboard()`, only used by the standalone `index.html` entry
+  point — the deck embed calls `create()` directly): new preview screens/cards must
+  sample the REAL `ENVS.h()/col()` fields or the real technique (splat/mesh), never a
+  decorative stand-in (same field/props invariant as the sim). Route the chosen value
+  through `sel` and, on "▶ START", into `opts.initial` → `create()`'s onboarding
+  hand-off block (merges into `st` before `applyDensity()`/fit construction, then
+  syncs the dock's hard-coded `kss-on` buttons via `syncRow`). New RAF-driven preview
+  canvases must be registered in `items` and disposed in `killPreviews()` (geometry +
+  material + texture + renderer.dispose/forceContextLoss) — onboarding tears down
+  every preview context before booting the real WebGL context.
 - **Segmentation**: masks are WORLD-anchored in `seg.gmask` (`segMarkWorld`/`segLook`,
   `SEG_GW`×`SEG_GW` over ±`SEG_BND` m) — never store mask in screen/frustum space.
   New channel: extend `fillChannels` + the `seg.src` switch. Strokes AGGREGATE; only
