@@ -48,7 +48,10 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
   charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
-  capture rig and an `edit(k)` animation).
+  capture rig and an `edit(k)` animation). Its views are the splat shader's render modes (`uMode` in
+  `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
+  `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
+  so it is still one draw call; the band labels and dividers are DOM, moved every frame).
 - Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
   Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the

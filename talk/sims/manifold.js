@@ -3,7 +3,8 @@
    derived from one of the charts; a FIXED Gaussian budget is re-sampled over the (u,v) domains
    as the camera moves (view-adaptive sampling), and editing control points moves thousands of
    Gaussians at once. Scenes come from talk/scenes.js: benchmark-style stand-ins (barn, truck,
-   bust, garden) plus the abstract still life.
+   bust, garden) plus the abstract still life. Any scene can be read as appearance, depth, normals,
+   single Gaussians or chart identity — or all five at once, in a rolling split screen.
    Tool: WebGL (three.js) instanced planoids + a 2D-canvas (u,v) atlas.
    Standalone: talk/sims/manifold.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js, scenes.js. */
 (function () {
@@ -11,9 +12,16 @@
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
   var PER_CP = 16;                  // 3 position + 12 SH1 colour + 1 opacity per control point
   var CAP = 220000, FLOOR = 0.10;   // FLOOR = share of the budget kept as view-independent coverage
+  /* what a Gaussian shows; the order is the shader's uMode (gl.js). The view 'split' shows all of them */
+  var MODES = [{ v: 'splats', label: 'rgb', name: 'appearance' }, { v: 'depth', label: 'depth', name: 'depth' },
+               { v: 'normal', label: 'normal', name: 'normals' }, { v: 'gauss', label: 'gauss', name: 'Gaussians' },
+               { v: 'charts', label: 'chart', name: 'charts' }];
+  var ROLL = 0.03, SLANT = 0.2;     // split screen: band travel in stage widths per second, and the lean of its dividers
+  function wrap(x, m) { return ((x % m) + m) % m; }
 
   var SCENES = {
     scene:  { scn: 'barn', view: 'splats', cam: 'wide', rig: 1, cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
+    modes:  { scn: 'barn', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
     charts: { scn: 'barn', view: 'charts', cam: 'wide', cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
     nets:   { scn: 'barn', view: 'charts', cam: 'wide', nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
     budget: { scn: 'barn', view: 'splats', tour: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
@@ -35,7 +43,7 @@
            'The scenes are procedural stand-ins modelled after Tanks and Temples, DTU and Mip-NeRF 360 captures, not the datasets.',
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
-      { id: 'scene', label: 'Barn' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
+      { id: 'scene', label: 'Barn' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
       { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'truck', label: 'Truck' },
       { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'edit', label: 'Edit' }, { id: 'studio', label: 'Still life' }
     ],
@@ -65,9 +73,8 @@
         } });
       var slB = ui.slider(panel, { label: 'budget', min: 6000, max: CAP - 20000, step: 2000, value: Math.min(st.budget, CAP - 20000),
         fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, onInput: function (v) { st.budget = v; need = true; } });
-      var segV = ui.seg(panel, { label: 'colour', value: 'splats',
-        options: [{ v: 'splats', label: 'appearance' }, { v: 'charts', label: 'charts' }],
-        onChange: function (v) { st.view = v; need = true; } });
+      var segV = ui.seg(panel, { value: 'splats', options: MODES.concat([{ v: 'split', label: 'all' }]),
+        onChange: function (v) { st.view = v; showView(); } });
       var rowT = ui.el('div', 'kt-row'); panel.appendChild(rowT);
       var tgA = ui.toggle(rowT, { label: 'adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
       var tgN = ui.toggle(rowT, { label: 'nets', value: false, onChange: function (v) { st.nets = v; showNets(); } });
@@ -76,6 +83,31 @@
       var rdV = ui.readout(panel, { label: 'budget in view', tone: 'ok' });
       var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
       var atlas = ui.el('div', 'kt-atlas'); root.appendChild(atlas);
+      /* split screen: one divider and one label per band, laid over the canvas and moved every frame */
+      var split = ui.el('div', 'kt-split'), bands = MODES.map(function (m) {
+        var b = { a: ui.el('i'), b: ui.el('i'), lab: ui.el('span', '', m.name) };   // a divider can wrap: two copies
+        split.appendChild(b.a); split.appendChild(b.b); split.appendChild(b.lab);
+        return b;
+      });
+      root.appendChild(split);
+      var roll = 0, zr = [1, 10], size = { w: 1, h: 1 };
+      function showView() {
+        var i = MODES.map(function (m) { return m.v; }).indexOf(st.view), all = i < 0;
+        field.uniforms.uMode.value = all ? 0 : i;
+        field.uniforms.uSplit.value.set(all ? MODES.length : 0, roll, SLANT);
+        root.classList.toggle('kt-splitting', all);
+      }
+      function placeSplit() {
+        var w = size.w, h = size.h, n = MODES.length, tight = w / n < 130;
+        bands.forEach(function (b, j) {
+          var yl = h - 26 - (tight ? j % 3 * 30 : 0);           // narrow bands: stagger the labels so neighbours never touch
+          var x = w * wrap(j / n + roll, 1), sk = ' skewX(' + (-Math.atan(SLANT)) + 'rad)';
+          b.a.style.transform = 'translateX(' + x + 'px)' + sk; b.b.style.transform = 'translateX(' + (x + w) + 'px)' + sk;
+          var xc = wrap(w * ((j + 0.5) / n + roll) - SLANT * yl, w);
+          b.lab.style.transform = 'translate(' + xc + 'px,' + yl + 'px) translate(-50%,-50%)';
+          b.lab.style.opacity = KT.clamp(Math.min(xc, w - xc) / 44 - 0.4, 0, 1);
+        });
+      }
 
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.4, maxRadius: 46, pick: pickPoint,
         hit: function (x, y) { return findPoint(x, y, true) >= 0; },
@@ -171,7 +203,7 @@
       function allocate() {
         cam.updateMatrixWorld(); M.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
         var e = M.elements, cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
-        var totA = 0, totW = 0, inView = 0;
+        var totA = 0, totW = 0, inView = 0, z0 = 1e9, z1 = 0;
         charts.forEach(function (c) { totA += c.area; });
         charts.forEach(function (c) {
           var n = c.gu * c.gv, i, o, w; c.w = c.w || new Float32Array(n); c.vis = c.vis || new Uint8Array(n);
@@ -187,6 +219,7 @@
               if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : 0.3; }
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
               w = c.carea[i] * cs / d2 * c.gain;
+              if (cw < z0) z0 = cw; if (cw > z1) z1 = cw;
             }
             c.w[i] = w; totW += w;
           }
@@ -195,6 +228,7 @@
         var total = sizeTiles(1, true);
         if (Math.abs(total - st.budget) > 0.001 * st.budget) sizeTiles(st.budget / total, false);
         rdV.set(Math.round(inView * 100) + ' %');
+        if (z1 > z0) zr = [z0 * 0.9, z1 * 1.05];      // depth of what is in view: the range the depth colours span
 
         function sizeTiles(scale, first) {
         var sum = 0;
@@ -231,12 +265,13 @@
         allocate();
         var n = 0;
         charts.forEach(function (c) {
-          var rgb = st.view === 'charts' ? G.rgb(c.hex) : null;
+          var rgb = G.rgb(c.hex), n0 = n, i;
           c.tiles.forEach(function (tl) {
             if (n + tl.na * tl.nb > CAP) return;         // cannot happen while the slider tops out below CAP
             NB.patchGrid(c.patch, tl.us, tl.vs, sg);
-            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, rgb);
+            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k);
           });
+          for (i = n0 * 3; i < n * 3; i += 3) { field.aux[i] = rgb[0]; field.aux[i + 1] = rgb[1]; field.aux[i + 2] = rgb[2]; }
           c.lab.textContent = c.count.toLocaleString('en-US') + ' G';
           drawTile(c);
         });
@@ -331,7 +366,7 @@
         var sc = SCENES[id]; if (!sc) return;
         if (id === 'hero' && env.opts.scn && KT.scenes[env.opts.scn]) sc = Object.assign({}, sc, { scn: env.opts.scn });
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
-        st.view = sc.view; segV.set(sc.view); st.nets = !!sc.nets; st.rig = !!sc.rig;
+        st.view = sc.view; segV.set(sc.view); showView(); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
         field.uniforms.uRim.value = sc.rim || 0.3;
         var fresh = st.scn !== sc.scn;
@@ -364,6 +399,9 @@
         var e = cam.matrixWorld.elements, key = (e[12] + e[13] * 3 + e[14] * 7 + e[8] * 11 + e[9] * 13).toFixed(3);
         if (key !== camKey && t - lastAlloc > 0.09) { camKey = key; need = true; }
         if (need) { need = false; lastAlloc = t; resample(); }
+        var ud = field.uniforms.uDepth.value, kz = 1 - Math.exp(-5 * dt);
+        ud.x += (zr[0] - ud.x) * kz; ud.y += (zr[1] - ud.y) * kz;
+        if (st.view === 'split') { roll = wrap(roll + ROLL * dt, 1); field.uniforms.uSplit.value.y = roll; placeSplit(); }
         R.renderer.render(scene, cam);
       });
 
@@ -383,8 +421,13 @@
           '.kt-sim-manifold.kt-compact .kt-atlas{display:none}' +
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
           '.kt-sim-manifold.kt-bare .kt-hint,.kt-sim-manifold.kt-bare .kt-ab,.kt-sim-manifold.kt-bare .kt-gear{display:none!important}' +
-          '.kt-sim-manifold .kt-panel .kt-seg:first-of-type .kt-seg-box{margin-left:0;width:100%}' +
-          '.kt-sim-manifold .kt-panel .kt-seg:first-of-type .kt-seg-btn{flex:1;padding:7px 4px}' +
+          '.kt-sim-manifold .kt-panel .kt-seg .kt-seg-box{margin-left:0;width:100%}' +
+          '.kt-sim-manifold .kt-panel .kt-seg .kt-seg-btn{flex:1;padding:7px 4px}' +
+          '.kt-sim-manifold .kt-split{position:absolute;inset:0;z-index:3;overflow:hidden;pointer-events:none;display:none}' +
+          '.kt-sim-manifold.kt-splitting .kt-split{display:block}.kt-sim-manifold.kt-splitting .kt-atlas{display:none}' +
+          '.kt-sim-manifold .kt-split i{position:absolute;left:-1px;top:0;width:2px;height:100%;transform-origin:0 0;background:rgba(255,255,255,.6)}' +
+          '.kt-sim-manifold .kt-split span{position:absolute;left:0;top:0;white-space:nowrap;font:600 11px/1 var(--f-mono);letter-spacing:.1em;' +
+          'text-transform:uppercase;color:var(--text);padding:7px 10px;background:var(--panel);border:1px solid var(--line);border-radius:999px}' +
           '.kt-sim-manifold .kt-ab{position:absolute;z-index:4;left:50%;top:64px;transform:translateX(-50%);white-space:nowrap;' +
           'font:600 13px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:9px 14px;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:999px}' +
@@ -402,7 +445,8 @@
         load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },
         resize: function (w, h) {
-          R.resize(w, h); need = true;
+          R.resize(w, h); need = true; size.w = w; size.h = h;
+          R.renderer.getDrawingBufferSize(field.uniforms.uRes.value);
           var f = KT.clamp(1.4 / (w / h), 1, 1.7);
           if (f !== fit) { fit = f; if (!orbit.touched) orbit.to(view(st.sc.tour ? def.tour[st.tourI] : st.sc.cam || 'wide'), true); }
         },

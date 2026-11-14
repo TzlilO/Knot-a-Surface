@@ -103,20 +103,34 @@
      Gaussian fringe is resolved with a screen-space dither, the core writes depth. */
   var EXT = 2.15;
   var VERT = [
-    'attribute vec3 iCenter; attribute vec3 iU; attribute vec3 iV; attribute vec3 iColor;',
+    'attribute vec3 iCenter; attribute vec3 iU; attribute vec3 iV; attribute vec3 iColor; attribute vec3 iAux;',
     'uniform float uGain;',
-    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW;',
+    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vAux; varying float vZ;',
     'void main(){',
-    '  vQ = position.xy; vCol = iColor; vN = normalize(cross(iU, iV));',
+    '  vQ = position.xy; vCol = iColor; vAux = iAux; vN = normalize(cross(iU, iV));',
     '  vec3 p = iCenter + (iU * position.x + iV * position.y) * uGain; vW = p;',
-    '  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);',
+    '  vec4 e = viewMatrix * vec4(p, 1.0); vZ = -e.z;',
+    '  gl_Position = projectionMatrix * e;',
     '}'].join('\n');
+  /* uMode picks what a Gaussian shows: 0 appearance, 1 depth, 2 normal, 3 the Gaussian itself (drawn
+     smaller, so each one reads), 4 its aux colour (the chart it belongs to). With uSplit = (bands,
+     roll, slant) the mode is chosen per pixel instead: slanted screen bands, one mode each, shifted
+     by roll (a fraction of the width) — every mode of the same frame, side by side. */
   var FRAG = [
     'precision highp float;',
     'uniform vec3 uLight; uniform float uRim; uniform float uFlat;',
-    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW;',
+    'uniform float uMode; uniform vec3 uSplit; uniform vec2 uRes; uniform vec2 uDepth; uniform vec3 uTint;',
+    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vAux; varying float vZ;',
+    'vec3 ramp(float t){',                                         // near = light and warm, far = dark
+    '  vec3 a = vec3(0.99, 0.95, 0.72), b = vec3(0.98, 0.55, 0.38), c = vec3(0.70, 0.21, 0.48), d = vec3(0.26, 0.09, 0.44), e = vec3(0.09, 0.06, 0.24);',
+    '  t *= 4.0;',
+    '  return t < 1.0 ? mix(a, b, t) : t < 2.0 ? mix(b, c, t - 1.0) : t < 3.0 ? mix(c, d, t - 2.0) : mix(d, e, t - 3.0);',
+    '}',
     'void main(){',
-    '  float g = exp(-0.5 * dot(vQ, vQ));',
+    '  float m = uMode;',
+    '  if (uSplit.x > 0.5) m = floor(fract((gl_FragCoord.x + uSplit.z * (uRes.y - gl_FragCoord.y)) / uRes.x - uSplit.y) * uSplit.x);',
+    '  bool own = m > 2.5 && m < 3.5;',
+    '  float g = exp(-0.5 * dot(vQ, vQ) * (own ? 3.6 : 1.0));',
     '  float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
     '  float a = smoothstep(0.28, 0.56, g);',
     '#ifdef BLEND',
@@ -127,8 +141,10 @@
     '  vec3 nn = normalize(vN);',                                  // a planoid has two faces: light the one we see
     '  if (dot(nn, cameraPosition - vW) < 0.0) nn = -nn;',
     '  float d = max(dot(nn, uLight), 0.0);',
-    '  vec3 c = vCol * mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat);',
-    '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g), uRim);',
+    '  vec3 c = (own ? uTint : m > 3.5 ? vAux : vCol) * mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat);',
+    '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g), own ? 1.0 : uRim);',
+    '  if (m > 0.5 && m < 1.5) c = ramp(clamp(log(vZ / uDepth.x) / log(uDepth.y / uDepth.x), 0.0, 1.0));',
+    '  else if (m > 1.5 && m < 2.5) c = nn * 0.5 + 0.5;',
     '#ifdef BLEND',
     '  gl_FragColor = vec4(c, a * 0.92);',
     '#else',
@@ -143,7 +159,7 @@
     var g = new T.InstancedBufferGeometry();
     g.index = base.index; g.setAttribute('position', base.getAttribute('position'));
     var A = {};
-    ['iCenter', 'iU', 'iV', 'iColor'].forEach(function (n) {
+    ['iCenter', 'iU', 'iV', 'iColor', 'iAux'].forEach(function (n) {
       var at = new T.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
       at.setUsage(T.DynamicDrawUsage); g.setAttribute(n, at); A[n] = at;
     });
@@ -152,16 +168,18 @@
       vertexShader: VERT, fragmentShader: (blend ? '#define BLEND\n' : '') + FRAG, side: T.DoubleSide,
       transparent: blend, depthWrite: !blend, depthTest: !blend,
       uniforms: { uGain: { value: 1 }, uRim: { value: 0.6 }, uFlat: { value: 0 },
-                  uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() } }
+                  uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
+                  uMode: { value: 0 }, uSplit: { value: new T.Vector3(0, 0, 0) }, uRes: { value: new T.Vector2(1, 1) },
+                  uDepth: { value: new T.Vector2(1, 10) }, uTint: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) } }
     });
     var mesh = new T.Mesh(g, mat); mesh.frustumCulled = false;
     return {
       mesh: mesh, capacity: capacity, uniforms: mat.uniforms,
-      center: A.iCenter.array, axU: A.iU.array, axV: A.iV.array, color: A.iColor.array,
+      center: A.iCenter.array, axU: A.iU.array, axV: A.iV.array, color: A.iColor.array, aux: A.iAux.array,
       setCount: function (n) { g.instanceCount = Math.min(n, capacity); },
       /* upload the first n instances (all of them when n is omitted) */
       commit: function (n) {
-        [A.iCenter, A.iU, A.iV, A.iColor].forEach(function (at) {
+        [A.iCenter, A.iU, A.iV, A.iColor, A.iAux].forEach(function (at) {
           at.updateRange.offset = 0; at.updateRange.count = n == null ? -1 : Math.min(n, capacity) * 3; at.needsUpdate = true;
         });
       }
