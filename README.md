@@ -21,6 +21,7 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 | `/deck.html` | Interview deck (reveal.js), simulator embedded as slide 14 |
 | `/talk.html` | Thesis talk — scroll-driven deck (20′ / 40′ cuts), from one spline to a manifold of spline charts |
 | `/talk/sims/{flatland,basis,planoid,ledger,refine,manifold}.html` | The talk's six simulations as standalone lab pages |
+| `/lab.html` | Lab — an interactive figure: the Utah teapot and other objects as spline charts, studio-lit Gaussians, baked DINOv3 control features, feature-based selection and editing |
 | `/talk-he.html` | Short Hebrew deck (5–10 min) — explicit vs implicit 3D representations and Gaussian Splatting; light "liquid glass" theme |
 | `/arena.html` | Arena: live 4D match reconstruction (second application of the thesis) |
 | `/project.html` | Retired predecessor landing page (kept live, unlinked) |

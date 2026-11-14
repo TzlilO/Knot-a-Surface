@@ -1,0 +1,140 @@
+/* Knot-a-Surface lab — the page is set like a journal page (serif text, sans captions, booktabs
+   rules) and the renderer fades its floor into the same paper colour, so the figure has no frame.
+   The semantic hues of the talk are kept: amber = control points, violet = Gaussians. */
+:root{
+  --paper:#f7f5f0; --ink:#17171a; --dim:#5d5b56; --mute:#8d8a82; --hair:#dcd8cd; --wash:#efece4;
+  --accent:#2a52be; --ctrl:#b86e00; --splat:#8e4aa0;
+  --serif:'Libertinus Serif','Linux Libertine','Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+  --sans:'Libertinus Sans','Linux Biolinum',Optima,'Gill Sans','Segoe UI',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--serif);-webkit-font-smoothing:antialiased;
+  display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+a{color:inherit}
+button{font:inherit;color:inherit;cursor:pointer}
+
+/* running head */
+.run{display:flex;align-items:baseline;gap:18px;padding:9px 28px 8px;border-bottom:.75px solid var(--ink);font:13px/1 var(--sans)}
+.run .home{font-weight:700;text-decoration:none;letter-spacing:.01em}
+.run .venue{color:var(--dim);font-style:italic}
+.run nav{margin-left:auto;display:flex;gap:20px}
+.run nav a{color:var(--dim);text-decoration:none;border-bottom:.75px solid var(--hair);padding-bottom:1px}
+.run nav a:hover{color:var(--ink);border-color:var(--ink)}
+
+.sheet{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
+.lead{display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;padding:18px 28px 14px}
+.head{display:flex;align-items:flex-end;gap:24px;justify-content:space-between;flex-wrap:wrap}
+h1{margin:0;font:600 34px/1.05 var(--serif);letter-spacing:-.012em}
+.sub{margin:6px 0 0;color:var(--dim);font-style:italic;font-size:16px}
+.tabs{display:flex;gap:0;border-bottom:.75px solid var(--ink)}
+.tabs button{background:none;border:0;padding:6px 14px 7px;font:14px/1 var(--sans);color:var(--dim);border-bottom:2px solid transparent;margin-bottom:-.75px}
+.tabs button:hover{color:var(--ink)}
+.tabs button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+
+/* the figure */
+.fig{margin:10px 0 0;display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0}
+.stage{position:relative;min-height:0;overflow:hidden;background:var(--paper);user-select:none;-webkit-user-select:none}
+.lab-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.lab-canvas:active{cursor:grabbing}
+body[data-tool=sculpt] .lab-canvas{cursor:crosshair}
+body[data-tool=select] .lab-canvas{cursor:cell}
+.conv{position:absolute;left:0;right:0;bottom:0;height:1.5px;background:var(--hair)}
+.conv i{display:block;height:100%;background:var(--ink);transform-origin:0 50%;transform:scaleX(0)}
+.lab-brush{position:absolute;left:0;top:0;border:1.25px solid var(--accent);border-radius:50%;pointer-events:none;opacity:0;
+  box-shadow:0 0 0 1px rgba(255,255,255,.7) inset}
+.lab-dead{position:absolute;inset:0;display:grid;place-items:center;margin:0;color:var(--dim);font-style:italic;text-align:center;padding:24px}
+.lab-split{position:absolute;inset:0;overflow:hidden;pointer-events:none;display:none}
+.stage.splitting .lab-split{display:block}
+.lab-split i{position:absolute;left:-.5px;top:0;width:1px;height:100%;transform-origin:0 0;background:rgba(23,23,26,.55)}
+.lab-split span{position:absolute;left:0;top:0;white-space:nowrap;font:13px/1 var(--sans);color:var(--ink);padding:5px 9px 6px;
+  background:rgba(247,245,240,.92);border:.75px solid var(--ink);border-radius:2px}
+figcaption{padding:10px 0 0;font:14px/1.45 var(--sans);color:var(--ink);max-width:104ch;min-height:4.5em}
+figcaption b{font-weight:700}
+figcaption .credit{color:var(--mute);white-space:nowrap}
+
+/* the margin column */
+.margin{border-left:.75px solid var(--hair);padding:16px 22px 28px;overflow-y:auto;min-height:0}
+.margin section+section{margin-top:18px;padding-top:14px;border-top:.75px solid var(--hair)}
+h2{margin:0 0 9px;font:700 12px/1.2 var(--sans);letter-spacing:.09em;text-transform:uppercase}
+h2 b{letter-spacing:.02em}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.modes button{background:none;border:0;border-bottom:.75px solid var(--hair);padding:6px 0;text-align:left;font:14px/1.2 var(--sans);color:var(--dim)}
+.modes button i{font:italic 14px/1 var(--serif);margin-right:6px;color:var(--mute)}
+.modes button:hover:not(:disabled){color:var(--ink)}
+.modes button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+.modes button.on i{color:var(--ink)}
+.modes button:disabled{opacity:.4;cursor:default}
+.modes button:last-child{grid-column:1/-1}
+
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) 44px;align-items:center;gap:10px;margin:7px 0;font:13.5px/1.2 var(--sans)}
+.row label{color:var(--dim);white-space:nowrap}
+.row output{text-align:right;font:12px/1 var(--mono);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:none;margin:0;touch-action:none}
+input[type=range]::-webkit-slider-runnable-track{height:1px;background:var(--ink)}
+input[type=range]::-moz-range-track{height:1px;background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--paper);border:1.5px solid var(--ink);margin-top:-5px}
+input[type=range]::-moz-range-thumb{width:8px;height:8px;border-radius:50%;background:var(--paper);border:1.5px solid var(--ink)}
+.check{display:flex;align-items:center;gap:9px;margin:7px 0;font:13.5px/1.2 var(--sans);color:var(--dim);cursor:pointer}
+.check input{appearance:none;-webkit-appearance:none;width:13px;height:13px;margin:0;border:1.25px solid var(--ink);border-radius:1px;display:grid;place-items:center}
+.check input:checked{background:var(--ink)}
+.check input:checked::after{content:'';width:6px;height:3px;border:solid var(--paper);border-width:0 0 1.5px 1.5px;transform:translateY(-1px) rotate(-45deg)}
+.nums{margin:11px 0 0;font:13.5px/1.2 var(--sans)}
+.nums div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:4px 0}
+.nums dt{color:var(--dim)} .nums dt small{color:var(--mute);font-size:11.5px}
+.nums dd{margin:0;font:500 13px/1 var(--mono);font-variant-numeric:tabular-nums}
+.c-splat{color:var(--splat)} .c-ctrl{color:var(--ctrl)}
+
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:.75px solid var(--ink);border-radius:2px;overflow:hidden}
+.seg button{background:none;border:0;padding:7px 4px;font:13.5px/1 var(--sans);color:var(--dim)}
+.seg button+button{border-left:.75px solid var(--ink)}
+.seg button.on{background:var(--ink);color:var(--paper)}
+.seg.small button{padding:5px 4px;font-size:12.5px}
+.pane{display:none;margin-top:10px}
+body[data-tool=orbit] .pane[data-for=orbit],body[data-tool=sculpt] .pane[data-for=sculpt],body[data-tool=select] .pane[data-for=select]{display:block}
+.hint{margin:8px 0;font:13px/1.4 var(--sans);color:var(--dim)}
+.hint em{font-style:italic;color:var(--ink)} .hint b{color:var(--ink)}
+.edit{display:none;margin-top:6px;padding-top:6px;border-top:.75px dotted var(--mute)}
+body.has-sel .edit{display:block}
+body.no-feat .featonly{display:none}
+.tints{display:flex;gap:7px;grid-column:2/-1}
+.tints button{width:19px;height:19px;border-radius:50%;border:.75px solid rgba(0,0,0,.35);padding:0}
+.tints button.on{outline:1.5px solid var(--ink);outline-offset:2px}
+.btn{background:none;border:.75px solid var(--ink);border-radius:2px;padding:6px 10px;font:13px/1 var(--sans)}
+.btn:hover{background:var(--ink);color:var(--paper)}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Table 1, booktabs style */
+.book{width:100%;border-collapse:collapse;font:13px/1.25 var(--sans);border-top:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink)}
+.book th{font-weight:400;font-style:italic;text-align:right;padding:5px 0 4px 8px;border-bottom:.75px solid var(--ink)}
+.book td{text-align:right;padding:3.5px 0 3.5px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.book th:first-child,.book td:first-child{text-align:left;padding-left:0}
+.book td i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+.book sup{color:var(--mute);margin-left:2px}
+.fine{margin:6px 0 0;font:12px/1.3 var(--sans);color:var(--mute)}
+.notes p{margin:0 0 8px;font-size:14px;line-height:1.45;color:var(--dim)}
+.notes p b{color:var(--ink);font-weight:600}
+
+/* narrow screens: the page scrolls, the figure stays on top */
+@media (max-width:900px){
+  html,body{height:auto} body{display:block;overflow:visible}
+  .run{padding:9px 16px 8px;gap:12px} .run .venue,.run nav a:nth-child(2){display:none}
+  .sheet{display:block}
+  .lead{display:block;padding:14px 16px 8px}
+  h1{font-size:27px} .sub{font-size:15px}
+  .tabs{margin-top:10px;width:100%} .tabs button{flex:1;padding:8px 4px 9px}
+  .fig{display:block}
+  .stage{height:62svh;min-height:320px;margin:0 -16px}
+  .lab-canvas{touch-action:pan-y}
+  figcaption{min-height:0;font-size:13.5px}
+  .margin{border-left:0;border-top:.75px solid var(--hair);padding:16px 16px 40px;overflow:visible}
+  .lab-split span{font-size:11.5px;padding:4px 7px 5px}
+}
+@media (pointer:coarse){
+  .modes button{padding:10px 0} .seg button{padding:11px 4px} .btn{padding:10px 12px}
+  input[type=range]{height:30px} .check{margin:11px 0}
+  input[type=range]::-webkit-slider-thumb{width:17px;height:17px;margin-top:-8px}
+  .tints button{width:28px;height:28px}
+}

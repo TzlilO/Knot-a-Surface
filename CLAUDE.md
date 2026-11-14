@@ -78,6 +78,29 @@ A separate 5–10 minute RTL deck with its own light "liquid glass" look; not a 
   optimiser fitting 2D Gaussians to a picture; normalised blend, Adam). The 3D step mounts `manifold`
   bare with `clear:'transparent'` and the hidden `breakfast` scene from `talk/scenes.js`.
 
+## lab.html — the interactive figure (studio renderer, DINOv3 features, editing)
+A standalone page set like a journal page (serif text, sans captions, booktabs table, light paper);
+plain static files and classic scripts like the talk. It reuses `talk/nurbs.js`, `talk/kit.js`
+(gestures only) and `talk/gl.js` (orbit, `writePlanoids`), and nothing from it is used by the decks.
+- `lab/objects.js` = `KnotLab.scenes` (`tea`: the Utah teapot rebuilt from Newell's Bezier patches in
+  `lab/teapot-data.js`, `knot`, `still`). Same chart shape as `talk/scenes.js` plus `mat {rough, metal}`
+  and `lock` on the ground. Colours are PURE ALBEDO: the renderer lights the scene, never bake shading.
+- `lab/render.js` = `KnotLab.renderer`: shadow pass -> G-buffer (MRT) -> lighting pass (key light with
+  shadow map, screen-space occlusion, procedural studio reflections, tone mapping, or a data view) ->
+  accumulation. While nothing moves, frames are averaged with a new dither, a sub-pixel camera jitter and
+  a jittered light, so Gaussian fringes, shadows and occlusion converge (64 frames, then it stops
+  drawing). Anything that changes the picture must call `invalidate()` (or pass `soft` / use `live`).
+- `lab/app.js` = sampling (a port of the manifold module's per-tile view-adaptive allocation), per-control-
+  point channels `c.A` (feature colour x3, similarity, selection) blended to the Gaussians with the same
+  basis as colour, picking (nearest Gaussian on the ray), tools (sculpt = soft brush on control points;
+  select by feature similarity or by chart, then inflate / lift / scale / tint / hide), the split screen.
+  `KnotLab.app` is the handle for tests and for the bake.
+- DINOv3 features are REAL and baked offline: `node tools/bake/capture.js <dir>` renders each scene from
+  its 24-camera rig (plus a per-pixel chart/(u,v) map), `python3 tools/bake/distill.py <dir> <model.onnx>`
+  runs DINOv3 ViT-S/16, splats patch features onto control points, PCA -> 16-D int8 ->
+  `lab/features/<scene>.js`. Re-run both whenever a scene's control nets change (the page checks net
+  sizes and falls back to per-chart selection on a mismatch). The weights are not in the repo.
+
 ## arena.html — Arena: live 4D match reconstruction
 A second, independent single-file three.js simulator (`window.KnotArenaSim`, ~`src/arena_core.js`)
 applying the same thesis to a sports court instead of terrain: the swarm is FIXED (perimeter +

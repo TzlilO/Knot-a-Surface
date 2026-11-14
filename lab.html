@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Knot-a-Surface Lab — an interactive figure</title>
+<meta name="description" content="A live figure: objects stored as B-spline charts, rendered as Gaussians derived on the fly, read as depth, normals, charts and DINOv3 features, and edited through their control points.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libertinus+Serif:ital,wght@0,400;0,600;0,700;1,400&family=Libertinus+Sans:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lab/lab.css">
+</head>
+<body>
+<header class="run">
+  <a class="home" href="./">Knot-a-Surface</a>
+  <span class="venue">Lab · interactive figure</span>
+  <nav><a href="talk.html">The talk</a><a href="talk/sims/manifold.html">Atlas module</a><a href="./">Project page</a></nav>
+</header>
+
+<main class="sheet">
+  <section class="lead">
+    <div class="head">
+      <div>
+        <h1>A Scene Is Its Splines</h1>
+        <p class="sub">Rendering, reading and editing spline‑grounded Gaussians, live in the figure below.</p>
+      </div>
+      <div class="tabs" id="scenes" aria-label="Scene"></div>
+    </div>
+    <figure class="fig">
+      <div class="stage" id="stage"><div class="conv"><i id="conv"></i></div></div>
+      <figcaption id="caption"></figcaption>
+    </figure>
+  </section>
+
+  <aside class="margin">
+    <section>
+      <h2>View</h2>
+      <div class="modes" id="modes"></div>
+    </section>
+
+    <section>
+      <h2>Sampling</h2>
+      <div class="row" id="budget"><label for="budget-in">Gaussian budget</label><input id="budget-in" type="range"><output></output></div>
+      <label class="check"><input type="checkbox" id="adaptive" checked><span>View‑adaptive sampling</span></label>
+      <label class="check"><input type="checkbox" id="nets"><span>Show control nets</span></label>
+      <dl class="nums">
+        <div><dt>Gaussians drawn</dt><dd id="n-g" class="c-splat">–</dd></div>
+        <div><dt>Control points</dt><dd id="n-cp" class="c-ctrl">–</dd></div>
+        <div><dt>Numbers stored <small>(16 per control point)</small></dt><dd id="n-par">–</dd></div>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Tools</h2>
+      <div class="seg" id="tool">
+        <button type="button" data-v="orbit">Orbit</button><button type="button" data-v="sculpt">Sculpt</button><button type="button" data-v="select">Select</button>
+      </div>
+      <div class="pane" data-for="orbit"><p class="hint">Drag to turn the figure; scroll or pinch to zoom.</p></div>
+      <div class="pane" data-for="sculpt">
+        <p class="hint">Drag a surface. Every control point inside the brush follows, and the Gaussians are derived again from the moved surface.</p>
+        <div class="row" id="brush"><label for="brush-in">Brush radius</label><input id="brush-in" type="range"><output></output></div>
+      </div>
+      <div class="pane" data-for="select">
+        <div class="seg small" id="by"><button type="button" data-v="feature">By feature</button><button type="button" data-v="chart">By chart</button></div>
+        <div class="row featonly" id="thr"><label for="thr-in">Similarity threshold</label><input id="thr-in" type="range"><output></output></div>
+        <p class="hint" id="selinfo"></p>
+        <div class="edit">
+          <div class="row" id="inflate"><label for="inflate-in">Inflate</label><input id="inflate-in" type="range"><output></output></div>
+          <div class="row" id="lift"><label for="lift-in">Lift</label><input id="lift-in" type="range"><output></output></div>
+          <div class="row" id="scale"><label for="scale-in">Scale</label><input id="scale-in" type="range"><output></output></div>
+          <div class="row"><label>Tint</label><div class="tints" id="tints"></div></div>
+          <label class="check"><input type="checkbox" id="hide"><span>Hide the selection</span></label>
+          <button type="button" class="btn" id="clear">Keep edits, clear selection</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="reset">Reset scene</button>
+        <button type="button" class="btn" id="save">Save figure (PNG)</button>
+      </div>
+    </section>
+
+    <section>
+      <h2><b>Table 1.</b> The atlas of this scene</h2>
+      <table class="book">
+        <thead><tr><th>Chart</th><th>Control net</th><th>Gaussians</th><th>Finish</th></tr></thead>
+        <tbody id="atlas"></tbody>
+      </table>
+      <p class="fine"><sup>○</sup> closed in at least one direction.</p>
+    </section>
+
+    <section class="notes">
+      <h2>What is real here</h2>
+      <p>The objects are modelled by hand as B‑spline charts; the teapot is rebuilt from Newell’s 1975 Bézier patches. Nothing in this figure was reconstructed from photographs, and nothing was trained.</p>
+      <p id="featnote"></p>
+      <p>Each Gaussian is drawn as a flat disc in the tangent plane of its surface, with its position, orientation and size computed from the spline. The soft edges, the shadow and the occlusion are resolved by averaging frames while the view is still. This is a browser renderer, not the paper’s rasteriser.</p>
+    </section>
+  </aside>
+</main>
+
+<script src="talk/vendor/three.min.js"></script>
+<script src="talk/nurbs.js"></script>
+<script src="talk/kit.js"></script>
+<script src="talk/gl.js"></script>
+<script src="lab/teapot-data.js"></script>
+<script src="lab/objects.js"></script>
+<script src="lab/render.js"></script>
+<script src="lab/app.js"></script>
+</body>
+</html>
