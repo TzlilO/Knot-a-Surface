@@ -29,7 +29,6 @@
     var dx = x - (ax + t * ux), dy = y - (ay + t * uy);
     return amp * (1 - 0.55 * t) * Math.exp(-(dx * dx + dy * dy) / (w * w));
   }
-  var DETAIL = { cx: 0.655, cy: 0.37 };   // where the detail lives (only used for labels/tests)
   function targetRaw(x, y) {
     // rolling ground: about a third of a wavelength across the map — a 5 x 5 net can hold it
     var h = 0.20 * Math.sin(2.3 * x + 0.5) * Math.cos(1.7 * y - 0.3)
@@ -627,7 +626,7 @@
       /* ---------- state ---------- */
       var st = { scene: '', run: true, view: 'fit', gauss: false, dens: 24, densAuto: false, densT: 0,
                  mode: 'idle', timer: 0, rate: 12, acc: 0, op: null, pending: null, versus: false,
-                 ceiling: null, rmseFrom: null, pruned: 0, ptsFrom: 0, inserted: 0, barScale: 0, holdScale: false,
+                 ceiling: null, blocked: null, pruned: 0, ptsFrom: 0, inserted: 0, barScale: 0, holdScale: false,
                  dotsOff: false };
       var m = null, ms = null, base = null, baseMs = null, bestU = null;
       var fx = [], dirty = true, dirtyB = true, zVersion = 0;

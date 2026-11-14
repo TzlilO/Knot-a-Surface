@@ -1,173 +1,131 @@
-/* Knot-a-Surface talk — module `manifold`: "A manifold of splines".
-   A whole scene as an atlas of B-spline charts (a spline manifold). Every Gaussian on screen is
+/* Knot-a-Surface talk — module `manifold`: "A manifold of splines" (the full-power demo).
+   A whole scene as an atlas of B-spline charts — a spline manifold. Every Gaussian on screen is
    derived from one of the charts; a FIXED Gaussian budget is re-sampled over the (u,v) domains
-   as the camera moves (view-adaptive sampling), and editing a control point moves thousands of
-   Gaussians at once.
+   as the camera moves (view-adaptive sampling), and editing control points moves thousands of
+   Gaussians at once. Scenes come from talk/scenes.js: benchmark-style stand-ins (barn, truck,
+   bust, garden) plus the abstract still life.
    Tool: WebGL (three.js) instanced planoids + a 2D-canvas (u,v) atlas.
-   Standalone: talk/sims/manifold.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js. */
+   Standalone: talk/sims/manifold.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js, scenes.js. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
   var PER_CP = 16;                  // 3 position + 12 SH1 colour + 1 opacity per control point
-  var CAP = 170000, FLOOR = 0.10;   // FLOOR = share of the budget kept as view-independent coverage
+  var CAP = 220000, FLOOR = 0.10;   // FLOOR = share of the budget kept as view-independent coverage
 
-  var VIEWS = {
-    wide: { th: 0.78, ph: 1.14, r: 11.2, tx: -0.2, ty: 1.2, tz: 0.2 },
-    knot: { th: 1.05, ph: 1.28, r: 3.1, tx: 1.3, ty: 1.78, tz: 0.6 },
-    macro: { th: 1.0, ph: 1.22, r: 1.75, tx: 1.45, ty: 2.25, tz: 0.75 },
-    vase: { th: 0.3, ph: 1.2, r: 5.0, tx: -1.6, ty: 1.15, tz: 0.9 },
-    cloth: { th: 1.5, ph: 1.0, r: 4.6, tx: 1.3, ty: 0.7, tz: 0.6 }
-  };
   var SCENES = {
-    scene:  { view: 'splats', cam: 'wide', cap: '<b>one scene</b> · six spline charts · every Gaussian derived',
-              hint: 'drag to orbit' },
-    charts: { view: 'charts', cam: 'wide', cap: '<b>an atlas of charts</b> · each coherent surface gets its own (u,v) domain' },
-    nets:   { view: 'charts', cam: 'wide', nets: 1, cap: '<b>control nets</b> · dense where the geometry is, sparse where it isn’t' },
-    budget: { view: 'splats', tour: 1, cap: '<b>fixed budget, moving camera</b> · samples flow to what is seen' },
-    lod:    { view: 'splats', cam: 'macro', ab: 1, rim: 0.6, cap: '<b>level of detail</b> · the same budget, with and without view-adaptive sampling' },
-    edit:   { view: 'splats', cam: 'cloth', nets: 1, breathe: 1, cap: '<b>editable by construction</b> · move control points, the Gaussians follow',
-              hint: 'drag an amber point' }
+    scene:  { scn: 'barn', view: 'splats', cam: 'wide', rig: 1, cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
+    charts: { scn: 'barn', view: 'charts', cam: 'wide', cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
+    nets:   { scn: 'barn', view: 'charts', cam: 'wide', nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
+    budget: { scn: 'barn', view: 'splats', tour: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
+    lod:    { scn: 'barn', view: 'splats', cam: 'close', ab: 1, rim: 0.6, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
+    truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, cap: 'same method, another capture' },
+    bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, cap: 'a scanned object under a camera dome' },
+    garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, cap: 'an object inside an unbounded surround' },
+    edit:   { scn: 'bust', view: 'splats', cam: 'a', breathe: 1, cap: 'editable by construction · move control points, the Gaussians follow',
+              hint: 'turn on nets to drag a control point' },
+    studio: { scn: 'studio', view: 'splats', cam: 'wide', cap: 'the abstract still life' }
   };
-
-  /* ---------- the scene: six charts ---------- */
-  function mix3(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
-  function buildCharts() {
-    var out = [];
-    function chart(name, hex, o, fn) {
-      var p = NB.makePatch(o), i, j, q, r;
-      for (j = 0; j < o.nv; j++) for (i = 0; i < o.nu; i++) {
-        r = fn(o.periodicU ? i / o.nu : i / (o.nu - 1), o.periodicV ? j / o.nv : j / (o.nv - 1), i, j); q = (j * o.nu + i) * 3;
-        p.P[q] = r[0]; p.P[q + 1] = r[1]; p.P[q + 2] = r[2]; p.C[q] = r[3]; p.C[q + 1] = r[4]; p.C[q + 2] = r[5];
-      }
-      // each chart's (u,v) domain is cut into tu x tv tiles; every tile gets its own sample lattice
-      var c = { name: name, hex: hex, patch: p, closed: !!o.closed, flip: 1, ref: o.ref || null,
-                tu: o.tu || 4, tv: o.tv || 4, gu: (o.tu || 4) * (o.cu || 6), gv: (o.tv || 4) * (o.cv || 6),
-                minA: o.minA || 2, minB: o.minB || 2, tiles: [], count: 0 };
-      for (j = 0; j < c.tv; j++) for (i = 0; i < c.tu; i++) c.tiles.push({ iu: i, iv: j, na: 0, nb: 0 });
-      c.base = new Float32Array(p.P); out.push(c);
-      return c;
-    }
-    // large planar regions: 4 x 4 is plenty
-    chart('floor', '#8fa4c0', { nu: 4, nv: 4, tu: 4, tv: 4 }, function (s, t) {
-      var c = mix3([0.19, 0.21, 0.27], [0.34, 0.33, 0.35], 0.5 * (s + t));
-      return [s * 6.4 - 3.2, 0, t * 6.4 - 3.2, c[0], c[1], c[2]];
-    });
-    chart('wall A', '#4fc3f7', { nu: 4, nv: 4, tu: 4, tv: 2 }, function (s, t) {
-      var c = mix3([0.13, 0.17, 0.25], [0.22, 0.27, 0.38], t);
-      return [s * 6.4 - 3.2, t * 3.4, -3.2, c[0], c[1], c[2]];
-    });
-    chart('wall B', '#69f0ae', { nu: 4, nv: 4, tu: 4, tv: 2 }, function (s, t) {
-      var c = mix3([0.17, 0.15, 0.24], [0.27, 0.23, 0.36], t);
-      return [-3.2, t * 3.4, 3.2 - s * 6.4, c[0], c[1], c[2]];
-    });
-    // a vase: surface of revolution, closed around u
-    var VR = [0.30, 0.34, 0.52, 0.60, 0.50, 0.31, 0.20, 0.24, 0.31], VY = [0, 0.05, 0.3, 0.62, 0.95, 1.22, 1.42, 1.58, 1.72];
-    var VC = [[0.14, 0.30, 0.55], [0.14, 0.30, 0.55], [0.93, 0.87, 0.75], [0.82, 0.38, 0.24], [0.93, 0.87, 0.75],
-              [0.14, 0.30, 0.55], [0.93, 0.87, 0.75], [0.82, 0.38, 0.24], [0.93, 0.87, 0.75]];
-    var VX = -1.6, VZ = 0.9, VS = 1.35;
-    chart('vase', '#ffa726', { nu: 10, nv: 9, periodicU: true, closed: true, tu: 5, tv: 3, cu: 6, cv: 8, minA: 5,
-      ref: function (u, v, pos) { return [VX, pos[1], VZ]; } }, function (s, t, i, j) {
-      var a = s * 6.2832;
-      return [VX + VS * VR[j] * Math.cos(a), VS * VY[j], VZ + VS * VR[j] * Math.sin(a), VC[j][0], VC[j][1], VC[j][2]];
-    });
-    // a cloth draped over a plinth
-    chart('cloth', '#ef5350', { nu: 15, nv: 15, tu: 4, tv: 4, cu: 9, cv: 9 }, function (s, t, i, j) {
-      var x = s * 2 - 1, z = t * 2 - 1, L = 1.2, h = 0.55, rho = Math.max(Math.abs(x), Math.abs(z)) || 1e-6;
-      var f = KT.clamp((rho * L - h) / (L - h), 0, 1), ang = Math.atan2(z, x);
-      var rad = rho * L <= h ? rho * L : h + 0.10 * f + 0.11 * Math.sin(ang * 7) * f;
-      var y = 0.92 * (1 - 0.97 * Math.pow(f, 0.8)) + 0.03;
-      var stripe = (i % 4 === 1 || j % 4 === 1) ? 1 : 0;
-      var c = mix3([0.08, 0.40, 0.45], [0.80, 0.90, 0.86], stripe * 0.8);
-      return [1.3 + x / rho * rad, y, 0.6 + z / rho * rad, c[0], c[1], c[2]];
-    });
-    // the namesake: a tube around a (2,3) torus knot, closed both ways
-    var KN = 72, KM = 6, TUBE = 0.105, KS = 0.34, KY = 1.82, PAL = [KT.gl.rgb(C.surf), KT.gl.rgb(C.splat), KT.gl.rgb(C.ctrl)];
-    function knotC(u) {
-      var a = u * 2 * 6.2832, cs = Math.cos(1.5 * a), x = KS * (2 + cs) * Math.cos(a), y = KS * (2 + cs) * Math.sin(a), z = KS * Math.sin(1.5 * a);
-      var ca = Math.cos(0.78), sa = Math.sin(0.78);
-      return [x * ca + z * sa, y, -x * sa + z * ca];
-    }
-    chart('knot', '#ce93d8', { nu: KN, nv: KM, periodicU: true, periodicV: true, closed: true, tu: 36, tv: 1, cu: 4, cv: 12, minB: 14,
-      ref: function (u) { var c = knotC(u); return [1.3 + c[0], KY + c[1], 0.6 + c[2]]; } }, function (s, t) {
-      var p0 = knotC(s), p1 = knotC(s + 0.002), tx = p1[0] - p0[0], ty = p1[1] - p0[1], tz = p1[2] - p0[2];
-      var sx = p1[0] + p0[0], sy = p1[1] + p0[1], sz = p1[2] + p0[2];
-      var bx = ty * sz - tz * sy, by = tz * sx - tx * sz, bz = tx * sy - ty * sx, bl = Math.hypot(bx, by, bz);
-      bx /= bl; by /= bl; bz /= bl;
-      var nx = by * tz - bz * ty, ny = bz * tx - bx * tz, nz = bx * ty - by * tx, nl = Math.hypot(nx, ny, nz);
-      nx /= nl; ny /= nl; nz /= nl;
-      var a = t * 6.2832, ca = Math.cos(a) * TUBE, sa = Math.sin(a) * TUBE;
-      var h = s * 3, k = Math.floor(h) % 3, c = mix3(PAL[k], PAL[(k + 1) % 3], h - Math.floor(h));
-      return [1.3 + p0[0] + nx * ca + bx * sa, KY + p0[1] + ny * ca + by * sa, 0.6 + p0[2] + nz * ca + bz * sa, c[0], c[1], c[2]];
-    });
-    out.knotY = KY;
-    return out;
-  }
 
   KT.register('manifold', {
     title: 'A manifold of splines',
-    blurb: 'A scene as an atlas of spline charts. A fixed Gaussian budget is re-sampled across the charts as the ' +
-           'camera moves, each chart keeps the control net it deserves, and editing a control point moves the splats with it.',
+    blurb: 'Benchmark-style scenes — a barn, a truck, a bust, a garden — built entirely from spline charts. A fixed Gaussian ' +
+           'budget is re-sampled across the charts as the camera moves, and editing a control point moves the splats with it. ' +
+           'The scenes are procedural stand-ins modelled after Tanks and Temples, DTU and Mip-NeRF 360 captures, not the datasets.',
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
-      { id: 'scene', label: 'The scene' }, { id: 'charts', label: 'Atlas of charts' },
-      { id: 'nets', label: 'Control nets' }, { id: 'budget', label: 'Fixed budget' },
-      { id: 'lod', label: 'Level of detail' }, { id: 'edit', label: 'Edit' }
+      { id: 'scene', label: 'Barn' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
+      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'truck', label: 'Truck' },
+      { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'edit', label: 'Edit' }, { id: 'studio', label: 'Still life' }
     ],
     create: function (env) {
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
-      var cam = new T.PerspectiveCamera(36, 1, 0.1, 80);
+      var cam = new T.PerspectiveCamera(36, 1, 0.1, 160);
       var R = G.renderer(root, cam), scene = new T.Scene();
-      var charts = buildCharts(), W = 1, H = 1;
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
-      var st = { scene: 'scene', sc: SCENES.scene, view: 'splats', adaptive: true, nets: false, t: 0,
-                 budget: +env.opts.budget || (small ? 24000 : 60000), k: 0.72, tourI: 0, tourT: 0, abT: 0, touchedAB: false };
+      var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
+                 budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
+      var def = null, charts = [], totalCP = 0, netL = null, pts = null, ptPos = null, rigL = null;
+      var need = true, lastAlloc = 0, camKey = '', fit = 1;
+      /* a named camera of the current scene, backed off on narrow stages so the subject stays in frame */
+      function view(name) { var v = Object.assign({}, def.views[name]); v.r *= fit; return v; }
 
-      var field = G.splats(CAP); field.uniforms.uRim.value = 0.35; scene.add(field.mesh);
-      var totalCP = 0, segs = 0;
-      charts.forEach(function (c) {
-        var p = c.patch; totalCP += p.nu * p.nv;
-        segs += (p.periodicU ? p.nu : p.nu - 1) * p.nv + (p.periodicV ? p.nv : p.nv - 1) * p.nu;
-      });
-      var netL = G.lines(segs * 2, C.ctrl, 0.5); netL.obj.renderOrder = 5; scene.add(netL.obj);
-      var ptGeo = new T.BufferGeometry(), ptPos = new Float32Array(totalCP * 3);
-      ptGeo.setAttribute('position', new T.BufferAttribute(ptPos, 3));
-      var pts = new T.Points(ptGeo, new T.PointsMaterial({ color: C.ctrl, size: 5, sizeAttenuation: false }));
-      pts.frustumCulled = false; scene.add(pts);
+      var field = G.splats(CAP); scene.add(field.mesh);
 
       /* ---------- chrome ---------- */
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
       var badge = ui.el('div', 'kt-ab'); root.appendChild(badge);
-      var panel = ui.panel(root, { pos: 'tr', title: 'budget' });
-      var slB = ui.slider(panel, { label: 'budget', min: 4000, max: CAP, step: 1000, value: st.budget,
+      var panel = ui.panel(root, { pos: 'tr', title: 'scene · budget' });
+      var segS = ui.seg(panel, { value: 'barn', options: Object.keys(KT.scenes).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
+        onChange: function (v) {
+          st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
+          loadScene(v); orbit.touched = false; orbit.to(view('wide'), true); paintCap();
+        } });
+      var slB = ui.slider(panel, { label: 'budget', min: 6000, max: CAP, step: 2000, value: st.budget,
         fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, onInput: function (v) { st.budget = v; need = true; } });
       var segV = ui.seg(panel, { label: 'colour', value: 'splats',
         options: [{ v: 'splats', label: 'appearance' }, { v: 'charts', label: 'charts' }],
         onChange: function (v) { st.view = v; need = true; } });
       var rowT = ui.el('div', 'kt-row'); panel.appendChild(rowT);
-      var tgA = ui.toggle(rowT, { label: 'view-adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
+      var tgA = ui.toggle(rowT, { label: 'adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
       var tgN = ui.toggle(rowT, { label: 'nets', value: false, onChange: function (v) { st.nets = v; showNets(); } });
+      var tgR = ui.toggle(rowT, { label: 'cameras', value: false, onChange: function (v) { st.rig = v; showNets(); } });
       var rdG = ui.readout(panel, { label: 'Gaussians drawn', tone: 'splat' });
       var rdV = ui.readout(panel, { label: 'budget in view', tone: 'ok' });
       var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
-      rdP.set(totalCP + ' × ' + PER_CP + ' = ' + (totalCP * PER_CP).toLocaleString('en-US'));
-
-
-      // (u,v) atlas: one tile per chart
       var atlas = ui.el('div', 'kt-atlas'); root.appendChild(atlas);
-      charts.forEach(function (c) {
-        var tile = ui.el('div', 'kt-tile');
-        tile.style.setProperty('--c', c.hex);
-        tile.appendChild(ui.el('div', 'kt-tile-name', c.name));
-        var box = ui.el('div', 'kt-tile-box'); tile.appendChild(box);
-        c.cv = ui.canvas(box, 'kt-tile-cv');
-        c.lab = ui.el('div', 'kt-tile-n'); tile.appendChild(c.lab);
-        c.sub = ui.el('div', 'kt-tile-s', c.patch.nu + '×' + c.patch.nv + ' ctrl'); tile.appendChild(c.sub);
-        atlas.appendChild(tile);
-      });
 
-      var orbit = G.orbit(cam, R.canvas, Object.assign({ embed: env.embed, minRadius: 1.6, maxRadius: 16, pick: pickPoint,
-        theta: VIEWS.wide.th, phi: VIEWS.wide.ph, radius: VIEWS.wide.r, target: [VIEWS.wide.tx, VIEWS.wide.ty, VIEWS.wide.tz] }));
+      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.4, maxRadius: 46, pick: pickPoint });
+
+      /* ---------- load a scene: charts, nets, atlas tiles, capture rig ---------- */
+      function loadScene(key) {
+        if (st.scn === key) { charts.forEach(function (c) { c.patch.P.set(c.base); coarse(c); }); updateNets(); need = true; return; }
+        st.scn = key; def = KT.scenes[key].build(); charts = def.charts; segS.set(key);
+        [netL && netL.obj, pts, rigL && rigL.obj].forEach(function (o) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
+        totalCP = 0; var segs = 0;
+        charts.forEach(function (c) {
+          var p = c.patch; totalCP += p.nu * p.nv;
+          segs += (p.periodicU ? p.nu : p.nu - 1) * p.nv + (p.periodicV ? p.nv : p.nv - 1) * p.nu;
+        });
+        netL = G.lines(segs * 2, C.ctrl, totalCP > 3000 ? 0.3 : 0.5); netL.obj.renderOrder = 5; scene.add(netL.obj);
+        var ptGeo = new T.BufferGeometry(); ptPos = new Float32Array(totalCP * 3);
+        ptGeo.setAttribute('position', new T.BufferAttribute(ptPos, 3));
+        pts = new T.Points(ptGeo, new T.PointsMaterial({ color: C.ctrl, size: totalCP > 3000 ? 3 : 5, sizeAttenuation: false }));
+        pts.frustumCulled = false; scene.add(pts);
+        // capture rig: one small frustum per camera of the dataset-style rig
+        var cams = def.rig.cams, tg = def.rig.target, n = 0;
+        rigL = G.lines(cams.length * 16, C.text, 0.4); scene.add(rigL.obj);
+        cams.forEach(function (p) {
+          var f = new T.Vector3(tg[0] - p[0], tg[1] - p[1], tg[2] - p[2]), d = f.length() * 0.04; f.normalize();
+          var r = new T.Vector3().crossVectors(f, new T.Vector3(0, 1, 0)).normalize(), u = new T.Vector3().crossVectors(r, f);
+          var k = [], a;
+          [[1, 1], [-1, 1], [-1, -1], [1, -1]].forEach(function (s) {
+            k.push([p[0] + f.x * d + (r.x * s[0] * 0.7 + u.x * s[1] * 0.5) * d, p[1] + f.y * d + (r.y * s[0] * 0.7 + u.y * s[1] * 0.5) * d, p[2] + f.z * d + (r.z * s[0] * 0.7 + u.z * s[1] * 0.5) * d]);
+          });
+          for (a = 0; a < 4; a++) {
+            rigL.arr.set(p, n); rigL.arr.set(k[a], n + 3); rigL.arr.set(k[a], n + 6); rigL.arr.set(k[(a + 1) % 4], n + 9); n += 12;
+          }
+        });
+        rigL.set(n / 3);
+        atlas.innerHTML = '';
+        atlas.style.gridTemplateColumns = 'repeat(' + Math.min(charts.length, small ? 4 : 8) + ',minmax(0,76px))';
+        charts.forEach(function (c) {
+          var tile = ui.el('div', 'kt-tile'); tile.style.setProperty('--c', c.hex);
+          tile.appendChild(ui.el('div', 'kt-tile-name', c.name));
+          var box = ui.el('div', 'kt-tile-box'); tile.appendChild(box);
+          c.cv = ui.canvas(box, 'kt-tile-cv');
+          c.lab = ui.el('div', 'kt-tile-n'); tile.appendChild(c.lab);
+          tile.appendChild(ui.el('div', 'kt-tile-s', c.patch.nu + '×' + c.patch.nv + ' ctrl'));
+          atlas.appendChild(tile); c.w = null; c.vis = null;
+        });
+        charts.forEach(coarse); updateNets(); showNets();
+        // no point sampling finer than a chart's own detail: charts with a sparse control net per unit
+        // area (ground, backdrops) get a smaller share of the budget than densely described ones
+        var rho = charts.map(function (c) { return c.patch.nu * c.patch.nv / c.area; }), rmax = Math.max.apply(null, rho);
+        charts.forEach(function (c, i) { c.gain = KT.clamp(Math.pow(rho[i] / rmax, 0.35), 0.3, 1); });
+        rdP.set(totalCP.toLocaleString('en-US') + ' × ' + PER_CP + ' = ' + (totalCP * PER_CP).toLocaleString('en-US'));
+        need = true;
+      }
 
       /* ---------- coarse cells: where each chart is, which way it faces, how big ---------- */
       function coarse(c) {
@@ -194,8 +152,8 @@
         }
       }
 
-      /* ---------- view-adaptive allocation: importance -> per-chart counts -> warped (u,v) lattices ---------- */
-      var M = new T.Matrix4(), need = true, lastAlloc = 0, camKey = '';
+      /* ---------- view-adaptive allocation: importance -> per-tile counts -> warped (u,v) lattices ---------- */
+      var M = new T.Matrix4();
       function invCdf(m, n, out, dOut) {     // n samples from the density m (piecewise-constant), plus local spacing
         var g = m.length, cdf = new Float64Array(g + 1), i, tot = 0;
         for (i = 0; i < g; i++) { tot += m[i]; cdf[i + 1] = tot; }
@@ -221,7 +179,7 @@
               // stay small all the way to the silhouette), the hidden far side keeps a thin share
               if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : 0.3; }
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
-              w = c.carea[i] * cs / d2;
+              w = c.carea[i] * cs / d2 * c.gain;
             }
             c.w[i] = w; totW += w;
           }
@@ -298,20 +256,22 @@
             if (j < nv - 1 || p.periodicV) { o2 = (((j + 1) % nv) * nu + i) * 3; A[n++] = P[o]; A[n++] = P[o + 1]; A[n++] = P[o + 2]; A[n++] = P[o2]; A[n++] = P[o2 + 1]; A[n++] = P[o2 + 2]; }
           }
         });
-        netL.set(n / 3); ptGeo.attributes.position.needsUpdate = true;
+        netL.set(n / 3); pts.geometry.attributes.position.needsUpdate = true;
       }
-      function showNets() { netL.obj.visible = pts.visible = st.nets; tgN.set(st.nets); }
+      function showNets() {
+        if (!netL) return;
+        netL.obj.visible = pts.visible = st.nets; rigL.obj.visible = st.rig; tgN.set(st.nets); tgR.set(st.rig);
+      }
 
       /* ---------- drag a control point ---------- */
       var ray = new T.Raycaster(), ndc = new T.Vector2(), plane = new T.Plane(), hitP = new T.Vector3(), dragCP = null;
-      ray.params.Points.threshold = 0.07;
       function setNdc(e) {
         var r = R.canvas.getBoundingClientRect();
         ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)); ray.setFromCamera(ndc, cam);
       }
       function pickPoint(e) {
         if (!st.nets) return false;
-        setNdc(e);
+        setNdc(e); ray.params.Points.threshold = orbit.cur.r * 0.012;
         var h = ray.intersectObject(pts, false)[0];
         if (!h) return false;
         var gi = h.index, c = null;
@@ -327,7 +287,7 @@
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
           var o = dragCP.i * 3, P = dragCP.c.patch.P;
-          P[o] = hitP.x; P[o + 1] = hitP.y; P[o + 2] = hitP.z; dragCP.c.base.set(P);
+          P[o] = hitP.x; P[o + 1] = hitP.y; P[o + 2] = hitP.z;
           coarse(dragCP.c); updateNets(); need = true;
         }
       });
@@ -338,45 +298,43 @@
       function paintBadge() {
         badge.innerHTML = 'view-adaptive sampling <b class="' + (st.adaptive ? 'on' : 'off') + '">' + (st.adaptive ? 'ON' : 'OFF') + '</b>';
       }
+      function paintCap() {
+        var s = KT.scenes[st.scn];
+        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
+        badge.style.display = st.sc.ab ? '' : 'none';
+      }
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
-        st.view = sc.view; segV.set(sc.view); st.nets = !!sc.nets; showNets();
+        st.view = sc.view; segV.set(sc.view); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
-        badge.style.display = sc.ab ? '' : 'none';
-        field.uniforms.uRim.value = sc.rim || 0.35;
-        charts.forEach(function (c) { c.patch.P.set(c.base); coarse(c); });
-        updateNets();
-        cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
+        field.uniforms.uRim.value = sc.rim || 0.3;
+        var fresh = st.scn !== sc.scn;
+        loadScene(sc.scn); showNets(); paintCap();
+        hint.textContent = sc.hint || '';
         orbit.touched = false;
-        if (sc.cam) orbit.to(VIEWS[sc.cam]); else if (sc.tour) orbit.to(VIEWS.wide);
+        orbit.to(view(sc.cam || 'wide'), fresh);
         need = true;
       }
 
-      var TOUR = ['wide', 'vase', 'knot', 'cloth'];
       env.loop(function (t, dt) {
         var sc = st.sc;
         st.t += dt;
         if (sc.tour && !orbit.touched) {
           st.tourT += dt;
-          if (st.tourT > 5.2) { st.tourT = 0; st.tourI = (st.tourI + 1) % TOUR.length; orbit.to(VIEWS[TOUR[st.tourI]]); }
+          if (st.tourT > 5.2) { st.tourT = 0; st.tourI = (st.tourI + 1) % def.tour.length; orbit.to(view(def.tour[st.tourI])); }
         }
         if (sc.ab && !st.touchedAB) {
           st.abT += dt;
           if (st.abT > 3.4) { st.abT = 0; st.adaptive = !st.adaptive; tgA.set(st.adaptive); paintBadge(); need = true; }
         }
-        if (sc.breathe && !st.touchedEdit && !dragCP) {     // lift a corner of the cloth; let the knot breathe
-          var cl = charts[4], kn = charts[5], P = cl.patch.P, B = cl.base, i, j, o, nu = cl.patch.nu;
-          var lift = 0.5 - 0.5 * Math.cos(st.t * 1.1);
-          for (j = 0; j < 5; j++) for (i = nu - 5; i < nu; i++) {
-            o = (j * nu + i) * 3; var f = (4 - j) / 4 * (i - (nu - 5)) / 4;
-            P[o + 1] = B[o + 1] + lift * 0.9 * f; P[o] = B[o] + lift * 0.35 * f; P[o + 2] = B[o + 2] - lift * 0.35 * f;
-          }
-          var s = 1 + 0.16 * Math.sin(st.t * 1.6), Q = kn.patch.P, KB = kn.base;
-          for (i = 0; i < Q.length; i += 3) { Q[i] = 1.3 + (KB[i] - 1.3) * s; Q[i + 1] = charts.knotY + (KB[i + 1] - charts.knotY) * s; Q[i + 2] = 0.6 + (KB[i + 2] - 0.6) * s; }
-          coarse(cl); coarse(kn); updateNets(); need = true;
+        if (sc.breathe && !st.touchedEdit && !dragCP) {     // the scene's own edit, eased in and out
+          def.edit(0.5 - 0.5 * Math.cos(st.t * 1.15)).forEach(coarse);
+          if (st.nets) updateNets();
+          need = true;
         }
-        if (!orbit.touched && sc.cam === 'wide') orbit.goal.th = VIEWS.wide.th + 0.16 * Math.sin(t * 0.16);
+        var home = def.views[sc.cam || 'wide'];
+        if (!orbit.touched && !sc.tour && (sc.cam || 'wide') === 'wide') orbit.goal.th = home.th + 0.14 * Math.sin(t * 0.16);
         orbit.update(dt, sc.tour ? 1.5 : 3);
         var e = cam.matrixWorld.elements, key = (e[12] + e[13] * 3 + e[14] * 7 + e[8] * 11 + e[9] * 13).toFixed(3);
         if (key !== camKey && t - lastAlloc > 0.09) { camKey = key; need = true; }
@@ -388,19 +346,23 @@
         var css = document.createElement('style'); css.id = 'kt-manifold-css';
         css.textContent =
           '.kt-sim-manifold .kt-atlas{position:absolute;z-index:5;left:12px;bottom:12px;display:grid;gap:6px;' +
-          'grid-template-columns:repeat(6,minmax(0,84px));padding:8px;background:var(--panel);border:1px solid var(--line);' +
+          'padding:8px;background:var(--panel);border:1px solid var(--line);' +
           'border-radius:10px;backdrop-filter:blur(10px);max-width:calc(100% - 24px)}' +
           '.kt-sim-manifold .kt-tile{min-width:0}' +
-          '.kt-sim-manifold .kt-tile-name{font:600 10px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--c);margin-bottom:4px}' +
-          '.kt-sim-manifold .kt-tile-box{position:relative;aspect-ratio:1.25;border:1px solid var(--line2);border-radius:4px;overflow:hidden;background:var(--bg)}' +
+          '.kt-sim-manifold .kt-tile-name{font:600 10px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--c);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+          '.kt-sim-manifold .kt-tile-box{position:relative;aspect-ratio:1.4;border:1px solid var(--line2);border-radius:4px;overflow:hidden;background:var(--bg)}' +
           '.kt-sim-manifold .kt-tile-cv{position:absolute;inset:0;width:100%;height:100%}' +
           '.kt-sim-manifold .kt-tile-n{font:600 11px/1 var(--f-mono);color:var(--text);margin-top:5px;font-variant-numeric:tabular-nums;white-space:nowrap}' +
           '.kt-sim-manifold .kt-tile-s{font:500 10px/1 var(--f-mono);color:var(--mute);margin-top:3px;white-space:nowrap}' +
-          '.kt-sim-manifold .kt-ab{position:absolute;z-index:4;left:50%;top:52px;transform:translateX(-50%);white-space:nowrap;' +
+          '.kt-sim-manifold .kt-caption{line-height:1.6}.kt-sim-manifold.kt-embed .kt-hint{display:none}' +
+          '.kt-sim-manifold.kt-compact .kt-atlas{display:none}' +
+          '.kt-sim-manifold .kt-panel .kt-seg:first-of-type .kt-seg-box{margin-left:0;width:100%}' +
+          '.kt-sim-manifold .kt-panel .kt-seg:first-of-type .kt-seg-btn{flex:1;padding:7px 4px}' +
+          '.kt-sim-manifold .kt-ab{position:absolute;z-index:4;left:50%;top:64px;transform:translateX(-50%);white-space:nowrap;' +
           'font:600 13px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:9px 14px;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:999px}' +
           '.kt-sim-manifold .kt-ab b{margin-left:8px}.kt-sim-manifold .kt-ab .on{color:var(--ok)}.kt-sim-manifold .kt-ab .off{color:var(--err)}' +
-          '@media (max-width:640px){.kt-sim-manifold .kt-atlas{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;padding:6px}' +
+          '@media (max-width:640px){.kt-sim-manifold .kt-atlas{gap:4px;padding:6px}.kt-sim-manifold .kt-tile-box{aspect-ratio:2}' +
           '.kt-sim-manifold .kt-tile-s{display:none}.kt-sim-manifold .kt-tile-name{font-size:8px;letter-spacing:.04em}.kt-sim-manifold .kt-tile-n{font-size:9px}}';
         document.head.appendChild(css);
       }
@@ -408,7 +370,11 @@
       setScene(env.opts.scene || 'scene');
       return {
         setScene: setScene,
-        resize: function (w, h) { W = w; H = h; R.resize(w, h); need = true; },
+        resize: function (w, h) {
+          R.resize(w, h); need = true;
+          var f = KT.clamp(1.4 / (w / h), 1, 1.7);
+          if (f !== fit) { fit = f; if (!orbit.touched) orbit.to(view(st.sc.tour ? def.tour[st.tourI] : st.sc.cam || 'wide'), true); }
+        },
         destroy: function () { R.renderer.dispose(); }
       };
     }

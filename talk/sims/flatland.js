@@ -296,8 +296,10 @@
        colour_i = sigmoid( sum_j N_j(u_i) F_j )
      Gradients reach the control points by the chain rule:
        dL/dP_j = sum_i N_j(u_i) dL/dmean_i  +  N'_j(u_i) dL/dS'_i
-     The second term (through the derived covariance) is exact too; set `covGrad` false to
-     stop-gradient through the covariance — the result is practically the same. */
+     The second term carries the gradient through the DERIVED covariance (it depends on S'), so the
+     gradient is exact — verified against finite differences. `covGrad = false` stop-gradients
+     through the covariance instead; in this experiment that variant does not converge (the curve
+     no longer feels that stretching a span widens its Gaussians), so the exact gradient is used. */
   function boundTable(M, G) {
     var p = 3, U = NURBS.clampedKnots(M, p), us = [], i;
     for (i = 0; i < G; i++) us.push((i + 0.5) / G);
@@ -644,12 +646,19 @@
       '.kt-sim-flatland .fl-metrics .kt-readout{min-height:0;border-top:1px solid var(--line);padding-top:6px}',
       '.kt-sim-flatland .fl-metrics .kt-readout .kt-val{font-size:12px;color:var(--dim)}',
       '.kt-sim-flatland .fl-ctl .kt-slider{width:190px}',
+      /* centre with auto margins: left:50% would cap the panel at half the stage and wrap it */
+      '.kt-sim-flatland:not(.kt-compact) .fl-ctl{left:12px;right:12px;margin:0 auto;width:fit-content;transform:none}',
+      '.kt-sim-flatland.fl-mid .fl-num{font-size:15px}',
+      '.kt-sim-flatland.fl-mid .fl-table{gap:4px 11px}',
+      '.kt-sim-flatland.fl-mid .fl-th{font-size:10px;letter-spacing:.06em}',
+      '.kt-sim-flatland.fl-mid .fl-metrics{padding:8px 11px 7px}',
       '.kt-sim-flatland .fl-handle{position:absolute;z-index:6;left:0;top:0;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;touch-action:none;cursor:grab}',
       '.kt-sim-flatland .fl-handle:active{cursor:grabbing}',
       '.kt-sim-flatland.kt-embed .fl-num{font-size:16px}',
       '.kt-sim-flatland.fl-compact .fl-cap{left:10px;top:8px;font-size:11px;line-height:1.35}',
       '.kt-sim-flatland.fl-compact .fl-cap b{font-size:13px}',
-      '.kt-sim-flatland.fl-compact .fl-cap i{display:none}',
+      '.kt-sim-flatland .fl-cap i.fl-short,.kt-sim-flatland.fl-compact .fl-cap i.fl-long{display:none}',
+      '.kt-sim-flatland.fl-compact .fl-cap i.fl-short{display:block;font-size:10px;margin-top:1px}',
       '.kt-sim-flatland.fl-compact .fl-metrics{padding:6px 10px;gap:3px;border-radius:8px}',
       '.kt-sim-flatland.fl-compact .fl-table{gap:2px 8px;grid-template-columns:auto repeat(5,1fr)}',
       '.kt-sim-flatland.fl-compact .fl-th{font-size:10px;letter-spacing:.04em}',
@@ -657,7 +666,7 @@
       '.kt-sim-flatland.fl-compact .fl-name{font-size:11px;letter-spacing:.06em}',
       '.kt-sim-flatland.fl-compact .fl-num{font-size:13px}',
       '.kt-sim-flatland.fl-compact .fl-metrics .kt-readout{display:none}',
-      '.kt-sim-flatland.fl-compact:not(.kt-compact) .fl-ctl{bottom:8px;padding:6px 8px;gap:5px 8px;justify-content:center;width:calc(100% - 16px)}',
+      '.kt-sim-flatland.fl-compact:not(.kt-compact) .fl-ctl{left:8px;right:8px;bottom:8px;padding:6px 8px;gap:5px 8px;justify-content:center;width:auto}',
       '.kt-sim-flatland.fl-compact .fl-ctl .kt-slider{width:150px}'
     ].join('\n');
     document.head.appendChild(st);
@@ -682,11 +691,13 @@
       var MONO = (getComputedStyle(rootEl).getPropertyValue('--f-mono') || '').trim() || 'ui-monospace, Menlo, monospace';
 
       /* ---------- state ---------- */
-      var K = K_DEF, userK = K_DEF, userTheta = null, E = null;
+      var opt = env.opts || {};                    // ?seed=N&views=K on the lab page
+      var seed = (opt.seed != null && isFinite(+opt.seed)) ? +opt.seed : SEED;
+      var K = clamp(Math.round(+opt.views) || K_DEF, K_MIN, K_MAX), userK = K, userTheta = null, E = null;
       var scene = null, model = 'free', sel = 'novel', selUser = false;
       var running = true, acc = 0, pulse = false, hl = false, raysOn = false;
-      var Wd = 0, Hd = 0, compact = false, views = [], stripBox = null, legendY = 0;
-      var dirty = true, tMet = 0, tArc = 0, tProbe = 0, now = 0;
+      var Wd = 0, Hd = 0, compact = false, views = [], stripBox = null, legendY = 0, raysBox = null;
+      var dirty = true, novelDirty = false, tMet = 0, tArc = 0, tProbe = 0, now = 0;
       var n = CFG.G;
       var MET = {
         free: { train: NaN, novel: NaN, geo: NaN, fl: 0, dist: new Float64Array(n), vis: new Float64Array(n) },
@@ -729,6 +740,10 @@
       ui.button(ctl, { label: 'reset', onClick: function () { reset(); setRun(true); } });
       var tglRun = ui.toggle(ctl, { label: 'run', value: true, onChange: function (v) { running = v; } });
       function setRun(v) { running = v; tglRun.set(v); }
+      /* the deck owns arrows and space: never leave keyboard focus on a control after a pointer click */
+      function dropFocus() { var a = document.activeElement; if (a && a !== document.body && ctl.contains(a) && a.blur) a.blur(); }
+      ctl.addEventListener('pointerup', function () { setTimeout(dropFocus, 0); });
+      sldK.input.addEventListener('change', dropFocus);
 
       var handles = [0, 1].map(function (vi) {
         var h = ui.el('div', 'fl-handle'); h.title = 'drag the held-out camera'; rootEl.appendChild(h);
@@ -738,7 +753,7 @@
           if (!v) return;
           var wx = (e.clientX - r.left - v.ox) / v.s, wy = (v.oy - (e.clientY - r.top)) / v.s;
           userTheta = clamp(Math.atan2(wx, Math.max(0.05, wy - CFG.cy)), -CFG.thNovel, CFG.thNovel);
-          setNovel(E, userTheta); dirty = true;
+          novelDirty = true;                    // applied once per frame (re-rendering the true strip costs a few ms)
         }
         h.addEventListener('pointerdown', function (e) {
           drag = true; pulse = false; sel = 'novel'; selUser = true; dirty = true;
@@ -769,7 +784,7 @@
 
       /* ---------- experiment control ---------- */
       function reset() {
-        E = makeExperiment({ K: K, seed: SEED, rng: KT.rng, novel: userTheta });
+        E = makeExperiment({ K: K, seed: seed, rng: KT.rng, novel: userTheta });
         acc = 0; probe = null; probeStep = -1; arcStep = -1; slideTrain = NaN;
         ARC.free.fill(NaN); ARC.bound.fill(NaN);
         if (typeof sel === 'number' && sel >= K) sel = K - 1;
@@ -786,13 +801,15 @@
       var CAPS = {
         free: function () { return '<b>Free Gaussians</b><br>' + CFG.G + ' splats, each with its own position, shape, colour, opacity — fitted to ' + K + ' photos.'; },
         novel: function () { return '<b>Now a camera it never trained on</b><br>Same run. Drag the held-out camera along the arc.'; },
-        rays: function () { return '<b>Depth is not observed</b><br>With ' + K + ' views many floaters matter to one camera only: slide one along that ray and the photo hardly notices.'; },
+        rays: function () { return '<b>Depth is not observed</b><br>With ' + K + ' views many floaters matter to one camera only: slide one along that ray and the photo barely changes.'; },
         bound: function () { return '<b>Bound Gaussians</b><br>One cubic B-spline, ' + CFG.M + ' control points. Every splat is derived from the curve — none can leave it.'; },
         versus: function () { return '<b>Same photos, same start, same steps</b><br>Only the parametrization differs.'; }
       };
       function paintCaption() {
         var f = CAPS[scene] || CAPS.free;
-        cap.innerHTML = f() + '<i>start: both from the same ' + CFG.Ns + ' noisy points (+) · loss: MSE on the training strips · Adam, ' + CFG.maxSteps + ' steps</i>';
+        cap.innerHTML = f() +
+          '<i class="fl-long">start: both from the same ' + CFG.Ns + ' noisy points (+) · loss: MSE on the training strips · Adam, ' + CFG.maxSteps + ' steps</i>' +
+          '<i class="fl-short">same ' + CFG.Ns + ' noisy start points (+) · same loss · same ' + CFG.maxSteps + ' steps</i>';
       }
 
       function setScene(id) {
@@ -823,6 +840,7 @@
         var folded = rootEl.classList.contains('kt-compact'), ctlTop;
         compact = w < 760 || h < 520;
         rootEl.classList.toggle('fl-compact', compact);
+        rootEl.classList.toggle('fl-mid', !compact && w < 1000);
         pad = compact ? 8 : 14;
         cr = ctl.getBoundingClientRect();
         ctlTop = folded || !cr.height ? h - 2 : cr.top - rr.top;
@@ -849,6 +867,11 @@
         // metrics panel (they may sit over the empty corners), with 1 pane or 2 (side by side / stacked)
         var obs = [{ l: capR.left - rr.left, r: capR.right - rr.left, b: capR.bottom - rr.top }], top, best = null;
         if (!compact) obs.push({ l: mr.left - rr.left, r: mr.right - rr.left, b: mr.bottom - rr.top });
+        raysBox = null;
+        if (raysOn) {              // the measured numbers of the `rays` scene sit under the caption
+          raysBox = { x: pad + 2, y: capR.bottom - rr.top + (compact ? 6 : 14), w: compact ? 250 : 250, h: compact ? 3 * 15 : 4 * 36 };
+          obs.push({ l: raysBox.x, r: raysBox.x + raysBox.w, b: raysBox.y + raysBox.h - (compact ? 14 : 30) });
+        }
         function clear(vs) {
           return vs.every(function (v) {
             var half = CFG.R * Math.sin(CFG.thNovel) * v.s + 34;
@@ -1084,23 +1107,38 @@
           ctx.beginPath(); ctx.ellipse(_e.x, _e.y, Math.max(_e.r1, 4), Math.max(_e.r2, 4), _e.rot, 0, 6.2832);
           ctx.setLineDash([4, 3]); ctx.lineWidth = 1.6; ctx.strokeStyle = COL.text; ctx.stroke(); ctx.setLineDash([]);
         }
-        // the measured numbers
-        var lines = [], fs = compact ? 11 : 12, lh = fs + 6, x0 = v.x + (compact ? 10 : 16), y0, cm = Math.round(SLIDE * 100);
+      }
+      /* the measured numbers of the `rays` scene */
+      function drawRaysInfo() {
+        var P = probe, B = raysBox, i, lines = [], cm = Math.round(SLIDE * 100), base;
+        if (!P || !B) return;
+        base = P.base.toFixed(1);
+        ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+        if (compact) {
+          if (P.ex.length) {
+            lines.push(['ALONG RAY ±' + cm + ' CM', base + ' → ' + P.ex[0].along.toFixed(1) + ' dB', COL.text]);
+            lines.push(['ACROSS RAY', base + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
+          }
+          lines.push(['ONE CAMERA ONLY', P.one.length + ' of ' + P.list.length + ' floaters', COL.dim]);
+          for (i = 0; i < lines.length; i++) {
+            ctx.font = font(11, 600); ctx.fillStyle = COL.mute; ctx.fillText(lines[i][0], B.x, B.y + 11 + i * 15);
+            ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], B.x + 118, B.y + 11 + i * 15);
+          }
+          return;
+        }
         if (P.ex.length) {
-          lines.push(['slide ±' + cm + ' cm along its ray', 'train ' + P.base.toFixed(1) + ' → ' + P.ex[0].along.toFixed(1) + ' dB', COL.text]);
-          lines.push(['same slide across the ray', 'train ' + P.base.toFixed(1) + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
+          lines.push(['slide ±' + cm + ' cm along its ray', 'train ' + base + ' → ' + P.ex[0].along.toFixed(1) + ' dB', COL.text]);
+          lines.push(['same slide across the ray', 'train ' + base + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
         }
         lines.push(['all ' + P.list.length + ' floaters, median', P.medAlong.toFixed(1) + ' along · ' + P.medAcross.toFixed(1) + ' across', COL.dim]);
-        lines.push(['matter to one camera only', P.one.length + ' of ' + P.list.length, COL.dim]);
-        y0 = v.oy - VIEW.y1 * v.s + (compact ? 8 : 2);
-        ctx.textBaseline = 'alphabetic';
+        lines.push(['matter to one camera only', P.one.length + ' of ' + P.list.length + ' floaters', COL.dim]);
         for (i = 0; i < lines.length; i++) {
-          ctx.font = font(fs - 1, 600); ctx.fillStyle = COL.mute; ctx.fillText(lines[i][0].toUpperCase(), x0, y0 + i * lh * 2);
-          ctx.font = font(fs + 1, 600); ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], x0, y0 + i * lh * 2 + lh - 2);
+          ctx.font = font(11, 600); ctx.fillStyle = COL.mute; ctx.fillText(lines[i][0].toUpperCase(), B.x, B.y + 11 + i * 36);
+          ctx.font = font(13, 600); ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], B.x, B.y + 27 + i * 36);
         }
       }
       function drawView(v, off) {
-        var kind = v.kind, k, i, S = selCam(), x, y;
+        var kind = v.kind, k, i, x, y;
         ctx.save();
         ctx.beginPath(); ctx.rect(v.x, v.y, v.w, v.h); ctx.clip();
         for (k = 0; k < E.K; k++) drawFrustum(v, E.cams[k], sel === k ? 0.5 : 0.13, sel === k ? 0.045 : 0);
@@ -1130,7 +1168,6 @@
                        Math.min(v.y + v.h - (compact ? 6 : 10), v.oy - VIEW.y0 * v.s + 16));
         }
         ctx.restore();
-        void S;
       }
       function drawStrips() {
         var B = stripBox, S = selCam(), W = CFG.W, x0 = B.x + B.labW, bw = B.w - B.labW - B.valW, pw = bw / W, y = B.y, j, rows, r, img, e, a;
@@ -1140,8 +1177,15 @@
         if (compact) title = S.novel ? 'HELD-OUT VIEW' : 'TRAINING VIEW ' + (sel + 1) + '/' + E.K;
         ctx.fillText(title.toUpperCase(), x0, y + B.headH / 2 - 1);
         if (!compact) {
-          ctx.textAlign = 'right'; ctx.fillStyle = COL.mute;
-          ctx.fillText('1D IMAGE, ' + W + ' PX · RED UNDERLINE = ERROR', x0 + bw, y + B.headH / 2 - 1); ctx.textAlign = 'left';
+          ctx.textAlign = 'right';
+          if (raysOn && slideTrain === slideTrain) {      // live probe: the strip below is rendered with the floater displaced
+            ctx.fillStyle = COL.text;
+            ctx.fillText('LIVE · FLOATER SLIDING ALONG ITS RAY · ALL TRAINING VIEWS ' + slideTrain.toFixed(1) + ' dB', x0 + bw, y + B.headH / 2 - 1);
+          } else {
+            ctx.fillStyle = COL.mute;
+            ctx.fillText('1D IMAGE, ' + W + ' PX · RED UNDERLINE = ERROR', x0 + bw, y + B.headH / 2 - 1);
+          }
+          ctx.textAlign = 'left';
         }
         y += B.headH;
         rows = [['gt', compact ? 'TRUE' : 'TRUE', COL.dim]];
@@ -1177,7 +1221,7 @@
         items = [['dash', 'true surface'], ['plus', 'shared start points'], ['ring', 'Gaussian, 1σ'], ['red', 'floater'], ['arc', 'held-out PSNR from that viewpoint, ' + ARC_LO + '–' + ARC_HI + ' dB']];
         if (shown('bound')) items.splice(3, 0, ['ctrl', 'control point'], ['surf', 'spline']);
         for (i = 0; i < items.length; i++) {
-          tw = ctx.measureText(items[i][1].toUpperCase()).width;
+          tw = ctx.measureText(items[i][1].toUpperCase().replace('Σ', 'σ')).width;
           if (x + 26 + tw > Wd - 12) break;
           switch (items[i][0]) {
             case 'dash': ctx.setLineDash([4, 3]); ctx.strokeStyle = COL.dim; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 18, y); ctx.stroke(); ctx.setLineDash([]); break;
@@ -1189,7 +1233,7 @@
             case 'arc': var g = ctx.createLinearGradient(x, 0, x + 18, 0); g.addColorStop(0, COL.err); g.addColorStop(1, COL.ok);
               ctx.strokeStyle = g; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 18, y); ctx.stroke(); break;
           }
-          ctx.fillStyle = COL.mute; ctx.fillText(items[i][1].toUpperCase(), x + 24, y + 0.5);
+          ctx.fillStyle = COL.mute; ctx.fillText(items[i][1].toUpperCase().replace('Σ', 'σ'), x + 24, y + 0.5);
           x += 24 + tw + 20;
         }
         ctx.textBaseline = 'alphabetic';
@@ -1205,13 +1249,9 @@
           else { ctx.moveTo(v.x + 16, v.y + 0.5); ctx.lineTo(v.x + v.w - 16, v.y + 0.5); }
           ctx.lineWidth = 1; ctx.strokeStyle = COL.line; ctx.stroke();
         }
+        if (raysOn) drawRaysInfo();
         drawLegend();
         drawStrips();
-        if (raysOn && slideTrain === slideTrain && !compact) {
-          ctx.font = font(11, 600); ctx.fillStyle = COL.text; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-          ctx.fillText('LIVE · FLOATER SLIDING ALONG ITS RAY · ALL TRAINING VIEWS ' + slideTrain.toFixed(1) + ' dB', Wd / 2, stripBox.y + stripBox.headH / 2 + 3);
-          ctx.textAlign = 'left';
-        }
         for (i = 0; i < views.length; i++) {
           v = views[i]; hx = v.ox + E.novel.px * v.s; hy = v.oy - E.novel.py * v.s;
           handles[i].style.transform = 'translate(' + hx.toFixed(1) + 'px,' + hy.toFixed(1) + 'px)';
@@ -1222,6 +1262,7 @@
       env.loop(function (t, dt) {
         now = t;
         var stepped = false;
+        if (novelDirty) { setNovel(E, userTheta); novelDirty = false; dirty = true; }
         if (running && E.free.step < CFG.maxSteps) {
           acc = Math.min(acc + RATE * dt, RATE * 0.05);          // per-frame cap: at most 50 ms worth of steps
           var todo = Math.floor(acc), t0 = performance.now();

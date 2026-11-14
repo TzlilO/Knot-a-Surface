@@ -40,7 +40,11 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound), `basis` (SVG curve
   playground), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
-  `manifold` (six-chart scene, per-tile view-adaptive sampling under a fixed budget).
+  `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
+  the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
+  TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
+  charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
+  capture rig and an `edit(k)` animation).
 - Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
   Gaussians, red = error. Evidence data (DTU table, bench numbers) = constants at the top of
   `talk/deck.js`; the DTU exhibit warns on screen while a row's mean disagrees with the printed mean.

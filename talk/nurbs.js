@@ -143,13 +143,17 @@
     var p = patch.p, w = p + 1, nu = patch.nu, nv = patch.nv;
     var TU = axisTable(patch.Uk, patch.mu, p, us), TV = axisTable(patch.Vk, patch.mv, p, vs);
     var na = us.length, nb = vs.length, P = patch.P, C = patch.C;
-    // pass 1: contract along v for every control column i -> A (value), B (d/dv), K (colour)
-    var A = new Float64Array(nu * nb * 3), B = new Float64Array(nu * nb * 3), K = new Float64Array(nu * nb * 3);
-    var i, a, b, r, j, o, q, n, d;
+    // only the control columns the u-samples actually touch (a tile of a big net touches few)
+    var iLo = 1e9, iHi = -1, a, b;
+    for (a = 0; a < na; a++) { if (TU.span[a] - p < iLo) iLo = TU.span[a] - p; if (TU.span[a] > iHi) iHi = TU.span[a]; }
+    var nc = iHi - iLo + 1;
+    // pass 1: contract along v for every needed control column -> A (value), B (d/dv), K (colour)
+    var A = new Float64Array(nc * nb * 3), B = new Float64Array(nc * nb * 3), K = new Float64Array(nc * nb * 3);
+    var i, ii, r, j, o, q, n, d;
     for (b = 0; b < nb; b++) {
       var kv = TV.span[b] - p;
-      for (i = 0; i < nu; i++) {
-        o = (i * nb + b) * 3;
+      for (ii = 0; ii < nc; ii++) {
+        i = (iLo + ii) % nu; o = (ii * nb + b) * 3;
         for (r = 0; r < w; r++) {
           j = kv + r; if (j >= nv) j -= nv;
           q = (j * nu + i) * 3; n = TV.N[b * w + r]; d = TV.D[b * w + r];
@@ -163,10 +167,9 @@
     var pos = out.pos, su = out.su, sv = out.sv, col = out.col, t;
     for (b = 0; b < nb; b++) {
       for (a = 0; a < na; a++) {
-        var ku = TU.span[a] - p, x = 0, y = 0, z = 0, ux = 0, uy = 0, uz = 0, vx = 0, vy = 0, vz = 0, cr = 0, cg = 0, cb = 0;
+        var ku = TU.span[a] - p - iLo, x = 0, y = 0, z = 0, ux = 0, uy = 0, uz = 0, vx = 0, vy = 0, vz = 0, cr = 0, cg = 0, cb = 0;
         for (r = 0; r < w; r++) {
-          i = ku + r; if (i >= nu) i -= nu;
-          o = (i * nb + b) * 3; n = TU.N[a * w + r]; d = TU.D[a * w + r];
+          o = ((ku + r) * nb + b) * 3; n = TU.N[a * w + r]; d = TU.D[a * w + r];
           x += n * A[o]; y += n * A[o + 1]; z += n * A[o + 2];
           ux += d * A[o]; uy += d * A[o + 1]; uz += d * A[o + 2];
           vx += n * B[o]; vy += n * B[o + 1]; vz += n * B[o + 2];

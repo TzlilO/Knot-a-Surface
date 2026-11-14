@@ -78,16 +78,16 @@
   var VERT = [
     'attribute vec3 iCenter; attribute vec3 iU; attribute vec3 iV; attribute vec3 iColor;',
     'uniform float uGain;',
-    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN;',
+    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW;',
     'void main(){',
     '  vQ = position.xy; vCol = iColor; vN = normalize(cross(iU, iV));',
-    '  vec3 p = iCenter + (iU * position.x + iV * position.y) * uGain;',
+    '  vec3 p = iCenter + (iU * position.x + iV * position.y) * uGain; vW = p;',
     '  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);',
     '}'].join('\n');
   var FRAG = [
     'precision highp float;',
     'uniform vec3 uLight; uniform float uRim; uniform float uFlat;',
-    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN;',
+    'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW;',
     'void main(){',
     '  float g = exp(-0.5 * dot(vQ, vQ));',
     '  float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
@@ -97,8 +97,10 @@
     '#else',
     '  if (a <= n) discard;',
     '#endif',
-    '  float d = abs(dot(normalize(vN), uLight));',
-    '  vec3 c = vCol * mix(0.40 + 0.60 * d, 1.0, uFlat);',
+    '  vec3 nn = normalize(vN);',                                  // a planoid has two faces: light the one we see
+    '  if (dot(nn, cameraPosition - vW) < 0.0) nn = -nn;',
+    '  float d = max(dot(nn, uLight), 0.0);',
+    '  vec3 c = vCol * mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat);',
     '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g), uRim);',
     '#ifdef BLEND',
     '  gl_FragColor = vec4(c, a * 0.92);',
