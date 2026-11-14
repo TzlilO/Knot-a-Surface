@@ -34,7 +34,9 @@ const RES = 768, FRAMES = 6, STRIDE = 2, BUDGET = 150000;
       const r = await p.evaluate(([i, FRAMES, STRIDE]) => {
         const A = KnotLab.app, d = A.scene(), c = d.rig.cams[i], t = d.rig.target;
         const dx = c[0] - t[0], dy = c[1] - t[1], dz = c[2] - t[2], rr = Math.hypot(dx, dy, dz);
-        A.orbit.to({ th: Math.atan2(dx, dz), ph: Math.acos(dy / rr), r: rr, tx: t[0], ty: t[1], tz: t[2] }, true);
+        // the rig gives the direction; the distance is set so the subject fills the frame (DINOv3 patches are 16 px: size matters)
+        const fill = d.radius * 0.78 / Math.sin(A.camera.fov * Math.PI / 360);
+        A.orbit.to({ th: Math.atan2(dx, dz), ph: Math.acos(dy / rr), r: fill, tx: t[0], ty: t[1], tz: t[2] }, true);
         for (let k = 0; k < FRAMES; k++) window.__step();
         const png = A.R.canvas.toDataURL('image/png'), ids = A.R.readIds(), w = ids.w / STRIDE, h = ids.h / STRIDE;
         const o = new Float32Array(w * h * 3);

@@ -342,8 +342,8 @@
     var C = [], KS = 0.62, RIN = 0.25, RMAX = 0.41, NU = 240, NV = 24, TWIST = 1, PH = 0.62, PR = 1.3;
     var BRONZE = [0.72, 0.45, 0.20], BRONZE2 = [0.60, 0.40, 0.21], PATINA = [0.50, 0.47, 0.30], STONE = [0.86, 0.81, 0.72];
     ground(C);
-    lathe(C, 'plinth', { c: [0, 0, 0], nu: 32, nv: 14, tu: 4, tv: 3, minA: 5, mat: { rough: 0.8, metal: 0 }, fit: 0,
-      prof: [[PR, 0], [PR, 0.02], [PR, 0.2], [PR, PH - 0.12], [PR, PH - 0.03], [PR - 0.006, PH - 0.006], [PR - 0.03, PH], [PR - 0.14, PH], [0.7, PH], [0.35, PH], [0, PH]] },
+    lathe(C, 'plinth', { c: [0, 0, 0], nu: 32, nv: 14, tu: 4, tv: 3, minA: 5, mat: { rough: 0.8, metal: 0 },
+      path: path([[PR, 0], [PR, 0.1], [PR, 0.25], [PR, 0.4], [PR, PH - 0.08], [PR, PH - 0.03], [PR, PH - 0.01], [PR - 0.01, PH], [PR - 0.03, PH], [PR - 0.12, PH], [0.8, PH], [0.4, PH], [0, PH]], true) },
       function (a, t, r, y, s) {
         var top = y > PH - 0.004, x = r * Math.cos(a), z = r * Math.sin(a);
         var strata = top ? fbm(x * 1.3 + 5, z * 7) : pfbm(s, 5, y * 26);              // bedding: bands on the side, veins across the top
@@ -371,7 +371,7 @@
       var f = frameAt(s), p = up(f.p), n1 = up(f.n1), n2 = up(f.n2), a = t * TAU - 0.55 * Math.sin(3 * t * TAU) / 3, rho = section(a), al = a + TWIST * TAU * s;   // rows crowd at the corners
       var ca = Math.cos(al) * rho, sa = Math.sin(al) * rho;
       var c = mix(BRONZE, BRONZE2, pfbm(s, 14, t * 2 + Math.cos(a) * 0.6));
-      c = mix(c, PATINA, 0.30 * ss(0.50, 0.72, pfbm(s, 9, 4 + Math.sin(a) * 0.5)));
+      c = mix(c, PATINA, 0.38 * ss(0.48, 0.70, pfbm(s, 9, 4 + Math.sin(a) * 0.5)));
       c = mul(c, 0.95 + 0.10 * pfbm(s, 60, (j % NV) * 5.3));                           // brushed along its length
       return [p[0] * KS + n1[0] * ca + n2[0] * sa, p[1] * KS + n1[1] * ca + n2[1] * sa, p[2] * KS + n1[2] * ca + n2[2] * sa, c[0], c[1], c[2]];
     });
@@ -406,8 +406,8 @@
         default: a = d / RC; return [-hx - RC * Math.cos(a), hz + RC * Math.sin(a)];
       }
     }
-    var wall = path([[1, 0], [1, 0.03], [1, 0.2], [1, H - 0.1], [1, H - 0.02], [0.997, H - 0.004], [0.985, H], [0.93, H], [0.6, H], [0.3, H], [0, H]]);
-    chart(C, 'plinth', { nu: 48, nv: 12, periodicU: true, closed: true, tu: 8, tv: 2, minA: 3, fit: 0, mat: { rough: 0.85, metal: 0 },
+    var wall = path([[1, 0], [1, 0.12], [1, 0.3], [1, H - 0.12], [1, H - 0.035], [1, H - 0.01], [0.992, H], [0.975, H], [0.9, H], [0.6, H], [0.3, H], [0, H]], true);
+    chart(C, 'plinth', { nu: 48, nv: 12, periodicU: true, closed: true, tu: 8, tv: 2, minA: 3, mat: { rough: 0.85, metal: 0 },
       ref: function () { return [OX, H / 2, OZ]; } }, function (s, t) {
       var q = rrect(fract(s)), w = wall(t), k = w[0], x = q[0], z = q[1];
       x *= k; z *= k;
@@ -488,9 +488,9 @@
       mod: function (a, t, r, y) {
         var x = fract(a / TAU * NF), flute = 1 - Math.sqrt(1 - Math.pow(2 * x - 1, 2) * 0.96);    // hollow channels meeting in ridges
         var on = t < 0.66 ? ss(0.16, 0.34, y) * ss(1.72, 1.5, y) : 0;
-        return [r * (1 - 0.085 * on * (1 - flute)), y, 0, 0];
+        return [r * (1 - 0.13 * on * (1 - flute)), y, 0, 0];
       } }, function (a, t, r, y, s) {
-        if (t < 0.075) return mul(CLAY, 0.95 + 0.1 * pfbm(s, 20, y * 30));               // the unglazed foot
+        if (t < 0.2 && y < 0.035) return mul(CLAY, 0.95 + 0.1 * pfbm(s, 20, y * 30));    // the unglazed foot ring
         return mul(TEAL, 0.9 + 0.22 * pfbm(s, 7, y * 2.2));
       });
 
