@@ -24,13 +24,13 @@
   <div><kbd>→</kbd><kbd>space</kbd>next step</div>
   <div><kbd>←</kbd>previous step</div>
   <div><kbd>F</kbd>focus the simulation · <kbd>esc</kbd>back</div>
-  <div><kbd>0</kbd>–<kbd>8</kbd>jump to a chapter</div>
+  <div><kbd>1</kbd>–<kbd>7</kbd>jump to a chapter · <kbd>0</kbd>cover</div>
   <div><kbd>T</kbd>start / reset the pace clock</div>
   <div>20′ hides the deep-dive steps · 40′ shows everything</div>
 </div>
 
 <!-- ============================================================ COVER -->
-<section class="cover nav" data-sim="planoid" data-scene="hero" data-rail="◦" data-title="Cover" data-min40="1" data-min20="0.5">
+<section class="cover nav" data-sim="planoid" data-scene="hero" data-rail="◦" data-title="Cover" data-min40="0.5" data-min20="0.25">
   <div class="sim-mount"></div>
   <div class="cover-top"><span>Thesis talk · 3D reconstruction</span><span>NURBS-grounded Gaussian splatting</span></div>
   <div class="cover-text">
@@ -41,7 +41,7 @@
 </section>
 
 <!-- ============================================================ HOW TO READ -->
-<section class="wide" data-rail="i" data-title="How to read this talk" data-min40="1" data-min20="0.5">
+<section class="wide" data-rail="i" data-title="How to read this talk" data-min40="0.5" data-min20="0.25">
   <article class="step nav">
     <div class="lvl">The whole idea, in one sentence</div>
     <p class="thesis">Don’t fit a million Gaussians and hope a surface falls out. <em class="c-surf">Optimise the surface</em> — and let <em class="c-splat">every Gaussian be derived</em> from it.</p>
@@ -117,7 +117,7 @@
 </section>
 
 <!-- ============================================================ 02 SPLINES -->
-<section class="chapter" data-sim="basis" data-rail="02" data-title="Splines from scratch" data-min40="7" data-min20="3.5">
+<section class="chapter" data-sim="basis" data-rail="02" data-title="Splines from scratch" data-min40="7" data-min20="3.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="ducks">
@@ -132,7 +132,7 @@
       <p>Ship draughtsmen bent a thin flexible strip and pinned it in place with lead weights. The strip settles into the smoothest curve the pins allow.</p>
       <p>We keep the idea and drop the wood: the pins become <b class="c-ctrl">control points</b>, the strip becomes a <b class="c-surf">curve</b>.</p>
     </article>
-    <article class="step nav" data-scene="drag">
+    <article class="step nav" data-scene="drag" data-depth="deep">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Control points <em class="c-ctrl">steer</em>. The curve follows.</h2>
       <p>The curve doesn’t pass through its control points — it is pulled toward them. Seven points here describe a curve with no resolution limit: zoom in forever, it stays smooth.</p>
@@ -180,7 +180,7 @@
 </section>
 
 <!-- ============================================================ 03 PLANOID -->
-<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="8" data-min20="4.5">
+<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="8" data-min20="4.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="net">
@@ -274,7 +274,7 @@
       <p class="aside">Exact arithmetic over the sliders, not a benchmark. The green band marks the 10–50× the paper reports.</p>
       <span class="do">Move the sliders</span>
     </article>
-    <article class="step nav" data-scene="knob">
+    <article class="step nav" data-scene="knob" data-depth="deep">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Want more detail on screen?</h2>
       <p>One ledger grows with every Gaussian you add. The other does not move — the knob from the last chapter costs nothing to store.</p>
@@ -356,7 +356,7 @@
       <p>The scene is split into coherent surface pieces, and each piece gets its own (u, v) domain. Together they cover the scene: a <b>spline manifold</b>.</p>
       <p>Charts can close on themselves — the vase wraps around once, the knot wraps both ways.</p>
     </article>
-    <article class="step nav" data-scene="nets">
+    <article class="step nav" data-scene="nets" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Each chart gets the net it <em class="c-ctrl">deserves</em></h2>
       <p>A wall is 4 × 4 control points. The knot is 72 × 6. Parameters are paid only where there is shape to describe — the two‑layer refinement from the last chapter, per chart.</p>

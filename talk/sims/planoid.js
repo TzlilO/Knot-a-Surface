@@ -41,7 +41,7 @@
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
       var cam = new T.PerspectiveCamera(34, 1, 0.1, 60);
       var R = G.renderer(root, cam), scene = new T.Scene();
-      var W = 1, H = 1;
+      var W = 1, H = 1, fitR = 1;
 
       /* ---------- the patch ---------- */
       var patch = NB.makePatch({ nu: NU, nv: NV, p: 3 }), base = new Float32Array(NU * NV * 3);
@@ -114,7 +114,7 @@
       rdP.set((NU * NV * PER_CP).toLocaleString('en-US')); rdZ.set('0');
 
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, theta: 0.72, phi: 1.0, radius: 7.2, target: [0, 0.05, 0],
-        minRadius: 3, maxRadius: 14, pick: pickBall });
+        minRadius: 3, maxRadius: 20, pick: pickBall });
       var surfDirty = true, fieldDirty = true, uvDirty = true;
 
       /* ---------- drag a control point ---------- */
@@ -284,7 +284,7 @@
         panel.style.display = sc.hero ? 'none' : ''; cap.style.display = sc.hero ? 'none' : '';
         slN.el.style.display = slG.el.style.display = rdG.el.style.display = (s.field || s.ell) ? '' : 'none';
         grid.visible = !sc.hero;
-        if (!orbit.touched) orbit.to(sc.hero ? { th: 0.9, ph: 1.12, r: 5.6 } : { th: 0.72, ph: 1.0, r: 7.2 });
+        if (!orbit.touched) orbit.to(sc.hero ? { th: 0.9, ph: 1.12, r: 5.6 * fitR } : { th: 0.72, ph: 1.0, r: 7.2 * fitR });
         surfDirty = fieldDirty = uvDirty = true;
       }
 
@@ -347,7 +347,11 @@
       setScene(env.opts.scene || 'net');
       return {
         setScene: setScene,
-        resize: function (w, h) { W = w; H = h; R.resize(w, h); uvDirty = true; },
+        resize: function (w, h) {
+          W = w; H = h; R.resize(w, h); uvDirty = true;
+          fitR = Math.max(1, 1.32 / (w / h));               // back off on narrow stages so the patch stays in frame
+          if (!orbit.touched) orbit.to({ r: (st.sc.hero ? 5.6 : 7.2) * fitR });
+        },
         destroy: function () { R.renderer.dispose(); }
       };
     }

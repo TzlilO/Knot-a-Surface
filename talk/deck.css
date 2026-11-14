@@ -43,7 +43,7 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 /* ---------- chapters: text column + sticky stage ---------- */
 .chapter{position:relative;display:grid;grid-template-columns:minmax(0,37fr) minmax(0,63fr)}
 /* the stage comes first in the DOM (so it can pin above the steps on small screens) and sits right on wide ones */
-.steps{grid-column:1;grid-row:1;padding:0 2.2rem 0 5rem}
+.steps{grid-column:1;grid-row:1;padding:0 2.2rem 14vh 5rem}
 .stage{grid-column:2;grid-row:1;position:sticky;top:0;height:100vh;height:100dvh;padding:2.4vh 2.2vw 2.4vh 0}
 .stage-frame{position:relative;width:100%;height:100%;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
 .sim-mount{position:absolute;inset:0}
@@ -173,7 +173,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   .stage{height:52svh;padding:0;z-index:20;background:var(--bg)}
   .stage-frame{border-radius:0;border-width:0 0 1px}
   .stage-tools{display:none}
-  .steps{padding:0 1.2rem}
+  .steps{padding:0 1.2rem 6svh}
   .step,.step:first-child,.step:last-child{min-height:60svh;justify-content:flex-start;padding:1.4rem 0 1rem}
   .chapter .step:last-child{min-height:90svh}
   .step h2{font-size:1.55rem}.step p{font-size:.98rem}

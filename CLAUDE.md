@@ -25,6 +25,28 @@ knot chart, surface-prior bench) ship as sibling pages.
 - Deck parts: `src/deck_a.html` (head+theme+slides 1-11) · `deck_b.html` (slides 12-21) ·
   `deck_c.html` (all deck JS: widgets, charts, reveal init).
 
+## talk.html — the thesis talk (scroll-driven deck)
+Independent of deck.html and of the build: plain static files, classic scripts (works from `file://`).
+- `talk.html` = all slide copy. A step is `<article class="step nav" data-scene="…">`; the step nearest
+  the reading line is active and its `data-scene` is pushed to the chapter's simulation
+  (`<section class="chapter" data-sim="…">`). `data-depth="deep"` steps are hidden in the 20′ cut;
+  `data-min40`/`data-min20` on each section are the pace-clock budgets (must sum to 40 / 20).
+- `talk/kit.js` = `KnotTalk.register(name, {title, blurb, tool, scenes, create(env)})` registry,
+  lifecycle (`env.loop` pauses offscreen), UI helpers, and the standalone lab shell
+  (`KnotTalk.standalone(name)`, used by every `talk/sims/<name>.html`).
+- `talk/nurbs.js` = spline math (Cox–de Boor, derivatives, Boehm insertion, tensor patches; also
+  `require()`-able under node). `talk/gl.js` = three.js helpers incl. `writePlanoids` (the derived
+  Gaussian: centre + tangent axes from S_u, S_v and the sampling interval).
+- Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound), `basis` (SVG curve
+  playground), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
+  `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
+  `manifold` (six-chart scene, per-tile view-adaptive sampling under a fixed budget).
+- Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
+  Gaussians, red = error. Evidence data (DTU table, bench numbers) = constants at the top of
+  `talk/deck.js`; the DTU exhibit warns on screen while a row's mean disagrees with the printed mean.
+- Verify with node playwright (`/opt/node-tools/node_modules/playwright`) against `file://…/talk.html`;
+  scene ids double as URL hashes on the standalone pages (`talk/sims/planoid.html#knob`).
+
 ## arena.html — Arena: live 4D match reconstruction
 A second, independent single-file three.js simulator (`window.KnotArenaSim`, ~`src/arena_core.js`)
 applying the same thesis to a sports court instead of terrain: the swarm is FIXED (perimeter +

@@ -18,6 +18,8 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 | `/teaser-{v1,bold,modest,cinematic}.html` | Four teaser cuts |
 | `/review/` | Review hub for the cuts + sims |
 | `/deck.html` | Interview deck (reveal.js), simulator embedded as slide 14 |
+| `/talk.html` | Thesis talk — scroll-driven deck (20′ / 40′ cuts), from one spline to a manifold of spline charts |
+| `/talk/sims/{flatland,basis,planoid,ledger,refine,manifold}.html` | The talk's six simulations as standalone lab pages |
 | `/arena.html` | Arena: live 4D match reconstruction (second application of the thesis) |
 | `/project.html` | Retired predecessor landing page (kept live, unlinked) |
 
@@ -31,6 +33,10 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
   `src/arena_core.js`. `python3 build.py` injects sim_core/sim_style into `deck.html`
   and arena_core/arena_style into `arena.html` (the only remaining build step; the site
   pages themselves sibling-load the cores).
+- **Thesis talk**: `talk.html` + `talk/` are plain static files with no build step
+  (`kit.js` module registry, `nurbs.js` spline math, `gl.js` three.js helpers, `deck.js`/`deck.css`
+  scroll engine, one module per simulation in `talk/sims/`). three.js and KaTeX are vendored in
+  `talk/vendor/` so the talk runs offline. The evidence numbers live at the top of `talk/deck.js`.
 - **Deploy**: `bash deploy/deploy-site.sh` = flatten + build + commit + push to `main`
   (GitHub Pages, root `.nojekyll` required for `_ds/`). See `deploy/README.md`.
 
