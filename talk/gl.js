@@ -132,7 +132,12 @@
       mesh: mesh, capacity: capacity, uniforms: mat.uniforms,
       center: A.iCenter.array, axU: A.iU.array, axV: A.iV.array, color: A.iColor.array,
       setCount: function (n) { g.instanceCount = Math.min(n, capacity); },
-      commit: function () { A.iCenter.needsUpdate = A.iU.needsUpdate = A.iV.needsUpdate = A.iColor.needsUpdate = true; }
+      /* upload the first n instances (all of them when n is omitted) */
+      commit: function (n) {
+        [A.iCenter, A.iU, A.iV, A.iColor].forEach(function (at) {
+          at.updateRange.offset = 0; at.updateRange.count = n == null ? -1 : Math.min(n, capacity) * 3; at.needsUpdate = true;
+        });
+      }
     };
   };
 

@@ -8,7 +8,8 @@
   var NS = 'http://www.w3.org/2000/svg';
 
   /* world box is x in [0,2], y in [0,1] (y up) */
-  var FREE = [[0.14, 0.30], [0.40, 0.88], [0.70, 0.14], [1.00, 0.82], [1.30, 0.20], [1.58, 0.86], [1.86, 0.36]];
+  /* ten control points: a cubic then has seven spans, so one basis function (4 spans) is visibly local */
+  var FREE = [[0.10, 0.34], [0.28, 0.86], [0.48, 0.16], [0.68, 0.80], [0.88, 0.24], [1.10, 0.84], [1.30, 0.18], [1.50, 0.82], [1.70, 0.26], [1.90, 0.62]];
   var S2 = Math.SQRT1_2, CX = 1, CY = 0.5, R = 0.38;
   var CIRCLE = {
     P: [[CX + R, CY], [CX + R, CY + R], [CX, CY + R], [CX - R, CY + R], [CX - R, CY],
@@ -18,17 +19,17 @@
   };
 
   var SCENES = {
-    ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 3 },
-    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 2, hint: 'drag any amber point' },
+    ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4 },
+    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any amber point' },
     blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
                  hint: 'scrub the plot to move u' },
-    local:     { cap: '<b>local support</b> · one point moves, only p + 1 spans change', basis: 1, local: 1, sel: 3, wiggle: 3 },
+    local:     { cap: '<b>local support</b> · one point moves, only p + 1 spans change', basis: 1, local: 1, sel: 4, wiggle: 4 },
     degree:    { cap: '<b>degree p</b> · smoothness C<sup>p−1</sup> across every knot', basis: 1, cycle: 1 },
     knots:     { cap: '<b>knots</b> · where the polynomial pieces join', basis: 1, ticks: 1, knotAuto: 1,
                  hint: 'drag the amber knots on the axis' },
     rational:  { cap: '<b>rational weights</b> · the R in NURBS — exact conics', basis: 1, circle: 1, sel: 1,
                  hint: 'select a point · change its weight' },
-    recursion: { cap: '<b>Cox–de Boor</b> · boxes → hats → parabolas → cubics', basis: 1, pyramid: 1, sel: 3 }
+    recursion: { cap: '<b>Cox–de Boor</b> · boxes → hats → parabolas → cubics', basis: 1, pyramid: 1, sel: 4 }
   };
 
   KT.register('basis', {
@@ -273,7 +274,8 @@
         if (d.kind === 'pt') { st.P[d.i] = unpx(x, y); st.base[d.i] = st.P[d.i].slice(); }
         else if (d.kind === 'knot') {
           var u = KT.clamp((x - L.bx0) / (L.bx1 - L.bx0), 0, 1);
-          st.U[d.i] = KT.clamp(u, st.U[d.i - 1], st.U[d.i + 1]);
+          // interior knots may stack on each other, but never on the clamped end knots (that span would be empty)
+          st.U[d.i] = KT.clamp(u, Math.max(st.U[d.i - 1], 0.004), Math.min(st.U[d.i + 1], 0.996));
         } else { st.u = KT.clamp((x - L.bx0) / (L.bx1 - L.bx0), 0, 0.9999); st.userU = true; }
         dirty = true;
       }

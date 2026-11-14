@@ -61,7 +61,7 @@
           st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
           loadScene(v); orbit.touched = false; orbit.to(view('wide'), true); paintCap();
         } });
-      var slB = ui.slider(panel, { label: 'budget', min: 6000, max: CAP, step: 2000, value: st.budget,
+      var slB = ui.slider(panel, { label: 'budget', min: 6000, max: CAP - 20000, step: 2000, value: Math.min(st.budget, CAP - 20000),
         fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, onInput: function (v) { st.budget = v; need = true; } });
       var segV = ui.seg(panel, { label: 'colour', value: 'splats',
         options: [{ v: 'splats', label: 'appearance' }, { v: 'charts', label: 'charts' }],
@@ -184,6 +184,13 @@
             c.w[i] = w; totW += w;
           }
         });
+        // size every tile's lattice; rounding to na x nb drifts off the budget, so a second pass rescales
+        var total = sizeTiles(1, true);
+        if (Math.abs(total - st.budget) > 0.001 * st.budget) sizeTiles(st.budget / total, false);
+        rdV.set(Math.round(inView * 100) + ' %');
+
+        function sizeTiles(scale, first) {
+        var sum = 0;
         charts.forEach(function (c) {
           var gu = c.gu, cu = gu / c.tu, cv = c.gv / c.tv;
           c.count = 0;
@@ -193,9 +200,9 @@
               i = (tl.iv * cv + b) * gu + tl.iu * cu + a;
               imp = st.adaptive ? FLOOR * c.carea[i] / totA + (1 - FLOOR) * c.w[i] / (totW || 1) : c.carea[i] / totA;
               share += imp; mu[a] += imp; mv[b] += imp; lu += imp * c.clu[i] / c.tu; lv += imp * c.clv[i] / c.tv;
-              if (c.vis[i]) inView += imp;
+              if (first && c.vis[i]) inView += imp;
             }
-            var N = Math.max(4, st.budget * share), ratio = lu / (lv || 1e-12);     // aim for square cells in world space
+            var N = Math.max(4, st.budget * share * scale), ratio = lu / (lv || 1e-12);   // aim for square cells in world space
             // curved closed charts keep a minimum count around the bend so flat planoids can follow it
             tl.nb = Math.max(c.minB, Math.round(Math.sqrt(N / ratio))); tl.na = Math.max(c.minA, Math.round(N / tl.nb));
             for (a = 0; a < cu; a++) mu[a] += share / cu * 0.3;                       // bounded contrast inside a tile:
@@ -206,8 +213,10 @@
             for (b = 0; b < tl.nb; b++) { tl.vs[b] = (tl.iv + tl.vs[b]) / c.tv; tl.dv[b] /= c.tv; }
             c.count += tl.na * tl.nb;
           });
+          sum += c.count;
         });
-        rdV.set(Math.round(inView * 100) + ' %');
+        return sum;
+        }
       }
 
       var sg = { pos: new Float32Array(CAP * 3), su: new Float32Array(CAP * 3), sv: new Float32Array(CAP * 3), col: new Float32Array(CAP * 3) };
@@ -217,14 +226,14 @@
         charts.forEach(function (c) {
           var rgb = st.view === 'charts' ? G.rgb(c.hex) : null;
           c.tiles.forEach(function (tl) {
-            if (n + tl.na * tl.nb > CAP) return;
+            if (n + tl.na * tl.nb > CAP) return;         // cannot happen while the slider tops out below CAP
             NB.patchGrid(c.patch, tl.us, tl.vs, sg);
             n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, rgb);
           });
           c.lab.textContent = c.count.toLocaleString('en-US') + ' G';
           drawTile(c);
         });
-        field.setCount(n); field.commit();
+        field.setCount(n); field.commit(n);
         rdG.set(n.toLocaleString('en-US'));
       }
       function drawTile(c) {

@@ -148,15 +148,27 @@
     var gear = el('button', 'kt-gear', 'controls'); gear.type = 'button';
     gear.addEventListener('click', function () { root.classList.toggle('kt-open'); });
     root.appendChild(gear);
+    function hasPanel() {
+      return [].some.call(root.querySelectorAll('.kt-panel'), function (p) { return p.style.display !== 'none'; });
+    }
+    if (opts.embed) {
+      // inside the deck, a control used with the pointer must not keep focus: the deck's arrow and
+      // space keys have to keep working afterwards (keyboard users who Tab to a control keep it)
+      root.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('button');
+        if (b && e.detail > 0) b.blur();
+      });
+      root.addEventListener('pointerup', function (e) { if (e.target.tagName === 'INPUT') e.target.blur(); });
+    }
     var ro = new ResizeObserver(function () {
       var r = root.getBoundingClientRect();
-      root.classList.toggle('kt-compact', !!opts.embed && r.width < 560);
+      root.classList.toggle('kt-compact', !!opts.embed && r.width < 560 && hasPanel());
       if (api.resize && r.width > 0 && r.height > 0) api.resize(r.width, r.height);
     });
     ro.observe(root);
     var io = new IntersectionObserver(function (es) {
       visible = es[es.length - 1].isIntersecting; kick();
-    }, { rootMargin: '10% 0px' });
+    }, { rootMargin: '0px' });           // strictly on screen: an off-screen WebGL stage must not keep rendering
     io.observe(root);
     var onVis = function () { kick(); };
     document.addEventListener('visibilitychange', onVis);

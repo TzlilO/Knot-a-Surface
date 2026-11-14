@@ -136,7 +136,7 @@
     <article class="step nav" data-scene="drag" data-depth="deep">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Control points <em class="c-ctrl">steer</em>. The curve follows.</h2>
-      <p>The curve doesn’t pass through its control points — it is pulled toward them. Seven points here describe a curve with no resolution limit: zoom in forever, it stays smooth.</p>
+      <p>The curve doesn’t pass through its control points — it is pulled toward them. Ten points here describe a curve with no resolution limit: zoom in forever, it stays smooth.</p>
       <span class="do">Drag any amber point</span>
     </article>
     <article class="step nav" data-scene="blend">
@@ -366,7 +366,7 @@
     <article class="step nav" data-scene="budget">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>A fixed budget <em>follows the camera</em></h2>
-      <p>The Gaussian count never changes. As the camera moves, samples flow across the (u, v) domains toward what is visible and facing the lens; a small floor keeps everything else covered.</p>
+      <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is visible and facing the lens; a small floor keeps everything else covered.</p>
       <p>Watch the atlas, bottom left: brighter tiles are holding more Gaussians. Sparsely described charts — ground, treeline — get a smaller share: there is no point sampling finer than a surface’s own detail.</p>
     </article>
     <article class="step nav" data-scene="lod">
@@ -414,7 +414,7 @@
         <div class="stats"></div>
         <div class="chart-key"><span><i style="background:#4fc3f7"></i>Knot‑a‑Surface</span><span><i style="border:2px solid #8fa4c0;background:none"></i>PGSR</span></div>
         <div class="plot"></div>
-        <p class="note check" style="color:var(--ctrl)"></p>
+        <p class="note check"></p>
         <p class="note">Geometry in the range of a state‑of‑the‑art splatting method on most scans — with every Gaussian derived from a control net rather than optimised on its own.</p>
       </div>
       <div class="exhibit" id="ex-bench">

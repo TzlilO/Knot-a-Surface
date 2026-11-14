@@ -197,7 +197,7 @@
         for (i = 0; i < n; i++) { us[i] = (i + 0.5) / n; d[i] = 1 / n; }
         NB.patchGrid(patch, us, us, fg);
         G.writePlanoids(field, 0, fg, n, n, d, d, st.gain, st.show.feat ? null : violet);
-        field.commit(); st.fieldN = n;
+        field.commit(n * n); st.fieldN = n;
         rdG.set((n * n).toLocaleString('en-US'));
       }
 

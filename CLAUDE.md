@@ -46,8 +46,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
   capture rig and an `edit(k)` animation).
 - Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
-  Gaussians, red = error. Evidence data (DTU table, bench numbers) = constants at the top of
-  `talk/deck.js`; the DTU exhibit warns on screen while a row's mean disagrees with the printed mean.
+  Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
+  non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the
+  top of `talk/deck.js`; the DTU exhibit notes on screen when a row's mean differs from the printed mean.
 - Verify with node playwright (`/opt/node-tools/node_modules/playwright`) against `file://…/talk.html`;
   scene ids double as URL hashes on the standalone pages (`talk/sims/planoid.html#knob`).
 

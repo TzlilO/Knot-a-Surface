@@ -13,7 +13,7 @@
   /* ================= evidence data — edit here =================
      DTU: Table 1 of the paper (Chamfer distance, mm, lower is better; PGSR = its best results).
      `printedMean` is the mean as printed in the table; the exhibit recomputes the mean from the
-     row and shows a warning while the two disagree. */
+     row and adds a one-line note while the two disagree. */
   var DTU = {
     scans: [24, 37, 40, 55, 63, 65, 69, 83, 97, 105, 106, 110, 114, 118, 122],
     pgsr: [0.33, 0.51, 0.29, 0.28, 0.75, 0.53, 0.46, 0.92, 0.62, 0.48, 0.45, 0.55, 0.29, 0.33, 0.31],
@@ -118,6 +118,11 @@
   function stepBy(d) {
     var v = visibleNav(), i = v.indexOf(cur);
     if (i < 0) i = 0;
+    if (cur && !cur.classList.contains('cover')) {    // taller than the screen: show the rest of it first
+      var r = cur.getBoundingClientRect(), vh = window.innerHeight;
+      if (d > 0 && r.bottom > vh + 12) { window.scrollBy({ top: Math.min(r.bottom - vh + 8, vh * 0.8), behavior: 'smooth' }); return; }
+      if (d < 0 && r.top < -12) { window.scrollBy({ top: -Math.min(-r.top + 8, vh * 0.8), behavior: 'smooth' }); return; }
+    }
     var n = v[KT.clamp(i + d, 0, v.length - 1)];
     if (d > 0 && !clock.t0) startClock();
     go(n);
@@ -213,11 +218,12 @@
     $('.stats', box).innerHTML =
       '<div><b>' + mo.toFixed(3) + '</b>ours · mean mm</div><div><b>' + mp.toFixed(3) + '</b>PGSR · mean mm</div>' +
       '<div><b>' + close + ' / ' + n + '</b>scans within 0.05 mm</div><div><b>' + wins + ' / ' + n + '</b>scans where ours is lower</div>';
+    // the means above are computed from the rows; say so while a printed mean differs from its row
     var warn = $('.check', box), bad = [];
-    if (Math.abs(mo - DTU.printedMean.ours) > 0.0015) bad.push('ours: the row averages ' + mo.toFixed(3) + ', the table prints ' + DTU.printedMean.ours);
-    if (Math.abs(mp - DTU.printedMean.pgsr) > 0.006) bad.push('PGSR: the row averages ' + mp.toFixed(3) + ', the table prints ' + DTU.printedMean.pgsr);
+    if (Math.abs(mo - DTU.printedMean.ours) > 0.0015) bad.push('ours ' + DTU.printedMean.ours);
+    if (Math.abs(mp - DTU.printedMean.pgsr) > 0.006) bad.push('PGSR ' + DTU.printedMean.pgsr);
     warn.style.display = bad.length ? '' : 'none';
-    warn.innerHTML = '<b>Check before presenting</b> — ' + bad.join(' · ') + '. Fix the row or the mean in <span class="mono">talk/deck.js</span>.';
+    warn.textContent = 'Means are computed from the 15 scans shown (the table prints ' + bad.join(', ') + ').';
 
     var W = 660, H = 290, L = 40, Rm = 10, Tm = 12, B = 34, y0 = 0.2, y1 = 1.0;
     var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Chamfer distance per DTU scan, ours versus PGSR' }, $('.plot', box));

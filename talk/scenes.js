@@ -12,7 +12,9 @@
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, TAU = 6.283185307;
   var SUN = (function () { var v = [0.35, 0.86, 0.36], l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; })();
-  var HEX = ['#4fc3f7', '#ffa726', '#ce93d8', '#69f0ae', '#ef5350', '#dde5f0', '#8fa4c0', '#ffe14d'];
+  /* chart identity colours for the 'charts' view. Deliberately NOT the talk's semantic hues
+     (cyan surface, amber control, violet Gaussians, red error) so the amber control net stays readable. */
+  var HEX = ['#4db6ac', '#f06292', '#9ccc65', '#7986cb', '#bcaaa4', '#78909c', '#a5d6a7', '#b0bec5'];
 
   /* ---------- small procedural toolbox ---------- */
   function fract(x) { return x - Math.floor(x); }
@@ -280,7 +282,7 @@
       c = mul(c, lit([x, 0.02, z], boxes));
       return [x, 0, z, c[0], c[1], c[2]];
     });
-    chart(C, 'backdrop', { nu: 20, nv: 10, tu: 4, tv: 2, closed: true, ref: function () { return [0, 3, 6]; } }, function (s, t) {
+    chart(C, 'backdrop', { nu: 20, nv: 10, tu: 4, tv: 2, closed: true, ref: function () { return [0, 3, -12]; } }, function (s, t) {
       var x = s * 14 - 7, c = mul([0.20, 0.22, 0.26], 0.5 + 0.7 * (1 - t) + 0.1 * fbm(x * 0.4, t * 3));
       return [x, t * 7.4, -4.9 + 0.5 * Math.cos(s * 3.1416 * 2), c[0], c[1], c[2]];      // a gently curved studio backdrop
     });

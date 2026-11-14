@@ -21,8 +21,8 @@
   };
 
   function fmt(n) {
-    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 2).replace(/\.?0+$/, '') + ' M';
-    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, '') + ' k';
+    if (n >= 1e6) return parseFloat((n / 1e6).toFixed(n >= 1e7 ? 0 : 2)) + ' M';
+    if (n >= 1e3) return parseFloat((n / 1e3).toFixed(n >= 1e5 ? 0 : 1)) + ' k';
     return String(Math.round(n));
   }
   function mb(params) { var b = params * 4 / 1048576; return b >= 100 ? b.toFixed(0) + ' MB' : b >= 1 ? b.toFixed(1) + ' MB' : (b * 1024).toFixed(0) + ' kB'; }
