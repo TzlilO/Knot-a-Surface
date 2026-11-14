@@ -143,6 +143,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   .talk{grid-template-columns:minmax(0,1fr);padding:1.4rem;gap:1.4rem}
   .archive{grid-template-columns:minmax(0,1fr)}
 }
+/* touch: one tap = one click, a slider drag never scrolls, finger-sized controls on coarse pointers */
+.bar,.strip,.cta{touch-action:manipulation}
+.strip input[type=range]{touch-action:none}
+@media (pointer:coarse){
+  .chips button{min-height:40px}
+  .bar nav a{min-height:40px;display:inline-flex;align-items:center}
+  .strip input[type=range]{height:40px}
+  .strip input::-webkit-slider-thumb{width:22px;height:22px;margin-top:-9.5px}
+}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn,.lab-card{transition:none}}
 </style>
 </head>
@@ -197,7 +206,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
         <g fill="#ffa726" stroke="#0b1017" stroke-width="2"><circle cx="20" cy="96" r="6"/><circle cx="60" cy="30" r="6"/><circle cx="110" cy="104" r="6"/><circle cx="160" cy="28" r="6"/><circle cx="210" cy="100" r="6"/><circle cx="260" cy="34" r="6"/><circle cx="300" cy="84" r="6"/></g>
       </svg>
       <i>01</i><h3>Optimise the surface</h3>
-      <p>The learnable parameters are the control points and knots of spline charts. A few thousand numbers — not a few million.</p>
+      <p>The learnable parameters are the control points and knots of spline charts. Thousands of control points — not millions of Gaussians.</p>
       <a class="more" href="talk/sims/basis.html">Spline playground →</a>
     </div>
     <div class="move" style="--c:var(--splat)">
@@ -210,7 +219,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
         <text x="240" y="100" fill="#4fc3f7" font-family="JetBrains Mono,monospace" font-size="12" font-weight="600">Sᵤ</text><text x="128" y="20" fill="#dde5f0" font-family="JetBrains Mono,monospace" font-size="12" font-weight="600">n</text>
       </svg>
       <i>02</i><h3>Derive the Gaussians</h3>
-      <p>Position, orientation and size come from the surface’s own derivatives. Nothing is learned per Gaussian, so nothing can float off.</p>
+      <p>Position, orientation and size come from the surface’s own derivatives. Nothing is learned per Gaussian, so none can drift off its surface.</p>
       <a class="more" href="talk/sims/planoid.html">Calculus makes the splat →</a>
     </div>
     <div class="move" style="--c:var(--ctrl)">
@@ -237,6 +246,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
       <p>A scroll‑driven deck that builds the method from the ground up — at three depths, so it works for first‑year students and for people who want the equations. Every figure is a live simulation.</p>
       <div class="facts"><span>7 chapters</span><span>20′ or 40′</span><span>arrow keys</span><span>runs offline</span></div>
       <a class="btn main" href="talk.html">Start the talk →</a>
+      <a class="btn" href="talk-he.html" lang="he" dir="rtl" style="margin-inline-start:.5rem;font-family:var(--f-ui)">מבוא קצר בעברית</a>
     </div>
     <ol class="chapters">
       <li><div><b>A million free ellipsoids</b><span>What 3D Gaussian Splatting leaves out</span></div></li>
@@ -352,6 +362,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   // links to each scene of the full-power lab
   var ids = { barn: 'scene', truck: 'truck', bust: 'bust', garden: 'garden', studio: 'studio' };
   Object.keys(KT.scenes).forEach(function (k) {
+    if (KT.scenes[k].hidden) return;
     var a = document.createElement('a'); a.href = 'talk/sims/manifold.html#' + ids[k];
     a.innerHTML = KT.scenes[k].label + '<small>' + KT.scenes[k].suite.replace(' style', '') + '</small>';
     $('scene-links').appendChild(a);

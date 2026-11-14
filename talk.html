@@ -47,7 +47,7 @@
     <p class="thesis">Don’t fit a million Gaussians and hope a surface falls out. <em class="c-surf">Optimise the surface</em> — and let <em class="c-splat">every Gaussian be derived</em> from it.</p>
     <div class="legend">
       <div style="--c:var(--surf)"><b>The surface</b><span>A smooth parametric surface, S(u, v). The thing we actually optimise.</span></div>
-      <div style="--c:var(--ctrl)"><b>Control points &amp; knots</b><span>The only learnable parameters. A few hundred, not a few million.</span></div>
+      <div style="--c:var(--ctrl)"><b>Control points &amp; knots</b><span>The only learnable parameters. Thousands of control points, not millions of Gaussians.</span></div>
       <div style="--c:var(--splat)"><b>Gaussians</b><span>What gets rendered. Computed from the surface — never free.</span></div>
       <div style="--c:var(--err)"><b>Error &amp; floaters</b><span>What unstructured splatting leaves behind, and what we remove.</span></div>
     </div>
@@ -87,6 +87,7 @@
       <h2>Depth along a ray is a <em class="c-err">free choice</em></h2>
       <p>Down to two views, about half of the floaters are seen by one camera only. Slide one along its ray and that camera’s strip barely changes — the figure measures it. The loss cannot tell, and nothing else ties a Gaussian to a surface.</p>
       <p>A free Gaussian has every degree of freedom, including the ones we don’t want.</p>
+      <p class="aside">Real captures have many more views. The argument is about the under‑observed part of a scene: grazing angles, thin structures, background.</p>
     </article>
     <article class="step nav" data-scene="novel" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -96,7 +97,7 @@
         <li><b>Flatten and align</b> — SuGaR, 2DGS, PGSR: push Gaussians toward a surface with regularisers.</li>
         <li><b>Bind to a mesh</b> — MeshGS, GaussianMesh: anchor Gaussians to triangles.</li>
       </ul>
-      <p>All of them start from unstructured primitives and ask them to <b>resemble</b> a surface afterwards.</p>
+      <p>The first two push a free cloud to <b>resemble</b> a surface; the third ties Gaussians to a fixed, faceted mesh. None makes a smooth, re‑samplable surface the thing being optimised.</p>
     </article>
     <article class="step nav" data-scene="bound">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -112,7 +113,7 @@
       <h2>Same loss. Same views. <em>Same steps.</em></h2>
       <p>The free cloud wins the training photos by a wide margin — and loses the geometry. The bound model lands at roughly half the surface error, with a fraction of the off‑surface Gaussians, on under a third of the parameters.</p>
       <p>A bound Gaussian cannot leave its surface. It can only be wrong if the whole curve is wrong, and every view constrains the curve at once.</p>
-      <p class="aside">Honest footnote: slide the views up and the free cloud’s extra capacity wins on photo quality again. The geometry gap stays.</p>
+      <p class="aside">Honest footnotes: this toy’s true curve is smooth, the best case for a spline — the constraint trades variance for bias. And slide the views up: the free cloud’s extra capacity wins on photo quality again. The geometry gap stays.</p>
     </article>
   </div>
 </section>
@@ -154,7 +155,7 @@
     <article class="step nav" data-scene="degree">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Degree buys <em>smoothness</em></h2>
-      <p>Degree 1 is a polyline. Degree 2 has continuous tangents. Degree 3 has continuous curvature — <span data-tex="C^{p-1}"></span> across every joint.</p>
+      <p>Degree 1 is a polyline. Degree 2 has continuous tangents. Degree 3 has continuous curvature — <span data-tex="C^{p-1}"></span> across every simple knot. Stack knots at one place and you buy a crease instead.</p>
       <p>Smooth tangents mean smooth normals, and smooth normals are exactly what a splat needs to orient itself.</p>
     </article>
     <article class="step nav" data-scene="knots">
@@ -169,7 +170,7 @@
       <h2><em>Rational</em> weights: exact circles</h2>
       <p>Give every control point a weight and divide. Conics — circles, cylinders, spheres — become <b>exact</b>, not approximated. Set all weights to 1 and watch the circle fail.</p>
       <div class="eq" data-tex="C(u)=\frac{\sum_i N_{i,p}(u)\,w_i\,\mathbf{P}_i}{\sum_i N_{i,p}(u)\,w_i}"></div>
-      <p class="aside">Non‑Uniform · Rational · B‑Spline = NURBS, the surface format of every CAD system.</p>
+      <p class="aside">Non‑Uniform · Rational · B‑Spline = NURBS, the surface format of every CAD system. In the simulations that follow the weights stay at 1: plain B‑splines.</p>
     </article>
     <article class="step nav" data-scene="recursion" data-depth="deep">
       <div class="lvl l3"><i><b></b></i>Math</div>
@@ -219,24 +220,28 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Size is the distance to the <em>next sample</em></h2>
       <p>Stretch each axis by how far the surface travels across one sampling cell, and keep it paper‑thin along the normal. A flat Gaussian on the surface: a <b class="c-splat">planoid</b>.</p>
+      <p class="aside">In these demos σ is about 0.7 of the cell, so neighbours overlap.</p>
       <div class="eq" data-tex="\mathbf{s}=\big(\lVert\mathbf{S}_u\rVert\Delta u,\;\lVert\mathbf{S}_v^{\perp}\rVert\Delta v,\;\epsilon\big)\qquad \boldsymbol{\Sigma}=\mathbf{R}\,\mathrm{diag}(\mathbf{s})^2\,\mathbf{R}^{\top}"></div>
     </article>
     <article class="step nav" data-scene="derive">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Nothing here was <em class="c-splat">learned</em></h2>
       <p>Move the surface and the Gaussian is recomputed: new position, new tilt, new size. Rotation and scale are not parameters any more — they are consequences.</p>
+      <p class="aside">An oriented ellipse sized to its sample is classic surfel splatting. What is new is that the surface underneath is the thing learned from photographs.</p>
       <span class="do">Drag an amber control point</span>
     </article>
     <article class="step nav" data-scene="fill">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Sample the chart, <em>tile the surface</em></h2>
-      <p>Lay a grid over the (u, v) square and drop one planoid per sample. Because each one is sized to its own cell, the tiling has no holes — at any density.</p>
+      <p>Lay a grid over the (u, v) square and drop one planoid per sample. Because each one is sized to its own cell, neighbours overlap instead of leaving gaps — whatever the density.</p>
+      <p class="aside">Each planoid is flat, so on a curved surface it is exact only at its centre; the gap shrinks as the samples get denser.</p>
     </article>
     <article class="step nav" data-scene="knob">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>The <em>resolution knob</em></h2>
       <p>From 36 Gaussians to 22,500 and back. The learnable parameters do not move: 576, the whole time.</p>
-      <p>A trained 3DGS model cannot do this — its Gaussian count is baked in. Here, detail on screen is a rendering decision: <b>re‑evaluate, don’t retrain</b>.</p>
+      <p>A trained 3DGS model cannot do this — its Gaussian count is baked in. Here, how finely the surface is drawn is a rendering decision: <b>re‑evaluate, don’t retrain</b>.</p>
+      <p class="aside">More samples draw the spline more faithfully. They cannot add detail the control net does not hold — that takes a knot.</p>
       <span class="do">Take the samples slider</span>
     </article>
     <article class="step nav" data-scene="features" data-depth="deep">
@@ -266,13 +271,13 @@
     <article class="step nav" data-scene="control">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Ours: 16 per control point. <em class="c-splat">Zero per Gaussian.</em></h2>
-      <p>Geometry is carried by the surface, so position, rotation and scale cost nothing. And because that geometry is right, low‑order colour is enough: SH degree 1 instead of 3.</p>
+      <p>Geometry is carried by the surface, so position, rotation and scale cost nothing. The bet: with the geometry right, colour no longer has to paper over geometric error, so low order may be enough — SH degree 1 instead of 3. Sharp highlights would still need more.</p>
     </article>
     <article class="step nav" data-scene="scale">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>At the scale of a scene</h2>
       <p>One million Gaussians on screen, either way. One model optimises 59 million numbers; the other optimises its control net.</p>
-      <p class="aside">Exact arithmetic over the sliders, not a benchmark. The green band marks the 10–50× the paper reports.</p>
+      <p class="aside">Exact arithmetic over the sliders, not a benchmark. The green band marks the 10–50× the paper projects. It counts numbers that are optimised and stored; at render time the Gaussians occupy the GPU either way.</p>
       <span class="do">Move the sliders</span>
     </article>
     <article class="step nav" data-scene="knob" data-depth="deep">
@@ -313,7 +318,8 @@
     <article class="step nav" data-scene="auto">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Repeat where it <em class="c-err">hurts</em></h2>
-      <p>Eighteen insertions later: 195 control points, 0.9 % error. Knots crowd over the crater; the flat ground stays cheap. Every new parameter is a control point on the surface, so refinement can never create a floater.</p>
+      <p>Eighteen insertions later: 195 control points, 0.9 % error. Knots crowd over the crater. Every new parameter is a control point on the surface, so refinement adds capacity on the surface, never off it.</p>
+      <p class="aside">In a tensor product a knot adds a whole row, so the flat ground pays a little too. T‑splines would avoid that.</p>
     </article>
     <article class="step nav" data-scene="remove" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -324,7 +330,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Same parameters, spent <em>better</em></h2>
       <p>The adaptive net: 0.92 % error. A uniform net of the same size: 4.4 %. The best uniform net we could find near that size still sits at 3.1 %.</p>
-      <p class="aside">All three are fitted live by the same optimiser against the same target.</p>
+      <p class="aside">All three are fitted live by the same optimiser against the same known, noise‑free height field: a demonstration of the mechanism, not a benchmark.</p>
     </article>
     <article class="step nav" data-scene="sampling">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -349,14 +355,15 @@
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>A barn, <em class="c-splat">entirely derived</em></h2>
       <p>Every Gaussian you see was computed from a spline chart a moment ago. Ground, walls, roof, silo, treeline: 11,188 control points in all, and nothing else is stored.</p>
-      <p class="aside">A procedural stand‑in modelled after a Tanks and Temples capture — not the dataset. The white frusta are its handheld‑orbit camera rig.</p>
+      <p class="aside">A procedural stand‑in, built by hand from charts and modelled after a Tanks and Temples capture — not the dataset, and not a reconstruction. The white frusta are its handheld‑orbit camera rig.</p>
       <span class="do">Drag to orbit</span>
     </article>
     <article class="step nav" data-scene="charts">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>An <em>atlas</em> of charts</h2>
-      <p>The scene is split into coherent surface pieces, and each piece gets its own (u, v) domain. Together they cover the scene: a <b>spline manifold</b>.</p>
+      <p>The scene is split into coherent surface pieces, and each piece gets its own (u, v) domain. Together they cover the scene — an atlas of patches that this talk loosely calls a <b>spline manifold</b>.</p>
       <p>Charts can close on themselves — the silo wraps around once; the treeline is one long ribbon around the horizon.</p>
+      <p class="aside">Inside a chart the surface is C². Across a seam between two charts, nothing is guaranteed here.</p>
     </article>
     <article class="step nav" data-scene="nets" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -366,7 +373,7 @@
     <article class="step nav" data-scene="budget">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>A fixed budget <em>follows the camera</em></h2>
-      <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is visible and facing the lens; a small floor keeps everything else covered.</p>
+      <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is in view and facing the lens; a small floor keeps everything else covered. (This demo does not test occlusion.)</p>
       <p>Watch the atlas, bottom left: brighter tiles are holding more Gaussians. Sparsely described charts — ground, treeline — get a smaller share: there is no point sampling finer than a surface’s own detail.</p>
     </article>
     <article class="step nav" data-scene="lod">
@@ -389,14 +396,14 @@
     </article>
     <article class="step nav" data-scene="garden" data-depth="deep">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>An object in an <em>unbounded</em> scene</h2>
+      <h2>An object with a <em>distant surround</em></h2>
       <p>The Mip‑NeRF 360 setting: something in the middle, the world all around. Near charts take most of the budget; the far ring of hedge gets a thin share and large Gaussians — which is all the camera can resolve out there.</p>
       <p class="aside">Mip‑NeRF 360 style · procedural stand‑in.</p>
     </article>
     <article class="step nav" data-scene="edit">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Editable <em class="c-surf">by construction</em></h2>
-      <p>Take every control point that carries the nose and pull. Thousands of Gaussians follow, still tiling, still on the surface. The same control nets export straight to mesh and CAD formats.</p>
+      <p>Take every control point that carries the nose and pull. Thousands of Gaussians follow, still tiling, still on the surface. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
       <span class="do">Turn on nets, drag an amber point</span>
     </article>
   </div>
@@ -415,17 +422,17 @@
         <div class="chart-key"><span><i style="background:#4fc3f7"></i>Knot‑a‑Surface</span><span><i style="border:2px solid #8fa4c0;background:none"></i>PGSR</span></div>
         <div class="plot"></div>
         <p class="note check"></p>
-        <p class="note">Geometry in the range of a state‑of‑the‑art splatting method on most scans — with every Gaussian derived from a control net rather than optimised on its own.</p>
+        <p class="note">Close to a state‑of‑the‑art splatting method on most scans, behind it on average, and clearly behind on its worst scan — with every Gaussian derived from a control net rather than optimised on its own.</p>
       </div>
       <div class="exhibit" id="ex-bench">
-        <h3>Proxy bench · accuracy per parameter</h3>
+        <h3>Proxy bench, emulated baselines · accuracy per parameter</h3>
         <div class="src">Optimised parameters vs Chamfer · measured in‑page on a procedural proxy capture, 12,000‑splat budget</div>
         <div class="plot"></div>
-        <p class="note">Lower‑left is better. The surface prior reaches 72 mm from <b>96 k</b> parameters; the densifying baselines need <b>19–38×</b> as many to reach ≈ 58 mm. Baselines here are behavioural emulations, not the published code.</p>
+        <p class="note">Lower‑left is better. The surface prior reaches 72 mm from <b>96 k</b> parameters; the densifying baselines get to ≈ 58 mm — more accurate — with <b>19–38×</b> as many. Baselines here are behavioural emulations, not the published code.</p>
         <p class="note"><a href="surface-prior.html" target="_blank" rel="noopener">Open the Surface‑Prior bench →</a></p>
       </div>
     </div>
-    <p class="scope"><b>Scope.</b> The DTU figures are the paper’s. The proxy bench is a procedural stand‑in with emulated baselines — useful for behaviour, not a leaderboard. The simulations in this talk are illustrations whose numbers are computed live from what is on screen; the barn, truck, bust and garden are procedural stand‑ins modelled after those datasets’ captures.</p>
+    <p class="scope"><b>Scope.</b> The DTU figures are the paper’s. The proxy bench is a procedural stand‑in with emulated baselines — useful for behaviour, not a leaderboard. The simulations in this talk are illustrations whose numbers are computed live from what is on screen; the barn, truck, bust and garden are procedural stand‑ins modelled after those datasets’ captures. <b>Not measured yet:</b> image quality (PSNR / SSIM / LPIPS), training and rendering time, and ablations.</p>
   </article>
 </section>
 
@@ -435,12 +442,13 @@
     <div class="lvl">Takeaway</div>
     <p class="thesis">The surface is not reconstructed. <em class="c-surf">It is the representation.</em></p>
     <div class="props">
-      <div><b>Structured</b><span>Every Gaussian lies on a surface. No floaters, by construction.</span></div>
+      <div><b>Structured</b><span>Every Gaussian is centred on a surface and cannot leave it. Whether that surface is right is what the optimiser still has to earn.</span></div>
       <div><b>Continuous</b><span>Properties vary smoothly over the parametric domain — a built‑in regulariser.</span></div>
-      <div><b>Resolution‑adaptive</b><span>Change the sample density at any time. No retraining, no heuristics.</span></div>
-      <div><b>Compact</b><span>Low‑order colour on a control net. The paper reports 10–50× fewer parameters.</span></div>
-      <div><b>Interoperable</b><span>The model is a set of NURBS patches: mesh and CAD export come for free.</span></div>
+      <div><b>Resolution‑adaptive</b><span>Change the sample density at any time, without retraining. Detail itself is capped by the control net.</span></div>
+      <div><b>Compact</b><span>Low‑order colour on a control net. The paper projects 10–50× fewer optimised parameters; equal‑quality measurements are pending.</span></div>
+      <div><b>Interoperable</b><span>The model is a set of spline patches: each exports as a surface or a mesh. Watertight stitching is future work.</span></div>
     </div>
+    <p class="scope" style="margin:0 0 2rem"><b>Scope.</b> Opaque, locally smooth surfaces, from a calibrated, static capture. Foliage, glass, thin structures and sharp highlights are open.</p>
     <div class="lvl">Every simulation is a standalone page</div>
     <div class="labs">
       <a href="talk/sims/flatland.html" target="_blank" rel="noopener">Free vs. bound<small>Canvas 2D · live optimiser</small></a>

@@ -243,15 +243,17 @@
       svg('text', { x: x, y: H - B + 16, 'text-anchor': 'middle', fill: INK.dim, style: MONO }, s, DTU.scans[i]);
     }
     var bw = (W - L - Rm) / n;
-    s.addEventListener('pointermove', function (e) {
+    function point(e) {
       var r = s.getBoundingClientRect(), k = Math.floor(((e.clientX - r.left) / r.width * W - L) / bw);
       if (k < 0 || k >= n) { tip.hide(); hot.setAttribute('opacity', 0); return; }
       hot.setAttribute('x', L + k * bw); hot.setAttribute('width', bw); hot.setAttribute('opacity', 0.05);
       var d = DTU.ours[k] - DTU.pgsr[k], pr = box.getBoundingClientRect();
       tip.show('scan <b>' + DTU.scans[k] + '</b><br>ours <b>' + DTU.ours[k].toFixed(3) + '</b> · PGSR <b>' + DTU.pgsr[k].toFixed(2) + '</b><br>Δ ' + (d > 0 ? '+' : '−') + Math.abs(d).toFixed(3) + ' mm',
         r.left - pr.left + X(k) / W * r.width, r.top - pr.top + Y(Math.max(DTU.ours[k], DTU.pgsr[k])) / H * r.height);
-    });
-    s.addEventListener('pointerleave', function () { tip.hide(); hot.setAttribute('opacity', 0); });
+    }
+    // hover with a mouse; on touch a tap shows a scan and the tip stays until the next tap
+    s.addEventListener('pointermove', point); s.addEventListener('pointerdown', point);
+    s.addEventListener('pointerleave', function (e) { if (e.pointerType === 'touch') return; tip.hide(); hot.setAttribute('opacity', 0); });
   }
 
   function benchChart(box) {
@@ -271,6 +273,7 @@
     svg('text', { x: W - Rm, y: H - 5, 'text-anchor': 'end', fill: INK.mute, style: MONO }, s, 'optimised parameters · log →');
     svg('text', { x: L, y: H - 5, fill: INK.mute, style: MONO }, s, '↓ Chamfer mm · log');
     var tip = tipFor(box);
+    s.addEventListener('pointerdown', function (e) { if (e.target.getAttribute('opacity') !== '0') tip.hide(); });  // a tap off the points closes the tip
     BENCH.forEach(function (m) {
       var x = X(m.params), y = Y(m.chamfer);
       svg('circle', m.ours ? { cx: x, cy: y, r: 7, fill: INK.ours, stroke: INK.bg, 'stroke-width': 2 }
@@ -284,7 +287,7 @@
           '</b> params<br>Chamfer <b>' + m.chamfer.toFixed(1) + ' mm</b> · closed ' + m.closed + '%<br>converged at step ' + m.step,
           r.left - pr.left + x / W * r.width, r.top - pr.top + y / H * r.height);
       });
-      h.addEventListener('pointerleave', tip.hide);
+      h.addEventListener('pointerleave', function (e) { if (e.pointerType !== 'touch') tip.hide(); });
     });
   }
   var ex = $('#ex-dtu'); if (ex) dtuChart(ex);

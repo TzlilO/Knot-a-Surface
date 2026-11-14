@@ -92,7 +92,7 @@
       var slM = logSlider('control points', 1e3, 1e6, function () { return st.m; }, function (v) { st.m = v; });
       function setLog(sl, v, lo, hi) { sl.set(Math.round(Math.log(v / lo) / Math.log(hi / lo) * 1000)); }
       scale.appendChild(ui.el('div', 'lg-fine', 'float32 · 3DGS at SH degree 3 (59 per Gaussian) · ours at SH degree 1 on the control net (16 per control point) · ' +
-        'shaded band = the paper’s reported 10–50×'));
+        'shaded band = the 10–50× the paper projects'));
 
       function paint() {
         var pg = st.n * PER_G, pc = st.m * PER_CP, ratio = pg / pc;

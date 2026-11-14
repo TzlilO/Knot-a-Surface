@@ -42,7 +42,7 @@
     create: function (env) {
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
       var cam = new T.PerspectiveCamera(36, 1, 0.1, 160);
-      var R = G.renderer(root, cam), scene = new T.Scene();
+      var R = G.renderer(root, cam, env.opts.clear), scene = new T.Scene();
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
                  budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
@@ -58,7 +58,7 @@
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
       var badge = ui.el('div', 'kt-ab'); root.appendChild(badge);
       var panel = ui.panel(root, { pos: 'tr', title: 'scene · budget' });
-      var segS = ui.seg(panel, { value: 'barn', options: Object.keys(KT.scenes).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
+      var segS = ui.seg(panel, { value: 'barn', options: Object.keys(KT.scenes).filter(function (k) { return !KT.scenes[k].hidden; }).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
         onChange: function (v) {
           st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
           loadScene(v); orbit.touched = false; orbit.to(view('wide'), true); paintCap();
@@ -77,7 +77,12 @@
       var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
       var atlas = ui.el('div', 'kt-atlas'); root.appendChild(atlas);
 
-      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.4, maxRadius: 46, pick: pickPoint });
+      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.4, maxRadius: 46, pick: pickPoint,
+        hit: function (x, y) { return findPoint(x, y, true) >= 0; },
+        release: function () {
+          if (!dragCP) return;
+          dragCP.c.patch.P.set(dragCP.was, dragCP.i * 3); coarse(dragCP.c); updateNets(); need = true; dragCP = null;
+        } });
 
       /* ---------- load a scene: charts, nets, atlas tiles, capture rig ---------- */
       function loadScene(key) {
@@ -281,24 +286,31 @@
         var r = R.canvas.getBoundingClientRect();
         ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)); ray.setFromCamera(ndc, cam);
       }
-      function pickPoint(e) {
-        if (!st.nets) return false;
-        setNdc(e); ray.params.Points.threshold = orbit.cur.r * 0.012;
+      /* the control point under client (x, y), as an index into ptPos: the ray's point threshold for a
+         mouse, a fingertip-sized screen radius for touch */
+      function findPoint(x, y, touch) {
+        if (!st.nets || !pts) return -1;
+        if (touch) return G.nearest(cam, R.canvas, ptPos, totalCP, x, y, KT.HIT);
+        setNdc({ clientX: x, clientY: y }); ray.params.Points.threshold = orbit.cur.r * 0.012;
         var h = ray.intersectObject(pts, false)[0];
-        if (!h) return false;
-        var gi = h.index, c = null;
+        return h ? h.index : -1;
+      }
+      function pickPoint(e) {
+        var gi = findPoint(e.clientX, e.clientY, e.pointerType === 'touch'), c = null;
+        if (gi < 0) return false;
         charts.forEach(function (k) { if (gi >= k.ptOff && gi < k.ptOff + k.patch.nu * k.patch.nv) c = k; });
-        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId }; st.touchedEdit = true;
-        var o = dragCP.i * 3;
+        var o = (gi - c.ptOff) * 3;
+        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId, was: c.patch.P.slice(o, o + 3) };
         plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), hitP.set(c.patch.P[o], c.patch.P[o + 1], c.patch.P[o + 2]));
         R.canvas.setPointerCapture(e.pointerId);
         return true;
       }
       R.canvas.addEventListener('pointermove', function (e) {
-        if (!dragCP) return;
+        if (!dragCP || e.pointerId !== dragCP.id) return;
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
           var o = dragCP.i * 3, P = dragCP.c.patch.P;
+          st.touchedEdit = true;           // only a drag that actually moves a point stops the scene's own edit
           P[o] = hitP.x; P[o + 1] = hitP.y; P[o + 2] = hitP.z;
           coarse(dragCP.c); updateNets(); need = true;
         }
@@ -317,6 +329,7 @@
       }
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
+        if (id === 'hero' && env.opts.scn && KT.scenes[env.opts.scn]) sc = Object.assign({}, sc, { scn: env.opts.scn });
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
         st.view = sc.view; segV.set(sc.view); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
@@ -384,7 +397,7 @@
       if (env.opts.bare) root.classList.add('kt-bare');
       setScene(env.opts.scene || 'scene');
       return {
-        setScene: setScene,
+        setScene: setScene, orbit: orbit, camera: cam, points: function () { return ptPos; },   // for tests
         /* for host pages: switch the scene or the budget without the module's own panel */
         load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },

@@ -50,6 +50,8 @@
 .kt-slider input::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--text);
   border:2px solid var(--bg)}
 .kt-slider .kt-val{min-width:44px;text-align:right;margin-left:0}
+/* a finger on a slider moves the slider: never the page, never the stage underneath */
+.kt-slider input{touch-action:none}
 
 .kt-seg-box{display:flex;margin-left:auto;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
 .kt-seg-btn,.kt-toggle,.kt-btn{font:600 11px/1 var(--f-mono);color:var(--dim);background:transparent;
@@ -110,4 +112,15 @@ body.kt-labpage{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:
   .kt-lab-head{grid-template-columns:auto 1fr;padding:10px 12px}
   .kt-lab-blurb{grid-column:1 / -1;font-size:12px}.kt-lab-tool{display:none}
   .kt-lab-foot{padding:8px 12px}
+}
+
+/* touch: one tap = one click (no double-tap zoom), and finger-sized controls on coarse pointers only */
+.kt-sim button,.kt-lab-scene,.kt-lab-back,.kt-lab-foot{touch-action:manipulation}
+@media (pointer:coarse){
+  .kt-seg-btn,.kt-toggle,.kt-btn{min-height:40px;min-width:40px}
+  .kt-slider input{height:40px}
+  .kt-slider input::-webkit-slider-thumb{width:22px;height:22px;margin-top:-9.5px}
+  .kt-slider input::-moz-range-thumb{width:20px;height:20px}
+  .kt-gear{min-height:40px;padding:0 12px}
+  .kt-lab-scene,.kt-lab-back{min-height:40px;display:flex;align-items:center}
 }
