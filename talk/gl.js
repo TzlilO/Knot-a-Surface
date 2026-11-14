@@ -6,9 +6,11 @@
   var gl = KT.gl = {};
 
   /* renderer bound to a module root; returns { renderer, canvas, resize(w,h) } */
-  gl.renderer = function (root, camera) {
-    var r = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    r.setClearColor(0x07090f, 1);
+  /* clear: omit for the dark instrument background, or 'transparent' to let the page show through */
+  gl.renderer = function (root, camera, clear) {
+    var see = clear === 'transparent';
+    var r = new T.WebGLRenderer({ antialias: true, alpha: see, powerPreference: 'high-performance' });
+    r.setClearColor(see ? 0x000000 : 0x07090f, see ? 0 : 1);
     r.domElement.className = 'kt-canvas';
     root.insertBefore(r.domElement, root.firstChild);
     function resize(w, h) {

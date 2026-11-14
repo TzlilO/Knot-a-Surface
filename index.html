@@ -237,6 +237,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
       <p>A scroll‑driven deck that builds the method from the ground up — at three depths, so it works for first‑year students and for people who want the equations. Every figure is a live simulation.</p>
       <div class="facts"><span>7 chapters</span><span>20′ or 40′</span><span>arrow keys</span><span>runs offline</span></div>
       <a class="btn main" href="talk.html">Start the talk →</a>
+      <a class="btn" href="talk-he.html" lang="he" dir="rtl" style="margin-inline-start:.5rem;font-family:var(--f-ui)">מבוא קצר בעברית</a>
     </div>
     <ol class="chapters">
       <li><div><b>A million free ellipsoids</b><span>What 3D Gaussian Splatting leaves out</span></div></li>
@@ -352,6 +353,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   // links to each scene of the full-power lab
   var ids = { barn: 'scene', truck: 'truck', bust: 'bust', garden: 'garden', studio: 'studio' };
   Object.keys(KT.scenes).forEach(function (k) {
+    if (KT.scenes[k].hidden) return;
     var a = document.createElement('a'); a.href = 'talk/sims/manifold.html#' + ids[k];
     a.innerHTML = KT.scenes[k].label + '<small>' + KT.scenes[k].suite.replace(' style', '') + '</small>';
     $('scene-links').appendChild(a);

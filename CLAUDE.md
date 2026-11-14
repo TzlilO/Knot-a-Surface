@@ -56,6 +56,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Verify with node playwright (`/opt/node-tools/node_modules/playwright`) against `file://…/talk.html`;
   scene ids double as URL hashes on the standalone pages (`talk/sims/planoid.html#knob`).
 
+## talk-he.html — short Hebrew deck (explicit vs implicit vs 3DGS)
+A separate 5–10 minute RTL deck with its own light "liquid glass" look; not a translation of talk.html.
+- `talk/he/he.css` loads after `talk/kit.css` and re-points the kit's tokens to a light palette, so kit
+  panels/sliders/segmented controls become glass capsules. `talk/he/he.js` = its scroll engine
+  (RTL: ← forward, → back; space/↓ advance). Copy lives in `talk-he.html`; keep it to one headline and
+  one short sentence per step.
+- `talk/he/sims.js` = three Canvas-2D modules registered with the kit: `he-shapes` (a doughnut as
+  points / triangles / voxels), `he-field` (signed-distance probe + ray marching), `he-fit` (a real
+  optimiser fitting 2D Gaussians to a picture; normalised blend, Adam). The 3D step mounts `manifold`
+  bare with `clear:'transparent'` and the hidden `breakfast` scene from `talk/scenes.js`.
+
 ## arena.html — Arena: live 4D match reconstruction
 A second, independent single-file three.js simulator (`window.KnotArenaSim`, ~`src/arena_core.js`)
 applying the same thesis to a sports court instead of terrain: the swarm is FIXED (perimeter +

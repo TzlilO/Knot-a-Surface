@@ -42,7 +42,7 @@
     create: function (env) {
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
       var cam = new T.PerspectiveCamera(36, 1, 0.1, 160);
-      var R = G.renderer(root, cam), scene = new T.Scene();
+      var R = G.renderer(root, cam, env.opts.clear), scene = new T.Scene();
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
                  budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
@@ -58,7 +58,7 @@
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
       var badge = ui.el('div', 'kt-ab'); root.appendChild(badge);
       var panel = ui.panel(root, { pos: 'tr', title: 'scene · budget' });
-      var segS = ui.seg(panel, { value: 'barn', options: Object.keys(KT.scenes).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
+      var segS = ui.seg(panel, { value: 'barn', options: Object.keys(KT.scenes).filter(function (k) { return !KT.scenes[k].hidden; }).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
         onChange: function (v) {
           st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
           loadScene(v); orbit.touched = false; orbit.to(view('wide'), true); paintCap();

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>איך מחשב רואה בתלת־ממד? · ייצוג מפורש, סתום וגאוסיאנים</title>
+<meta name="description" content="מבוא קצר ואינטראקטיבי לייצוגים תלת־ממדיים: מפורש, סתום ו‑Gaussian Splatting.">
+<meta name="theme-color" content="#f6f1ea">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="talk/kit.css">
+<link rel="stylesheet" href="talk/he/he.css">
+</head>
+<body>
+<div class="room" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<div class="topbar"><div class="glass"><b>ייצוגים תלת־ממדיים</b> · מפורש, סתום וגאוסיאנים</div></div>
+<div class="dock glass" role="navigation" aria-label="ניווט בין השקפים">
+  <button type="button" class="prev" aria-label="הקודם"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l5 5-5 5"/></svg></button>
+  <div class="dots"></div>
+  <button type="button" class="next" aria-label="הבא"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"/></svg></button>
+</div>
+
+<main>
+<!-- ============================== פתיחה -->
+<section class="full cover nav" data-sim="he-shapes" data-scene="hero">
+  <div class="step on">
+    <div class="tag c-splat">מבוא · כשבע דקות</div>
+    <h1>איך מחשב <span>רואה</span> בתלת־ממד?</h1>
+    <p class="lede">שלוש דרכים לתאר עולם: רשימה, שאלה, וענן של כתמים רכים.</p>
+    <div class="meta">גללו למטה, או הקישו רווח</div>
+  </div>
+  <div class="hero"><div class="sim-mount"></div></div>
+</section>
+
+<!-- ============================== ייצוג מפורש -->
+<section class="chapter c-explicit" data-sim="he-shapes">
+  <div class="stage"><div class="card glass"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav" data-scene="points">
+      <div class="tag">ייצוג מפורש · <span class="ltr">explicit</span></div>
+      <h2>פשוט <span>רשימה</span> של נקודות</h2>
+      <p>הדרך הישירה ביותר: לשמור היכן נמצא כל דבר. <b>מהיר לצייר, קל לערוך.</b></p>
+      <div class="try">גררו כדי לסובב</div>
+    </article>
+    <article class="step nav" data-scene="mesh">
+      <div class="tag">ייצוג מפורש · <span class="ltr">explicit</span></div>
+      <h2>מחברים אותן <span>למשולשים</span></h2>
+      <p>כך בנויים משחקים וסרטים. אבל כל פרט נוסף עולה עוד משולשים.</p>
+    </article>
+    <article class="step nav" data-scene="voxels">
+      <div class="tag">ייצוג מפורש · <span class="ltr">explicit</span></div>
+      <h2>או ממלאים <span>קוביות</span></h2>
+      <p>כמו פיקסלים, בתלת־ממד. <b>פי שניים פירוט — פי שמונה זיכרון.</b></p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================== ייצוג סתום -->
+<section class="chapter c-implicit" data-sim="he-field">
+  <div class="stage"><div class="card glass"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav" data-scene="probe">
+      <div class="tag">ייצוג סתום · <span class="ltr">implicit</span></div>
+      <h2>לא רשימה. <span>שאלה.</span></h2>
+      <p>פונקציה אחת עונה לכל נקודה במרחב: כמה רחוק המשטח, ובאיזה צד שלו אני. <b>חלקה, רציפה וקומפקטית.</b></p>
+      <div class="try">גררו את הנקודה</div>
+    </article>
+    <article class="step nav" data-scene="march">
+      <div class="tag">ייצוג סתום · <span class="ltr">implicit</span></div>
+      <h2>אבל תמונה היא <span>מיליוני שאלות</span></h2>
+      <p>כדי לצייר פיקסל אחד שולחים קרן ושואלים שוב ושוב לאורכה. כך עובד <span class="ltr">NeRF</span>: יפהפה, ואיטי.</p>
+      <div class="try">שנו את מספר הדגימות</div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================== גאוסיאנים -->
+<section class="chapter c-splat" data-sim="he-fit">
+  <div class="stage"><div class="card glass"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav" data-scene="few">
+      <div class="tag"><span class="ltr">Gaussian Splatting</span></div>
+      <h2>ומה אם הנקודות יהיו <span>רכות</span>?</h2>
+      <p>גאוסיאן הוא כתם עם מרכז, גודל, כיוון וצבע. <b>מפורש כמו נקודה, חלק כמו פונקציה.</b></p>
+    </article>
+    <article class="step nav" data-scene="many">
+      <div class="tag"><span class="ltr">Gaussian Splatting</span></div>
+      <h2>והמחשב <span>לומד לבד</span> היכן לשים אותם</h2>
+      <p>מתחילים מכתמים אקראיים ומשווים לתמונה. בכל צעד כל כתם זז מעט, עד שהתמונה מתבהרת.</p>
+      <div class="try">הוסיפו גאוסיאנים</div>
+    </article>
+  </div>
+</section>
+
+<section class="chapter c-splat" data-sim="manifold">
+  <div class="stage"><div class="card glass">
+    <div class="sim-mount"></div>
+    <div class="he-read"></div>
+    <div class="kt-panel kt-bottom" style="--tint:var(--splat)"><label class="kt-row kt-slider"><span class="kt-lab">כמה גאוסיאנים</span>
+      <input type="range" min="8000" max="160000" step="2000" value="60000" aria-label="מספר הגאוסיאנים"></label></div>
+  </div></div>
+  <div class="steps">
+    <article class="step nav">
+      <div class="tag"><span class="ltr">Gaussian Splatting</span></div>
+      <h2>ובתלת־ממד: <span>זמן אמת</span></h2>
+      <p>מטילים את הכתמים על המסך, ממיינים לפי עומק ומערבבים. בלי קרניים ובלי שאלות.</p>
+      <div class="try">גררו כדי להסתובב בסצנה</div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================== סיכום -->
+<section class="full nav">
+  <div class="step on">
+    <h2>אז מה בוחרים?</h2>
+    <div class="trio">
+      <div class="glass c-explicit"><b>מפורש</b><small>נקודות · משולשים · קוביות</small>
+        <ul><li>מהיר לצייר</li><li>קל לערוך</li><li class="no">בדיד וכבד</li></ul></div>
+      <div class="glass c-implicit"><b>סתום</b><small>פונקציה · <span class="ltr">NeRF</span></small>
+        <ul><li>חלק ורציף</li><li>קומפקטי</li><li class="no">איטי לצייר</li></ul></div>
+      <div class="glass c-splat"><b>גאוסיאנים</b><small><span class="ltr">3D Gaussian Splatting</span></small>
+        <ul><li>מהיר לצייר</li><li>איכות צילומית</li><li class="no">בלי משטח אמיתי</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="full nav c-explicit">
+  <div class="step on">
+    <div class="tag" style="align-self:center">ומה חסר?</div>
+    <h2>לענן של כתמים <span>אין משטח</span>.</h2>
+    <p class="big">כאן המחקר שלי מתחיל: קודם משטח, ורק אחר כך גאוסיאנים.</p>
+    <a class="pill" href="talk.html">להרצאה המלאה <span class="ltr">(English)</span></a>
+    <div class="thanks">תודה · <span class="ltr">Knot‑a‑Surface</span></div>
+  </div>
+</section>
+</main>
+
+<script src="talk/vendor/three.min.js"></script>
+<script src="talk/nurbs.js"></script>
+<script src="talk/kit.js"></script>
+<script src="talk/gl.js"></script>
+<script src="talk/scenes.js"></script>
+<script src="talk/sims/manifold.js"></script>
+<script src="talk/he/sims.js"></script>
+<script src="talk/he/he.js"></script>
+</body>
+</html>

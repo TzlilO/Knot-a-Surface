@@ -395,11 +395,54 @@
     };
   }
 
+  /* ================= BREAKFAST — a light, small scene for the short Hebrew deck ================= */
+  function breakfast() {
+    var C = [], RD = 0.74, rd = 0.33, CY = 0.05 + rd * 0.94, MX = 1.95, MZ = -0.55;
+    var boxes = [[-RD - rd, 0.05, -RD - rd, RD + rd, CY + rd, RD + rd], [MX - 0.54, 0, MZ - 0.54, MX + 0.54, 1.0, MZ + 0.54]];
+    function soft(p) { return 0.6 + 0.4 * lit(p, boxes); }
+    chart(C, 'table', { nu: 38, nv: 38, tu: 5, tv: 5 }, function (s, t) {
+      var x = s * 9 - 4.5, z = t * 9 - 4.5, c = mul([0.91, 0.79, 0.63], 0.88 + 0.2 * h2(Math.floor(z / 0.7), 2.2));
+      c = mul(c, (0.93 + 0.12 * fbm(x * 0.6, z * 3)) * soft([x, 0.01, z]));
+      return [x, 0, z, c[0], c[1], c[2]];
+    });
+    revolve(C, 'plate', { c: [0, 0, 0], nu: 30, tu: 4, tv: 2, minA: 5,
+      prof: [[0, 0.035], [0.7, 0.035], [1.05, 0.05], [1.3, 0.14], [1.43, 0.2], [1.45, 0.19], [1.3, 0.1], [1.0, 0.0], [0, 0.0]] },
+      function (r0, h, a, p) { return mul([0.99, 0.98, 0.95], h > 0.02 ? soft([p[0], p[1] + 0.02, p[2]]) : 0.82); });
+    chart(C, 'doughnut', { nu: 76, nv: 28, periodicU: true, periodicV: true, closed: true, tu: 8, tv: 3, minA: 3, minB: 4,
+      ref: function (u, v, pos) { var a = Math.atan2(pos[2], pos[0]); return [RD * Math.cos(a), CY, RD * Math.sin(a)]; } }, function (s, t) {
+      var u = s * TAU, v = t * TAU, cv = Math.cos(v), sv = Math.sin(v), c = [0.87, 0.67, 0.42];
+      if (sv > 0.07 + 0.09 * Math.sin(u * 5 + 0.6) + 0.05 * Math.sin(u * 11)) {
+        c = [1.0, 0.54, 0.69];
+        var k = h2(Math.floor(s * 26), Math.floor(t * 11));
+        if (k > 0.78 && sv > 0.3) c = [[0.36, 0.78, 0.98], [1.0, 0.84, 0.04], [1, 1, 1], [0.4, 0.83, 0.64], [0.75, 0.47, 1.0]][Math.floor(h2(Math.floor(t * 11), Math.floor(s * 26)) * 5)];
+      }
+      return [(RD + rd * cv) * Math.cos(u), CY + rd * sv, (RD + rd * cv) * Math.sin(u), c[0], c[1], c[2]];
+    });
+    revolve(C, 'mug', { c: [MX, 0, MZ], nu: 24, tu: 4, tv: 3, minA: 5,
+      prof: [[0, 0], [0.46, 0], [0.52, 0.04], [0.54, 0.5], [0.54, 0.98], [0.52, 1.02], [0.48, 1.0], [0.47, 0.88], [0.3, 0.86], [0, 0.86]] },
+      function (r0, h) { return r0 < 0.475 && h > 0.8 && h < 0.95 ? [0.33, 0.19, 0.11] : mul([0.68, 0.81, 0.93], 0.92 + 0.1 * h); });
+    return {
+      charts: C,
+      views: { wide: { th: 0.75, ph: 1.0, r: 7.4, tx: 0.7, ty: 0.35, tz: -0.2 }, close: { th: 0.25, ph: 1.12, r: 3.1, tx: 0, ty: 0.38, tz: 0 },
+               a: { th: -0.7, ph: 0.82, r: 5.8, tx: 0.6, ty: 0.3, tz: -0.2 }, b: { th: 1.9, ph: 1.08, r: 5.4, tx: 1.0, ty: 0.45, tz: -0.3 } },
+      tour: ['wide', 'close', 'a', 'b'],
+      rig: ring(20, 4.2, 1.2, 3.2, [0.5, 0.4, 0]),
+      edit: function (k) {                          // a fatter doughnut
+        var c = C[2], P = c.patch.P, B = c.base, i;
+        for (i = 0; i < P.length; i += 3) { var a = Math.atan2(B[i + 2], B[i]), cx = RD * Math.cos(a), cz = RD * Math.sin(a), g = 1 + 0.35 * k;
+          P[i] = cx + (B[i] - cx) * g; P[i + 1] = CY + (B[i + 1] - CY) * g; P[i + 2] = cz + (B[i + 2] - cz) * g; }
+        return [c];
+      }
+    };
+  }
+
   KT.scenes = {
     barn:   { label: 'Barn',   suite: 'Tanks and Temples style', build: barn },
     truck:  { label: 'Truck',  suite: 'Tanks and Temples style', build: truck },
     bust:   { label: 'Bust',   suite: 'DTU style', build: bust },
     garden: { label: 'Garden', suite: 'Mip-NeRF 360 style', build: garden },
-    studio: { label: 'Studio', suite: 'abstract still life', build: studio }
+    studio: { label: 'Studio', suite: 'abstract still life', build: studio },
+    /* hidden: not offered in the lab's scene picker or on the landing page; the Hebrew deck loads it by name */
+    breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast }
   };
 })();
