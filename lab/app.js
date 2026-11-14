@@ -172,7 +172,7 @@
       coarse(c);
     });
     var rho = charts.map(function (c) { return c.patch.nu * c.patch.nv / c.area; }), rmax = Math.max.apply(null, rho.filter(function (r, i) { return !charts[i].lock; }));
-    charts.forEach(function (c, i) { c.gain = c.lock ? 0.05 : KT.clamp(Math.pow(rho[i] / rmax, 0.35), 0.3, 1); });   // the flat floor needs very little
+    charts.forEach(function (c, i) { c.gain = c.lock ? 0.015 : KT.clamp(Math.pow(rho[i] / rmax, 0.35), 0.3, 1); });   // the flat floor needs very little
     R.setCharts(charts.map(function (c) { return { mat: c.mat, rgb: G.rgb(c.hex), ground: c.lock }; }));
     R.light(def.views.wide.th - 1.0, 0.92);                 // from the camera's upper left: shadows fall where they can be seen
     var tg = def.rig.target, rad = def.radius || 3;
@@ -190,7 +190,7 @@
   /* the scene's own viewing direction, at the distance that frames the subject in this stage */
   function home() {
     var v = Object.assign({}, def.views.wide), a = stage.clientWidth / Math.max(1, stage.clientHeight), half = cam.fov * Math.PI / 360, tg = def.rig.target;
-    v.r = (def.radius || 3) * 1.0 / Math.sin(Math.atan(Math.tan(half) * Math.min(1, a)));
+    v.r = (def.radius || 3) * 0.92 / Math.sin(Math.atan(Math.tan(half) * Math.min(1, a)));
     v.tx = tg[0]; v.ty = tg[1]; v.tz = tg[2];
     return v;
   }
@@ -507,7 +507,7 @@
   function paintCaption() {
     if (!def) return;
     var s = KL.scenes[st.scn], what = st.split
-      ? 'The same frame read ' + bandModes().length + ' ways: ' + bandModes().map(function (m, j) { return '(' + 'abcdef'[j] + ') ' + MODES[m].name.toLowerCase(); }).join(', ') + '.'
+      ? 'The same frame read ' + bandModes().length + ' ways: ' + bandModes().map(function (m, j) { return '(' + 'abcdef'[j] + ') ' + MODES[m].name; }).join(', ') + '.'
       : ['Lit with one key light, its shadow, ambient occlusion and a studio reflection.', 'The colour stored on the control points, unlit.', 'Distance from the camera, light near and dark far.',
          'Surface normals, read off the spline as S<sub>u</sub> × S<sub>v</sub>.', 'Each Gaussian drawn at reduced size.', 'The chart every Gaussian was derived from.',
          'DINOv3 features stored on the control points; colour is their first three principal components.', 'Cosine similarity of every control feature to the clicked point.'][st.mode];
