@@ -53,6 +53,14 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the
   top of `talk/deck.js`; the DTU exhibit notes on screen when a row's mean differs from the printed mean.
+- Touch: ONE shared layer in `talk/kit.js` — `KnotTalk.touchGuard` (claims a touch that starts on a
+  handle, or two fingers, so the page neither scrolls nor zooms) and `KnotTalk.gestures` (pointer set,
+  pinch distance/centre, claim/release) — used by `gl.orbit` and the 2D modules; do not add per-module
+  touch handlers. Roots stay `touch-action:pan-y` so a vertical swipe over an embedded stage scrolls the
+  deck; embedded 3D = one finger yaw, two fingers pitch, pinch zoom; standalone lab pages own every
+  gesture. `KnotTalk.HIT` = touch hit radius; only a first finger may grab a control point (a second
+  finger turns it into a pinch). Coarse-pointer sizes live in the CSS under `(pointer:coarse)`.
+  `KnotTalk.mounted` lists live simulators for tests (multi-touch via CDP `Input.dispatchTouchEvent`).
 - Verify with node playwright (`/opt/node-tools/node_modules/playwright`) against `file://…/talk.html`;
   scene ids double as URL hashes on the standalone pages (`talk/sims/planoid.html#knob`).
 
