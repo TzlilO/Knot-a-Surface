@@ -186,6 +186,14 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   .props{grid-template-columns:repeat(2,minmax(0,1fr))}
   .labs{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* ---------- touch ---------- */
+.rail a,.hud,.stage-tools,.keys{touch-action:manipulation}          /* one tap = one click, no double-tap zoom */
+@media (hover:none){.stage-tools{opacity:1}}                       /* no hover to reveal them: always shown */
+@media (pointer:coarse){
+  .hud button,.hud .clock{min-height:40px;min-width:40px}
+  .stage-tools a,.stage-tools button{min-height:40px;display:inline-flex;align-items:center}
+}
+
 @media (prefers-reduced-motion:reduce){
   .step{transition:none;transform:none}.do:before{animation:none}
 }

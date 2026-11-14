@@ -121,7 +121,105 @@
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   };
 
+  /* ---------- touch: who owns a gesture ----------
+     A mounted root carries touch-action:pan-y (kit.css), so inside a deck a one-finger vertical
+     swipe over a stage scrolls the page. A stage claims a touch only when it starts on a handle,
+     or (for stages you orbit) when a second finger lands on it.
+       KT.touchGuard(el, { hit(x, y), multi })
+         hit   -> true when a touch starting at client (x, y) lands on a draggable handle
+         multi -> also claim two fingers on el (no page scroll or zoom while they are down)
+       KT.gestures(el, o) — the multi-pointer bookkeeping for a stage you turn (gl.orbit, he-shapes):
+         o.embed       inside a deck: one finger on touch turns horizontally only, vertical scrolls
+         o.claim(e)    -> true when the module takes this pointerdown itself (a handle drag)
+         o.hit(x, y)   -> true when a touch there would land on such a handle
+         o.drag(dx, dy, n, e)  one pointer (n = 1) or the centroid of two fingers (n = 2), CSS px
+         o.pinch(k)    finger spread ratio since the previous event (k > 1: fingers apart)
+         o.start(e)    an unclaimed pointer went down
+         o.release(id) optional: a second finger landed while a finger held a handle — drop that
+                       handle (put it back); the two fingers become a camera gesture instead
+       Outside a deck (the lab pages) the element gets touch-action:none and owns every gesture. */
+  KT.HIT = 24;                       // touch hit radius around a handle, CSS px (a ~48 px target)
+  function onEl(el, list) { var k = 0; for (var i = 0; i < list.length; i++) if (el.contains(list[i].target)) k++; return k; }
+  KT.touchGuard = function (el, o) {
+    o = o || {};
+    function stop(e) { if (e.cancelable) e.preventDefault(); }
+    el.addEventListener('touchstart', function (e) {
+      if (o.multi && onEl(el, e.touches) >= 2) { stop(e); return; }
+      var t = e.changedTouches[0];
+      if (o.hit && t && o.hit(t.clientX, t.clientY)) stop(e);   // a cancelled touchstart never scrolls
+    }, { passive: false });
+    if (o.multi) {
+      el.addEventListener('touchmove', function (e) { if (onEl(el, e.touches) >= 2) stop(e); }, { passive: false });
+      el.addEventListener('gesturestart', stop);                // iOS Safari's own pinch-zoom
+    }
+  };
+  KT.gestures = function (el, o) {
+    var pts = {}, ids = [], claimed = {}, pair = null, SLOP = 6;
+    if (!o.embed) el.style.touchAction = 'none';
+    KT.touchGuard(el, { hit: o.hit, multi: true });
+    function spread() {
+      if (ids.length < 2) return null;
+      var a = pts[ids[0]], b = pts[ids[1]];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+    }
+    function busy() { for (var k in claimed) return true; return false; }
+    el.addEventListener('pointerdown', function (e) {
+      var touch = e.pointerType === 'touch', id;
+      // only a first finger can grab a handle: a second one joins the camera gesture (pinch, two-finger turn)
+      if (o.claim && !ids.length && !busy() && o.claim(e)) { claimed[e.pointerId] = { x: e.clientX, y: e.clientY }; return; }
+      if (touch && o.release) for (id in claimed) {         // a dense net: the first finger grabbed a point on its way to a pinch
+        o.release(+id);
+        pts[id] = { x: claimed[id].x, y: claimed[id].y, touch: true, ax: 0, ay: 0, live: true, dead: false };
+        ids.push(+id); delete claimed[id];
+      }
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY, touch: touch, ax: 0, ay: 0, live: !touch, dead: false };
+      ids.push(e.pointerId);
+      try { el.setPointerCapture(e.pointerId); } catch (x) {}
+      pair = spread();                   // new baseline: the second finger landing never jumps the camera
+      if (o.start) o.start(e);
+    });
+    el.addEventListener('pointermove', function (e) {
+      var p = pts[e.pointerId];
+      if (claimed[e.pointerId]) { claimed[e.pointerId].x = e.clientX; claimed[e.pointerId].y = e.clientY; }
+      if (!p) return;
+      var dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      if (busy()) return;
+      if (ids.length === 1) {
+        if (!p.live) {                   // a finger has to travel a little before it turns anything
+          p.ax += dx; p.ay += dy;
+          if (Math.hypot(p.ax, p.ay) < SLOP) return;
+          p.live = true;
+          if (o.embed && Math.abs(p.ay) > Math.abs(p.ax)) p.dead = true;   // a vertical swipe: the page scrolls
+          return;
+        }
+        if (p.dead) return;
+        if (o.embed && p.touch) dy = 0;
+        if (o.drag) o.drag(dx, dy, 1, e);
+        return;
+      }
+      if (ids.indexOf(e.pointerId) > 1) return;
+      var s = spread();
+      if (pair) {
+        if (o.drag) o.drag(s.x - pair.x, s.y - pair.y, 2, e);
+        if (o.pinch && pair.d > 12 && s.d > 12) o.pinch(KT.clamp(s.d / pair.d, 0.5, 2));
+      }
+      pair = s;
+    });
+    function up(e) {
+      delete claimed[e.pointerId];
+      var i = ids.indexOf(e.pointerId); if (i < 0) return;
+      delete pts[e.pointerId]; ids.splice(i, 1);
+      ids.forEach(function (id) { pts[id].live = true; pts[id].dead = false; });  // the finger left behind keeps turning, from where it is
+      pair = spread();
+    }
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('lostpointercapture', up);
+    return { active: function () { return ids.length > 0; }, count: function () { return ids.length; } };
+  };
+
   /* ---------- lifecycle ---------- */
+  KT.mounted = [];                   // every live mount, newest last (debugging and tests)
   KT.mount = function (name, root, opts) {
     var def = KT.sims[name];
     if (!def) throw new Error('KnotTalk: no simulation named "' + name + '"');
@@ -173,15 +271,18 @@
     var onVis = function () { kick(); };
     document.addEventListener('visibilitychange', onVis);
 
-    return {
+    var handle = {
       name: name, def: def, api: api,
       setScene: function (id) { if (api.setScene) api.setScene(id); },
       destroy: function () {
         ro.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', onVis);
         if (raf) cancelAnimationFrame(raf);
         if (api.destroy) api.destroy();
+        var i = KT.mounted.indexOf(handle); if (i >= 0) KT.mounted.splice(i, 1);
       }
     };
+    KT.mounted.push(handle);
+    return handle;
   };
 
   /* ---------- standalone lab shell ---------- */

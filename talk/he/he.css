@@ -152,4 +152,11 @@ main{position:relative;z-index:1}
   .full{padding:4.6rem 1.4rem 6.4rem}
   .he-read b{font-size:1.4rem}
 }
+/* ---------- touch ---------- */
+.dock,.topbar{touch-action:manipulation}                          /* one tap = one click, no double-tap zoom */
+@media (pointer:coarse){
+  .kt-slider input{height:40px}
+  .dots i{position:relative}
+  .dots i:after{content:"";position:absolute;inset:-16px -3px}       /* a finger-sized target around each dot */
+}
 @media (prefers-reduced-motion:reduce){.room i{animation:none}.step{transition:none;transform:none}}

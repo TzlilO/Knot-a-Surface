@@ -256,13 +256,13 @@
 
       /* ---------- interaction ---------- */
       function local(e) { var r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-      function hit(x, y) {
-        var best = null, bd = 26, i, q, d;
+      function hit(x, y, touch) {        // touch: fingertip-sized targets (points are already 52 px across)
+        var best = null, bd = Math.max(26, touch ? KT.HIT : 0), i, q, d;
         for (i = 0; i < st.P.length; i++) { q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; } }
         if (best) return best;
         if (L.bh > 30) {
-          if (st.sc.ticks && y > L.by1 - 6 && y < L.by1 + 30) {
-            bd = 16;
+          if (st.sc.ticks && y > L.by1 - (touch ? 20 : 6) && y < L.by1 + (touch ? 36 : 30)) {
+            bd = touch ? KT.HIT : 16;
             for (i = st.p + 1; i < st.P.length; i++) { d = Math.abs(bx(st.U[i]) - x); if (d < bd) { bd = d; best = { kind: 'knot', i: i }; } }
             if (best) return best;
           }
@@ -280,24 +280,21 @@
         dirty = true;
       }
       svg.addEventListener('pointerdown', function (e) {
-        var q = local(e), d = hit(q[0], q[1]);
+        var q = local(e), d = hit(q[0], q[1], e.pointerType === 'touch');
         if (!d) return;
-        drag = d; st.touched = true;
+        drag = d; d.id = e.pointerId; st.touched = true;
         if (d.kind === 'pt') { st.sel = d.i; slW.set(st.w[d.i]); }
         svg.setPointerCapture(e.pointerId); apply(d, q[0], q[1]); e.preventDefault();
       });
       svg.addEventListener('pointermove', function (e) {
         var q = local(e);
-        if (drag) apply(drag, q[0], q[1]);
+        if (drag) { if (e.pointerId === drag.id) apply(drag, q[0], q[1]); }   // a second finger does not steal the handle
         else svg.style.cursor = hit(q[0], q[1]) ? 'grab' : '';
       });
-      function end() { drag = null; }
+      function end(e) { if (drag && e.pointerId === drag.id) drag = null; }
       svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
       // on touch screens, only claim the gesture when it starts on a handle (else let the page scroll)
-      svg.addEventListener('touchstart', function (e) {
-        var t = e.touches[0], r = svg.getBoundingClientRect();
-        if (hit(t.clientX - r.left, t.clientY - r.top)) e.preventDefault();
-      }, { passive: false });
+      KT.touchGuard(svg, { hit: function (x, y) { var q = local({ clientX: x, clientY: y }); return !!hit(q[0], q[1], true); } });
 
       /* ---------- scenes ---------- */
       function setScene(id) {

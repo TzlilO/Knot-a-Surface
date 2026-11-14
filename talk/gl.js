@@ -21,14 +21,20 @@
     return { renderer: r, canvas: r.domElement, resize: resize };
   };
 
-  /* Minimal orbit camera. Drag = rotate. Zoom only by pinch / ctrl+wheel when embedded so the
-     deck keeps the scroll wheel; plain wheel zooms on the standalone page.
-     pick(e) may return true to claim a pointerdown for the module (e.g. a control-point drag). */
+  /* Minimal orbit camera, on the kit's shared gesture handling (KnotTalk.gestures):
+       mouse: drag = rotate; wheel zooms on the standalone page, ctrl+wheel (= trackpad pinch) when
+              embedded, so the deck keeps the scroll wheel.
+       touch: two-finger pinch = zoom, two-finger drag = rotate (yaw + pitch). One finger rotates in
+              both axes on the standalone page; embedded it turns horizontally only, so a vertical
+              swipe still scrolls the deck.
+     pick(e) may return true to claim a pointerdown for the module (e.g. a control-point drag);
+     hit(x, y) says whether a touch at client (x, y) would be picked, so it does not scroll the page;
+     release(id) drops that drag when a second finger turns the touch into a pinch. */
   gl.orbit = function (camera, dom, o) {
     o = o || {};
     var cur = { th: o.theta || 0.7, ph: o.phi || 1.05, r: o.radius || 6, tx: 0, ty: 0, tz: 0 };
     if (o.target) { cur.tx = o.target[0]; cur.ty = o.target[1]; cur.tz = o.target[2]; }
-    var goal = Object.assign({}, cur), down = null, api;
+    var goal = Object.assign({}, cur), api;
     var lim = { r0: o.minRadius || 1.2, r1: o.maxRadius || 14 };
     function place() {
       var s = Math.sin(cur.ph), c = Math.cos(cur.ph);
@@ -36,19 +42,16 @@
       camera.lookAt(cur.tx, cur.ty, cur.tz);
       camera.updateMatrixWorld();
     }
-    dom.addEventListener('pointerdown', function (e) {
-      if (o.pick && o.pick(e)) return;
-      down = { x: e.clientX, y: e.clientY, id: e.pointerId }; dom.setPointerCapture(e.pointerId);
-      api.touched = true;
+    var gs = KT.gestures(dom, {
+      embed: o.embed, claim: o.pick, hit: o.hit, release: o.release,
+      start: function (e) { if (e.pointerType !== 'touch') api.touched = true; },
+      drag: function (dx, dy) {
+        goal.th -= dx * 0.006;
+        goal.ph = KT.clamp(goal.ph - dy * 0.005, 0.12, 1.5);
+        api.touched = true;
+      },
+      pinch: function (k) { goal.r = KT.clamp(goal.r / k, lim.r0, lim.r1); api.touched = true; }
     });
-    dom.addEventListener('pointermove', function (e) {
-      if (!down || e.pointerId !== down.id) return;
-      goal.th -= (e.clientX - down.x) * 0.006;
-      goal.ph = KT.clamp(goal.ph - (e.clientY - down.y) * 0.005, 0.12, 1.5);
-      down.x = e.clientX; down.y = e.clientY;
-    });
-    function up(e) { if (down && e.pointerId === down.id) down = null; }
-    dom.addEventListener('pointerup', up); dom.addEventListener('pointercancel', up);
     dom.addEventListener('wheel', function (e) {
       if (o.embed && !e.ctrlKey) return;           // the deck owns the wheel
       e.preventDefault();
@@ -67,10 +70,27 @@
         return moving;
       },
       to: function (g, snap) { Object.assign(goal, g); if (snap) Object.assign(cur, goal); place(); },
-      dragging: function () { return !!down; }
+      dragging: gs.active
     };
     place();
     return api;
+  };
+
+  /* index of the point (xyz triples in P, the first n) whose screen image is nearest to client
+     (x, y) within px CSS pixels, or -1. Touch picking: a fingertip needs a target far larger than
+     a control point's dot, and a screen-space radius stays the same size at any zoom. */
+  var _w = null;
+  gl.nearest = function (camera, dom, P, n, x, y, px) {
+    _w = _w || new T.Vector3();
+    var r = dom.getBoundingClientRect(), best = -1, bd = px * px, i, sx, sy, d;
+    for (i = 0; i < n; i++) {
+      _w.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).project(camera);
+      if (_w.z > 1 || _w.z < -1) continue;
+      sx = r.left + (_w.x * 0.5 + 0.5) * r.width; sy = r.top + (-_w.y * 0.5 + 0.5) * r.height;
+      d = (sx - x) * (sx - x) + (sy - y) * (sy - y);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
   };
 
   /* ---------- derived Gaussians ("planoids") as instanced, tangent-aligned quads ----------

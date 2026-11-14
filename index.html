@@ -143,6 +143,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   .talk{grid-template-columns:minmax(0,1fr);padding:1.4rem;gap:1.4rem}
   .archive{grid-template-columns:minmax(0,1fr)}
 }
+/* touch: one tap = one click, a slider drag never scrolls, finger-sized controls on coarse pointers */
+.bar,.strip,.cta{touch-action:manipulation}
+.strip input[type=range]{touch-action:none}
+@media (pointer:coarse){
+  .chips button{min-height:40px}
+  .bar nav a{min-height:40px;display:inline-flex;align-items:center}
+  .strip input[type=range]{height:40px}
+  .strip input::-webkit-slider-thumb{width:22px;height:22px;margin-top:-9.5px}
+}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn,.lab-card{transition:none}}
 </style>
 </head>

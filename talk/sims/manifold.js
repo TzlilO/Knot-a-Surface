@@ -77,7 +77,12 @@
       var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
       var atlas = ui.el('div', 'kt-atlas'); root.appendChild(atlas);
 
-      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.4, maxRadius: 46, pick: pickPoint });
+      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.4, maxRadius: 46, pick: pickPoint,
+        hit: function (x, y) { return findPoint(x, y, true) >= 0; },
+        release: function () {
+          if (!dragCP) return;
+          dragCP.c.patch.P.set(dragCP.was, dragCP.i * 3); coarse(dragCP.c); updateNets(); need = true; dragCP = null;
+        } });
 
       /* ---------- load a scene: charts, nets, atlas tiles, capture rig ---------- */
       function loadScene(key) {
@@ -281,21 +286,27 @@
         var r = R.canvas.getBoundingClientRect();
         ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)); ray.setFromCamera(ndc, cam);
       }
-      function pickPoint(e) {
-        if (!st.nets) return false;
-        setNdc(e); ray.params.Points.threshold = orbit.cur.r * 0.012;
+      /* the control point under client (x, y), as an index into ptPos: the ray's point threshold for a
+         mouse, a fingertip-sized screen radius for touch */
+      function findPoint(x, y, touch) {
+        if (!st.nets || !pts) return -1;
+        if (touch) return G.nearest(cam, R.canvas, ptPos, totalCP, x, y, KT.HIT);
+        setNdc({ clientX: x, clientY: y }); ray.params.Points.threshold = orbit.cur.r * 0.012;
         var h = ray.intersectObject(pts, false)[0];
-        if (!h) return false;
-        var gi = h.index, c = null;
+        return h ? h.index : -1;
+      }
+      function pickPoint(e) {
+        var gi = findPoint(e.clientX, e.clientY, e.pointerType === 'touch'), c = null;
+        if (gi < 0) return false;
         charts.forEach(function (k) { if (gi >= k.ptOff && gi < k.ptOff + k.patch.nu * k.patch.nv) c = k; });
-        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId }; st.touchedEdit = true;
-        var o = dragCP.i * 3;
+        var o = (gi - c.ptOff) * 3;
+        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId, was: c.patch.P.slice(o, o + 3) }; st.touchedEdit = true;
         plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), hitP.set(c.patch.P[o], c.patch.P[o + 1], c.patch.P[o + 2]));
         R.canvas.setPointerCapture(e.pointerId);
         return true;
       }
       R.canvas.addEventListener('pointermove', function (e) {
-        if (!dragCP) return;
+        if (!dragCP || e.pointerId !== dragCP.id) return;
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
           var o = dragCP.i * 3, P = dragCP.c.patch.P;
@@ -384,7 +395,7 @@
       if (env.opts.bare) root.classList.add('kt-bare');
       setScene(env.opts.scene || 'scene');
       return {
-        setScene: setScene,
+        setScene: setScene, orbit: orbit, camera: cam, points: function () { return ptPos; },   // for tests
         /* for host pages: switch the scene or the budget without the module's own panel */
         load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },

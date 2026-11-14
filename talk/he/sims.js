@@ -36,17 +36,14 @@
   }
   var LIGHT = (function () { var l = [-0.42, 0.74, 0.52], n = Math.hypot(l[0], l[1], l[2]); return [l[0] / n, l[1] / n, l[2] / n]; })();
   function shade(n) { return 0.8 + 0.28 * Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]); }
-  /* drag to turn, shared by the 3D-looking stages */
-  function turn(cv, st, onTouch) {
-    var down = null;
-    cv.addEventListener('pointerdown', function (e) { down = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); st.touched = true; if (onTouch) onTouch(); });
-    cv.addEventListener('pointermove', function (e) {
-      if (!down) return;
-      st.yaw += (e.clientX - down[0]) * 0.008; st.pitch = KT.clamp(st.pitch + (e.clientY - down[1]) * 0.006, 0.15, 1.4);
-      down = [e.clientX, e.clientY];
-    });
-    function up() { down = null; }
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  /* turn the object, on the kit's shared gestures: one finger / mouse drag turns it (embedded, a
+     finger turns it sideways only and a vertical swipe scrolls the deck); two fingers turn it in both
+     axes and a pinch scales it (st.zoom) */
+  function turn(cv, st, embed) {
+    KT.gestures(cv, { embed: embed,
+      start: function (e) { if (e.pointerType !== 'touch') st.touched = true; },
+      drag: function (dx, dy) { st.yaw += dx * 0.008; st.pitch = KT.clamp(st.pitch + dy * 0.006, 0.15, 1.4); st.touched = true; },
+      pinch: function (k) { st.zoom = KT.clamp(st.zoom * k, 0.6, 1.8); st.touched = true; } });
     cv.style.cursor = 'grab';
   }
 
@@ -56,13 +53,13 @@
     scenes: [{ id: 'points', label: 'נקודות' }, { id: 'mesh', label: 'משולשים' }, { id: 'voxels', label: 'קוביות' }],
     create: function (env) {
       var ui = env.ui, root = env.root, C = ui.canvas(root), g = C.ctx, W = 1, H = 1;
-      var st = { mode: 'points', detail: 0.4, yaw: 0.6, pitch: 0.72, t: 0, touched: false, sweep: false, hero: false, cyc: 0 };
+      var st = { mode: 'points', detail: 0.4, yaw: 0.6, pitch: 0.72, zoom: 1, t: 0, touched: false, sweep: false, hero: false, cyc: 0 };
       var out = read(root);
       var panel = ui.panel(root, { pos: 'bottom' });
       var seg = ui.seg(panel, { value: 'points', options: [{ v: 'points', label: 'נקודות' }, { v: 'mesh', label: 'משולשים' }, { v: 'voxels', label: 'קוביות' }],
         onChange: function (v) { st.mode = v; st.sweep = false; } });
       var sl = ui.slider(panel, { label: 'פירוט', min: 0, max: 100, value: 40, fmt: function () { return ''; }, onInput: function (v) { st.detail = v / 100; st.sweep = false; } });
-      turn(C.cv, st);
+      turn(C.cv, st, env.embed);
 
       // a fixed, well-spread pool of surface samples; "more points" just takes more of it
       var POOL = 3600, pts = [];
@@ -76,7 +73,7 @@
       })();
 
       function draw() {
-        var S = Math.min(W, H) * (st.hero ? 0.3 : 0.245), cm = cam(st.yaw, st.pitch, W / 2, H * 0.44, S), d = st.detail, i, j, q;
+        var S = Math.min(W, H) * (st.hero ? 0.3 : 0.245) * st.zoom, cm = cam(st.yaw, st.pitch, W / 2, H * 0.44, S), d = st.detail, i, j, q;
         g.clearRect(0, 0, W, H);
         // a soft contact shadow keeps the object on the "table"
         var sh = g.createRadialGradient(W / 2, H * 0.44 + S * 0.95, 0, W / 2, H * 0.44 + S * 0.95, S * 1.7);
@@ -132,7 +129,7 @@
       }
 
       function setScene(id) {
-        st.hero = id === 'hero'; st.mode = st.hero ? 'points' : id; st.touched = false; st.t = 0; st.cyc = 0;
+        st.hero = id === 'hero'; st.mode = st.hero ? 'points' : id; st.touched = false; st.t = 0; st.cyc = 0; st.zoom = 1;
         st.detail = id === 'points' ? 0.5 : 0.3; st.sweep = id === 'mesh' || id === 'voxels';
         seg.set(st.mode); sl.set(st.detail * 100);
         panel.style.display = root.querySelector('.he-read').style.display = st.hero ? 'none' : '';
@@ -145,7 +142,7 @@
         draw();
       });
       setScene(env.opts.scene || 'points');
-      return { setScene: setScene, resize: function (w, h) { W = w; H = h; C.fit(); } };
+      return { setScene: setScene, state: st, resize: function (w, h) { W = w; H = h; C.fit(); } };
     }
   });
 
@@ -173,12 +170,28 @@
         }
         fg.putImageData(im, 0, 0);
       }
-      C.cv.style.touchAction = 'none';
-      function drag(e) { var b = C.cv.getBoundingClientRect(); st.p = [KT.clamp((e.clientX - b.left - cx) / S, -2.3, 2.3), KT.clamp(-(e.clientY - b.top - cy) / S, -1.6, 1.6)]; st.touched = true; }
-      var held = false;
-      C.cv.addEventListener('pointerdown', function (e) { if (st.scene !== 'probe') return; held = true; C.cv.setPointerCapture(e.pointerId); drag(e); });
-      C.cv.addEventListener('pointermove', function (e) { if (held) drag(e); });
-      C.cv.addEventListener('pointerup', function () { held = false; }); C.cv.addEventListener('pointercancel', function () { held = false; });
+      /* the probe: a mouse drags it from anywhere. A finger grabs it only on the probe itself (the rest
+         of the stage scrolls the deck); a tap elsewhere puts it there. */
+      var held = null, tap = null;
+      function drag(e) { var b = C.cv.getBoundingClientRect(); st.p = [KT.clamp((e.clientX - held[0] - b.left - cx) / S, -2.3, 2.3), KT.clamp(-(e.clientY - held[1] - b.top - cy) / S, -1.6, 1.6)]; st.touched = true; }
+      function onProbe(x, y) {
+        if (st.scene !== 'probe') return null;
+        var b = C.cv.getBoundingClientRect(), dx = x - b.left - X(st.p[0]), dy = y - b.top - Y(st.p[1]);
+        return Math.hypot(dx, dy) < KT.HIT ? [dx, dy] : null;
+      }
+      KT.touchGuard(C.cv, { hit: function (x, y) { return !!onProbe(x, y); } });
+      C.cv.addEventListener('pointerdown', function (e) {
+        if (st.scene !== 'probe') return;
+        var off = onProbe(e.clientX, e.clientY);
+        if (e.pointerType === 'touch' && !off) { tap = [e.clientX, e.clientY, e.pointerId]; return; }
+        held = off || [0, 0]; held.id = e.pointerId; C.cv.setPointerCapture(e.pointerId); drag(e);
+      });
+      C.cv.addEventListener('pointermove', function (e) { if (held && e.pointerId === held.id) drag(e); });
+      C.cv.addEventListener('pointerup', function (e) {
+        if (tap && tap[2] === e.pointerId && Math.hypot(e.clientX - tap[0], e.clientY - tap[1]) < 10) { held = [0, 0]; drag(e); }
+        held = null; tap = null;
+      });
+      C.cv.addEventListener('pointercancel', function () { held = null; tap = null; });
 
       function draw() {
         g.clearRect(0, 0, W, H);
@@ -236,7 +249,7 @@
         document.head.appendChild(css);
       }
       setScene(env.opts.scene || 'probe');
-      return { setScene: setScene, resize: function (w, h) { W = w; H = h; C.fit(); S = Math.min(W / 5.6, H / 4.2); cx = W * 0.52; cy = H * 0.47; bake(); } };
+      return { setScene: setScene, state: st, resize: function (w, h) { W = w; H = h; C.fit(); S = Math.min(W / 5.6, H / 4.2); cx = W * 0.52; cy = H * 0.47; bake(); } };
     }
   });
 

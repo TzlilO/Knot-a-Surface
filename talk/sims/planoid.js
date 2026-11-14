@@ -114,7 +114,8 @@
       rdP.set((NU * NV * PER_CP).toLocaleString('en-US')); rdZ.set('0');
 
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, theta: 0.72, phi: 1.0, radius: 7.2, target: [0, 0.05, 0],
-        minRadius: 3, maxRadius: 20, pick: pickBall });
+        minRadius: 3, maxRadius: 20, pick: pickBall, hit: function (x, y) { return findBall(x, y, true) >= 0; },
+        release: function () { if (!dragCP) return; patch.P.set(dragCP.was, dragCP.i * 3); base.set(patch.P); surfDirty = fieldDirty = true; dragCP = null; } });
       var surfDirty = true, fieldDirty = true, uvDirty = true;
 
       /* ---------- drag a control point ---------- */
@@ -124,18 +125,26 @@
         ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1));
         ray.setFromCamera(ndc, cam);
       }
-      function pickBall(e) {
-        if (!st.show.net) return false;
-        setNdc(e);
+      /* the control point under client (x, y): the exact sphere for a mouse, a fingertip-sized
+         screen radius for touch */
+      function findBall(x, y, touch) {
+        if (!st.show.net) return -1;
+        if (touch) return G.nearest(cam, R.canvas, patch.P, NU * NV, x, y, KT.HIT);
+        setNdc({ clientX: x, clientY: y });
         var h = ray.intersectObjects(balls, false)[0];
-        if (!h) return false;
-        dragCP = { i: h.object.userData.i, id: e.pointerId };
-        plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), h.object.position);
+        return h ? h.object.userData.i : -1;
+      }
+      function pickBall(e) {
+        var i = findBall(e.clientX, e.clientY, e.pointerType === 'touch');
+        if (i < 0) return false;
+        dragCP = { i: i, id: e.pointerId, was: patch.P.slice(i * 3, i * 3 + 3) };
+        plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), balls[i].position);
         R.canvas.setPointerCapture(e.pointerId); st.wigI = -1; st.sc = Object.assign({}, st.sc, { wig: 0 });
         return true;
       }
       R.canvas.addEventListener('pointermove', function (e) {
-        if (!dragCP) { if (st.show.net) { setNdc(e); R.canvas.style.cursor = ray.intersectObjects(balls, false)[0] ? 'grab' : ''; } return; }
+        if (!dragCP) { if (st.show.net && e.pointerType === 'mouse') { setNdc(e); R.canvas.style.cursor = ray.intersectObjects(balls, false)[0] ? 'grab' : ''; } return; }
+        if (e.pointerId !== dragCP.id) return;
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
           var o = dragCP.i * 3;
@@ -346,7 +355,7 @@
 
       setScene(env.opts.scene || 'net');
       return {
-        setScene: setScene,
+        setScene: setScene, orbit: orbit, camera: cam, patch: patch,      // camera + net: for tests and host pages
         resize: function (w, h) {
           W = w; H = h; R.resize(w, h); uvDirty = true;
           fitR = Math.max(1, 1.32 / (w / h));               // back off on narrow stages so the patch stays in frame
