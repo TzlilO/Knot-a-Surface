@@ -9,7 +9,8 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 
 | URL | Page |
 | --- | --- |
-| `/` | Landing page — hero, embedded teaser, simulator cards, method, **measured results** |
+| `/` | Landing page — a live spline-chart scene (barn / truck / bust / garden), the idea in three moves, the talk and its lab modules |
+| `/project-page.html` | Previous landing page — hero, embedded teaser, simulator cards, method, **measured results** |
 | `/terrain.html` | Sim v1 — Swarm Resolution-Knob simulator (drone swarm, fixed splat budget, commander toolkit) |
 | `/terrain-atlas.html` | Sim v2 — UV-atlas editing (segment, paint, sculpt in the chart) |
 | `/knot.html` | Sim v3 — Knot Chart (8 parametric surfaces, control cage, geometry layers) |
@@ -25,10 +26,12 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 
 ## Developing
 
-- **Source of truth for the pages**: the `*.dc.html` design files. The deployed pages
+- **The landing page** (`index.html`) is hand-written and is its own source of truth; it mounts the
+  talk's `manifold` module as a chrome-free hero.
+- **Source of truth for the other pages**: the `*.dc.html` design files. The deployed pages
   are flattened from them by `python3 deploy/flatten.py` (link rewrites only — no
   bundling; everything sibling-loads `support.js`, `_ds/` tokens and the `src/` cores).
-  Never edit the flattened outputs (`index.html`, `terrain.html`, …) by hand.
+  Never edit the flattened outputs (`project-page.html`, `terrain.html`, …) by hand.
 - **Simulator cores**: `src/sim_core.js` (swarm sim), `src/sim_v4_core.js` (v4 bench),
   `src/arena_core.js`. `python3 build.py` injects sim_core/sim_style into `deck.html`
   and arena_core/arena_style into `arena.html` (the only remaining build step; the site

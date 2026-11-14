@@ -10,8 +10,12 @@ The site root is a landing page with method + measured results; three more sims 
 knot chart, surface-prior bench) ship as sibling pages.
 
 ## Build & deploy
-- Page source of truth: the `*.dc.html` design files. `python3 deploy/flatten.py` rewrites
-  links and emits the deployed pages (`index.html`, `terrain.html`, `knot.html`,
+- The site root `index.html` is the hand-written landing page (its own source of truth — NOT a
+  flatten output): a chrome-free `manifold` hero (`KnotTalk.mount('manifold', el, {bare:true,
+  scene:'hero', onStats})`) plus links to the talk, its lab modules and the older pages.
+- Other pages' source of truth: the `*.dc.html` design files. `python3 deploy/flatten.py` rewrites
+  links and emits the deployed pages (`project-page.html` = the previous landing page with the
+  measured-results table, `terrain.html`, `knot.html`,
   `terrain-atlas.html`, `surface-prior.html`, `teaser-*.html`, `review/index.html`) —
   never edit those outputs directly. They sibling-load `support.js`, `_ds/` tokens and
   the `src/` cores, so there is no bundle to keep fresh.

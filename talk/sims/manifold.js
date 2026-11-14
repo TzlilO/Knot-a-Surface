@@ -23,7 +23,9 @@
     garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, cap: 'an object inside an unbounded surround' },
     edit:   { scn: 'bust', view: 'splats', cam: 'a', breathe: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
-    studio: { scn: 'studio', view: 'splats', cam: 'wide', cap: 'the abstract still life' }
+    studio: { scn: 'studio', view: 'splats', cam: 'wide', cap: 'the abstract still life' },
+    /* chrome-free, for pages that embed the scene as a backdrop (mount with { bare: true }) */
+    hero:   { scn: 'barn', view: 'splats', tour: 1, cap: '' }
   };
 
   KT.register('manifold', {
@@ -235,6 +237,7 @@
         });
         field.setCount(n); field.commit(n);
         rdG.set(n.toLocaleString('en-US'));
+        if (env.opts.onStats) env.opts.onStats({ scene: st.scn, drawn: n, controlPoints: totalCP, params: totalCP * PER_CP, charts: charts.length });
       }
       function drawTile(c) {
         var s = c.cv.fit(), g = c.cv.ctx, w = s.w, h = s.h, i;
@@ -365,6 +368,8 @@
           '.kt-sim-manifold .kt-tile-s{font:500 10px/1 var(--f-mono);color:var(--mute);margin-top:3px;white-space:nowrap}' +
           '.kt-sim-manifold .kt-caption{line-height:1.6}.kt-sim-manifold.kt-embed .kt-hint{display:none}' +
           '.kt-sim-manifold.kt-compact .kt-atlas{display:none}' +
+          '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
+          '.kt-sim-manifold.kt-bare .kt-hint,.kt-sim-manifold.kt-bare .kt-ab,.kt-sim-manifold.kt-bare .kt-gear{display:none!important}' +
           '.kt-sim-manifold .kt-panel .kt-seg:first-of-type .kt-seg-box{margin-left:0;width:100%}' +
           '.kt-sim-manifold .kt-panel .kt-seg:first-of-type .kt-seg-btn{flex:1;padding:7px 4px}' +
           '.kt-sim-manifold .kt-ab{position:absolute;z-index:4;left:50%;top:64px;transform:translateX(-50%);white-space:nowrap;' +
@@ -376,9 +381,13 @@
         document.head.appendChild(css);
       }
 
+      if (env.opts.bare) root.classList.add('kt-bare');
       setScene(env.opts.scene || 'scene');
       return {
         setScene: setScene,
+        /* for host pages: switch the scene or the budget without the module's own panel */
+        load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
+        setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },
         resize: function (w, h) {
           R.resize(w, h); need = true;
           var f = KT.clamp(1.4 / (w / h), 1, 1.7);
