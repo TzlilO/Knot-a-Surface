@@ -9,15 +9,17 @@
 
   /* ---------- simulators ---------- */
   function mount(sec) {
-    if (sec._sim) return;
+    if (sec._sim || sec._failed) return;
     var el = sec.querySelector('.sim-mount'), name = sec.dataset.sim;
     if (!el || !KT.sims[name]) return;
+    try { build(sec, el, name); } catch (e) { sec._failed = true; }   // e.g. no WebGL: the step still reads
+  }
+  function build(sec, el, name) {
     if (name === 'manifold') {                       // the 3D scene: the finale module without its own chrome
       var num = sec.querySelector('.he-read'), sl = sec.querySelector('input[type=range]');
       if (Math.min(window.innerWidth, window.innerHeight) < 560) sl.value = 24000;
-      sec._sim = KT.mount('manifold', el, { embed: true, bare: true, scene: 'hero', clear: 'transparent', budget: +sl.value,
+      sec._sim = KT.mount('manifold', el, { embed: true, bare: true, scene: 'hero', scn: 'breakfast', clear: 'transparent', budget: +sl.value,
         onStats: function (s) { num.innerHTML = '<b>' + Math.round(s.drawn).toLocaleString('he-IL') + '</b>גאוסיאנים על המסך'; } });
-      sec._sim.api.load('breakfast');
       sl.addEventListener('input', function () { sec._sim.api.setBudget(+sl.value); });
       sl.addEventListener('pointerup', function () { sl.blur(); });
       return;
@@ -65,8 +67,9 @@
     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }
   function step(d) { var i = cur ? cur._i : 0; go(nav[KT.clamp(i + d, 0, nav.length - 1)]); }
-  prev.addEventListener('click', function () { step(-1); });
-  next.addEventListener('click', function () { step(1); });
+  // a dock button clicked with the pointer must not keep focus, or the next space would press it again
+  prev.addEventListener('click', function (e) { if (e.detail > 0) prev.blur(); step(-1); });
+  next.addEventListener('click', function (e) { if (e.detail > 0) next.blur(); step(1); });
   document.addEventListener('keydown', function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     var t = e.target && e.target.tagName;

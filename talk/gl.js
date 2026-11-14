@@ -82,14 +82,19 @@
   var _w = null;
   gl.nearest = function (camera, dom, P, n, x, y, px) {
     _w = _w || new T.Vector3();
-    var r = dom.getBoundingClientRect(), best = -1, bd = px * px, i, sx, sy, d;
+    var r = dom.getBoundingClientRect(), best = -1, bd = px * px, second = 1e12, i, sx, sy, d;
     for (i = 0; i < n; i++) {
       _w.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).project(camera);
       if (_w.z > 1 || _w.z < -1) continue;
       sx = r.left + (_w.x * 0.5 + 0.5) * r.width; sy = r.top + (-_w.y * 0.5 + 0.5) * r.height;
       d = (sx - x) * (sx - x) + (sy - y) * (sy - y);
-      if (d < bd) { bd = d; best = i; }
+      if (d < bd) { second = bd < px * px ? bd : second; bd = d; best = i; }
+      else if (d < second) second = d;
     }
+    // A fingertip cannot single out one point of a dense net (the barn has 11,188): when a second
+    // point is nearly as close, nothing is grabbed, so the touch scrolls or turns the stage instead.
+    // Zoom in until the points are a finger apart and they become grabbable.
+    if (best >= 0 && Math.sqrt(second) < Math.max(px * 0.6, 1.6 * Math.sqrt(bd))) return -1;
     return best;
   };
 

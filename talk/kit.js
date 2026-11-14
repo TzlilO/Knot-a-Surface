@@ -172,6 +172,9 @@
         pts[id] = { x: claimed[id].x, y: claimed[id].y, touch: true, ax: 0, ay: 0, live: true, dead: false };
         ids.push(+id); delete claimed[id];
       }
+      // a pointer whose release never arrived (context menu, lost capture) must not linger
+      ids = ids.filter(function (k) { return k !== e.pointerId && pts[k] && (touch || pts[k].touch); });
+      for (id in pts) if (ids.indexOf(+id) < 0) delete pts[id];
       pts[e.pointerId] = { x: e.clientX, y: e.clientY, touch: touch, ax: 0, ay: 0, live: !touch, dead: false };
       ids.push(e.pointerId);
       try { el.setPointerCapture(e.pointerId); } catch (x) {}
@@ -210,11 +213,20 @@
       delete claimed[e.pointerId];
       var i = ids.indexOf(e.pointerId); if (i < 0) return;
       delete pts[e.pointerId]; ids.splice(i, 1);
+      ids = ids.filter(function (id) { return !!pts[id]; });
       ids.forEach(function (id) { pts[id].live = true; pts[id].dead = false; });  // the finger left behind keeps turning, from where it is
       pair = spread();
     }
     el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
     el.addEventListener('lostpointercapture', up);
+    // desktop Safari reports a trackpad pinch as gesture events (no pointers down): zoom the stage with it.
+    // On iOS the same events accompany a two-finger touch, which the pointer path above already handles.
+    var gscale = 1;
+    el.addEventListener('gesturestart', function () { gscale = 1; });
+    el.addEventListener('gesturechange', function (e) {
+      if (e.cancelable) e.preventDefault();
+      if (!ids.length && o.pinch && e.scale > 0) { o.pinch(KT.clamp(e.scale / gscale, 0.5, 2)); gscale = e.scale; }
+    });
     return { active: function () { return ids.length > 0; }, count: function () { return ids.length; } };
   };
 

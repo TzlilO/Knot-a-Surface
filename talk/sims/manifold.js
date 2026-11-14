@@ -300,7 +300,7 @@
         if (gi < 0) return false;
         charts.forEach(function (k) { if (gi >= k.ptOff && gi < k.ptOff + k.patch.nu * k.patch.nv) c = k; });
         var o = (gi - c.ptOff) * 3;
-        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId, was: c.patch.P.slice(o, o + 3) }; st.touchedEdit = true;
+        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId, was: c.patch.P.slice(o, o + 3) };
         plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), hitP.set(c.patch.P[o], c.patch.P[o + 1], c.patch.P[o + 2]));
         R.canvas.setPointerCapture(e.pointerId);
         return true;
@@ -310,6 +310,7 @@
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
           var o = dragCP.i * 3, P = dragCP.c.patch.P;
+          st.touchedEdit = true;           // only a drag that actually moves a point stops the scene's own edit
           P[o] = hitP.x; P[o + 1] = hitP.y; P[o + 2] = hitP.z;
           coarse(dragCP.c); updateNets(); need = true;
         }
@@ -328,6 +329,7 @@
       }
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
+        if (id === 'hero' && env.opts.scn && KT.scenes[env.opts.scn]) sc = Object.assign({}, sc, { scn: env.opts.scn });
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
         st.view = sc.view; segV.set(sc.view); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();

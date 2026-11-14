@@ -183,15 +183,21 @@
       C.cv.addEventListener('pointerdown', function (e) {
         if (st.scene !== 'probe') return;
         var off = onProbe(e.clientX, e.clientY);
+        if (held) return;                  // the probe is already in someone's fingers
         if (e.pointerType === 'touch' && !off) { tap = [e.clientX, e.clientY, e.pointerId]; return; }
         held = off || [0, 0]; held.id = e.pointerId; C.cv.setPointerCapture(e.pointerId); drag(e);
       });
       C.cv.addEventListener('pointermove', function (e) { if (held && e.pointerId === held.id) drag(e); });
       C.cv.addEventListener('pointerup', function (e) {
-        if (tap && tap[2] === e.pointerId && Math.hypot(e.clientX - tap[0], e.clientY - tap[1]) < 10) { held = [0, 0]; drag(e); }
-        held = null; tap = null;
+        if (tap && tap[2] === e.pointerId) {
+          if (!held && Math.hypot(e.clientX - tap[0], e.clientY - tap[1]) < 10) { held = [0, 0]; drag(e); held = null; }
+          tap = null;
+        } else if (held && held.id === e.pointerId) held = null;
       });
-      C.cv.addEventListener('pointercancel', function () { held = null; tap = null; });
+      C.cv.addEventListener('pointercancel', function (e) {
+        if (tap && tap[2] === e.pointerId) tap = null;
+        if (held && held.id === e.pointerId) held = null;
+      });
 
       function draw() {
         g.clearRect(0, 0, W, H);

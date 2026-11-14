@@ -115,7 +115,7 @@
 
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, theta: 0.72, phi: 1.0, radius: 7.2, target: [0, 0.05, 0],
         minRadius: 3, maxRadius: 20, pick: pickBall, hit: function (x, y) { return findBall(x, y, true) >= 0; },
-        release: function () { if (!dragCP) return; patch.P.set(dragCP.was, dragCP.i * 3); base.set(patch.P); surfDirty = fieldDirty = true; dragCP = null; } });
+        release: function () { if (!dragCP) return; if (dragCP.moved) { patch.P.set(dragCP.was, dragCP.i * 3); base.set(patch.P); surfDirty = fieldDirty = true; } dragCP = null; } });
       var surfDirty = true, fieldDirty = true, uvDirty = true;
 
       /* ---------- drag a control point ---------- */
@@ -139,7 +139,7 @@
         if (i < 0) return false;
         dragCP = { i: i, id: e.pointerId, was: patch.P.slice(i * 3, i * 3 + 3) };
         plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), balls[i].position);
-        R.canvas.setPointerCapture(e.pointerId); st.wigI = -1; st.sc = Object.assign({}, st.sc, { wig: 0 });
+        R.canvas.setPointerCapture(e.pointerId);
         return true;
       }
       R.canvas.addEventListener('pointermove', function (e) {
@@ -148,6 +148,11 @@
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
           var o = dragCP.i * 3;
+          if (!dragCP.moved) {             // a real drag begins: the idle wiggle stops, and its point goes home
+            dragCP.moved = true;
+            if (st.wigI >= 0 && st.wigI !== dragCP.i) patch.P.set(base.subarray(st.wigI * 3, st.wigI * 3 + 3), st.wigI * 3);
+            st.wigI = -1; st.sc = Object.assign({}, st.sc, { wig: 0 });
+          }
           patch.P[o] = KT.clamp(hitP.x, -3, 3); patch.P[o + 1] = KT.clamp(hitP.y, -1.1, 2.4); patch.P[o + 2] = KT.clamp(hitP.z, -3, 3);
           base.set(patch.P); surfDirty = fieldDirty = true;
         }

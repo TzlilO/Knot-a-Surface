@@ -256,8 +256,8 @@
 
       /* ---------- interaction ---------- */
       function local(e) { var r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-      function hit(x, y, touch) {        // touch: fingertip-sized targets (points are already 52 px across)
-        var best = null, bd = Math.max(26, touch ? KT.HIT : 0), i, q, d;
+      function hit(x, y, touch) {        // touch widens the knot targets; points are already 52 px across
+        var best = null, bd = 26, i, q, d;
         for (i = 0; i < st.P.length; i++) { q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; } }
         if (best) return best;
         if (L.bh > 30) {
@@ -280,6 +280,7 @@
         dirty = true;
       }
       svg.addEventListener('pointerdown', function (e) {
+        if (drag) return;                  // one drag at a time: a second finger does not start another
         var q = local(e), d = hit(q[0], q[1], e.pointerType === 'touch');
         if (!d) return;
         drag = d; d.id = e.pointerId; st.touched = true;
