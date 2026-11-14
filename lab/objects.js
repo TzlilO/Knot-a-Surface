@@ -3,7 +3,7 @@
    points, PURE ALBEDO in the control features (one sRGB colour per control point; no baked light of
    any kind: the lab renderer adds shadows, ambient occlusion and reflections itself).
      tea   — the Utah teapot rebuilt from Newell's Bezier patches, with a cup and saucer on a cloth
-     knot  — a (2,3) torus-knot tube with a twisting rounded-triangle section, on a stone plinth
+     knot  — a (2,3) torus-knot bar with a twisting rounded-triangle section, on a stone plinth
      still — fluted vase, pear and two apples on a plinth half covered by a draped cloth
    A chart is what chart() in talk/scenes.js builds, plus `mat: {rough, metal}` and, on the ground
    only, `lock: true`. Two things differ from talk/scenes.js on purpose: fn is sampled at the Greville
@@ -15,7 +15,8 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, TAU = 6.283185307, PI = TAU / 2;
-  var HEX = ['#4db6ac', '#f06292', '#9ccc65', '#7986cb', '#bcaaa4', '#78909c', '#a5d6a7', '#b0bec5'];
+  /* chart identity colours, as in talk/scenes.js (none of the talk's semantic hues), two more so nine charts stay distinct */
+  var HEX = ['#4db6ac', '#f06292', '#9ccc65', '#7986cb', '#bcaaa4', '#78909c', '#a5d6a7', '#b0bec5', '#dce775', '#a1887f'];
   var PAPER = [0.93, 0.92, 0.89];
 
   /* ---------- small procedural toolbox (as in talk/scenes.js) ---------- */
@@ -113,6 +114,8 @@
     f.len = len[M];
     return f;
   }
+  /* the parameter at which a profile is widest (k = 0) or highest (k = 1): where a shell turns from outside to inside */
+  function peak(pf, k) { var best = 0, i, t; for (i = 0; i <= 400; i++) { t = i / 400; if (pf(t)[k] > pf(best)[k]) best = t; } return best; }
   /* monotone piecewise-linear map of [0,1] from segments [[length, share of the control points], ...] */
   function warp(segs, x0) {
     var N = 0, L = 0, ks = [0], xs = [x0 || 0], i;
@@ -265,11 +268,10 @@
         return [p[0], p[1], p[2], c[0], c[1], c[2]];
       });
     }
-    tube('spout', 16, 0.72, 14, 18, function (s, t) { return t > 0.74 ? 1 : (t > 0.10 && t < 0.15) ? 1 : 0; });
+    tube('spout', 16, 0.72, 14, 18, function (s, t) { return t > 0.74 ? 1 : 0; });                                            // a cobalt lip
     tube('handle', 12, 0.48, 12, 22, function (s, t) { return Math.abs(s - 0.5) < 0.13 && t > 0.10 && t < 0.88 ? 1 : 0; });   // one brush stroke down its back
 
     /* --- saucer and cup: thin shells of revolution, so the wall thickness shows at the rim --- */
-    function peak(pf, k) { var best = 0, i, t; for (i = 0; i <= 400; i++) { t = i / 400; if (pf(t)[k] > pf(best)[k]) best = t; } return best; }
     var SPROF = [[0, 0.014], [0.14, 0.014], [0.25, 0.014], [0.275, 0], [0.31, 0], [0.33, 0.014], [0.42, 0.03], [0.55, 0.062], [0.63, 0.092], [0.652, 0.105],
                  [0.648, 0.116], [0.62, 0.108], [0.54, 0.079], [0.42, 0.048], [0.31, 0.034], [0.265, WELL], [0.2, WELL], [0.1, WELL], [0, WELL]];
     var saucerPath = path(SPROF, true), SAUCER_RIM = peak(saucerPath, 0);
@@ -315,7 +317,7 @@
         R = RIDGES[i]; dx = R[2] - R[0]; dz = R[3] - R[1]; L = Math.hypot(dx, dz);
         k = clamp(((a - R[0]) * dx + (b - R[1]) * dz) / (L * L), 0, 1);
         px = R[0] + dx * k; pz = R[1] + dz * k;
-        d = Math.hypot(a - px, b - pz) + 0.05 * Math.sin(k * 5 + i * 2.1) * 0;
+        d = Math.hypot(a - px, b - pz);
         h += R[4] * (0.25 + 0.75 * k) * ss(0, 0.25, k) * bell(d / (R[5] * (0.7 + 0.5 * k)));
       }
       h += 0.012 * fbm(a * 1.1 + 3, b * 1.1 + 8);
@@ -331,15 +333,15 @@
       return [x - 0.07 * lift * lift, clothH(a, b, x, z), z - 0.07 * lift * lift, c[0], c[1], c[2]];
     });
     return scene(C,
-      { wide: { th: 0.55, ph: 1.12, r: 9.6, tx: 0.2, ty: 0.45, tz: 0.2 }, close: { th: 0.2, ph: 1.25, r: 3.3, tx: -0.35, ty: 0.62, tz: -0.1 },
-        cup: { th: 1.0, ph: 1.0, r: 2.6, tx: CX, ty: 0.3, tz: CZ }, low: { th: -0.5, ph: 1.42, r: 6.0, tx: 0, ty: 0.55, tz: 0 },
-        top: { th: 0.3, ph: 0.45, r: 8.0, tx: 0.2, ty: 0.3, tz: 0.3 } },
-      ['wide', 'close', 'cup', 'low', 'top']);
+      { wide: { th: 0.55, ph: 1.12, r: 9.2, tx: 0.2, ty: 0.45, tz: 0.2 }, close: { th: 0.2, ph: 1.25, r: 3.6, tx: -0.35, ty: 0.62, tz: -0.1 },
+        cup: { th: 1.0, ph: 1.0, r: 2.4, tx: CX, ty: 0.3, tz: CZ }, low: { th: -0.5, ph: 1.47, r: 5.0, tx: 0, ty: 0.5, tz: 0 },
+        back: { th: 3.4, ph: 1.2, r: 4.2, tx: -0.4, ty: 0.6, tz: -0.2 }, top: { th: 0.3, ph: 0.5, r: 8.0, tx: 0.2, ty: 0.3, tz: 0.3 } },
+      ['wide', 'close', 'cup', 'low', 'back', 'top']);
   }
 
   /* ================= KNOT — a trefoil in brushed bronze on a travertine plinth ================= */
   function knot() {
-    var C = [], KS = 0.62, RIN = 0.25, RMAX = 0.41, NU = 240, NV = 24, TWIST = 1, PH = 0.62, PR = 1.3;
+    var C = [], KS = 0.62, RIN = 0.25, RMAX = 0.41, NU = 240, NV = 24, TWIST = 3, PH = 0.62, PR = 1.3;
     var BRONZE = [0.72, 0.45, 0.20], BRONZE2 = [0.60, 0.40, 0.21], PATINA = [0.50, 0.47, 0.30], STONE = [0.86, 0.81, 0.72];
     ground(C);
     lathe(C, 'plinth', { c: [0, 0, 0], nu: 32, nv: 14, tu: 4, tv: 3, minA: 5, mat: { rough: 0.8, metal: 0 },
@@ -350,14 +352,33 @@
         var c = mul(STONE, 0.93 + 0.11 * strata);
         return mix(c, [0.74, 0.66, 0.54], 0.5 * ss(0.56, 0.7, top ? fbm(x * 4, z * 14 + 3) : pfbm(s, 22, y * 60)));   // filled pores
       });
-    /* the knot's centre line on a torus of radii 2 and 1 about the z axis, and the torus's own frame:
-       n1 = the torus surface normal (always square to the curve, never flips), n2 = tangent x n1 */
-    function frameAt(u) {
-      var a = u * 2 * TAU, f = 1.5 * a, cf = Math.cos(f), sf = Math.sin(f), ca = Math.cos(a), sa = Math.sin(a), R = 2 + cf;
-      var tx = -1.5 * sf * ca - R * sa, ty = -1.5 * sf * sa + R * ca, tz = 1.5 * cf, tl = Math.hypot(tx, ty, tz);
-      tx /= tl; ty /= tl; tz /= tl;
-      var n = [cf * ca, cf * sa, sf];
-      return { p: [R * ca, R * sa, sf], n1: n, n2: [ty * n[2] - tz * n[1], tz * n[0] - tx * n[2], tx * n[1] - ty * n[0]] };
+    /* the knot's centre line on a torus of radii 2 and 1 about the z axis, with a frame that never flips:
+       the torus normal at the top lobe, carried along the curve by parallel transport (no twist of its own),
+       then turned at a steady rate per unit length. The transport comes back turned by its holonomy; the
+       steady turn makes up the difference to TWIST whole turns, so the section closes on itself. */
+    var M = 3000, tab = [], hol, len = 0;
+    (function () {
+      var i, a, f, cf, sf, ca, sa, R, t, tl, r = [1, 0, 0], d, prev;
+      for (i = 0; i <= M; i++) {
+        a = i / M * 2 * TAU; f = 1.5 * a; cf = Math.cos(f); sf = Math.sin(f); ca = Math.cos(a); sa = Math.sin(a); R = 2 + cf;
+        t = [-1.5 * sf * ca - R * sa, -1.5 * sf * sa + R * ca, 1.5 * cf]; tl = Math.hypot(t[0], t[1], t[2]); t = [t[0] / tl, t[1] / tl, t[2] / tl];
+        d = r[0] * t[0] + r[1] * t[1] + r[2] * t[2]; r = [r[0] - d * t[0], r[1] - d * t[1], r[2] - d * t[2]];
+        tl = Math.hypot(r[0], r[1], r[2]); r = [r[0] / tl, r[1] / tl, r[2] / tl];
+        prev = tab[i - 1];
+        if (prev) len += Math.hypot(R * ca - prev.p[0], R * sa - prev.p[1], sf - prev.p[2]);
+        tab.push({ p: [R * ca, R * sa, sf], t: t, r: r, l: len });
+      }
+      var t0 = tab[0].t, r0 = tab[0].r, c = [r0[1] * r[2] - r0[2] * r[1], r0[2] * r[0] - r0[0] * r[2], r0[0] * r[1] - r0[1] * r[0]];
+      hol = Math.atan2(c[0] * t0[0] + c[1] * t0[1] + c[2] * t0[2], r0[0] * r[0] + r0[1] * r[1] + r0[2] * r[2]);
+    })();
+    function frameAt(u) {                           // u = fraction of the knot's length
+      var x = (u - Math.floor(u)) * len, lo = 0, hi = M, mid, k, A, B, j, p = [], t = [], r = [];
+      while (hi - lo > 1) { mid = (lo + hi) >> 1; if (tab[mid].l <= x) lo = mid; else hi = mid; }
+      A = tab[lo]; B = tab[hi]; k = (x - A.l) / (B.l - A.l);
+      for (j = 0; j < 3; j++) { p[j] = lerp(A.p[j], B.p[j], k); t[j] = lerp(A.t[j], B.t[j], k); r[j] = lerp(A.r[j], B.r[j], k); }
+      var b = [t[1] * r[2] - t[2] * r[1], t[2] * r[0] - t[0] * r[2], t[0] * r[1] - t[1] * r[0]], be = (TWIST * TAU - hol) * x / len, cb = Math.cos(be), sb = Math.sin(be);
+      var n1 = [r[0] * cb + b[0] * sb, r[1] * cb + b[1] * sb, r[2] * cb + b[2] * sb];
+      return { p: p, n1: n1, n2: [t[1] * n1[2] - t[2] * n1[1], t[2] * n1[0] - t[0] * n1[2], t[0] * n1[1] - t[1] * n1[0]] };
     }
     /* stand it up with one lobe at the top: local (x, y) turned a quarter turn in its own plane */
     function up(v) { return [-v[1], v[0], v[2]]; }
@@ -368,8 +389,8 @@
     }
     var k = chart(C, 'knot', { nu: NU, nv: NV, periodicU: true, periodicV: true, closed: true, tu: 48, tv: 1, cu: 4, cv: 12, minB: 18, mat: { rough: 0.32, metal: 1 },
       ref: function (u) { var f = frameAt(u), p = up(f.p); return [p[0] * KS, Y0 + p[1] * KS, p[2] * KS]; } }, function (s, t, i, j) {
-      var f = frameAt(s), p = up(f.p), n1 = up(f.n1), n2 = up(f.n2), a = t * TAU - 0.55 * Math.sin(3 * t * TAU) / 3, rho = section(a), al = a + TWIST * TAU * s;   // rows crowd at the corners
-      var ca = Math.cos(al) * rho, sa = Math.sin(al) * rho;
+      var f = frameAt(s), p = up(f.p), n1 = up(f.n1), n2 = up(f.n2), a = t * TAU - 0.55 * Math.sin(3 * t * TAU) / 3, rho = section(a);   // rows crowd at the corners
+      var ca = Math.cos(a) * rho, sa = Math.sin(a) * rho;
       var c = mix(BRONZE, BRONZE2, pfbm(s, 14, t * 2 + Math.cos(a) * 0.6));
       c = mix(c, PATINA, 0.38 * ss(0.48, 0.70, pfbm(s, 9, 4 + Math.sin(a) * 0.5)));
       c = mul(c, 0.95 + 0.10 * pfbm(s, 60, (j % NV) * 5.3));                           // brushed along its length
@@ -378,9 +399,9 @@
     var Y0 = 0; Y0 = rest(k, PH - 0.03);                                              // both feet sunk a little into the stone
     return scene(C,
       { wide: { th: 0.5, ph: 1.28, r: 9.0, tx: 0, ty: 2.1, tz: 0 }, close: { th: 0.9, ph: 1.2, r: 3.4, tx: 0.3, ty: 3.0, tz: 0.2 },
-        foot: { th: -0.4, ph: 1.4, r: 3.2, tx: 0, ty: 1.0, tz: 0 }, side: { th: 1.6, ph: 1.3, r: 7.5, tx: 0, ty: 2.2, tz: 0 },
-        top: { th: 0.2, ph: 0.7, r: 7.5, tx: 0, ty: 2.0, tz: 0 } },
-      ['wide', 'close', 'side', 'foot', 'top']);
+        front: { th: 0, ph: 1.35, r: 8.5, tx: 0, ty: 2.2, tz: 0 }, foot: { th: -0.4, ph: 1.4, r: 3.6, tx: 0, ty: 1.0, tz: 0 },
+        side: { th: 1.6, ph: 1.3, r: 7.5, tx: 0, ty: 2.2, tz: 0 }, top: { th: 0.2, ph: 0.7, r: 7.5, tx: 0, ty: 2.0, tz: 0 } },
+      ['wide', 'close', 'front', 'foot', 'side', 'top']);
   }
 
   /* ================= STILL — vase, pear and apples on a draped plinth ================= */
@@ -409,8 +430,7 @@
     var wall = path([[1, 0], [1, 0.12], [1, 0.3], [1, H - 0.12], [1, H - 0.035], [1, H - 0.01], [0.992, H], [0.975, H], [0.9, H], [0.6, H], [0.3, H], [0, H]], true);
     chart(C, 'plinth', { nu: 48, nv: 12, periodicU: true, closed: true, tu: 8, tv: 2, minA: 3, mat: { rough: 0.85, metal: 0 },
       ref: function () { return [OX, H / 2, OZ]; } }, function (s, t) {
-      var q = rrect(fract(s)), w = wall(t), k = w[0], x = q[0], z = q[1];
-      x *= k; z *= k;
+      var q = rrect(s), w = wall(t), x = q[0] * w[0], z = q[1] * w[0];               // w = [how far in from the outline, height]
       var top = w[1] > H - 0.004, c = mul(STONE, 0.94 + 0.10 * (top ? fbm((OX + x) * 1.1, (OZ + z) * 6) : fbm(s * 40, w[1] * 22)));
       return [OX + x, w[1], OZ + z, c[0], c[1], c[2]];
     });
@@ -463,7 +483,10 @@
       var roll = 0.11 * (0.2 + 0.8 * vn(w * 1.9, 3.3)) * bell((far - 0.11) / 0.075) + 0.05 * vn(w * 1.4 + 9, 1.1) * bell((far - 0.5) / 0.13);
       up += roll * ss(0, 0.25, hem);                                                     // it buckles where it meets the ground
       var o = DR + pr[0] + pr[2] * up - 0.35 * roll * ss(0, 0.25, hem);                  // and what the buckle takes up is missing from its reach
-      return [qx + nx * o, TOP + pr[1] + pr[3] * up, qz + nz * o];
+      var out = g * Math.max(0, far);                                                    // on the ground it gathers and wanders: no hem lies straight
+      o -= out * 0.34 * vn(w * 1.15 + 2.2, 0.7);
+      var slip = 0.2 * g * ss(0, 0.6, far) * (2 * vn(w * 0.9 + 7.1, far * 1.3 + 0.4) - 1);
+      return [qx + nx * o - nz * slip, TOP + pr[1] + pr[3] * up, qz + nz * o + nx * slip];
     }
     var AL = -0.6, AR = BX + 1.55, BB = -BZ - 0.3, BF = BZ + 1.95, DNU = 64, DNV = 65;
     var bend = [[D1 + 0.12, 7], [D2 - D1 - 0.07, 5], [D3 - D2 + 0.09, 4], [0.3, 6]], pre = 0.08 - CLR, used = D3 + 0.44 - pre;   // roll, fall, turn, foot
@@ -483,17 +506,17 @@
     var VX = OX - 0.98, VZ = OZ - 0.12, NF = 12;
     var VPROF = [[0, 0.012], [0.16, 0.012], [0.22, 0.008], [0.245, 0], [0.262, 0.012], [0.25, 0.05], [0.235, 0.10], [0.28, 0.24], [0.38, 0.52], [0.43, 0.86], [0.41, 1.18], [0.32, 1.46],
                  [0.21, 1.68], [0.165, 1.84], [0.17, 1.95], [0.23, 2.04], [0.315, 2.085], [0.335, 2.10], [0.325, 2.112], [0.27, 2.08], [0.19, 2.0], [0.14, 1.9], [0.13, 1.74], [0.135, 1.55], [0.07, 1.5], [0, 1.5]];
-    var vase = lathe(C, 'vase', { c: [VX, H, VZ], nu: NF * 6, nv: 28, prof: VPROF, tu: 6, tv: 5, minA: 5, mat: { rough: 0.18, metal: 0 },
-      inside: function (t, r, y) { return t < 0.66 ? [0, y] : [r + 0.03, y - 0.02]; },
+    var vasePath = path(VPROF), LIP = peak(vasePath, 1);
+    var vase = lathe(C, 'vase', { c: [VX, H, VZ], nu: NF * 6, nv: 28, path: vasePath, tu: 6, tv: 5, minA: 5, mat: { rough: 0.18, metal: 0 },
+      inside: function (t, r, y) { return t < LIP ? [0, y] : [r + 0.03, y - 0.02]; },
       mod: function (a, t, r, y) {
         var x = fract(a / TAU * NF), flute = 1 - Math.sqrt(1 - Math.pow(2 * x - 1, 2) * 0.96);    // hollow channels meeting in ridges
-        var on = t < 0.66 ? ss(0.16, 0.34, y) * ss(1.72, 1.5, y) : 0;
+        var on = t < LIP ? ss(0.16, 0.34, y) * ss(1.72, 1.5, y) : 0;
         return [r * (1 - 0.13 * on * (1 - flute)), y, 0, 0];
       } }, function (a, t, r, y, s) {
-        if (t < 0.2 && y < 0.035) return mul(CLAY, 0.95 + 0.1 * pfbm(s, 20, y * 30));    // the unglazed foot ring
+        if (t < LIP && y < 0.035) return mul(CLAY, 0.95 + 0.1 * pfbm(s, 20, y * 30));    // the unglazed foot ring
         return mul(TEAL, 0.9 + 0.22 * pfbm(s, 7, y * 2.2));
       });
-
     rest(vase, H + 0.001);
 
     /* --- fruit: one lathe each, stalk included (the profile starts at the stalk's tip) --- */
@@ -545,10 +568,11 @@
         return lenticels(c, s, t, 40, [0.84, 0.86, 0.60]);
       });
     return scene(C,
-      { wide: { th: 0.5, ph: 1.15, r: 9.8, tx: 0.2, ty: 0.9, tz: 0.3 }, close: { th: 0.35, ph: 1.2, r: 3.0, tx: 0.2, ty: 0.85, tz: -0.3 },
-        folds: { th: 0.75, ph: 1.25, r: 4.2, tx: 0.7, ty: 0.25, tz: 0.9 }, vase: { th: -0.3, ph: 1.3, r: 5.0, tx: -1.4, ty: 1.5, tz: -0.5 },
-        low: { th: 0.1, ph: 1.45, r: 7.0, tx: 0.2, ty: 0.8, tz: 0 }, top: { th: 0.4, ph: 0.5, r: 8.5, tx: 0.3, ty: 0.5, tz: 0.3 } },
-      ['wide', 'folds', 'close', 'vase', 'low', 'top']);
+      { wide: { th: 0.5, ph: 1.15, r: 9.0, tx: 0.1, ty: 0.9, tz: 0.2 }, close: { th: 0.3, ph: 1.15, r: 2.6, tx: -0.1, ty: 0.95, tz: -0.35 },
+        folds: { th: 0.75, ph: 1.25, r: 4.6, tx: 0.7, ty: 0.3, tz: 0.9 }, vase: { th: -0.3, ph: 1.3, r: 4.2, tx: -1.4, ty: 1.6, tz: -0.5 },
+        low: { th: 0.25, ph: 1.45, r: 6.5, tx: 0.3, ty: 0.7, tz: 0 }, back: { th: 3.6, ph: 1.15, r: 8.0, tx: 0.1, ty: 0.9, tz: 0.2 },
+        top: { th: 0.4, ph: 0.35, r: 9.0, tx: 0.3, ty: 0.5, tz: 0.3 } },
+      ['wide', 'folds', 'close', 'vase', 'low', 'back', 'top']);
   }
 
   window.KnotLab = window.KnotLab || {};

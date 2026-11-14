@@ -144,6 +144,7 @@
     '  else if (m < 5.5) c = lin(uPal[id]) * clay;',
     '  else if (m < 6.5) c = lin(a2.rgb) * mix(0.82, 1.0, ao);',
     '  else c = lin(heat(clamp(a2.a, 0.0, 1.0))) * mix(0.8, 1.0, ao);',
+    '  if (m > 5.5 && m < 7.5 && uMat[id].z > 0.5) c = uPage * mix(0.88, 1.0, ao);',   // feature views: the floor stays paper
     '  if (m < 3.5 || m > 4.5) {',                                 // the selection, hatched (a1.w is the splat profile in view 4)
     '    float hatch = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 9.0));',
     '    c = mix(c, uSelCol, a1.w * (0.12 + 0.26 * hatch) * step(m, 5.5));',
@@ -306,6 +307,8 @@
         count++;
         return true;
       },
+      /* draw the picture as it stands again, without adding a frame (e.g. right before reading the canvas) */
+      present: function () { r.setRenderTarget(null); pass(oMat, null); r.render(overlay, camera); },
       /* bake helper: per pixel (u, v, chart index + 1, 1) of the nearest surface, hard-edged, as floats (rows bottom-up) */
       readIds: function () {
         var rt = new T.WebGLRenderTarget(W, H, { type: T.FloatType, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false });

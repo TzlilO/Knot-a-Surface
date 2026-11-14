@@ -434,13 +434,18 @@
   });
   MODES.concat([{ v: 'split', name: 'All, side by side' }]).forEach(function (m, i) {
     var b = el('button', '', '<i>(' + 'abcdefghi'[i] + ')</i>' + m.name); b.type = 'button'; b._m = i < MODES.length ? i : -1;
-    b.addEventListener('click', function () { st.split = b._m < 0; if (!st.split) st.mode = b._m; showView(); });
+    b.addEventListener('click', function () {
+      st.split = b._m < 0; if (!st.split) st.mode = b._m;
+      if (b._m === 7) setTool('select');           // similarity is measured from a clicked point
+      showView();
+    });
     $('modes').appendChild(b);
   });
   var slB = slider('budget', { min: 20000, max: CAP - 20000, step: 5000, value: st.budget, fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, on: function (v) { st.budget = v; need = true; } });
   $('adaptive').addEventListener('change', function () { st.adaptive = this.checked; need = true; });
   $('nets').addEventListener('change', function () { st.nets = this.checked; showNets(); });
-  seg('tool', st.tool, function (v) { st.tool = v; document.body.dataset.tool = v; ring.style.opacity = 0; });
+  function setTool(v) { st.tool = v; document.body.dataset.tool = v; ring.style.opacity = 0; segTool.set(v); }
+  var segTool = seg('tool', st.tool, setTool);
   document.body.dataset.tool = st.tool;
   slider('brush', { min: 0.15, max: 1.5, step: 0.05, value: st.brush, fmt: function (v) { return v.toFixed(2); }, on: function (v) { st.brush = v; } });
   var segBy = seg('by', st.by, function (v) { st.by = v; });
@@ -460,7 +465,7 @@
   $('clear').addEventListener('click', clearSel);
   $('reset').addEventListener('click', resetScene);
   $('save').addEventListener('click', function () {
-    R.invalidate(); R.render();                    // a fresh frame, then read it before the browser presents it
+    R.present();                                   // the converged picture again, read before the browser presents it
     var a = document.createElement('a'); a.download = 'knot-a-surface-' + st.scn + '.png'; a.href = R.canvas.toDataURL('image/png'); a.click();
   });
 
