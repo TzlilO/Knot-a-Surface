@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # design source -> deployed path
 MAP = {
-    "Project Page.dc.html": "index.html",
+    # the site root (index.html) is the hand-written landing page; the earlier project page lives on here
+    "Project Page.dc.html": "project-page.html",
     "Sim v1 - Swarm Core.dc.html": "terrain.html",
     "Sim v2 - UV Atlas.dc.html": "terrain-atlas.html",
     "Sim v3 - Knot Chart.dc.html": "knot.html",

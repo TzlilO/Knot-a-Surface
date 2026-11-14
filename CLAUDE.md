@@ -10,8 +10,12 @@ The site root is a landing page with method + measured results; three more sims 
 knot chart, surface-prior bench) ship as sibling pages.
 
 ## Build & deploy
-- Page source of truth: the `*.dc.html` design files. `python3 deploy/flatten.py` rewrites
-  links and emits the deployed pages (`index.html`, `terrain.html`, `knot.html`,
+- The site root `index.html` is the hand-written landing page (its own source of truth — NOT a
+  flatten output): a chrome-free `manifold` hero (`KnotTalk.mount('manifold', el, {bare:true,
+  scene:'hero', onStats})`) plus links to the talk, its lab modules and the older pages.
+- Other pages' source of truth: the `*.dc.html` design files. `python3 deploy/flatten.py` rewrites
+  links and emits the deployed pages (`project-page.html` = the previous landing page with the
+  measured-results table, `terrain.html`, `knot.html`,
   `terrain-atlas.html`, `surface-prior.html`, `teaser-*.html`, `review/index.html`) —
   never edit those outputs directly. They sibling-load `support.js`, `_ds/` tokens and
   the `src/` cores, so there is no bundle to keep fresh.
@@ -24,6 +28,33 @@ knot chart, surface-prior bench) ship as sibling pages.
   Root `.nojekyll` is required or Pages skips `_ds/`.
 - Deck parts: `src/deck_a.html` (head+theme+slides 1-11) · `deck_b.html` (slides 12-21) ·
   `deck_c.html` (all deck JS: widgets, charts, reveal init).
+
+## talk.html — the thesis talk (scroll-driven deck)
+Independent of deck.html and of the build: plain static files, classic scripts (works from `file://`).
+- `talk.html` = all slide copy. A step is `<article class="step nav" data-scene="…">`; the step nearest
+  the reading line is active and its `data-scene` is pushed to the chapter's simulation
+  (`<section class="chapter" data-sim="…">`). `data-depth="deep"` steps are hidden in the 20′ cut;
+  `data-min40`/`data-min20` on each section are the pace-clock budgets (must sum to 40 / 20).
+- `talk/kit.js` = `KnotTalk.register(name, {title, blurb, tool, scenes, create(env)})` registry,
+  lifecycle (`env.loop` pauses offscreen), UI helpers, and the standalone lab shell
+  (`KnotTalk.standalone(name)`, used by every `talk/sims/<name>.html`).
+- `talk/nurbs.js` = spline math (Cox–de Boor, derivatives, Boehm insertion, tensor patches; also
+  `require()`-able under node). `talk/gl.js` = three.js helpers incl. `writePlanoids` (the derived
+  Gaussian: centre + tangent axes from S_u, S_v and the sampling interval).
+- Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound), `basis` (SVG curve
+  playground), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
+  `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
+  `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
+  the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
+  TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
+  charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
+  capture rig and an `edit(k)` animation).
+- Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
+  Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
+  non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the
+  top of `talk/deck.js`; the DTU exhibit notes on screen when a row's mean differs from the printed mean.
+- Verify with node playwright (`/opt/node-tools/node_modules/playwright`) against `file://…/talk.html`;
+  scene ids double as URL hashes on the standalone pages (`talk/sims/planoid.html#knob`).
 
 ## arena.html — Arena: live 4D match reconstruction
 A second, independent single-file three.js simulator (`window.KnotArenaSim`, ~`src/arena_core.js`)

@@ -9,7 +9,8 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 
 | URL | Page |
 | --- | --- |
-| `/` | Landing page — hero, embedded teaser, simulator cards, method, **measured results** |
+| `/` | Landing page — a live spline-chart scene (barn / truck / bust / garden), the idea in three moves, the talk and its lab modules |
+| `/project-page.html` | Previous landing page — hero, embedded teaser, simulator cards, method, **measured results** |
 | `/terrain.html` | Sim v1 — Swarm Resolution-Knob simulator (drone swarm, fixed splat budget, commander toolkit) |
 | `/terrain-atlas.html` | Sim v2 — UV-atlas editing (segment, paint, sculpt in the chart) |
 | `/knot.html` | Sim v3 — Knot Chart (8 parametric surfaces, control cage, geometry layers) |
@@ -18,19 +19,28 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 | `/teaser-{v1,bold,modest,cinematic}.html` | Four teaser cuts |
 | `/review/` | Review hub for the cuts + sims |
 | `/deck.html` | Interview deck (reveal.js), simulator embedded as slide 14 |
+| `/talk.html` | Thesis talk — scroll-driven deck (20′ / 40′ cuts), from one spline to a manifold of spline charts |
+| `/talk/sims/{flatland,basis,planoid,ledger,refine,manifold}.html` | The talk's six simulations as standalone lab pages |
 | `/arena.html` | Arena: live 4D match reconstruction (second application of the thesis) |
 | `/project.html` | Retired predecessor landing page (kept live, unlinked) |
 
 ## Developing
 
-- **Source of truth for the pages**: the `*.dc.html` design files. The deployed pages
+- **The landing page** (`index.html`) is hand-written and is its own source of truth; it mounts the
+  talk's `manifold` module as a chrome-free hero.
+- **Source of truth for the other pages**: the `*.dc.html` design files. The deployed pages
   are flattened from them by `python3 deploy/flatten.py` (link rewrites only — no
   bundling; everything sibling-loads `support.js`, `_ds/` tokens and the `src/` cores).
-  Never edit the flattened outputs (`index.html`, `terrain.html`, …) by hand.
+  Never edit the flattened outputs (`project-page.html`, `terrain.html`, …) by hand.
 - **Simulator cores**: `src/sim_core.js` (swarm sim), `src/sim_v4_core.js` (v4 bench),
   `src/arena_core.js`. `python3 build.py` injects sim_core/sim_style into `deck.html`
   and arena_core/arena_style into `arena.html` (the only remaining build step; the site
   pages themselves sibling-load the cores).
+- **Thesis talk**: `talk.html` + `talk/` are plain static files with no build step
+  (`kit.js` module registry, `nurbs.js` spline math, `gl.js` three.js helpers, `scenes.js` spline-chart
+  scenes (barn / truck / bust / garden stand-ins), `deck.js`/`deck.css`
+  scroll engine, one module per simulation in `talk/sims/`). three.js and KaTeX are vendored in
+  `talk/vendor/` so the talk runs offline. The evidence numbers live at the top of `talk/deck.js`.
 - **Deploy**: `bash deploy/deploy-site.sh` = flatten + build + commit + push to `main`
   (GitHub Pages, root `.nojekyll` required for `_ds/`). See `deploy/README.md`.
 

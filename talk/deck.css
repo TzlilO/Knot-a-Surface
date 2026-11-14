@@ -1,0 +1,191 @@
+/* Knot-a-Surface talk — scroll-driven deck layout. Tokens + simulation chrome live in kit.css. */
+html{font-size:clamp(14.5px,.5vw + .52vh + 4px,24px);scroll-behavior:auto;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-ui);line-height:1.5;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+*{box-sizing:border-box}
+a{color:var(--surf);text-decoration:none}
+a:hover{text-decoration:underline}
+em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0}
+.c-surf{color:var(--surf)}.c-ctrl{color:var(--ctrl)}.c-splat{color:var(--splat)}.c-err{color:var(--err)}.c-ok{color:var(--ok)}
+.mono{font-family:var(--f-mono)}
+
+/* ---------- fixed chrome: progress, chapter rail, presenter HUD ---------- */
+.progress{position:fixed;z-index:60;left:0;top:0;height:3px;width:100%;transform-origin:0 50%;transform:scaleX(0);
+  background:linear-gradient(90deg,var(--surf),var(--splat))}
+.rail{position:fixed;z-index:55;left:0;top:0;bottom:0;width:3.1rem;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;gap:.25rem}
+.rail a{position:relative;display:grid;place-items:center;width:2.1rem;height:2.1rem;border-radius:50%;
+  font:600 .62rem/1 var(--f-mono);color:var(--mute);text-decoration:none;transition:color .2s,background .2s}
+.rail a:hover{color:var(--text)}
+.rail a.on{color:var(--bg);background:var(--text)}
+.rail a span{position:absolute;left:2.6rem;white-space:nowrap;padding:.35rem .6rem;border-radius:6px;background:var(--bg3);
+  border:1px solid var(--line2);color:var(--text);font:500 .62rem/1 var(--f-mono);letter-spacing:.06em;opacity:0;pointer-events:none;
+  transform:translateX(-4px);transition:opacity .15s,transform .15s}
+.rail a:hover span{opacity:1;transform:none}
+.hud{position:fixed;z-index:55;left:3.3rem;bottom:.9rem;display:flex;align-items:center;gap:.5rem;
+  font:600 .6rem/1 var(--f-mono);letter-spacing:.06em;color:var(--mute)}
+.hud button{font:inherit;color:var(--dim);background:var(--panel);border:1px solid var(--line2);border-radius:6px;
+  padding:.42rem .55rem;cursor:pointer}
+.hud button:hover{color:var(--text);border-color:var(--dim)}
+.hud .cut{display:flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:var(--panel)}
+.hud .cut button{border:0;border-radius:0;background:transparent}
+.hud .cut button.on{color:var(--bg);background:var(--text)}
+.hud .clock{padding:.42rem .55rem;border:1px solid var(--line2);border-radius:6px;background:var(--panel);
+  font-variant-numeric:tabular-nums;color:var(--dim);cursor:pointer}
+.hud .clock b{color:var(--text);font-weight:600}
+.hud .clock.late b{color:var(--ctrl)}.hud .clock.ok b{color:var(--ok)}
+.keys{position:fixed;z-index:70;left:3.3rem;bottom:3.2rem;display:none;padding:1rem 1.2rem;border-radius:10px;background:var(--bg3);
+  border:1px solid var(--line2);font:500 .68rem/1.9 var(--f-mono);color:var(--dim)}
+.keys.on{display:block}
+.keys kbd{display:inline-block;min-width:1.5rem;text-align:center;margin-right:.5rem;padding:0 .35rem;border:1px solid var(--line2);
+  border-radius:4px;color:var(--text);font:inherit}
+
+/* ---------- chapters: text column + sticky stage ---------- */
+.chapter{position:relative;display:grid;grid-template-columns:minmax(0,37fr) minmax(0,63fr)}
+/* the stage comes first in the DOM (so it can pin above the steps on small screens) and sits right on wide ones */
+.steps{grid-column:1;grid-row:1;padding:0 2.2rem 14vh 5rem}
+.stage{grid-column:2;grid-row:1;position:sticky;top:0;height:100vh;height:100dvh;padding:2.4vh 2.2vw 2.4vh 0}
+.stage-frame{position:relative;width:100%;height:100%;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
+.sim-mount{position:absolute;inset:0}
+.stage-tools{position:absolute;z-index:8;right:.7rem;bottom:.7rem;display:flex;gap:.4rem;opacity:0;transition:opacity .2s}
+.stage-frame:hover .stage-tools,.stage-tools:focus-within{opacity:1}
+.stage-tools a,.stage-tools button{font:600 .56rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:.45rem .6rem;cursor:pointer;text-decoration:none}
+.stage-tools a:hover,.stage-tools button:hover{color:var(--text);border-color:var(--dim)}
+/* the tools sit where a module may dock a panel: lift them out of the way on the modules that do */
+.chapter[data-sim="manifold"] .stage-tools,.chapter[data-sim="planoid"] .stage-tools{bottom:auto;top:.7rem;right:auto;left:50%;transform:translateX(-50%)}
+
+.step{min-height:92vh;display:flex;flex-direction:column;justify-content:center;padding:3rem 0;
+  opacity:.2;transition:opacity .45s ease,transform .45s ease;transform:translateY(8px)}
+.step.on{opacity:1;transform:none}
+.step:first-child{min-height:100vh}
+.step:last-child{min-height:100vh}
+body.cut-20 .step[data-depth="deep"]{display:none}
+
+.lvl{display:inline-flex;align-items:center;gap:.5rem;margin-bottom:1.1rem;font:600 .6rem/1 var(--f-mono);letter-spacing:.16em;
+  text-transform:uppercase;color:var(--mute)}
+.lvl i{display:flex;gap:3px}
+.lvl i:before,.lvl i:after,.lvl i b{content:"";display:block;width:.5rem;height:.5rem;border-radius:50%;border:1px solid var(--dim)}
+.lvl.l1 i:before,.lvl.l2 i:before,.lvl.l2 i b,.lvl.l3 i:before,.lvl.l3 i b,.lvl.l3 i:after{background:var(--dim)}
+.step h2{margin:0 0 1rem;font:600 2.15rem/1.08 var(--f-display);letter-spacing:-.025em;text-wrap:balance}
+.step h2 em{font-size:1.1em;line-height:.9}
+.step p{margin:0 0 .9rem;max-width:34em;font-size:1.02rem;line-height:1.55;color:var(--dim);text-wrap:pretty}
+.step p b,.step li b{color:var(--text);font-weight:600}
+.step ul{margin:0 0 .9rem;padding:0;list-style:none;max-width:34em}
+.step li{position:relative;padding:.5rem 0 .5rem 1.3rem;border-top:1px solid var(--line);font-size:.95rem;line-height:1.45;color:var(--dim)}
+.step li:before{content:"";position:absolute;left:0;top:1.05rem;width:.5rem;height:1px;background:var(--dim)}
+.eq{margin:.4rem 0 1rem;padding:.9rem 1rem;border-left:2px solid var(--line2);background:var(--bg2);border-radius:0 8px 8px 0;
+  font-size:1.02rem;overflow-x:auto;color:var(--text)}
+.eq .katex-display{margin:0;text-align:left}.eq .katex-display>.katex{text-align:left}
+.step p.aside{font:500 .7rem/1.5 var(--f-mono);letter-spacing:.02em;color:var(--mute);max-width:44em}
+.do{display:inline-flex;align-items:center;gap:.5rem;margin-top:.3rem;font:600 .64rem/1 var(--f-mono);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--surf)}
+.do:before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:var(--surf);animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25;transform:scale(.7)}}
+
+/* chapter opener */
+.opener .num{font:700 7.5rem/.8 var(--f-display);letter-spacing:-.06em;color:transparent;-webkit-text-stroke:1.5px #31456a;margin-bottom:1.4rem}
+.opener .kick{font:600 .64rem/1 var(--f-mono);letter-spacing:.2em;text-transform:uppercase;color:var(--surf);margin-bottom:1rem}
+.opener h2{font-size:3.3rem;line-height:.98;letter-spacing:-.04em;margin-bottom:1.3rem}
+.opener p{font-size:1.2rem;line-height:1.45;color:var(--text);max-width:24em}
+.opener .time{margin-top:1.2rem;font:500 .62rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+
+/* the two-question card (chapter 1) */
+.flip{display:grid;gap:.6rem;margin:.2rem 0 1rem}
+.flip div{padding:.85rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.98rem;line-height:1.4;color:var(--dim)}
+.flip div b{display:block;margin-bottom:.35rem;font:600 .58rem/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase}
+.flip .old b{color:var(--err)}.flip .new{border-color:rgba(var(--surf-rgb),.5);background:rgba(var(--surf-rgb),.06);color:var(--text)}
+.flip .new b{color:var(--surf)}
+
+/* ---------- full-width sections ---------- */
+.wide{display:block}
+.wide .step{min-height:100vh;padding:5rem 4rem 5rem 5.5rem;justify-content:center}
+.wide .step>*{max-width:none}
+
+/* cover */
+.cover{position:relative;height:100vh;height:100dvh;overflow:hidden}
+.cover .sim-mount{position:absolute;inset:0}
+.cover:after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(7,9,15,.55) 0%,rgba(7,9,15,0) 26%,rgba(7,9,15,0) 48%,rgba(7,9,15,.92) 100%)}
+.cover-top{position:absolute;z-index:3;left:5.5rem;right:3rem;top:2.4rem;display:flex;justify-content:space-between;gap:2rem;
+  font:600 .62rem/1.5 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+.cover-text{position:absolute;z-index:3;left:5.5rem;right:3rem;bottom:3.2rem;pointer-events:none}
+.cover h1{margin:0;font:700 clamp(3.2rem,11.5vw,12.5rem)/.82 var(--f-display);letter-spacing:-.065em;color:var(--text)}
+.cover h1 span{color:transparent;-webkit-text-stroke:2px var(--surf)}
+.cover .tag{margin:1.6rem 0 0;font:500 clamp(1.3rem,2.6vw,2.7rem)/1.1 var(--f-display);letter-spacing:-.02em;color:var(--text)}
+.cover .tag em{color:var(--splat);font-size:1.12em}
+.cover .by{margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:.4rem 2rem;font:500 .7rem/1.4 var(--f-mono);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim)}
+.cover .by b{color:var(--text);font-weight:600}
+.cover .go{color:var(--surf)}
+
+/* legend ("how to read this talk") */
+.legend{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin:2rem 0 2.4rem}
+.legend div{--c:var(--surf);padding:1.1rem 1.1rem 1.2rem;border:1px solid var(--line);border-top:3px solid var(--c);border-radius:0 0 12px 12px;background:var(--bg2)}
+.legend b{display:block;font:600 1.25rem/1.15 var(--f-display);letter-spacing:-.01em;color:var(--c);margin-bottom:.5rem}
+.legend span{font-size:.86rem;line-height:1.45;color:var(--dim)}
+.depths{display:flex;flex-wrap:wrap;gap:.8rem 2.4rem;align-items:center;font-size:.9rem;color:var(--dim)}
+.depths .lvl{margin:0 .5rem 0 0}
+.step .thesis{color:var(--text);margin:0 0 .4rem;font:600 clamp(1.9rem,3.6vw,3.6rem)/1.06 var(--f-display);letter-spacing:-.03em;max-width:22em;text-wrap:balance}
+.step .thesis em{font-size:1.1em}
+
+/* evidence */
+.exhibits{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:1.4rem;margin-top:1.6rem;align-items:stretch}
+.exhibit{position:relative;display:flex;flex-direction:column;padding:1.2rem 1.3rem 1rem;border:1px solid var(--line);border-radius:14px;background:var(--bg2)}
+.exhibit h3{margin:0 0 .25rem;font:600 1.15rem/1.2 var(--f-display);letter-spacing:-.01em}
+.exhibit .src{font:500 .62rem/1.5 var(--f-mono);letter-spacing:.04em;color:var(--mute);margin-bottom:.6rem}
+.exhibit svg{display:block;width:100%;height:auto;overflow:visible}
+.step .exhibit .note{max-width:none;margin-bottom:0;margin-top:.7rem;font-size:.8rem;line-height:1.5;color:var(--dim)}
+.step .exhibit .note b{color:var(--text)}
+.stats{display:flex;flex-wrap:wrap;gap:.5rem 1.8rem;margin:.2rem 0 .5rem}
+.stats div{font:500 .62rem/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.stats b{display:block;font:600 1.7rem/1 var(--f-display);letter-spacing:-.02em;text-transform:none;color:var(--text);font-variant-numeric:tabular-nums}
+.chart-key{display:flex;gap:1.2rem;font:500 .64rem/1 var(--f-mono);color:var(--dim);margin-bottom:.3rem}
+.chart-key i{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;margin-right:.4rem;vertical-align:-1px}
+.tip{position:absolute;z-index:5;pointer-events:none;padding:.5rem .65rem;border-radius:7px;background:var(--bg3);border:1px solid var(--line2);
+  font:500 .64rem/1.5 var(--f-mono);color:var(--dim);white-space:nowrap;opacity:0;transition:opacity .12s}
+.tip b{color:var(--text)}.tip.on{opacity:1}
+.step p.scope{margin-top:1.3rem;padding:.9rem 1.1rem;border:1px dashed var(--line2);border-radius:10px;font-size:.82rem;line-height:1.55;color:var(--dim);max-width:none}
+.step p.scope b{color:var(--text)}
+
+/* close */
+.props{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8rem;margin:2.2rem 0}
+.props div{padding:1rem 1rem 1.1rem;border-top:1px solid var(--dim)}
+.props b{display:block;font:600 1.05rem/1.2 var(--f-display);margin-bottom:.4rem}
+.props span{font-size:.8rem;line-height:1.45;color:var(--dim)}
+.labs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.6rem;margin-top:.8rem}
+.labs a{display:block;padding:.8rem .9rem;border:1px solid var(--line);border-radius:10px;color:var(--text);text-decoration:none;
+  font:600 .82rem/1.25 var(--f-display);transition:border-color .2s,background .2s}
+.labs a small{display:block;margin-top:.3rem;font:500 .58rem/1.3 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.labs a:hover{border-color:var(--surf);background:rgba(var(--surf-rgb),.06)}
+.step p.qa{max-width:none;color:var(--text);font:700 clamp(3rem,9vw,9rem)/.9 var(--f-display);letter-spacing:-.05em;margin:0 0 1.2rem}
+
+/* focus mode: the stage takes the screen */
+body.focus .stage-frame.is-current{position:fixed;z-index:80;inset:1.2vh 1vw;width:auto;height:auto}
+body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
+
+/* ---------- small screens: stage on top, steps scroll beneath ---------- */
+@media (max-width:900px){
+  html{font-size:15px}
+  .rail{display:none}
+  .hud{left:.6rem;bottom:.5rem}.keys{left:.6rem}.hud .clock,.hud .help{display:none}
+  .chapter{display:block}
+  .stage{height:52svh;padding:0;z-index:20;background:var(--bg)}
+  .stage-frame{border-radius:0;border-width:0 0 1px}
+  .stage-tools{display:none}
+  .steps{padding:0 1.2rem 6svh}
+  .step,.step:first-child,.step:last-child{min-height:60svh;justify-content:flex-start;padding:1.4rem 0 1rem}
+  .chapter .step:last-child{min-height:90svh}
+  .step h2{font-size:1.55rem}.step p{font-size:.98rem}
+  .opener .num{font-size:4.2rem;margin-bottom:.8rem}.opener h2{font-size:2.1rem}.opener p{font-size:1.02rem}
+  .wide .step{padding:3.5rem 1.2rem;min-height:0}
+  .cover-top{left:1.2rem;right:1.2rem;top:1.2rem;font-size:.56rem}
+  .cover-text{left:1.2rem;right:1.2rem;bottom:3.6rem}
+  .legend{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .exhibits{grid-template-columns:minmax(0,1fr)}
+  .props{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .labs{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (prefers-reduced-motion:reduce){
+  .step{transition:none;transform:none}.do:before{animation:none}
+}
