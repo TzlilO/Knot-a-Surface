@@ -51,7 +51,7 @@
     <article class="step nav" data-scene="voxels">
       <div class="tag">ייצוג מפורש · <span class="ltr">explicit</span></div>
       <h2>או ממלאים <span>קוביות</span></h2>
-      <p>כמו פיקסלים, בתלת־ממד. <b>פי שניים פירוט — פי שמונה זיכרון.</b></p>
+      <p>כמו פיקסלים, בתלת־ממד. ברשת צפופה: <b>פי שניים פירוט — פי שמונה זיכרון.</b></p>
     </article>
   </div>
 </section>
@@ -69,7 +69,7 @@
     <article class="step nav" data-scene="march">
       <div class="tag">ייצוג סתום · <span class="ltr">implicit</span></div>
       <h2>אבל תמונה היא <span>מיליוני שאלות</span></h2>
-      <p>כדי לצייר פיקסל אחד שולחים קרן ושואלים שוב ושוב לאורכה. כך עובד <span class="ltr">NeRF</span>: יפהפה, ואיטי.</p>
+      <p>כדי לצייר פיקסל אחד שולחים קרן ושואלים שוב ושוב לאורכה. <span class="ltr">NeRF</span> שואל כך על צפיפות וצבע במקום על מרחק: יפהפה, ואיטי.</p>
       <div class="try">שנו את מספר הדגימות</div>
     </article>
   </div>
@@ -82,12 +82,13 @@
     <article class="step nav" data-scene="few">
       <div class="tag"><span class="ltr">Gaussian Splatting</span></div>
       <h2>ומה אם הנקודות יהיו <span>רכות</span>?</h2>
-      <p>גאוסיאן הוא כתם עם מרכז, גודל, כיוון וצבע. <b>מפורש כמו נקודה, חלק כמו פונקציה.</b></p>
+      <p>גאוסיאן הוא כתם עם מרכז, גודל, כיוון, שקיפות וצבע. <b>מפורש כמו נקודה, חלק כמו פונקציה.</b></p>
     </article>
     <article class="step nav" data-scene="many">
       <div class="tag"><span class="ltr">Gaussian Splatting</span></div>
       <h2>והמחשב <span>לומד לבד</span> היכן לשים אותם</h2>
       <p>מתחילים מכתמים אקראיים ומשווים לתמונה. בכל צעד כל כתם זז מעט, עד שהתמונה מתבהרת.</p>
+      <p class="fine">בסצנה אמיתית מתחילים מענן נקודות דליל, וצריך לדעת היכן עמדה כל מצלמה.</p>
       <div class="try">הוסיפו גאוסיאנים</div>
     </article>
   </div>
@@ -105,6 +106,7 @@
       <div class="tag"><span class="ltr">Gaussian Splatting</span></div>
       <h2>ובתלת־ממד: <span>זמן אמת</span></h2>
       <p>מטילים את הכתמים על המסך, ממיינים לפי עומק ומערבבים. בלי קרניים ובלי שאלות.</p>
+      <p class="fine">הציור מהיר. האימון עצמו לוקח דקות ארוכות על כרטיס גרפי.</p>
       <div class="try">גררו כדי להסתובב בסצנה</div>
     </article>
   </div>
@@ -116,11 +118,11 @@
     <h2>אז מה בוחרים?</h2>
     <div class="trio">
       <div class="glass c-explicit"><b>מפורש</b><small>נקודות · משולשים · קוביות</small>
-        <ul><li>מהיר לצייר</li><li>קל לערוך</li><li class="no">בדיד וכבד</li></ul></div>
+        <ul><li>מהיר לצייר</li><li>קל לערוך</li><li class="no">כל פרט עולה עוד פריטים</li></ul></div>
       <div class="glass c-implicit"><b>סתום</b><small>פונקציה · <span class="ltr">NeRF</span></small>
-        <ul><li>חלק ורציף</li><li>קומפקטי</li><li class="no">איטי לצייר</li></ul></div>
+        <ul><li>חלק ורציף</li><li>קומפקטי</li><li class="no">הרבה שאלות לכל פיקסל</li></ul></div>
       <div class="glass c-splat"><b>גאוסיאנים</b><small><span class="ltr">3D Gaussian Splatting</span></small>
-        <ul><li>מהיר לצייר</li><li>איכות צילומית</li><li class="no">בלי משטח אמיתי</li></ul></div>
+        <ul><li>מהיר לצייר</li><li>איכות צילומית</li><li class="no">בלי משטח מוגדר</li></ul></div>
     </div>
   </div>
 </section>
@@ -128,8 +130,8 @@
 <section class="full nav c-explicit">
   <div class="step on">
     <div class="tag" style="align-self:center">ומה חסר?</div>
-    <h2>לענן של כתמים <span>אין משטח</span>.</h2>
-    <p class="big">כאן המחקר שלי מתחיל: קודם משטח, ורק אחר כך גאוסיאנים.</p>
+    <h2>לענן של כתמים <span>אין משטח מוגדר</span>.</h2>
+    <p class="big">כאן המחקר שלי מתחיל: ייצוג מפורש שהוא גם חלק. קודם משטח, ורק אחר כך גאוסיאנים.</p>
     <a class="pill" href="talk.html">להרצאה המלאה <span class="ltr">(English)</span></a>
     <div class="thanks">תודה · <span class="ltr">Knot‑a‑Surface</span></div>
   </div>

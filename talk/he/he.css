@@ -57,6 +57,7 @@ main{position:relative;z-index:1}
 .step h2 span{color:var(--c)}
 .step p{margin:0;max-width:22em;font-size:1.22rem;line-height:1.55;color:var(--dim);text-wrap:pretty}
 .step p b{color:var(--text);font-weight:600}
+.step p.fine{margin-top:.9rem;font-size:.86rem;line-height:1.5;color:var(--mute)}
 .try{margin-top:1.6rem;font-size:.82rem;font-weight:600;color:var(--c,var(--explicit))}
 .c-explicit{--c:var(--explicit)}.c-implicit{--c:var(--implicit)}.c-splat{--c:var(--splat)}
 
