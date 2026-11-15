@@ -55,7 +55,7 @@
       var R = G.renderer(root, cam, env.opts.clear), scene = new T.Scene();
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
-                 budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
+                 budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, cull: true, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
       var def = null, charts = [], totalCP = 0, netL = null, pts = null, ptPos = null, rigL = null;
       var need = true, lastAlloc = 0, camKey = '', fit = 1;
       /* a named camera of the current scene, backed off on narrow stages so the subject stays in frame */
@@ -81,6 +81,7 @@
       var tgA = ui.toggle(rowT, { label: 'adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
       var tgN = ui.toggle(rowT, { label: 'nets', value: false, onChange: function (v) { st.nets = v; showNets(); } });
       var tgR = ui.toggle(rowT, { label: 'cameras', value: false, onChange: function (v) { st.rig = v; showNets(); } });
+      ui.toggle(rowT, { label: 'no back faces', value: true, onChange: function (v) { st.cull = v; need = true; } });
       var rdG = ui.readout(panel, { label: 'Gaussians drawn', tone: 'splat' });
       var rdV = ui.readout(panel, { label: 'budget in view', tone: 'ok' });
       var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
@@ -207,6 +208,7 @@
         for (i = 0; i < n; i++) { var e = at((i + 1) / n); out[i] = at((i + 0.5) / n); dOut[i] = e - prev; prev = e; }
       }
       function allocate() {
+        var goal = st.budget * boost;          // lattices are laid for a little more than the budget: back faces drop out when written
         cam.updateMatrixWorld(); M.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
         var e = M.elements, cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
         var totA = 0, totW = 0, inView = 0, z0 = 1e9, z1 = 0;
@@ -222,7 +224,7 @@
               var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / dl * c.flip;
               // open charts: foreshortening. closed charts: the near side counts in full (flat planoids must
               // stay small all the way to the silhouette), the hidden far side keeps a thin share
-              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : 0.3; }
+              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : st.cull ? 0 : 0.3; }      // culled: the far side asks for nothing
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
               w = c.carea[i] * cs / d2 * c.gain;
               if (cw < z0) z0 = cw; if (cw > z1) z1 = cw;
@@ -232,7 +234,7 @@
         });
         // size every tile's lattice; rounding to na x nb drifts off the budget, so a second pass rescales
         var total = sizeTiles(1, true);
-        if (Math.abs(total - st.budget) > 0.001 * st.budget) sizeTiles(st.budget / total, false);
+        if (Math.abs(total - goal) > 0.001 * goal) sizeTiles(goal / total, false);
         rdV.set(Math.round(inView * 100) + ' %');
         if (z1 > z0) zr = [z0 * 0.9, z1 * 1.05];      // depth of what is in view: the range the depth colours span
 
@@ -249,7 +251,7 @@
               share += imp; mu[a] += imp; mv[b] += imp; lu += imp * c.clu[i] / c.tu; lv += imp * c.clv[i] / c.tv;
               if (first && c.vis[i]) inView += imp;
             }
-            var N = Math.max(4, st.budget * share * scale), ratio = lu / (lv || 1e-12);   // aim for square cells in world space
+            var N = Math.max(4, goal * share * scale), ratio = lu / (lv || 1e-12);   // aim for square cells in world space
             // curved closed charts keep a minimum count around the bend so flat planoids can follow it
             tl.nb = Math.max(c.minB, Math.round(Math.sqrt(N / ratio))); tl.na = Math.max(c.minA, Math.round(N / tl.nb));
             for (a = 0; a < cu; a++) mu[a] += share / cu * 0.3;                       // bounded contrast inside a tile:
@@ -323,24 +325,34 @@
       }
 
       var sg = { pos: new Float32Array(CAP * 3), su: new Float32Array(CAP * 3), sv: new Float32Array(CAP * 3), col: new Float32Array(CAP * 3) };
+      /* Back faces of closed charts are never written: they cannot be seen in this frame, so they should not
+         spend the budget. What is written then falls short of it, so the next lattices are laid larger (boost). */
+      var boost = 1;
       function resample() {
         if (st.sc.lock && charts[0].plane) return lockSample();
+        var n = emit();
+        if (st.cull) { boost = KT.clamp(boost * st.budget / Math.max(1, n), 1, 4); if (Math.abs(n - st.budget) > 0.1 * st.budget) n = emit(); } else boost = 1;
+        field.setCount(n); field.commit(n);
+        rdG.set(n.toLocaleString('en-US'));
+        if (env.opts.onStats) env.opts.onStats({ scene: st.scn, drawn: n, controlPoints: totalCP, params: totalCP * PER_CP, charts: charts.length });
+      }
+      function emit() {
         allocate();
-        var n = 0;
+        var n = 0, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 };
         charts.forEach(function (c) {
           var rgb = G.rgb(c.hex), n0 = n, i;
+          eye.flip = c.flip;
           c.tiles.forEach(function (tl) {
-            if (n + tl.na * tl.nb > CAP) return;         // cannot happen while the slider tops out below CAP
+            if (tl.na * tl.nb > CAP) return;
             NB.patchGrid(c.patch, tl.us, tl.vs, sg);
-            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k);
+            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, null, st.cull && c.closed ? eye : null);
           });
+          c.count = n - n0;
           for (i = n0 * 3; i < n * 3; i += 3) { field.aux[i] = rgb[0]; field.aux[i + 1] = rgb[1]; field.aux[i + 2] = rgb[2]; }
           c.lab.textContent = c.count.toLocaleString('en-US') + ' G';
           drawTile(c);
         });
-        field.setCount(n); field.commit(n);
-        rdG.set(n.toLocaleString('en-US'));
-        if (env.opts.onStats) env.opts.onStats({ scene: st.scn, drawn: n, controlPoints: totalCP, params: totalCP * PER_CP, charts: charts.length });
+        return n;
       }
       function drawTile(c) {
         var s = c.cv.fit(), g = c.cv.ctx, w = s.w, h = s.h, i;

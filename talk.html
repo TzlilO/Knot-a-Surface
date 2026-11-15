@@ -61,7 +61,7 @@
 </section>
 
 <!-- ============================================================ 01 THE PROBLEM -->
-<section class="chapter" data-sim="flatland" data-rail="01" data-title="A million free ellipsoids" data-min40="5" data-min20="3">
+<section class="chapter" data-sim="flatland" data-rail="01" data-title="A million free ellipsoids" data-min40="4.5" data-min20="2.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="free">
@@ -207,14 +207,14 @@
 </section>
 
 <!-- ============================================================ 03 PLANOID -->
-<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="8" data-min20="4.25">
+<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="7" data-min20="3.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="net">
       <div class="num">03</div><div class="kick">The core idea</div>
       <h2>Calculus makes the splat</h2>
       <p>A Gaussian needs a position, an orientation and a size. The surface already knows all three.</p>
-      <div class="time">≈ 8 min</div>
+      <div class="time">≈ 7 min</div>
     </article>
     <article class="step nav" data-scene="net">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -279,7 +279,7 @@
 </section>
 
 <!-- ============================================================ 04 LEDGER -->
-<section class="chapter" data-sim="ledger" data-rail="04" data-title="The parameter ledger" data-min40="3" data-min20="1.5">
+<section class="chapter" data-sim="ledger" data-rail="04" data-title="The parameter ledger" data-min40="2.5" data-min20="1.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="gaussian">
@@ -314,14 +314,14 @@
 </section>
 
 <!-- ============================================================ 05 REFINE -->
-<section class="chapter" data-sim="refine" data-rail="05" data-title="Two-layer density" data-min40="5.5" data-min20="2.25">
+<section class="chapter" data-sim="refine" data-rail="05" data-title="Two-layer density" data-min40="5" data-min20="2">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="coarse">
       <div class="num">05</div><div class="kick">Adaptive refinement</div>
       <h2>Two knobs, not one</h2>
       <p>3DGS adds detail one way: clone or split a Gaussian. We have two layers, and they don’t interfere.</p>
-      <div class="time">≈ 6 min</div>
+      <div class="time">≈ 5 min</div>
     </article>
     <article class="step nav" data-scene="coarse">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -367,7 +367,7 @@
 </section>
 
 <!-- ============================================================ 06 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="7" data-min20="3.5">
+<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6.5" data-min20="3.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene">
@@ -448,10 +448,63 @@
   </div>
 </section>
 
-<!-- ============================================================ 07 EVIDENCE -->
-<section class="wide" data-rail="07" data-title="Evidence" data-min40="3" data-min20="1.5">
+<!-- ============================================================ 07 STRUCTURE -->
+<section class="chapter" data-sim="structure" data-rail="07" data-title="The surface is also an index" data-min40="3" data-min20="1.5">
+  <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav opener" data-scene="bag">
+      <div class="num">07</div><div class="kick">What structure buys</div>
+      <h2>The surface is also an index</h2>
+      <p>A 3DGS scene is a list of Gaussians in no particular order. Ours hang on spline charts, so each one has an address. That decides how hard the everyday operations are.</p>
+      <div class="time">≈ 3 min</div>
+    </article>
+    <article class="step nav" data-scene="bag">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>The same Gaussians, <em>stored two ways</em></h2>
+      <p>Colour each Gaussian by its position in memory. In a list, neighbours in memory are strangers in space. On charts, memory order is surface order: chart by chart, row by row.</p>
+      <p class="aside">The list is emulated: the same surfaces sampled at jittered places, nudged off the surface, turned, resized and shuffled. It is not a trained 3DGS model.</p>
+    </article>
+    <article class="step nav" data-scene="neighbours">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Neighbours: <em>search</em>, or <em>read</em></h2>
+      <p>To find what lies next to a Gaussian, a list needs a spatial index, built first and rebuilt whenever Gaussians move. And distance alone cannot tell a wheel from the street it stands on: the <b class="c-err">red</b> neighbours belong to another surface.</p>
+      <p>On a chart the neighbours are the next addresses, <span data-tex="(i\pm1,\,j\pm1)"></span>. Nothing is searched, and they are neighbours along the surface.</p>
+      <span class="do">Move over the scene</span>
+    </article>
+    <article class="step nav" data-scene="mesh" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A mesh, <em>for the asking</em></h2>
+      <p>Join each address to the next and there are the triangles, at whatever resolution was sampled: the lattice is the tessellation. Joining a list’s nearest neighbours gives a scribble, with <b class="c-err">red</b> edges bridging separate surfaces.</p>
+      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors, which is not run here.</p>
+    </article>
+    <article class="step nav" data-scene="segments" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Parts: <em>cluster</em>, or <em>look up</em></h2>
+      <p>Clustering the list by position cuts the wall in two and fuses the truck with the street. On charts the part is the chart, and any finer cut is a 2D image operation in (u, v).</p>
+    </article>
+    <article class="step nav" data-scene="segments">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>What the address <em>buys</em></h2>
+      <table class="cmp">
+        <thead><tr><th></th><th>A list of Gaussians</th><th>Spline charts</th></tr></thead>
+        <tbody>
+          <tr><th>Neighbours</th><td>build an index, then search by distance</td><td>read the next addresses, along the surface</td></tr>
+          <tr><th>Normals</th><td>estimate from the neighbours</td><td>the surface’s own, exact</td></tr>
+          <tr><th>Mesh</th><td>TSDF or Poisson extraction</td><td>join the lattice</td></tr>
+          <tr><th>Parts</th><td>cluster, or lift 2D masks</td><td>the chart, then image operations in (u, v)</td></tr>
+          <tr><th>Detail level</th><td>prune, merge or retrain</td><td>sample again</td></tr>
+          <tr><th>Editing</th><td>select Gaussians, move each</td><td>move control points</td></tr>
+        </tbody>
+      </table>
+      <p class="aside">The limit: across a seam between two charts none of this is free. Adjacency there has to be stored or searched, as in a list.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ 08 EVIDENCE -->
+<section class="wide" data-rail="08" data-title="Evidence" data-min40="3" data-min20="1.5">
   <article class="step nav">
-    <div class="lvl">07 · Evidence</div>
+    <div class="lvl">08 · Evidence</div>
     <h2 class="thesis">Does a representation this constrained still <em>reconstruct real objects</em>?</h2>
     <div class="exhibits">
       <div class="exhibit" id="ex-dtu">
@@ -519,6 +572,7 @@
 <script src="talk/sims/ledger.js"></script>
 <script src="talk/sims/refine.js"></script>
 <script src="talk/sims/manifold.js"></script>
+<script src="talk/sims/structure.js"></script>
 <script src="talk/deck.js"></script>
 </body>
 </html>

@@ -197,3 +197,10 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 @media (prefers-reduced-motion:reduce){
   .step{transition:none;transform:none}.do:before{animation:none}
 }
+
+/* a small two-way comparison table inside a step */
+.step table.cmp{border-collapse:collapse;width:100%;margin:.2rem 0 1rem;font:400 .82rem/1.35 var(--f-ui)}
+.step table.cmp th,.step table.cmp td{text-align:left;vertical-align:top;padding:.42rem .5rem .42rem 0;border-bottom:1px solid var(--line)}
+.step table.cmp thead th{font:600 .62rem/1.2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.step table.cmp tbody th{font-weight:600;color:var(--text);white-space:nowrap}
+.step table.cmp td{color:var(--dim)}.step table.cmp td:last-child{color:var(--surf)}

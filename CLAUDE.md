@@ -62,6 +62,13 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   where the cell's rays meet a PLANAR chart (`chart.plane`, only the hidden `poster` scene has one), so
   moving closer spends the same budget on a smaller (u, v) window; a corner inset renders the same
   Gaussians from outside with the frustum.
+  `structure` (talk/sims/structure.js, chapter 07) = the truck scene stored two ways in two viewports: a
+  shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
+  and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
+  ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured.
+- Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
+  away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
+  written still meets the budget (the far side of a closed chart gets zero weight).
 - Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
   Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the

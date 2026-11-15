@@ -192,14 +192,22 @@
        scale = ( |S_u| du , |S_v^perp| dv )   (from the local sampling interval)
      grid = { pos, su, sv, col } with row = v index; du[a], dv[b] = sampling interval at each
      sample; k = sigma as a fraction of the interval; rgb (optional) overrides the colour.
+     cull (optional) = { x, y, z, flip, min }: leave out samples whose outward normal (S_u x S_v, times
+     flip) points away from the eye at (x, y, z) by more than min (a cosine, e.g. -0.1) — back faces.
+     kept (optional Int32Array) receives, per written instance, which sample (b * na + a) it came from.
      Returns the next free instance index. */
-  gl.writePlanoids = function (sp, start, grid, na, nb, du, dv, k, rgb) {
+  gl.writePlanoids = function (sp, start, grid, na, nb, du, dv, k, rgb, cull, kept) {
     var P = grid.pos, SU = grid.su, SV = grid.sv, CL = grid.col, n = start, a, b, t, o;
     var cx = sp.center, ux = sp.axU, vx = sp.axV, cl = sp.color;
     for (b = 0; b < nb; b++) for (a = 0; a < na; a++) {
       if (n >= sp.capacity) return n;
       t = (b * na + a) * 3; o = n * 3;
       var sux = SU[t], suy = SU[t + 1], suz = SU[t + 2], svx = SV[t], svy = SV[t + 1], svz = SV[t + 2];
+      if (cull) {
+        var nx = suy * svz - suz * svy, ny = suz * svx - sux * svz, nz = sux * svy - suy * svx, ex = cull.x - P[t], ey = cull.y - P[t + 1], ez = cull.z - P[t + 2];
+        if ((nx * ex + ny * ey + nz * ez) * cull.flip < cull.min * Math.sqrt((nx * nx + ny * ny + nz * nz) * (ex * ex + ey * ey + ez * ez))) continue;
+      }
+      if (kept) kept[n - start] = b * na + a;
       var uu = sux * sux + suy * suy + suz * suz || 1e-12, uv = (sux * svx + suy * svy + suz * svz) / uu;
       svx -= uv * sux; svy -= uv * suy; svz -= uv * suz;        // S_v orthogonalised against S_u
       var ku = du[a] * k, kv = dv[b] * k;

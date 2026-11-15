@@ -96,15 +96,15 @@
         if (cw > 0.05 && Math.abs(px) < cw * lim && Math.abs(py) < cw * lim) {
           var dx = cx - x, dy = cy - y, dz = cz - z, d2 = dx * dx + dy * dy + dz * dz;
           var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / Math.sqrt(d2) * c.flip;
-          cs = c.closed ? (cs > -0.15 ? 1 : 0.3) : Math.max(0.25, Math.abs(cs));
+          cs = c.closed ? (cs > -0.15 ? 1 : 0) : Math.max(0.25, Math.abs(cs));      // the far side of a closed chart asks for nothing
           w = c.carea[i] * cs / d2 * (locked && !c.lock ? 1 : c.gain);
           if (!c.lock) { if (cw < z0) z0 = cw; if (cw > z1) z1 = cw; }
         }
         c.w[i] = w; totW += w;
       }
     });
-    var total = sizeTiles(1);
-    if (Math.abs(total - st.budget) > 0.001 * st.budget) sizeTiles(st.budget / total);
+    var goal = st.budget * boost, total = sizeTiles(1);     // laid for a little more than the budget: back faces drop out when written
+    if (Math.abs(total - goal) > 0.001 * goal) sizeTiles(goal / total);
     if (z1 > z0) zr = [z0 * 0.85, z1 * 1.5];
 
     function sizeTiles(scale) {
@@ -120,7 +120,7 @@
             share += imp; mu[a] += imp; mv[b] += imp; lu += imp * c.clu[i] / c.tu; lv += imp * c.clv[i] / c.tv;
           }
           if (!share) { tl.na = tl.nb = 0; return; }             // locked: a tile outside the view gets nothing
-          var N = Math.max(4, st.budget * share * scale), ratio = lu / (lv || 1e-12);
+          var N = Math.max(4, goal * share * scale), ratio = lu / (lv || 1e-12);
           tl.nb = Math.max(c.minB, Math.round(Math.sqrt(N / ratio))); tl.na = Math.max(c.minA, Math.round(N / tl.nb));
           for (a = 0; a < cu; a++) mu[a] += share / cu * (locked ? 0.12 : 0.3);
           for (b = 0; b < cv; b++) mv[b] += share / cv * (locked ? 0.12 : 0.3);
@@ -138,27 +138,39 @@
 
   var sg = { pos: new Float32Array(CAP * 3), su: new Float32Array(CAP * 3), sv: new Float32Array(CAP * 3), col: new Float32Array(CAP * 3) };
   var ch = new Float32Array(60000 * 5);
-  /* derive every Gaussian again: centre, tangent axes, colour, and the control features riding along */
+  /* derive every Gaussian again: centre, tangent axes, colour, and the control features riding along.
+     Back faces of closed charts are never written: they cannot be seen in this frame, so they should not
+     spend the budget. What is written then falls short of it, so the next lattices are laid larger (boost). */
+  var boost = 1, kept = new Int32Array(60000);
   function resample() {
+    var n = emit();
+    boost = KT.clamp(boost * st.budget / Math.max(1, n), 1, 4);
+    if (Math.abs(n - st.budget) > 0.1 * st.budget) n = emit();
+    st.drawn = n; R.commit(n); R.depthRange(zr[0], zr[1]);
+    paintNumbers();
+  }
+  function emit() {
     allocate();
-    var n = 0, meta = R.meta, aux = R.aux;
+    var n = 0, meta = R.meta, aux = R.aux, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 };
     charts.forEach(function (c, ci) {
+      var first = n; eye.flip = c.flip;
       c.tiles.forEach(function (tl) {
-        var m = tl.na * tl.nb, n0 = n, a, b, i, o;
-        if (!m || n + m > CAP) return;
+        var m = tl.na * tl.nb, n0 = n, a, b, i, j, o;
+        if (!m || m > CAP) return;
+        if (kept.length < m) kept = new Int32Array(m);
         NB.patchGrid(c.patch, tl.us, tl.vs, sg);
-        n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k);
+        n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, null, c.closed ? eye : null, kept);
         if (ch.length < m * 5) ch = new Float32Array(m * 5);
         evalCh(c.patch, tl.us, tl.vs, c.A, 5, ch);
-        for (b = 0; b < tl.nb; b++) for (a = 0; a < tl.na; a++) {
-          i = b * tl.na + a; o = (n0 + i) * 4;
+        for (j = n0; j < n; j++) {
+          i = kept[j - n0]; a = i % tl.na; b = (i - a) / tl.na; o = j * 4;
           aux[o] = ch[i * 5]; aux[o + 1] = ch[i * 5 + 1]; aux[o + 2] = ch[i * 5 + 2]; aux[o + 3] = ch[i * 5 + 3];
           meta[o] = ci; meta[o + 1] = ch[i * 5 + 4]; meta[o + 2] = tl.us[a]; meta[o + 3] = tl.vs[b];
         }
       });
+      c.count = n - first;
     });
-    st.drawn = n; R.commit(n); R.depthRange(zr[0], zr[1]);
-    paintNumbers();
+    return n;
   }
 
   /* ---------- scene ---------- */
