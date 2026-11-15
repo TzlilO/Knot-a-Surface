@@ -110,6 +110,9 @@
     '  vQ = position.xy; vCol = iColor; vAux = iAux; vN = normalize(cross(iU, iV));',
     '  vec3 p = iCenter + (iU * position.x + iV * position.y) * uGain; vW = p;',
     '  vec4 e = viewMatrix * vec4(p, 1.0); vZ = -e.z;',
+    '#ifdef PUSH',                                               // gl.draw, pass 1: one sigma behind the surface
+    '  e.xyz *= 1.0 + uGain * max(length(iU), length(iV)) / length(e.xyz);',
+    '#endif',
     '  gl_Position = projectionMatrix * e;',
     '}'].join('\n');
   /* uMode picks what a Gaussian shows: 0 appearance, 1 depth, 2 normal, 3 the Gaussian itself (drawn
@@ -118,6 +121,11 @@
      by roll (a fraction of the width) — every mode of the same frame, side by side. */
   var FRAG = [
     'precision highp float;',
+    '#if defined(DEPTH) || defined(ACCUM)',                       // gl.draw cuts at weight 0.236 where the dither cut near 0.42:
+    '#define SHARP 1.66',                                         // a steeper falloff keeps every Gaussian the size it had
+    '#else',
+    '#define SHARP 1.0',
+    '#endif',
     'uniform vec3 uLight; uniform float uRim; uniform float uFlat;',
     'uniform float uMode; uniform vec3 uSplit; uniform vec2 uRes; uniform vec2 uDepth; uniform vec3 uTint;',
     'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vAux; varying float vZ;',
@@ -130,10 +138,27 @@
     '  float m = uMode;',
     '  if (uSplit.x > 0.5) m = floor(fract((gl_FragCoord.x + uSplit.z * (uRes.y - gl_FragCoord.y)) / uRes.x - uSplit.y) * uSplit.x);',
     '  bool own = m > 2.5 && m < 3.5;',
-    '  float g = exp(-0.5 * dot(vQ, vQ) * (own ? 3.6 : 1.0));',
+    '  float q2 = dot(vQ, vQ), K = (own ? 3.6 : 1.0) * SHARP, g0 = exp(-0.5 * q2 * (own ? 3.6 : 1.0));',
+    '#if defined(DEPTH) || defined(ACCUM)',
+    // band-limit each Gaussian to the pixel grid: widen it by half a pixel (measured in its own units, from
+    // the screen derivatives) and lower it so its total stays the same. A Gaussian much smaller than a pixel,
+    // or seen edge-on as a sliver, then fades instead of flickering, and dense dots do not beat into moire.
+    '  vec2 qx = dFdx(vQ), qy = dFdy(vQ);',
+    '  float lp = 1.0 / (1.0 + K * 0.125 * (dot(qx, qx) + dot(qy, qy)));',
+    '  float g = lp * exp(-0.5 * q2 * K * lp);',
+    '#else',
+    '  float g = exp(-0.5 * q2 * K);',
+    '#endif',
     '  float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
     '  float a = smoothstep(0.28, 0.56, g);',
-    '#ifdef BLEND',
+    '#if defined(DEPTH)',
+    '  if (g < 0.236) discard;',                                  // the core of each Gaussian: what counts as the surface
+    '  gl_FragColor = vec4(0.0); return;',
+    '#elif defined(ACCUM)',
+    '  float w = max(g - 0.1 * lp, 0.0) / 0.9;',                  // weight: falls to zero before the edge of the quad
+    '  if (w <= 0.0) discard;',
+    '  if (own) w *= 0.15;',                                      // single Gaussians keep their soft profile (see the resolve)
+    '#elif defined(BLEND)',
     '  a = g;',
     '#else',
     '  if (a <= n) discard;',
@@ -142,10 +167,12 @@
     '  if (dot(nn, cameraPosition - vW) < 0.0) nn = -nn;',
     '  float d = max(dot(nn, uLight), 0.0);',
     '  vec3 c = (own ? uTint : m > 3.5 ? vAux : vCol) * mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat);',
-    '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g), own ? 1.0 : uRim);',
+    '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g0), own ? 1.0 : uRim);',
     '  if (m > 0.5 && m < 1.5) c = ramp(clamp(log(vZ / uDepth.x) / log(uDepth.y / uDepth.x), 0.0, 1.0));',
     '  else if (m > 1.5 && m < 2.5) c = nn * 0.5 + 0.5;',
-    '#ifdef BLEND',
+    '#if defined(ACCUM)',
+    '  gl_FragColor = vec4(c * w, w);',
+    '#elif defined(BLEND)',
     '  gl_FragColor = vec4(c, a * 0.92);',
     '#else',
     '  gl_FragColor = vec4(c, 1.0);',
@@ -164,15 +191,22 @@
       at.setUsage(T.DynamicDrawUsage); g.setAttribute(n, at); A[n] = at;
     });
     g.instanceCount = 0;
-    var mat = new T.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: (blend ? '#define BLEND\n' : '') + FRAG, side: T.DoubleSide,
-      transparent: blend, depthWrite: !blend, depthTest: !blend,
-      uniforms: { uGain: { value: 1 }, uRim: { value: 0.6 }, uFlat: { value: 0 },
-                  uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
-                  uMode: { value: 0 }, uSplit: { value: new T.Vector3(0, 0, 0) }, uRes: { value: new T.Vector2(1, 1) },
-                  uDepth: { value: new T.Vector2(1, 10) }, uTint: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) } }
-    });
+    var U = { uGain: { value: 1 }, uRim: { value: 0.6 }, uFlat: { value: 0 },
+              uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
+              uMode: { value: 0 }, uSplit: { value: new T.Vector3(0, 0, 0) }, uRes: { value: new T.Vector2(1, 1) },
+              uDepth: { value: new T.Vector2(1, 10) }, uTint: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) } };
+    function variant(def, o) {            // the same shader and the same uniforms, compiled for another pass
+      return new T.ShaderMaterial(Object.assign({ vertexShader: def + VERT, fragmentShader: def + FRAG, side: T.DoubleSide, uniforms: U }, o));
+    }
+    var mat = variant(blend ? '#define BLEND\n' : '', { transparent: blend, depthWrite: !blend, depthTest: !blend });
     var mesh = new T.Mesh(g, mat); mesh.frustumCulled = false;
+    if (!blend) mesh.userData.ktSplat = {     // what gl.draw swaps in
+      plain: mat,
+      depth: variant('#define DEPTH\n#define PUSH\n', { colorWrite: false }),
+      core: variant('#define DEPTH\n', { colorWrite: false }),
+      accum: variant('#define ACCUM\n', { transparent: true, depthWrite: false, blending: T.CustomBlending,
+                                          blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.OneFactor, blendDstAlpha: T.OneFactor })
+    };
     return {
       mesh: mesh, capacity: capacity, uniforms: mat.uniforms,
       center: A.iCenter.array, axU: A.iU.array, axV: A.iV.array, color: A.iColor.array, aux: A.iAux.array,
@@ -184,6 +218,68 @@
         });
       }
     };
+  };
+
+  /* ---------- a frame with smooth Gaussians ----------
+     gl.draw(R, scene, camera) stands in for R.renderer.render(scene, camera). The splats of gl.splats are
+     drawn as a surface instead of dithered dots:
+       1  off screen, depth only: the core of each Gaussian, pushed one sigma back. Which layer is in front;
+       2  off screen: every Gaussian fragment in front of that depth, summed as (colour x weight, weight);
+       3  on screen: colour = sum / weight, opacity from the weight (a soft edge where the Gaussians thin out);
+       4  on screen, depth only: the cores again, where they are, so that the rest of the scene, rendered
+          last and as usual, still hides behind the surface or draws over it.
+     The current viewport and scissor are respected. Without float render targets (or with no splats in the
+     scene) it is a plain render: the dithered look. */
+  var _v4 = null, _c = null;
+  function smooth(R) {
+    if (R.smooth !== undefined) return R.smooth;
+    var r = R.renderer;
+    if (!r.capabilities.isWebGL2 || !(r.extensions.has('EXT_color_buffer_float') || r.extensions.has('EXT_color_buffer_half_float'))) return (R.smooth = null);
+    var rt = new T.WebGLRenderTarget(4, 4, { type: T.HalfFloatType, minFilter: T.NearestFilter, magFilter: T.NearestFilter, stencilBuffer: false });
+    var tri = new T.BufferGeometry();
+    tri.setAttribute('position', new T.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+    var mat = new T.ShaderMaterial({
+      transparent: true, depthTest: false, depthWrite: false,
+      uniforms: { tAcc: { value: rt.texture }, uSize: { value: new T.Vector2(4, 4) } },
+      vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: [
+        'uniform sampler2D tAcc; uniform vec2 uSize;',
+        'void main(){',
+        '  vec4 s = texture2D(tAcc, gl_FragCoord.xy / uSize);',
+        '  if (s.a < 0.02) discard;',
+        '  gl_FragColor = vec4(s.rgb / s.a, smoothstep(0.02, 0.15, s.a));',
+        '}'].join('\n')
+    });
+    var quad = new T.Mesh(tri, mat); quad.frustumCulled = false;
+    var sc = new T.Scene(); sc.add(quad);
+    return (R.smooth = { rt: rt, mat: mat, scene: sc, cam: new T.Camera(), size: new T.Vector2() });
+  }
+  gl.draw = function (R, scene, camera) {
+    var r = R.renderer, S = smooth(R), list = [], i;
+    if (S) scene.traverseVisible(function (o) { if (o.userData.ktSplat) list.push(o); });
+    if (!list.length) { r.render(scene, camera); return; }
+    _v4 = _v4 || new T.Vector4(); _c = _c || new T.Color();
+    var pr = r.getPixelRatio(), rt = S.rt, size = r.getDrawingBufferSize(S.size);
+    if (rt.width !== size.x || rt.height !== size.y) { rt.setSize(size.x, size.y); S.mat.uniforms.uSize.value.copy(size); }
+    rt.viewport.copy(r.getViewport(_v4)).multiplyScalar(pr).floor();
+    rt.scissor.copy(r.getScissor(_v4)).multiplyScalar(pr).floor(); rt.scissorTest = r.getScissorTest();
+    var auto = r.autoClear, target = r.getRenderTarget(), alpha = r.getClearAlpha(), mask = camera.layers.mask, bg = scene.background;
+    var masks = list.map(function (o) { return o.layers.mask; });
+    function use(k) { list.forEach(function (o) { o.material = o.userData.ktSplat[k]; }); }
+    r.getClearColor(_c);
+    list.forEach(function (o) { o.layers.set(31); });
+    camera.layers.set(31); scene.background = null; r.autoClear = false;
+    r.setRenderTarget(rt); r.setClearColor(0x000000, 0); r.clear(true, true, false);
+    use('depth'); r.render(scene, camera);                                    // 1
+    use('accum'); r.render(scene, camera);                                    // 2
+    r.setRenderTarget(target); r.setClearColor(_c, alpha);
+    if (auto) r.clear();
+    r.render(S.scene, S.cam);                                                 // 3
+    use('core'); r.render(scene, camera);                                     // 4
+    camera.layers.mask = mask; scene.background = bg;
+    r.render(scene, camera);                                                  // everything that is not a splat
+    r.autoClear = auto;
+    for (i = 0; i < list.length; i++) { list[i].layers.mask = masks[i]; list[i].material = list[i].userData.ktSplat.plain; }
   };
 
   /* Turn an evaluated (u,v) grid into planoids — the whole "method" in one loop:

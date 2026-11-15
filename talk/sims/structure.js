@@ -66,7 +66,7 @@
           G.writePlanoids(fR, n, g, na, nb, du, dv, 0.72);
           // where a chart's rows crowd together (the ends of the truck body) a derived Gaussian gets very long: cap it
           var len = [], cap2; for (k = n; k < n + na * nb; k++) len.push(Math.hypot(fR.axU[k * 3], fR.axU[k * 3 + 1], fR.axU[k * 3 + 2]), Math.hypot(fR.axV[k * 3], fR.axV[k * 3 + 1], fR.axV[k * 3 + 2]));
-          cap2 = len.slice().sort(function (p, q) { return p - q; })[len.length >> 1] * 2;
+          cap2 = len.slice().sort(function (p, q) { return p - q; })[len.length >> 1] * 1.4;
           for (k = n; k < n + na * nb; k++) [fR.axU, fR.axV].forEach(function (A, w) { var l = len[(k - n) * 2 + w]; if (l > cap2) { A[k * 3] *= cap2 / l; A[k * 3 + 1] *= cap2 / l; A[k * 3 + 2] *= cap2 / l; } });
           ours.pos.set(g.pos, n * 3); ours.col.set(g.col, n * 3); ours.chart.fill(ci, n, n + na * nb);
           // the list: the same count, each sample moved inside its cell, off the surface a little, turned and resized
@@ -274,7 +274,7 @@
           fL.mesh.visible = k === 0; fR.mesh.visible = k === 1;
           if (mesh) { eOk.obj.visible = eBad.obj.visible = mode === 'mesh' && k === 0; eOurs.obj.visible = mode === 'mesh' && k === 1; }
           star.L.obj.visible = dot.ok.visible = dot.bad.visible = mode === 'near' && k === 0 && st.probe >= 0; star.R.obj.visible = dot.R.visible = mode === 'near' && k === 1 && st.probe >= 0;
-          rr.render(scene, cam);
+          G.draw(R, scene, cam);
         }
         rr.setScissorTest(false);
       });

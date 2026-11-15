@@ -32,6 +32,7 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 .hud .cut button.on{color:var(--bg);background:var(--text)}
 .hud .clock{padding:.42rem .55rem;border:1px solid var(--line2);border-radius:6px;background:var(--panel);
   font-variant-numeric:tabular-nums;color:var(--dim);cursor:pointer}
+.hud .sound.off{text-decoration:line-through;opacity:.5}
 .hud .clock b{color:var(--text);font-weight:600}
 .hud .clock.late b{color:var(--ctrl)}.hud .clock.ok b{color:var(--ok)}
 .keys{position:fixed;z-index:70;left:3.3rem;bottom:3.2rem;display:none;padding:1rem 1.2rem;border-radius:10px;background:var(--bg3);
@@ -78,6 +79,8 @@ body.cut-20 .step[data-depth="deep"]{display:none}
   font-size:1.02rem;overflow-x:auto;color:var(--text)}
 .eq .katex-display{margin:0;text-align:left}.eq .katex-display>.katex{text-align:left}
 .step p.aside{font:500 .7rem/1.5 var(--f-mono);letter-spacing:.02em;color:var(--mute);max-width:44em}
+.step p.credit{display:none;font:500 .58rem/1.4 var(--f-mono);letter-spacing:.02em;color:var(--mute);opacity:.6;max-width:44em}
+body.has-sound .step p.credit{display:block}
 .do{display:inline-flex;align-items:center;gap:.5rem;margin-top:.3rem;font:600 .64rem/1 var(--f-mono);letter-spacing:.12em;
   text-transform:uppercase;color:var(--surf)}
 .do:before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:var(--surf);animation:pulse 1.8s ease-in-out infinite}
@@ -85,6 +88,7 @@ body.cut-20 .step[data-depth="deep"]{display:none}
 
 /* chapter opener */
 .opener .num{font:700 7.5rem/.8 var(--f-display);letter-spacing:-.06em;color:transparent;-webkit-text-stroke:1.5px #31456a;margin-bottom:1.4rem}
+.opener .num small{font-size:.42em;letter-spacing:0;-webkit-text-stroke-width:1px}
 .opener .kick{font:600 .64rem/1 var(--f-mono);letter-spacing:.2em;text-transform:uppercase;color:var(--surf);margin-bottom:1rem}
 .opener h2{font-size:3.3rem;line-height:.98;letter-spacing:-.04em;margin-bottom:1.3rem}
 .opener p{font-size:1.2rem;line-height:1.45;color:var(--text);max-width:24em}

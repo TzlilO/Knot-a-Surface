@@ -20,7 +20,7 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 | `/review/` | Review hub for the cuts + sims |
 | `/deck.html` | Interview deck (reveal.js), simulator embedded as slide 14 |
 | `/talk.html` | Thesis talk — scroll-driven deck (20′ / 40′ cuts), from one spline to a manifold of spline charts |
-| `/talk/sims/{flatland,basis,planoid,ledger,refine,manifold,structure}.html` | The talk's seven simulations as standalone lab pages |
+| `/talk/sims/{flatland,basis,planoid,ledger,refine,manifold,structure,touch}.html` | The talk's eight simulations as standalone lab pages |
 | `/lab.html` | Lab — an interactive figure: the Utah teapot and other objects as spline charts, studio-lit Gaussians, baked DINOv3 control features, feature-based selection and editing |
 | `/talk-he.html` | Short Hebrew deck (5–10 min) — explicit vs implicit 3D representations and Gaussian Splatting; light "liquid glass" theme |
 | `/arena.html` | Arena: live 4D match reconstruction (second application of the thesis) |
@@ -40,7 +40,8 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
   pages themselves sibling-load the cores).
 - **Thesis talk**: `talk.html` + `talk/` are plain static files with no build step
   (`kit.js` module registry, `nurbs.js` spline math, `gl.js` three.js helpers, `scenes.js` spline-chart
-  scenes (barn / truck / bust / garden stand-ins), `deck.js`/`deck.css`
+  scenes (barn / truck / bust / garden stand-ins, and `scan`: a real DTU object fitted offline by
+  `tools/dtu/fit.py` into `talk/dtu-data.js`), `deck.js`/`deck.css`
   scroll engine, one module per simulation in `talk/sims/`). three.js and KaTeX are vendored in
   `talk/vendor/` so the talk runs offline. The evidence numbers live at the top of `talk/deck.js`.
 - **Deploy**: `bash deploy/deploy-site.sh` = flatten + build + commit + push to `main`

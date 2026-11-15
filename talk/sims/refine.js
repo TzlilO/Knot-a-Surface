@@ -924,7 +924,10 @@
       ['ctrl', 'gauss', 'bal'].forEach(function (k) { preBtn[k] = ui.button(rowP, { label: REGIMES[k].label, onClick: function () { userPreset(k); } }); });
       preBtn.tour = ui.button(rowP, { label: 'tour', onClick: function () { startTour(); } });
       var rowT = ui.el('div', 'kt-row rf-btns rf-tog'); pc.appendChild(rowT);
-      var tgRun = ui.toggle(rowT, { label: 'run', value: true, onChange: function (v) { st.run = v; } });
+      /* one button, named for what a press does now: pause what is playing, resume it, or play this step again */
+      var btRun = ui.button(rowT, { label: 'pause', onClick: function () {
+        if (!st.run) st.run = true; else if (playing()) st.run = false; else setScene(st.scene);
+      } });
       var tgG = ui.toggle(rowT, { label: 'gaussians', value: false, onChange: function (v) { st.gauss = v; st.densAuto = false; st.tour = null; relayout(); } });
       tgG.el.classList.add('rf-g');
       var slBud = ui.slider(pc, { label: 'budget', min: 0, max: BUDGETS.length - 1, step: 1, value: BUDGETS.indexOf(CFG.BUDGET),
@@ -1149,6 +1152,7 @@
 
       /* ---------- user controls ---------- */
       function busy() { return !!st.op; }
+      function playing() { return !!(st.op || st.pending || st.mode !== 'idle' || st.tour || st.densAuto || !m.cg.done); }
       function userInsert() {
         if (busy()) return; st.mode = 'idle'; st.pending = null; manual(); st.rmse0 = st.rmse0 || ms.rmse;
         if (!beginInsert(PACE.button, false)) {
@@ -1213,7 +1217,7 @@
         st.budget = CFG.BUDGET; slBud.set(BUDGETS.indexOf(CFG.BUDGET));
         setShade(id === 'normals' ? 'normal' : 'height');
         rdUni.el.classList.toggle('rf-hide', !st.versus);
-        if (!st.run) { st.run = true; tgRun.set(true); }
+        st.run = true;
         if (id === 'coarse') { enterCoarse(true); setView('fit'); setGauss(false); }
         else if (id === 'insert') {
           enterCoarse(false); setView('fit'); setGauss(false); st.holdScale = true;
@@ -2034,6 +2038,8 @@
         // the balance map is measured in slices: 8 ms a frame, more when frames are slow anyway
         if (st.bal || st.want) { if (!B.ready) S.balStep(KT.clamp(0.3 * gapMs, 8, 60)); if (st.want && B.cols) applyPreset(st.want); }
         if (st.run) step(dt);
+        var lab = !st.run ? 'resume' : playing() ? 'pause' : 'replay';
+        if (btRun.textContent !== lab) btRun.textContent = lab;
         t0 = now(); draw(t, dt); perf.frame = now() - t0;
       });
 

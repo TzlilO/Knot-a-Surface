@@ -2,8 +2,8 @@
    A whole scene as an atlas of B-spline charts — a spline manifold. Every Gaussian on screen is
    derived from one of the charts; a FIXED Gaussian budget is re-sampled over the (u,v) domains
    as the camera moves (view-adaptive sampling), and editing control points moves thousands of
-   Gaussians at once. Scenes come from talk/scenes.js: benchmark-style stand-ins (barn, truck,
-   bust, garden) plus the abstract still life. Any scene can be read as appearance, depth, normals,
+   Gaussians at once. Scenes come from talk/scenes.js: one real object (`scan`, a DTU scan fitted
+   offline), benchmark-style stand-ins (barn, truck, bust, garden) and the abstract still life. Any scene can be read as appearance, depth, normals,
    single Gaussians or chart identity — or all five at once, in a rolling split screen.
    Tool: WebGL (three.js) instanced planoids + a 2D-canvas (u,v) atlas.
    Standalone: talk/sims/manifold.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js, scenes.js. */
@@ -11,7 +11,8 @@
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
   var PER_CP = 16;                  // 3 position + 12 SH1 colour + 1 opacity per control point
-  var CAP = 220000, FLOOR = 0.10;   // FLOOR = share of the budget kept as view-independent coverage
+  var CAP = 320000, FLOOR = 0.10;   // FLOOR = share of the budget kept as view-independent coverage
+  var DENSE = 96;                   // a control net longer than this along either side is drawn thinned out
   /* what a Gaussian shows; the order is the shader's uMode (gl.js). The view 'split' shows all of them */
   var MODES = [{ v: 'splats', label: 'rgb', name: 'appearance' }, { v: 'depth', label: 'depth', name: 'depth' },
                { v: 'normal', label: 'normal', name: 'normals' }, { v: 'gauss', label: 'gauss', name: 'Gaussians' },
@@ -19,37 +20,36 @@
   var ROLL = 0.03, SLANT = 0.2;     // split screen: band travel in stage widths per second, and the lean of its dividers
   function wrap(x, m) { return ((x % m) + m) % m; }
 
+  /* The talk runs on ONE subject: `scan`, a real DTU object (talk/dtu-data.js; without that file the barn
+     stands in). The hand-modelled scenes stay as tabs of the lab page. atlas: 1 shows the (u,v) tiles, tools: 1 the toggles. */
   var SCENES = {
-    scene:  { scn: 'barn', view: 'splats', cam: 'wide', rig: 1, cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
-    modes:  { scn: 'barn', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
-    charts: { scn: 'barn', view: 'charts', cam: 'wide', cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
-    nets:   { scn: 'barn', view: 'charts', cam: 'wide', nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
-    budget: { scn: 'barn', view: 'splats', tour: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
-    lod:    { scn: 'barn', view: 'splats', cam: 'close', ab: 1, rim: 0.6, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
-    truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, cap: 'same method, another capture' },
-    bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, cap: 'a scanned object under a camera dome' },
-    garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, cap: 'an object inside an unbounded surround' },
-    edit:   { scn: 'bust', view: 'splats', cam: 'a', breathe: 1, cap: 'editable by construction · move control points, the Gaussians follow',
+    scene:  { scn: 'scan', view: 'splats', cam: 'wide', cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
+    modes:  { scn: 'scan', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
+    charts: { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
+    nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
+    budget: { scn: 'scan', view: 'splats', tour: 1, atlas: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
+    lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
+    barn:   { scn: 'barn', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'a building and its grounds' },
+    truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'same method, another capture' },
+    bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'a scanned object under a camera dome' },
+    garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'an object inside an unbounded surround' },
+    edit:   { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, tools: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
-    /* an aside in three steps: the nose is as long as the claim on the slide is tall */
-    fib1:   { scn: 'bust', view: 'splats', cam: 'a', nose: 2.5, cap: 'the nose is as long as the claim is tall' },
-    fib2:   { scn: 'bust', view: 'splats', cam: 'a', nose: 1.7, cap: 'a little closer to the truth' },
-    fib3:   { scn: 'bust', view: 'splats', cam: 'a', nose: 0, cap: 'what was actually measured' },
-    studio: { scn: 'studio', view: 'splats', cam: 'wide', cap: 'the abstract still life' },
+    studio: { scn: 'studio', view: 'splats', cam: 'wide', atlas: 1, cap: 'the abstract still life' },
     /* chrome-free, for pages that embed the scene as a backdrop (mount with { bare: true }) */
     hero:   { scn: 'barn', view: 'splats', tour: 1, cap: '' }
   };
 
   KT.register('manifold', {
     title: 'A manifold of splines',
-    blurb: 'Benchmark-style scenes — a barn, a truck, a bust, a garden — built entirely from spline charts. A fixed Gaussian ' +
-           'budget is re-sampled across the charts as the camera moves, and editing a control point moves the splats with it. ' +
-           'The scenes are procedural stand-ins modelled after Tanks and Temples, DTU and Mip-NeRF 360 captures, not the datasets.',
+    blurb: 'A scene stored only as spline charts. A fixed Gaussian budget is re-sampled across the charts as the camera moves, ' +
+           'and editing a control point moves the splats with it. The owl is a real DTU scan, fitted offline to its depth maps ' +
+           'and photographs (not trained); the barn, truck, bust and garden are procedural stand-ins, not the datasets.',
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
-      { id: 'scene', label: 'Barn' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
-      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'truck', label: 'Truck' },
-      { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'edit', label: 'Edit' }, { id: 'studio', label: 'Still life' }
+      { id: 'scene', label: 'The object' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
+      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'edit', label: 'Edit' },
+      { id: 'barn', label: 'Barn' }, { id: 'truck', label: 'Truck' }, { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'studio', label: 'Still life' }
     ],
     create: function (env) {
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
@@ -57,8 +57,9 @@
       var R = G.renderer(root, cam, env.opts.clear), scene = new T.Scene();
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
-                 budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, cull: true, nose: 0, noseOn: -1, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
-      var def = null, charts = [], totalCP = 0, netL = null, pts = null, ptPos = null, rigL = null;
+                 budget: +env.opts.budget || (small ? 30000 : KT.dtu ? 160000 : 90000),   // the scanned object has detail to show for a larger budget
+                 k: 0.72, cull: true, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
+      var def = null, charts = [], totalCP = 0, shownCP = 0, netL = null, pts = null, ptPos = null, rigL = null;
       var need = true, lastAlloc = 0, camKey = '', fit = 1;
       /* a named camera of the current scene, backed off on narrow stages so the subject stays in frame */
       function view(name) { var v = Object.assign({}, def.views[name]); v.r *= fit; return v; }
@@ -75,11 +76,12 @@
           st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
           loadScene(v); orbit.touched = false; orbit.to(view('wide'), true); paintCap();
         } });
+      segS.el.classList.add('mf-pick');
       var slB = ui.slider(panel, { label: 'budget', min: 6000, max: CAP - 20000, step: 2000, value: Math.min(st.budget, CAP - 20000),
         fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, onInput: function (v) { st.budget = v; need = true; } });
       var segV = ui.seg(panel, { value: 'splats', options: MODES.concat([{ v: 'split', label: 'all' }]),
         onChange: function (v) { st.view = v; showView(); } });
-      var rowT = ui.el('div', 'kt-row'); panel.appendChild(rowT);
+      var rowT = ui.el('div', 'kt-row mf-tog'); panel.appendChild(rowT);
       var tgA = ui.toggle(rowT, { label: 'adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
       var tgN = ui.toggle(rowT, { label: 'nets', value: false, onChange: function (v) { st.nets = v; showNets(); } });
       var tgR = ui.toggle(rowT, { label: 'cameras', value: false, onChange: function (v) { st.rig = v; showNets(); } });
@@ -118,23 +120,27 @@
         hit: function (x, y) { return findPoint(x, y, true) >= 0; },
         release: function () {
           if (!dragCP) return;
-          dragCP.c.patch.P.set(dragCP.was, dragCP.i * 3); coarse(dragCP.c); updateNets(); need = true; dragCP = null;
+          moveCP(0, 0, 0); dragCP = null;
         } });
 
       /* ---------- load a scene: charts, nets, atlas tiles, capture rig ---------- */
       function loadScene(key) {
         if (st.scn === key) { charts.forEach(function (c) { c.patch.P.set(c.base); coarse(c); }); updateNets(); need = true; return; }
         st.scn = key; def = KT.scenes[key].build(); charts = def.charts; segS.set(key);
+        field.uniforms.uFlat.value = def.photo || KT.scenes[key].photo ? 1 : 0;   // colours from photographs are already lit
         [netL && netL.obj, pts, rigL && rigL.obj].forEach(function (o) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
-        totalCP = 0; var segs = 0;
+        totalCP = 0; shownCP = 0; var segs = 0;
         charts.forEach(function (c) {
           var p = c.patch; totalCP += p.nu * p.nv;
-          segs += (p.periodicU ? p.nu : p.nu - 1) * p.nv + (p.periodicV ? p.nv : p.nv - 1) * p.nu;
+          // a dense net (a scanned object) is drawn as every ns-th row and column, or it is one solid colour
+          c.ns = Math.max(p.nu, p.nv) > DENSE ? Math.ceil(Math.max(p.nu, p.nv) / 48) : 1;
+          c.pi = every(p.nu, c.ns); c.pj = every(p.nv, c.ns); shownCP += c.pi.length * c.pj.length;
+          segs += (p.periodicU ? p.nu : p.nu - 1) * c.pj.length + (p.periodicV ? p.nv : p.nv - 1) * c.pi.length;
         });
-        netL = G.lines(segs * 2, C.ctrl, totalCP > 3000 ? 0.3 : 0.5); netL.obj.renderOrder = 5; scene.add(netL.obj);
-        var ptGeo = new T.BufferGeometry(); ptPos = new Float32Array(totalCP * 3);
+        netL = G.lines(segs * 2, C.ctrl, shownCP > 3000 ? 0.3 : 0.5); netL.obj.renderOrder = 5; scene.add(netL.obj);
+        var ptGeo = new T.BufferGeometry(); ptPos = new Float32Array(shownCP * 3);
         ptGeo.setAttribute('position', new T.BufferAttribute(ptPos, 3));
-        pts = new T.Points(ptGeo, new T.PointsMaterial({ color: C.ctrl, size: totalCP > 3000 ? 3 : 5, sizeAttenuation: false }));
+        pts = new T.Points(ptGeo, new T.PointsMaterial({ color: C.ctrl, size: shownCP > 3000 || shownCP < totalCP ? 3 : 5, sizeAttenuation: false }));
         pts.frustumCulled = false; scene.add(pts);
         // capture rig: one small frustum per camera of the dataset-style rig
         var cams = def.rig.cams, tg = def.rig.target, n = 0;
@@ -312,23 +318,27 @@
       }
 
       /* ---------- control nets ---------- */
+      function every(n, s) { var a = [], i; for (i = 0; i < n; i++) if (i % s === 0 || i === n - 1) a.push(i); return a; }
+      /* the rows c.pj and columns c.pi of each net (all of them unless the net is dense), and the points where they cross */
       function updateNets() {
         var A = netL.arr, n = 0, q = 0;
+        function seg(P, o, o2) { A[n++] = P[o]; A[n++] = P[o + 1]; A[n++] = P[o + 2]; A[n++] = P[o2]; A[n++] = P[o2 + 1]; A[n++] = P[o2 + 2]; }
         charts.forEach(function (c) {
-          var p = c.patch, P = p.P, nu = p.nu, nv = p.nv, i, j, o, o2;
+          var p = c.patch, P = p.P, nu = p.nu, nv = p.nv, I = c.pi, J = c.pj, a, b, i, j, o;
           c.ptOff = q / 3;
-          ptPos.set(P, q); q += P.length;
-          for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {
-            o = (j * nu + i) * 3;
-            if (i < nu - 1 || p.periodicU) { o2 = (j * nu + (i + 1) % nu) * 3; A[n++] = P[o]; A[n++] = P[o + 1]; A[n++] = P[o + 2]; A[n++] = P[o2]; A[n++] = P[o2 + 1]; A[n++] = P[o2 + 2]; }
-            if (j < nv - 1 || p.periodicV) { o2 = (((j + 1) % nv) * nu + i) * 3; A[n++] = P[o]; A[n++] = P[o + 1]; A[n++] = P[o + 2]; A[n++] = P[o2]; A[n++] = P[o2 + 1]; A[n++] = P[o2 + 2]; }
-          }
+          for (b = 0; b < J.length; b++) for (a = 0; a < I.length; a++) { o = (J[b] * nu + I[a]) * 3; ptPos[q++] = P[o]; ptPos[q++] = P[o + 1]; ptPos[q++] = P[o + 2]; }
+          for (b = 0; b < J.length; b++) for (j = J[b], i = 0; i < nu; i++) if (i < nu - 1 || p.periodicU) seg(P, (j * nu + i) * 3, (j * nu + (i + 1) % nu) * 3);
+          for (a = 0; a < I.length; a++) for (i = I[a], j = 0; j < nv; j++) if (j < nv - 1 || p.periodicV) seg(P, (j * nu + i) * 3, (((j + 1) % nv) * nu + i) * 3);
         });
         netL.set(n / 3); pts.geometry.attributes.position.needsUpdate = true;
       }
       function showNets() {
         if (!netL) return;
         netL.obj.visible = pts.visible = st.nets; rigL.obj.visible = st.rig; tgN.set(st.nets); tgR.set(st.rig);
+        /* a thinned net lies on the surface it interpolates, so it would flicker in and out of the Gaussians:
+           while it shows, the Gaussians' depth is written one sigma back (the pre-pass variant) */
+        var k = field.mesh.userData.ktSplat;
+        if (k) { k.front = k.front || k.core; k.core = st.nets && shownCP < totalCP ? k.depth : k.front; }
       }
 
       /* ---------- drag a control point ---------- */
@@ -341,7 +351,7 @@
          mouse, a fingertip-sized screen radius for touch */
       function findPoint(x, y, touch) {
         if (!st.nets || !pts) return -1;
-        if (touch) return G.nearest(cam, R.canvas, ptPos, totalCP, x, y, KT.HIT);
+        if (touch) return G.nearest(cam, R.canvas, ptPos, shownCP, x, y, KT.HIT);
         setNdc({ clientX: x, clientY: y }); ray.params.Points.threshold = orbit.cur.r * 0.012;
         var h = ray.intersectObject(pts, false)[0];
         return h ? h.index : -1;
@@ -349,10 +359,16 @@
       function pickPoint(e) {
         var gi = findPoint(e.clientX, e.clientY, e.pointerType === 'touch'), c = null;
         if (gi < 0) return false;
-        charts.forEach(function (k) { if (gi >= k.ptOff && gi < k.ptOff + k.patch.nu * k.patch.nv) c = k; });
-        var o = (gi - c.ptOff) * 3;
-        dragCP = { c: c, i: gi - c.ptOff, id: e.pointerId, was: c.patch.P.slice(o, o + 3) };
-        plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), hitP.set(c.patch.P[o], c.patch.P[o + 1], c.patch.P[o + 2]));
+        charts.forEach(function (k) { if (gi >= k.ptOff && gi < k.ptOff + k.pi.length * k.pj.length) c = k; });
+        /* a sparse net: that one control point. A dense net: a soft brush, the points within 3 drawn rows of it */
+        var p = c.patch, P = p.P, l = gi - c.ptOff, i0 = c.pi[l % c.pi.length], j0 = c.pj[Math.floor(l / c.pi.length)];
+        var rad = c.ns > 1 ? 3 * c.ns : 0, idx = [], w = [], was = [], i, j, d, o = (j0 * p.nu + i0) * 3;
+        for (j = Math.max(0, j0 - rad); j <= Math.min(p.nv - 1, j0 + rad); j++) for (i = Math.max(0, i0 - rad); i <= Math.min(p.nu - 1, i0 + rad); i++) {
+          d = Math.hypot(i - i0, j - j0) / (rad + 1); if (d >= 1) continue;
+          d = Math.cos(d * Math.PI / 2); idx.push((j * p.nu + i) * 3); w.push(d * d); was.push(P[idx[idx.length - 1]], P[idx[idx.length - 1] + 1], P[idx[idx.length - 1] + 2]);
+        }
+        dragCP = { c: c, id: e.pointerId, idx: idx, w: w, was: was, at: [P[o], P[o + 1], P[o + 2]] };
+        plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), hitP.set(P[o], P[o + 1], P[o + 2]));
         R.canvas.setPointerCapture(e.pointerId);
         return true;
       }
@@ -360,12 +376,15 @@
         if (!dragCP || e.pointerId !== dragCP.id) return;
         setNdc(e);
         if (ray.ray.intersectPlane(plane, hitP)) {
-          var o = dragCP.i * 3, P = dragCP.c.patch.P;
           st.touchedEdit = true;           // only a drag that actually moves a point stops the scene's own edit
-          P[o] = hitP.x; P[o + 1] = hitP.y; P[o + 2] = hitP.z;
-          coarse(dragCP.c); updateNets(); need = true;
+          moveCP(hitP.x - dragCP.at[0], hitP.y - dragCP.at[1], hitP.z - dragCP.at[2]);
         }
       });
+      function moveCP(dx, dy, dz) {
+        var D = dragCP, P = D.c.patch.P, n, o;
+        for (n = 0; n < D.idx.length; n++) { o = D.idx[n]; P[o] = D.was[n * 3] + dx * D.w[n]; P[o + 1] = D.was[n * 3 + 1] + dy * D.w[n]; P[o + 2] = D.was[n * 3 + 2] + dz * D.w[n]; }
+        coarse(D.c); updateNets(); need = true;
+      }
       function endCP(e) { if (dragCP && e.pointerId === dragCP.id) dragCP = null; }
       R.canvas.addEventListener('pointerup', endCP); R.canvas.addEventListener('pointercancel', endCP);
 
@@ -375,19 +394,20 @@
       }
       function paintCap() {
         var s = KT.scenes[st.scn];
-        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
+        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (s.note != null ? s.note && ' · ' + s.note : st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
         badge.style.display = st.sc.ab ? '' : 'none';
       }
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
         if (id === 'hero' && env.opts.scn && KT.scenes[env.opts.scn]) sc = Object.assign({}, sc, { scn: env.opts.scn });
+        if (!KT.scenes[sc.scn]) sc = Object.assign({}, sc, { scn: 'barn' });
+        root.classList.toggle('mf-noatlas', !sc.atlas); root.classList.toggle('mf-tools', !!sc.tools);
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
         st.view = sc.view; segV.set(sc.view); showView(); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
         field.uniforms.uRim.value = sc.rim || 0.3;
         var fresh = st.scn !== sc.scn;
         loadScene(sc.scn); showNets(); paintCap();
-        st.noseOn = -1; if (sc.nose == null) st.nose = 0;           // the scene was just reset to its own shape
         hint.textContent = sc.hint || '';
         orbit.touched = false;
         orbit.to(view(sc.cam || 'wide'), fresh);
@@ -405,11 +425,7 @@
           st.abT += dt;
           if (st.abT > 3.4) { st.abT = 0; st.adaptive = !st.adaptive; tgA.set(st.adaptive); paintBadge(); need = true; }
         }
-        if (sc.nose != null) {                              // the nose eases to the length this step asks for
-          st.nose += (sc.nose - st.nose) * (1 - Math.exp(-2.4 * dt)); if (Math.abs(sc.nose - st.nose) < 0.004) st.nose = sc.nose;
-          if (st.nose !== st.noseOn) { st.noseOn = st.nose; def.edit(st.nose).forEach(coarse); if (st.nets) updateNets(); need = true; }
-        }
-        if (sc.breathe && !st.touchedEdit && !dragCP) {     // the scene's own edit, eased in and out
+        if (sc.breathe && def.edit && !st.touchedEdit && !dragCP) {     // the scene's own edit, eased in and out
           def.edit(0.5 - 0.5 * Math.cos(st.t * 1.15)).forEach(coarse);
           if (st.nets) updateNets();
           need = true;
@@ -423,7 +439,7 @@
         var ud = field.uniforms.uDepth.value, kz = 1 - Math.exp(-5 * dt);
         ud.x += (zr[0] - ud.x) * kz; ud.y += (zr[1] - ud.y) * kz;
         if (st.view === 'split') { roll = wrap(roll + ROLL * dt, 1); field.uniforms.uSplit.value.y = roll; placeSplit(); }
-        R.renderer.render(scene, cam);
+        G.draw(R, scene, cam);
       });
 
       if (!document.getElementById('kt-manifold-css')) {
@@ -439,7 +455,10 @@
           '.kt-sim-manifold .kt-tile-n{font:600 11px/1 var(--f-mono);color:var(--text);margin-top:5px;font-variant-numeric:tabular-nums;white-space:nowrap}' +
           '.kt-sim-manifold .kt-tile-s{font:500 10px/1 var(--f-mono);color:var(--mute);margin-top:3px;white-space:nowrap}' +
           '.kt-sim-manifold .kt-caption{line-height:1.6}.kt-sim-manifold.kt-embed .kt-hint{display:none}' +
-          '.kt-sim-manifold.kt-compact .kt-atlas{display:none}' +
+          '.kt-sim-manifold.kt-compact .kt-atlas,.kt-sim-manifold.mf-noatlas .kt-atlas{display:none}' +
+          // in the deck the steps drive the scene: no picker, and the toggles only on a step that asks for them (tools: 1)
+          '.kt-sim-manifold.kt-embed .mf-pick,.kt-sim-manifold.kt-embed:not(.mf-tools) .mf-tog{display:none}' +
+
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
           '.kt-sim-manifold.kt-bare .kt-hint,.kt-sim-manifold.kt-bare .kt-ab,.kt-sim-manifold.kt-bare .kt-gear{display:none!important}' +
           '.kt-sim-manifold .kt-panel .kt-seg .kt-seg-box{margin-left:0;width:100%}' +

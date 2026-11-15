@@ -263,8 +263,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
 <!-- ============================================================ LABS -->
 <section class="block" id="labs"><div class="wrap">
   <div class="eyebrow">The lab</div>
-  <h2>Seven simulations, each <em>on its own page.</em></h2>
-  <p class="sub">Every figure in the talk is a standalone module. Open one, drag things, link straight to a scene. The seventh, <a href="talk/sims/structure.html" style="color:var(--surf)">a list against charts</a>, compares neighbours, meshing and segmentation on both. One more stands apart: <a href="lab.html" style="color:var(--surf)">the interactive figure</a> — studio lighting, DINOv3 features on the control points, and editing by meaning.</p>
+  <h2>Eight simulations, each <em>on its own page.</em></h2>
+  <p class="sub">Every figure in the talk is a standalone module. Open one, drag things, link straight to a scene. The seventh, <a href="talk/sims/structure.html" style="color:var(--surf)">a list against charts</a>, compares neighbours, meshing and segmentation on both; the eighth, <a href="talk/sims/touch.html" style="color:var(--surf)">a ball against both</a>, shows what each can be collided with. One more stands apart: <a href="lab.html" style="color:var(--surf)">the interactive figure</a> — studio lighting, DINOv3 features on the control points, and editing by meaning.</p>
   <div class="labs">
     <div class="lab-card wide">
       <svg viewBox="0 0 420 190" fill="none" aria-hidden="true">
@@ -361,7 +361,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   function big(v) { return v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + ' M' : n(v); }
 
   // links to each scene of the full-power lab
-  var ids = { barn: 'scene', truck: 'truck', bust: 'bust', garden: 'garden', studio: 'studio' };
+  var ids = { barn: 'barn', truck: 'truck', bust: 'bust', garden: 'garden', studio: 'studio' };
   Object.keys(KT.scenes).forEach(function (k) {
     if (KT.scenes[k].hidden) return;
     var a = document.createElement('a'); a.href = 'talk/sims/manifold.html#' + ids[k];

@@ -6,6 +6,7 @@
      bust        — DTU style (scanned object on a table, camera dome)
      garden      — Mip-NeRF 360 style (object in the middle of an unbounded surround)
      studio      — the abstract still life (vase, cloth, torus knot)
+     scan        — the one REAL object: a DTU scan fitted offline (only when talk/dtu-data.js is loaded first)
    Exposed as KnotTalk.scenes[key] = { label, suite, build() -> { charts, views, tour, rig, edit } }.
    Depends on nurbs.js + kit.js. */
 (function () {
@@ -483,6 +484,46 @@
     };
   }
 
+  /* ================= SCAN — a real DTU object (talk/dtu-data.js, baked by tools/dtu/fit.py) =================
+     Not a stand-in and not a result of the thesis method: the scan's depth maps were fused and interpolated by
+     cubic B-spline charts offline, and every control colour was taken from the scan's photographs. Without the
+     data file this scene does not exist. Charts:
+       the object (named by the data file: `owl`) — one open sheet over everything that was measured: the front
+                and both sides. It ends where the measurements end, so it is open at the back and on top of the
+                head. S_u x S_v points outwards; it is `closed` only to have its back faces culled.
+       table  — the fitted table plane, as far as the photographs show it.
+     `seen` on a chart (Uint8Array, one per control point) is 1 where the surface was measured and 0 where a
+     small hole was inpainted. photo: true — the colours already hold the light of the photographs. */
+  function scan() {
+    var D = KT.dtu, C = [];
+    D.charts.forEach(function (d) {
+      var P = d.P, K = d.C, nu = d.nu, o = d.plane ? { nu: nu, nv: d.nv, tu: 5, tv: 4 }
+                                               : { nu: nu, nv: d.nv, tu: 9, tv: 12, cu: 4, cv: 4, closed: true };
+      chart(C, d.name, o, function (s, t, i, j) { var k = (j * nu + i) * 3; return [P[k], P[k + 1], P[k + 2], K[k], K[k + 1], K[k + 2]]; }).seen = d.seen;
+    });
+    var T = D.target, ty = T[1], tz = T[2];
+    return {
+      charts: C, photo: true,
+      /* every view lies inside the dome of real cameras (azimuth -60..60 degrees, 16..70 degrees above the table) */
+      views: { wide: { th: 0.30, ph: 1.22, r: 8.6, tx: 0, ty: ty, tz: tz }, close: { th: -0.15, ph: 1.20, r: 3.3, tx: 0.15, ty: ty * 1.5, tz: 0.2 },
+               a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz } },
+      tour: ['wide', 'close', 'a', 'b'],
+      rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
+      /* the owl cocks its head: every control point above the shoulders, tilted about an axis that points at
+         the cameras, so no part of the sheet's open back turns into view. The numbers are this object's
+         (scan 122); another scan has no edit */
+      edit: D.scan !== 122 ? null : function (k) {
+        var c = C[0], P = c.patch.P, B = c.base, i, w, a, x, y;
+        for (i = 0; i < P.length; i += 3) {
+          w = KT.clamp((B[i + 1] - 2.3) / 0.55, 0, 1); if (!w) continue;
+          a = 0.3 * k * w * w * (3 - 2 * w); x = B[i] - 0.24; y = B[i + 1] - 2.45;
+          P[i] = 0.24 + x * Math.cos(a) - y * Math.sin(a); P[i + 1] = 2.45 + x * Math.sin(a) + y * Math.cos(a);
+        }
+        return [c];
+      }
+    };
+  }
+
   KT.scenes = {
     barn:   { label: 'Barn',   suite: 'Tanks and Temples style', build: barn },
     truck:  { label: 'Truck',  suite: 'Tanks and Temples style', build: truck },
@@ -492,4 +533,7 @@
     /* hidden: not offered in the lab's scene picker or on the landing page; the Hebrew deck loads it by name */
     breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast }
   };
+  /* the real object, when its data file was loaded before this one. `note` is what a caption may say about it */
+  if (KT.dtu) KT.scenes.scan = { label: KT.dtu.label || 'Scan', suite: 'DTU scan ' + KT.dtu.scan, photo: true,
+                                 note: 'fitted offline, not trained', build: scan };
 })();

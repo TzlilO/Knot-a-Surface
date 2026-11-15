@@ -876,7 +876,7 @@
         if (vk !== st.viewKey) { st.viewKey = vk; cam.setViewOffset(W, H, 0, Math.round(st.lift), W, H); }
         var near = Math.max(0.2, orbit.cur.r - 1.3), far = orbit.cur.r + 5.2;
         scene.fog.near = near; scene.fog.far = far; sheet.uniforms.uFog.value.set(near, far + 1.5);
-        R.renderer.render(scene, cam);
+        G.draw(R, scene, cam);
 
         if (s.probe && pr) {
           if (!s.nbr) {
