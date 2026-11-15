@@ -36,10 +36,18 @@ from scipy.sparse.linalg import spsolve
 from scipy.spatial import cKDTree
 from skimage import measure
 
-UNIT_MM = 80.0            # one scene unit; puts the 284 mm object at the height of the talk's other scenes
+HEIGHT_UNITS = 3.55       # every object stands about this tall in scene units (the owl: 284 mm at 80 mm per unit)
+NODES = 288 * 392         # nodes of the object's chart when a scan sets no net size: what a 1.5 MB file holds
 VOX, COARSE = 0.5, 2.0    # fusion voxel, and the coarse voxel that finds where a surface is (mm)
 Y0 = 3.0                  # the sheet is laid out from this height up (mm above the table); its foot is lowered at the end
-NAMES = {122: ('owl', 'Owl')}       # scan -> (chart name, caption label)
+# Per scan: chart name and caption label, and whatever was fixed by hand. Scan 122 was fitted first, with these
+# numbers; they are kept so that its file stays exactly as it was. Other scans derive them from their own data.
+# by_mask=False: the two scans on the flat brown board were fitted before the silhouette filter existed (the
+# height above the board separates object and table there); every later scan uses the filter.
+SCANS = {
+    122: dict(name='owl', label='Owl', by_mask=False, unit=80.0, nu=288, nv=392, lo=[-92., -4., -128.], hi=[92., 292., 44.], table=(104, 80, 170.0, 110.0, 150.0)),
+    55: dict(name='rabbit', label='Rabbit', by_mask=False, top_mm=250.0),          # the photographs crop its ears: the chart ends below them
+}
 T0 = time.time()
 def log(*a): print('[%5.0fs]' % (time.time() - T0), *a, flush=True)
 
@@ -100,10 +108,11 @@ def frame(S):
     above = obj[(obj - cen) @ n > 3]; base = above.mean(0); base = base - ((base - cen) @ n) * n
     f = C.mean(0) - base; f -= (f @ n) * n; f /= np.linalg.norm(f); r = np.cross(n, f)
     log('table plane: %.1f %% of the off-object depth, rms %.2f mm; object height %.0f mm' % (100 * inl.mean(), rms, ((obj - cen) @ n).max()))
-    return dict(A=np.c_[r, n, f], base=base, table_rms=rms)
+    A = np.c_[r, n, f]; L = (above - base) @ A                     # the volume to fuse in: the object's own depth, with a margin
+    lo = np.floor((np.percentile(L, 0.2, axis=0) - 14) / 4) * 4; hi = np.ceil((np.percentile(L, 99.8, axis=0) + 14) / 4) * 4; lo[1] = -4.0
+    return dict(A=A, base=base, table_rms=rms, lo=lo, hi=hi)
 
 # ------------------------------------------------------------------ 2. fuse
-LO, HI = np.array([-92., -4., -128.]), np.array([92., 292., 44.])      # volume around the object, upright mm
 
 def clean_depth(S):
     """The depth maps were rendered from a surface with holes, so some rays pass through a hole and land on the
@@ -141,7 +150,7 @@ def fuse_points(S, F, P, tau):
             acc[a + idx[free]] += 1; w[a + idx[free]] += 1
     return acc, w, near
 
-def fuse(S, F):
+def fuse(S, F, LO, HI, by_mask=True):
     """All depth maps -> one truncated signed distance volume -> its zero surface as points with outward normals.
     Only what at least two views measured is kept: nothing is closed, filled or extrapolated here."""
     n = np.ceil((HI - LO) / COARSE).astype(int)
@@ -155,7 +164,14 @@ def fuse(S, F):
     phi[idx] = np.where(w >= 1, acc / np.maximum(w, 1), 1.0); ok[idx] = w >= 1; cnt[idx] = np.minimum(w, 255)
     V, _, Nn, _ = measure.marching_cubes(phi.reshape(N), 0.0, mask=ok.reshape(N))
     vi = np.clip(np.round(V).astype(int), 0, N - 1); m = ndimage.minimum_filter(cnt.reshape(N), 3)[vi[:, 0], vi[:, 1], vi[:, 2]] >= 2      # 2+ views everywhere around the point
-    return dict(V=(LO + (V[m] + 0.5) * VOX).astype(np.float32), N=-Nn[m].astype(np.float32))
+    V = (LO + (V[m] + 0.5) * VOX).astype(np.float32); Nn = -Nn[m].astype(np.float32)
+    if by_mask:                   # the object only: a point of it lies inside the object's silhouette in EVERY view
+        W = V.astype(float) @ F['A'].T + F['base']; out = np.zeros(len(V), int)
+        for i in range(S['n']):
+            K, R, t = S['cams'][i]; h = W @ (K @ R).T + K @ t; u = (h[:, 0] / h[:, 2]).round().astype(int); v = (h[:, 1] / h[:, 2]).round().astype(int)
+            inb = (u >= 0) & (u < 1600) & (v >= 0) & (v < 1200); out[inb] += ~ndimage.binary_dilation(S['mask'][i], iterations=4)[v[inb], u[inb]]
+        k = out <= max(1, S['n'] // 25); log('object by its silhouettes: %.1f %% of the fused points' % (100 * k.mean())); V, Nn = V[k], Nn[k]
+    return dict(V=V, N=Nn)
 
 # ------------------------------------------------------------------ 3. the object's chart
 class Sheet:
@@ -167,9 +183,9 @@ class Sheet:
     beyond the measurements."""
     DT, DY = np.radians(1.5), 1.5         # one row / column of the envelope: 1.5 degrees, 1.5 mm
 
-    def __init__(self, D, nu, nv, edge):
+    def __init__(self, D, nu, nv, edge, pre=None):
         m = D['V'][:, 1] > 0.4; self.T = D['V'][m].astype(float); self.TN = D['N'][m].astype(float)
-        self.nu, self.nv, self.edge = nu, nv, edge
+        self.nu, self.nv, self.edge, self.pre = nu, nv, edge, pre or {}
         self.axis_and_wedge(); self.envelope()
         k = self.keep(self.T, 0.5, 0.4); self.Tall, self.TNall = self.T[k], self.TN[k]
         k = self.Tall[:, 1] >= Y0 - 0.5; self.T, self.TN = self.Tall[k], self.TNall[k]; self.ttree = cKDTree(self.T)
@@ -179,15 +195,16 @@ class Sheet:
         is vertical above it. The chart's sides: walk out from the front until less than `edge` of the heights hold
         measurements."""
         T = self.T[self.T[:, 1] > 1.5]; h = T[:, 1].max(); self.y1 = 0.78 * h
-        lo = T[T[:, 1] < 40]; hi = T[(T[:, 1] > 0.85 * h) & (T[:, 1] < 0.95 * h)]
+        lo = T[T[:, 1] < min(40.0, 0.25 * h)]; hi = T[(T[:, 1] > 0.85 * h) & (T[:, 1] < 0.95 * h)]
         self.a0 = (lo[:, [0, 2]].min(0) + lo[:, [0, 2]].max(0)) / 2
         self.a1 = np.array([(hi[:, 0].min() + hi[:, 0].max()) / 2, hi[:, 2].min() + 0.3 * (hi[:, 2].max() - hi[:, 2].min())])
         th = np.degrees(self.azimuth(T))
         cov = np.zeros((int(h / 2) + 1, 180), bool); cov[(T[:, 1] / 2).astype(int), np.clip(((th + 180) / 2).astype(int), 0, 179)] = True
         share = ndimage.uniform_filter1d(cov.mean(0), 3, mode='wrap'); k = 90
-        while share[k - 1] > self.edge: k -= 1
+        if share[90] <= self.edge: raise SystemExit('scan not fitted: only %.0f %% of the heights were measured straight in front (need more than %.0f %%); one sheet cannot stand for it' % (100 * share[90], 100 * self.edge))
+        while k > 2 and share[k - 1] > self.edge: k -= 1
         self.thL = np.radians(k * 2 - 180 + 4); k = 90
-        while share[k + 1] > self.edge: k += 1
+        while k < 177 and share[k + 1] > self.edge: k += 1
         self.thR = np.radians(k * 2 - 180 - 2)
         log('axis from x %.0f z %.0f mm on the table to x %.0f z %.0f at %.0f mm; measured from %.0f to %.0f degrees of azimuth'
             % (self.a0[0], self.a0[1], self.a1[0], self.a1[1], self.y1, np.degrees(self.thL), np.degrees(self.thR)))
@@ -222,6 +239,11 @@ class Sheet:
         dense = known & (ndimage.uniform_filter1d(known.astype(float), 7, axis=0, mode='constant') >= 0.5)
         top = np.where(dense.any(0), known.shape[0] - 1 - np.argmax(dense[::-1], 0), 0).astype(float)
         self.rowtop = np.minimum(ndimage.gaussian_filter1d(ndimage.median_filter(top, 5, mode='nearest'), 3.0, mode='nearest') - 2.0, known.shape[0] - 3.0)
+        if self.pre.get('top_mm'):     # a scan whose photographs crop the top of the object: end the chart at one level
+            rows, cols = np.meshgrid(np.arange(tab.shape[0], dtype=float), np.arange(nt, dtype=float), indexing='ij')
+            Y = self.point(rows, self.th0 + (cols + 0.5) * self.DT)[..., 1]; over = Y > self.pre['top_mm']; k = np.clip(np.argmax(over, 0), 1, None); c = np.arange(nt)
+            cut = np.where(over.any(0), k - 1 + (self.pre['top_mm'] - Y[k - 1, c]) / np.maximum(Y[k, c] - Y[k - 1, c], 1e-6), tab.shape[0])
+            self.rowtop = np.minimum(self.rowtop, cut)
         # the envelope's surface inside the chart's reach, as points with normals
         rr, cc = np.meshgrid(np.arange(0, tab.shape[0] - 1, 0.5), np.arange(0, nt - 1, 0.5), indexing='ij'); Q = self.point(rr, self.th0 + (cc + 0.5) * self.DT)
         QN = np.cross(np.gradient(Q, axis=1), np.gradient(Q, axis=0)); QN /= np.linalg.norm(QN, axis=-1, keepdims=True) + 1e-12
@@ -233,6 +255,7 @@ class Sheet:
         el = (self.top(th) + 0.5 - self.ny) * np.degrees(self.DT)
         log('envelope: %.0f %% of its directions hold measured points; the top edge runs at %.0f to %.0f degrees above the shoulder point'
             % (100 * known[:, 6:-6].mean(), el.min(), el.max()))
+        if self.pre: log('top edge at %s mm (every 10th percentile of its length)' % ' '.join('%.0f' % v for v in np.percentile(self.edges['top'][:, 1], np.arange(0, 101, 10))))
 
     def point(self, row, th):
         """The envelope's point at (row, azimuth)."""
@@ -324,6 +347,15 @@ class Sheet:
                 G = 0.3 * G + 0.7 * self.respace(G, axis, fine, delta); self.border(G); G, seen = self.relax(G, 12, delta, fine)
         return G, seen
 
+    def size(self, nodes):
+        """A net for this object: as many nodes as the measurements can feed (one per 0.3 mm2 of surface: the
+        fusion is 0.5 mm) but no more than `nodes`, and as many columns per row as the sheet is wide per tall."""
+        G = self.start(36, 49); G, _ = self.relax(G, 100, 6.0, False); G, _ = self.equalise(G, False, 6.0, 2)
+        lr = np.linalg.norm(np.diff(G, axis=1), axis=-1).sum(1).mean(); lc = np.linalg.norm(np.diff(G, axis=0), axis=-1).sum(0).mean()
+        area = np.linalg.norm(np.cross(G[1:, :-1] - G[:-1, :-1], G[:-1, 1:] - G[:-1, :-1]), axis=-1).sum()
+        n = min(nodes, 1.15 * area / 0.3); self.nu = int(8 * round(np.sqrt(n * lr / lc) / 8)); self.nv = int(8 * (n / self.nu // 8))
+        log('sheet about %.0f mm wide, %.0f mm tall, %.0f cm2 -> net %d x %d' % (lr, lc, area / 100, self.nu, self.nv))
+
     def fit(self):
         lv = 3; nu, nv = self.nu >> lv, self.nv >> lv
         G = self.start(nu, nv); G, seen = self.relax(G, 100, 6.0, False); G, seen = self.equalise(G, False, 6.0, 4)
@@ -336,8 +368,8 @@ class Sheet:
         self.T, self.TN = self.Tall, self.TNall; self.ttree = cKDTree(self.T)
         for axis in (0, 1): G = self.spread(G, axis)
         # the foot: the lowest row goes down to the measured surface just above the table, the rows above make room
-        low = self.Tall[(self.Tall[:, 1] > 0.6) & (self.Tall[:, 1] < 1.4)]; d, j = cKDTree(low[:, [0, 2]]).query(G[0][:, [0, 2]]); ok = d < 4.0
-        G[0, :, 1] = 1.0; G[0][ok] = low[j[ok]]
+        low = self.Tall[(self.Tall[:, 1] > 0.6) & (self.Tall[:, 1] < 1.4)]; ok = np.zeros(nu, bool); G[0, :, 1] = 1.0
+        if len(low): d, j = cKDTree(low[:, [0, 2]]).query(G[0][:, [0, 2]]); ok = d < 4.0; G[0][ok] = low[j[ok]]
         for i in range(nu): G[:9, i] = self.uniform(G[:9, i], 9)
         B = G.copy(); G, seen = self.project(G, 1.2, True, stay=True); G[0] = B[0]; seen[0] = ok
         # Nodes with no measured surface under them take the envelope's shape (the outermost measured radius around
@@ -441,16 +473,28 @@ def measure_fit(Cn, G, seen, D, sheet):
 
 def b64(a): return base64.b64encode(np.ascontiguousarray(a).tobytes()).decode('ascii')
 
+def views_for(lo, hi, target, cams):
+    """Four cameras in the shape talk/scenes.js uses ({ th, ph, r, tx, ty, tz }), all inside the dome of the scan's
+    own cameras: azimuths within 85 % of theirs, elevations between their lowest and highest ring."""
+    c = np.asarray(cams) - target; az = np.arctan2(c[:, 0], c[:, 2]); el = np.arcsin(c[:, 1] / np.linalg.norm(c, axis=1)); rho = np.linalg.norm(hi - lo) / 2
+    ph = lambda deg: np.pi / 2 - np.clip(np.radians(deg), el.min() + 0.03, el.max() - 0.1); th = lambda x: np.clip(x, 0.85 * az.min(), 0.85 * az.max()); tx, ty, tz = target
+    v = dict(wide=dict(th=th(0.30), ph=ph(20), r=4.15 * rho, tx=tx, ty=ty, tz=tz), close=dict(th=th(-0.15), ph=ph(21), r=max(1.6 * rho, 1.6), tx=tx, ty=(ty + hi[1]) / 2, tz=tz),
+             a=dict(th=th(-0.85), ph=ph(26), r=3.3 * rho, tx=tx, ty=ty, tz=tz), b=dict(th=th(0.80), ph=ph(33), r=3.3 * rho, tx=tx, ty=ty, tz=tz))
+    return {k: {q: round(float(x), 3) for q, x in d.items()} for k, d in v.items()}
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('data'); ap.add_argument('scan', type=int)
-    ap.add_argument('-o', '--out', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'talk', 'dtu-data.js'))
+    ap.add_argument('-o', '--out', help='default: talk/dtu-data.js, or talk/dtu/scan<N>.js with --register scans')
+    ap.add_argument('--register', choices=('dtu', 'scans'), default='dtu', help='dtu: the file sets KnotTalk.dtu, the talk\'s one subject. scans: it adds itself to KnotTalk.dtuScans[N] and carries its own views')
     ap.add_argument('--cache', help='directory for intermediate results (fusion takes most of the time)')
-    ap.add_argument('--nu', type=int, default=288); ap.add_argument('--nv', type=int, default=392)
-    ap.add_argument('--edge', type=float, default=0.6, help='the chart ends at the azimuth where less than this share of the heights was measured')
+    ap.add_argument('--nu', type=int, help='columns and'); ap.add_argument('--nv', type=int, help='rows of the object\'s net (default: the scan\'s preset, else from its size)')
+    ap.add_argument('--edge', type=float, help='the chart ends at the azimuth where less than this share of the heights was measured (0.6)')
     ap.add_argument('--name', help='name of the object\'s chart'); ap.add_argument('--label', help='what the object is, for captions')
-    a = ap.parse_args(); d = os.path.join(a.data, 'scan%d' % a.scan)
-    a.name = a.name or NAMES.get(a.scan, ('object', 'Object'))[0]; a.label = a.label or NAMES.get(a.scan, ('', a.name.capitalize()))[1]
+    a = ap.parse_args(); d = os.path.join(a.data, 'scan%d' % a.scan); pre = SCANS.get(a.scan, {})
+    a.name = a.name or pre.get('name', 'object'); a.label = a.label or pre.get('label', a.name.capitalize())
+    talk = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'talk')
+    a.out = a.out or (os.path.join(talk, 'dtu-data.js') if a.register == 'dtu' else os.path.join(talk, 'dtu', 'scan%d.js' % a.scan))
     def cached(name, fn):
         p = a.cache and os.path.join(a.cache, name + '.npz')
         if p and os.path.exists(p): z = np.load(p); return {k: z[k] for k in z.files}
@@ -458,10 +502,14 @@ def main():
         if p: os.makedirs(a.cache, exist_ok=True); np.savez(p, **r)
         return r
     S = load(d); log('scan %d: %d views' % (a.scan, S['n']))
-    F = cached('frame', lambda: frame(S)); clean_depth(S); D = cached('fused', lambda: fuse(S, F))
+    F = cached('frame', lambda: frame(S)); clean_depth(S)
+    lo, hi = (np.array(pre['lo']), np.array(pre['hi'])) if 'lo' in pre else (F['lo'], F['hi'])
+    D = cached('fused', lambda: fuse(S, F, lo, hi, pre.get('by_mask', True)))
     log('fused surface: %d measured points' % len(D['V']))
-    sheet = Sheet(D, a.nu, a.nv, a.edge)
-    R = cached('sheet_%d_%d' % (a.nu, a.nv), lambda: dict(zip(('G', 'seen'), sheet.fit()))); G, seen = R['G'], R['seen'].astype(bool)
+    sheet = Sheet(D, a.nu or pre.get('nu'), a.nv or pre.get('nv'), a.edge or pre.get('edge', 0.6), pre)
+    if not (sheet.nu and sheet.nv): sheet.size(pre.get('nodes', NODES))
+    nu, nv = sheet.nu, sheet.nv; height = float(sheet.Tall[:, 1].max()); UNIT_MM = pre.get('unit') or float(round(height / HEIGHT_UNITS))
+    R = cached('sheet_%d_%d' % (nu, nv), lambda: dict(zip(('G', 'seen'), sheet.fit()))); G, seen = R['G'], R['seen'].astype(bool)
     # the control net of the interpolating spline; where the sheet bridges a step, exact interpolation would ring,
     # so no control point may sit further than LIMIT from its node (there the spline only approximates the node)
     Cn = interpolate(G); dev = np.linalg.norm(Cn - G, axis=-1, keepdims=True); LIMIT = 0.6
@@ -470,7 +518,12 @@ def main():
     nrm = Sheet.normals(G); col, nviews = colours(S, F, G.reshape(-1, 3), nrm.reshape(-1, 3), np.ones(seen.size, bool), M['dense'].reshape(-1, 3))
     lit = (nviews > 0).reshape(seen.shape); col = diffuse(col.reshape(G.shape), lit)
     Cc = np.clip(col + np.clip(interpolate(col) - col, -0.12, 0.12), 0, 1)
-    tb = table(S, F, sheet.axis(0.0), 104, 80, 170.0, 110.0, 150.0)
+    if 'table' in pre: tn = pre['table']
+    else:                         # around the object's footprint, wider in front; nodes about 3.3 mm apart, at most 9,000
+        c = sheet.axis(0.0); T = sheet.Tall; hx = np.percentile(np.abs(T[:, 0] - c[0]), 99.5) + 0.33 * height
+        back = c[1] - np.percentile(T[:, 2], 0.5) + 0.2 * height; front = np.percentile(T[:, 2], 99.5) - c[1] + 0.35 * height
+        k = min(1.0, np.sqrt(9000 / (2 * hx / 3.27 * (back + front) / 3.27))); tn = (int(2 * hx / 3.27 * k), int((back + front) / 3.27 * k), float(hx), float(back), float(front))
+    tb = table(S, F, sheet.axis(0.0), *tn)
     # ---- scene coordinates: origin on the table under the axis, +y up, +z towards the cameras
     o = np.array([sheet.axis(0.0)[0], 0.0, sheet.axis(0.0)[1]]); to_scene = lambda p: (p - o) / UNIT_MM
     P = to_scene(Cn); lo, hi = P.reshape(-1, 3).min(0), P.reshape(-1, 3).max(0)
@@ -478,11 +531,11 @@ def main():
     cams = to_scene((np.array([-Rm.T @ t for K, Rm, t in S['cams']]) - F['base']) @ F['A'])
     area = lambda g: np.linalg.norm(np.cross(g[1:, :-1] - g[:-1, :-1], g[:-1, 1:] - g[:-1, :-1]), axis=-1)
     ar = area(G); cs = seen[:-1, :-1] & seen[1:, :-1] & seen[:-1, 1:] & seen[1:, 1:]
-    stats = dict(scan=a.scan, views=S['n'], unit_mm=UNIT_MM, charts=2, control_points=int(a.nu * a.nv + tb['C'].shape[0] * tb['C'].shape[1]),
-                 object=dict(nu=a.nu, nv=a.nv, observed_nodes=float(seen.mean()), observed_area=float(ar[cs].sum() / ar.sum()), coloured_nodes=float(lit.mean()), coloured_observed=float(lit[seen].mean()), coloured_inpainted=float(lit[~seen].mean()), limited_control_points=limited,
+    stats = dict(scan=a.scan, views=S['n'], unit_mm=UNIT_MM, charts=2, control_points=int(nu * nv + tb['C'].shape[0] * tb['C'].shape[1]),
+                 object=dict(nu=nu, nv=nv, observed_nodes=float(seen.mean()), observed_area=float(ar[cs].sum() / ar.sum()), coloured_nodes=float(lit.mean()), coloured_observed=float(lit[seen].mean()), coloured_inpainted=float(lit[~seen].mean()), limited_control_points=limited,
                              area_mm2=float(ar.sum()), **{k: v for k, v in M.items() if k not in ('dense', 'dense_n')}),
                  table=dict(nu=tb['C'].shape[1], nv=tb['C'].shape[0], observed_nodes=float(tb['seen'].mean()), plane_rms_mm=float(F['table_rms'])))
-    log('charts 2, control points %d (object %d x %d, table %d x %d)' % (stats['control_points'], a.nu, a.nv, tb['C'].shape[1], tb['C'].shape[0]))
+    log('charts 2, control points %d (object %d x %d, table %d x %d)' % (stats['control_points'], nu, nv, tb['C'].shape[1], tb['C'].shape[0]))
     log('object: node spacing %.2f x %.2f mm; %.2f %% of the control points held back by the limiter; spline minus node: median %.1e, 99th pct %.3f, max %.2f mm'
         % (M['spacing_mm'][0], M['spacing_mm'][1], 100 * limited, *M['node_residual_mm']))
     log('fit error, %d measured points inside the chart: rms %.3f mm, 95th pct %.3f mm, median %.3f mm = %.5f / %.5f of the object (%.0f mm diagonal)'
@@ -494,11 +547,15 @@ def main():
     data = dict(scan=a.scan, label=a.label, source='DTU MVS dataset (Jensen et al., CVPR 2014), scan %d, from the Hugging Face dataset repo Y1ue/DTU' % a.scan,
                 note='fitted offline to the scan\'s depth maps and photographs by tools/dtu/fit.py; not trained', unit_mm=UNIT_MM, stats=stats,
                 cams=np.round(cams, 3).tolist(), target=[0, round(float((hi[1] + lo[1]) / 2), 3), round(float((hi[2] + lo[2]) / 2), 3)],
-                charts=[dict(name=a.name, nu=a.nu, nv=a.nv, lo=np.round(lo, 5).tolist(), hi=np.round(hi, 5).tolist(), P=b64(q), C=b64(np.round(Cc * 255).astype(np.uint8)),
+                charts=[dict(name=a.name, nu=nu, nv=nv, lo=np.round(lo, 5).tolist(), hi=np.round(hi, 5).tolist(), P=b64(q), C=b64(np.round(Cc * 255).astype(np.uint8)),
                              seen=b64(np.packbits(seen.ravel()))),
                         dict(name='table', nu=tb['C'].shape[1], nv=tb['C'].shape[0], plane=[round(float(v), 4) for v in ((tb['xs'][0] - o[0]) / UNIT_MM, (tb['xs'][-1] - o[0]) / UNIT_MM, (tb['zs'][0] - o[2]) / UNIT_MM, (tb['zs'][-1] - o[2]) / UNIT_MM)],
                              C=b64(np.round(np.clip(tb['C'], 0, 1) * 255).astype(np.uint8)), seen=b64(np.packbits(tb['seen'].ravel())))])
-    js = JS_HEAD % dict(scan=a.scan) + 'KT.dtu = ' + json.dumps(data, separators=(',', ':')) + ';\n' + JS_TAIL
+    if a.register == 'scans':     # one of several: it carries its own cameras for the scene, and registers under its number
+        charts = data.pop('charts'); data['views'] = dict(views_for(lo, hi, np.array(data['target'], float), cams), **pre.get('views', {})); data['tour'] = pre.get('tour', ['wide', 'close', 'a', 'b']); data['charts'] = charts
+        js = JS_HEAD_SCANS % dict(scan=a.scan) + json.dumps(data, separators=(',', ':')) + ';\n' + JS_TAIL.replace('KT.dtu.charts', 'D.charts')
+    else: js = JS_HEAD % dict(scan=a.scan) + 'KT.dtu = ' + json.dumps(data, separators=(',', ':')) + ';\n' + JS_TAIL
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, 'w') as f: f.write(js)
     log('wrote %s, %.2f MB' % (os.path.normpath(a.out), len(js) / 1e6))
     if a.cache: np.savez(os.path.join(a.cache, 'result.npz'), G=G, seen=seen, col=col, Cn=Cn, Cc=Cc, tableC=tb['C'], tableSeen=tb['seen'], lit=lit)
@@ -525,6 +582,19 @@ JS_TAIL = """  function bytes(s) { var b = atob(s), n = b.length, a = new Uint8A
   });
 })();
 """
+
+JS_HEAD_SCANS = """/* DTU scan %(scan)d as B-spline charts. GENERATED by tools/dtu/fit.py --register scans: do not edit, re-run the script.
+   A real object from the DTU multi-view stereo dataset (Jensen et al., CVPR 2014; this copy of the scan comes from
+   the Hugging Face dataset repo Y1ue/DTU). Geometry: the scan's depth maps, fused, then interpolated by clamped cubic
+   tensor B-splines. Colour: the scan's photographs, projected onto the fitted surface. It was FITTED OFFLINE to that
+   data; it was not trained or reconstructed by the thesis method.
+   KnotTalk.dtuScans[%(scan)d] = the same object as KnotTalk.dtu in talk/dtu-data.js: { scan, label, source, note, unit_mm,
+     stats, cams: [[x,y,z]...], target, charts: [{ name, nu, nv, P, C, seen }] } (P: Float32Array(nu*nv*3) control
+     points in scene units, +y up, table at y = 0; C: control colours 0..1 in display space; seen: Uint8Array(nu*nv),
+     1 = measured, 0 = inpainted; row j, column i -> j*nu+i), plus views: { wide, close, a, b } as { th, ph, r, tx, ty, tz }
+     and tour: [...], in the shape talk/scenes.js uses; every view lies inside the dome of the scan's real cameras. */
+(function () {
+  var KT = window.KnotTalk = window.KnotTalk || {}, D = (KT.dtuScans = KT.dtuScans || {})[%(scan)d] = """
 
 if __name__ == '__main__':
     main()
