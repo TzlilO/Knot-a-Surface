@@ -120,14 +120,14 @@
 </section>
 
 <!-- ============================================================ 02 SPLINES -->
-<section class="chapter" data-sim="basis" data-rail="02" data-title="Splines from scratch" data-min40="6.5" data-min20="3">
+<section class="chapter" data-sim="basis" data-rail="02" data-title="Splines from scratch" data-min40="5" data-min20="2.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="ducks">
       <div class="num">02</div><div class="kick">Splines from scratch</div>
       <h2>What is a spline?</h2>
       <p>Before surfaces: one curve, and the three ideas that make it the right thing to optimise.</p>
-      <div class="time">≈ 6 min</div>
+      <div class="time">≈ 5 min</div>
     </article>
     <article class="step nav" data-scene="ducks">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -135,35 +135,10 @@
       <p>Ship draughtsmen bent a thin flexible strip and pinned it in place with lead weights. The strip settles into the smoothest curve the pins allow.</p>
       <p>We keep the idea and drop the wood: the pins become <b class="c-ctrl">control points</b>, the strip becomes a <b class="c-surf">curve</b>.</p>
     </article>
-    <article class="step nav" data-scene="letters">
-      <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>One spline <em>per letter</em></h2>
-      <p>Twelve letters, twelve short curves. Each letter is a single stroke with its own handful of <b class="c-ctrl">control points</b>, and nothing else describes it.</p>
-      <p class="aside">Where a letter needs a sharp corner, three control points sit on the same spot.</p>
-      <span class="do">Drag any amber point</span>
-    </article>
-    <article class="step nav" data-scene="script">
-      <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>Or one spline <em>per stroke of the pen</em></h2>
-      <p>Handwriting is the same idea with fewer lifts: three strokes write both words. The pen is a point sliding along the curve as its parameter runs from start to end.</p>
-    </article>
-    <article class="step nav" data-scene="morph">
-      <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>Shapes are numbers, so shapes <em>blend</em></h2>
-      <p>Both versions of the text are lists of <b class="c-ctrl">control points</b>. Slide every point from one list to the other and the letters flow into handwriting, and from there into anything else twelve curves can draw. Here, a missile.</p>
-      <p class="aside">Each of the three shapes is exact. In between, the control points and the knots travel in straight lines.</p>
-    </article>
-    <article class="step nav" data-scene="lens">
-      <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>A fixed number of Gaussians, <em class="c-splat">on the tracks</em></h2>
-      <p>Now draw the splines the way the method does: with <b class="c-splat">Gaussians</b> that sit on the curves and nowhere else. Their number is fixed, and they are spread over the part of the track that is in view. Move closer and the same Gaussians cover less track, so the writing gets finer, not blurrier.</p>
-      <p class="aside">The corner shows the whole drawing. The box is the view, and every Gaussian is inside it.</p>
-      <span class="do">Zoom with the slider · freeze the shape</span>
-    </article>
     <article class="step nav" data-scene="fit">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>How close is <em>close enough</em>?</h2>
-      <p>Take the handwriting as the truth and try to say it with fewer <b class="c-ctrl">control points</b>. Too few, and the curve cannot express it. Too few samples, and even a good curve is read out too coarsely. The <b class="c-err">red gap</b> closes only when both are refined.</p>
+      <p>Take a line of handwriting as the truth and try to say it with fewer <b class="c-ctrl">control points</b>. Too few, and the curve cannot express it. Too few samples, and even a good curve is read out too coarsely. The <b class="c-err">red gap</b> closes only when both are refined.</p>
       <p class="aside">The plot is the measured gap against the number of control points: once with the samples in use, once with plenty. It behaves like the step of a numerical method: refine and the error falls, starve either one and it stalls.</p>
       <span class="do">Move the two sliders</span>
     </article>
@@ -215,7 +190,7 @@
 </section>
 
 <!-- ============================================================ 03 PLANOID -->
-<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="6.5" data-min20="3.5">
+<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="7" data-min20="3.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="net">
@@ -392,14 +367,14 @@
 </section>
 
 <!-- ============================================================ 06 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="5" data-min20="2.5">
+<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6" data-min20="3">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene">
       <div class="num">06</div><div class="kick">Scaling to scenes · full power</div>
       <h2>A manifold of splines</h2>
       <p>One patch is a bent rectangle. A real scene needs an atlas of them.</p>
-      <div class="time">≈ 5 min</div>
+      <div class="time">≈ 6 min</div>
     </article>
     <article class="step nav" data-scene="scene">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
