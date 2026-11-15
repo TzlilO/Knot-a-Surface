@@ -245,6 +245,123 @@
     } };
   };
 
+  /* ---------- depth cues: things that are hidden stay visible, but faint ----------
+     A material that draws only where something nearer has already written depth. Put it on a second object
+     that shares the geometry (and the transform) of the real one and render it afterwards (renderOrder):
+     the part of a control net, an arrow or a plane that lies behind the surface shows through, dimmed. */
+  gl.hidden = function (color, opacity, line) {
+    var M = line ? T.LineBasicMaterial : T.MeshBasicMaterial;
+    return new M({ color: color, transparent: true, opacity: opacity, depthFunc: T.GreaterDepth, depthWrite: false,
+                   side: T.DoubleSide });
+  };
+
+  /* A vector as a solid object: a lit cylinder and cone (needs lights in the scene), depth-tested, with a dark
+     cap under the cone (seen from behind, an arrow shows a dark disc) and a faint copy where it is hidden.
+     aim(origin, x, y, z, length, k): k scales the thickness; the head never takes more than ~45% of the length. */
+  gl.vector = function (color, o) {
+    o = o || {};
+    var r = o.radius || 0.02, hl = r * 8, hr = r * 3.1, c = new T.Color(color);
+    var lit = new T.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.3) });
+    var cap = new T.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.2) });
+    var ghost = gl.hidden(color, o.ghost == null ? 0.3 : o.ghost);
+    var sg = new T.CylinderGeometry(r, r, 1, 16).translate(0, 0.5, 0);
+    var hg = new T.ConeGeometry(hr, hl, 24).translate(0, hl / 2, 0);     // groups: 0 = side, 2 = base cap
+    var shaft = new T.Mesh(sg, lit), head = new T.Mesh(hg, [lit, lit, cap]);
+    var gs = new T.Mesh(sg, ghost), gh = new T.Mesh(hg, ghost);
+    gs.renderOrder = gh.renderOrder = o.order == null ? 8 : o.order;
+    shaft.add(gs); head.add(gh);
+    var g = new T.Group(); g.add(shaft); g.add(head);
+    var up = new T.Vector3(0, 1, 0), d = new T.Vector3();
+    return { obj: g, aim: function (p, x, y, z, len, k) {
+      var f = Math.min(k || 1, len / (hl * 2.2));
+      g.position.set(p[0], p[1], p[2]); g.quaternion.setFromUnitVectors(up, d.set(x, y, z).normalize());
+      head.scale.setScalar(f); head.position.y = len - hl * f;
+      shaft.scale.set(f, Math.max(1e-5, len - hl * f), f);
+    } };
+  };
+
+  /* A lit sheet over an evaluated (u,v) grid of na x nb points (row = v index): the surface as an object.
+     Shaded by its normal under the splats' light, the face turned away from the eye darker, a rim of the
+     surface colour at grazing angles, fading with distance (uFog = near, far along the view axis).
+     set(grid, flip): grid = { pos, su, sv } from nurbs.patchGrid, pos being the sheet's own `pos` array;
+     flip = +1 / -1 picks which side of S_u x S_v is the lit "top".
+     gauss(i, c, A, B, rgb, w): paint Gaussian i (of up to 9) on the sheet — centre c, 1-sigma axes A and B, peak
+     opacity w (0 = off). A flat Gaussian lying in a tangent plane cannot be drawn as its own translucent quad
+     next to a curved, depth-writing sheet without the sheet cutting pieces out of it; its footprint on the
+     sheet (the density taken along the normal, fading within about one sigma off the plane) has no such seam.
+     uniforms.uCell = (i, j, n, k): tint cell (i, j) of an n x n lattice over the sheet's (u,v) square and its
+     k = 4 or 8 neighbours with uCellCol (n = 0: off). Done per pixel from the interpolated (u,v), so the cell
+     edges are exact whatever the tessellation. */
+  gl.sheet = function (na, nb, o) {
+    o = o || {};
+    var g = new T.BufferGeometry(), pos = new Float32Array(na * nb * 3), nor = new Float32Array(na * nb * 3), idx = [], a, b, q;
+    var uv = new Float32Array(na * nb * 2);
+    for (b = 0; b < nb; b++) for (a = 0; a < na; a++) { uv[(b * na + a) * 2] = a / (na - 1); uv[(b * na + a) * 2 + 1] = b / (nb - 1); }
+    for (b = 0; b < nb - 1; b++) for (a = 0; a < na - 1; a++) { q = b * na + a; idx.push(q, q + 1, q + na, q + 1, q + na + 1, q + na); }
+    g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('normal', new T.BufferAttribute(nor, 3));
+    g.setAttribute('uv', new T.BufferAttribute(uv, 2)); g.setIndex(idx);
+    function v3s() { var l = [], i; for (i = 0; i < 9; i++) l.push(new T.Vector3()); return l; }
+    var mat = new T.ShaderMaterial({
+      side: T.DoubleSide, transparent: true, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
+      uniforms: { uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
+                  uTop: { value: new T.Vector3(0.050, 0.150, 0.225) }, uUnder: { value: new T.Vector3(0.030, 0.062, 0.100) },
+                  uRim: { value: new T.Vector3().fromArray(gl.rgb(KT.color.surf)) }, uBg: { value: new T.Vector3().fromArray(gl.rgb(KT.color.bg)) },
+                  uFog: { value: new T.Vector2(4, 14) }, uAlpha: { value: o.alpha == null ? 0.94 : o.alpha },
+                  uCell: { value: new T.Vector4(0, 0, 0, 4) }, uCellCol: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) },
+                  uGc: { value: v3s() }, uGa: { value: v3s() }, uGb: { value: v3s() }, uGn: { value: v3s() },
+                  uGk: { value: v3s().map(function () { return new T.Vector4(); }) } },
+      vertexShader: [
+        'varying vec3 vN; varying vec3 vW; varying float vZ; varying vec2 vUv;',
+        'void main(){ vN = normal; vW = position; vUv = uv; vec4 e = viewMatrix * vec4(position, 1.0); vZ = -e.z; gl_Position = projectionMatrix * e; }'].join('\n'),
+      fragmentShader: [
+        'uniform vec3 uLight; uniform vec3 uTop; uniform vec3 uUnder; uniform vec3 uRim; uniform vec3 uBg; uniform vec2 uFog; uniform float uAlpha;',
+        'uniform vec3 uGc[9]; uniform vec3 uGa[9]; uniform vec3 uGb[9]; uniform vec3 uGn[9]; uniform vec4 uGk[9];',
+        'uniform vec4 uCell; uniform vec3 uCellCol;',
+        'varying vec3 vN; varying vec3 vW; varying float vZ; varying vec2 vUv;',
+        'void main(){',
+        '  vec3 n = normalize(vN), V = normalize(cameraPosition - vW);',
+        '  float f = dot(n, V); bool under = f < 0.0;',
+        '  float d = max(dot(n, uLight), 0.0);',                    // the light is on the top side only
+        '  float wrap = 0.5 + 0.5 * dot(n, uLight);',
+        '  vec3 c = under ? uUnder * (0.75 + 0.55 * wrap) : uTop * (0.42 + 0.50 * wrap * wrap + 1.25 * d * d);',
+        '  if (!under) c += uRim * 0.22 * pow(max(dot(n, normalize(uLight + V)), 0.0), 28.0);',
+        '  c += uRim * (under ? 0.05 : 0.11) * pow(1.0 - abs(f), 3.0);',
+        '  if (uCell.z > 0.5) {',
+        '    vec2 q = abs(floor(vUv * uCell.z) - uCell.xy); float far = max(q.x, q.y);',
+        '    float t = far < 0.5 ? 0.36 : far > 1.5 ? 0.0 : (uCell.w > 6.0 || q.x + q.y < 1.5) ? 0.17 : 0.035;',
+        '    c = mix(c, uCellCol * (0.62 + 0.38 * wrap), t);',
+        '  }',
+        '  for (int i = 0; i < 9; i++) {',
+        '    vec3 r = vW - uGc[i]; vec3 q = vec3(dot(r, uGa[i]), dot(r, uGb[i]), dot(r, uGn[i]));',
+        '    c = mix(c, uGk[i].rgb * (0.62 + 0.38 * wrap), uGk[i].a * exp(-0.5 * dot(q, q)));',
+        '  }',
+        '  c = mix(c, uBg, 0.72 * clamp((vZ - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0));',
+        '  gl_FragColor = vec4(c, uAlpha);',
+        '}'].join('\n')
+    });
+    var mesh = new T.Mesh(g, mat); mesh.frustumCulled = false;
+    var U = mat.uniforms;
+    return { mesh: mesh, geo: g, pos: pos, uniforms: mat.uniforms,
+      gauss: function (i, c, A, B, rgb, w) {
+        if (!w) { U.uGk.value[i].w = 0; return; }
+        var aa = A[0] * A[0] + A[1] * A[1] + A[2] * A[2], bb = B[0] * B[0] + B[1] * B[1] + B[2] * B[2];
+        var nx = A[1] * B[2] - A[2] * B[1], ny = A[2] * B[0] - A[0] * B[2], nz = A[0] * B[1] - A[1] * B[0];
+        var k = 1 / ((Math.sqrt(nx * nx + ny * ny + nz * nz) || 1) * Math.sqrt(Math.min(aa, bb)));
+        U.uGc.value[i].set(c[0], c[1], c[2]); U.uGa.value[i].set(A[0] / aa, A[1] / aa, A[2] / aa);
+        U.uGb.value[i].set(B[0] / bb, B[1] / bb, B[2] / bb); U.uGn.value[i].set(nx * k, ny * k, nz * k);
+        U.uGk.value[i].set(rgb[0], rgb[1], rgb[2], w);
+      },
+      set: function (grid, flip) {
+        var SU = grid.su, SV = grid.sv, i, t, x, y, z, l, s = flip || 1;
+        for (i = 0; i < na * nb; i++) {
+          t = i * 3;
+          x = SU[t + 1] * SV[t + 2] - SU[t + 2] * SV[t + 1]; y = SU[t + 2] * SV[t] - SU[t] * SV[t + 2]; z = SU[t] * SV[t + 1] - SU[t + 1] * SV[t];
+          l = s / (Math.sqrt(x * x + y * y + z * z) || 1); nor[t] = x * l; nor[t + 1] = y * l; nor[t + 2] = z * l;
+        }
+        g.attributes.position.needsUpdate = true; g.attributes.normal.needsUpdate = true;
+      } };
+  };
+
   /* project a world point to CSS pixels inside the module root; returns null when behind */
   var _v = null;
   gl.project = function (camera, x, y, z, w, h) {
