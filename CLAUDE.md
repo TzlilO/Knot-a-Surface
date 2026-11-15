@@ -47,8 +47,10 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with
   matching control-point counts by knot insertion, so a blend is a lerp of control points and knots;
   `fit` takes a drawing as ground truth, fits it by least squares with n control points, reads it at m
-  samples and shows the gap in red plus a measured gap-vs-control-points plot; the drawings themselves
-  live in `talk/ink.js` = `KnotTalk.ink`, shared with the `poster` scene), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
+  samples and shows the gap in red plus a measured gap-vs-control-points plot; `lens` draws the morph's
+  curves ONLY as a fixed number of Gaussians that sit on them, spread evenly over the track inside a
+  zoomable view window (2D, with an outside-view inset and a freeze toggle): Gaussians never go on empty
+  plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
@@ -57,11 +59,10 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   capture rig and an `edit(k)` animation). Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
-  so it is still one draw call; the band labels and dividers are DOM, moved every frame). Scene `zoom`
-  = frustum-locked sampling (`lockSample`): a fixed GW x GH grid of Gaussians, one per view cell, placed
-  where the cell's rays meet a PLANAR chart (`chart.plane`, only the hidden `poster` scene has one), so
-  moving closer spends the same budget on a smaller (u, v) window; a corner inset renders the same
-  Gaussians from outside with the frustum.
+  so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
+  head is shaped from MediaPipe's canonical face mesh (`talk/face-data.js`, Apache-2.0; `faceFit` casts a
+  ray per control point; without that file it falls back to sculpted bumps); scenes `fib1..3` ease
+  `def.edit(k)` (the nose) to the length the step asks for.
   `structure` (talk/sims/structure.js, chapter 07) = the truck scene stored two ways in two viewports: a
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
