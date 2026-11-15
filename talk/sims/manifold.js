@@ -459,6 +459,7 @@
           if (st.nets) updateNets();
           need = true;
         }
+        if (def.live && def.live(st.t)) need = true;       // a scene whose picture moves repaints its control features
         var home = def.views[sc.cam || 'wide'];
         if (!orbit.touched && !sc.tour && (sc.cam || 'wide') === 'wide') orbit.goal.th = home.th + 0.14 * Math.sin(t * 0.16);
         orbit.update(dt, sc.tour ? 1.5 : 3);

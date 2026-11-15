@@ -2,7 +2,7 @@
    and as joined-up handwriting, and a missile outline. Everything here is control polygons of cubic
    B-splines in a world box x in [0,2], y in [0,1] (y up). Used by sims/basis.js (letters, script,
    morph, fit) and by the `poster` scene in scenes.js. Depends on nurbs.js + kit.js.
-   Exposed as KnotTalk.ink = { texts: { letters(), script() }, missile }. */
+   Exposed as KnotTalk.ink = { texts: { letters(), script() }, missile, morphSets() }. */
 (function () {
   'use strict';
   var KT = window.KnotTalk;
@@ -86,5 +86,49 @@
     });
   })();
 
-  KT.ink = { texts: TEXTS, missile: MISSILE };
+  /* ---------- making the three drawings compatible, so one can flow into another ---------- */
+  var NB = KT.nurbs;
+  function cubic(P) { return { P: P, w: P.map(function () { return 1; }), U: NB.clampedKnots(P.length, 3) }; }
+  /* cut one cubic into pieces at the parameters `cuts` (a knot inserted three times splits the curve exactly) */
+  function split(c, cuts) {
+    var out = [], lo = 0;
+    cuts.concat([1]).forEach(function (u) {
+      if (u >= 1) { out.push(c); return; }
+      var n = 3 - c.U.filter(function (t) { return Math.abs(t - u) < 1e-9; }).length, j;
+      while (n-- > 0) c = NB.insertKnot(c.P, c.w, 3, c.U, u);
+      for (j = 0; Math.abs(c.U[j] - u) > 1e-9; j++);
+      out.push({ P: c.P.slice(0, j), w: c.w.slice(0, j), U: c.U.slice(0, j + 3).concat([u]) });
+      c = { P: c.P.slice(j - 1), w: c.w.slice(j - 1), U: [u].concat(c.U.slice(j)) };
+    });
+    return out.map(function (q) {          // each piece on its own [0, 1]
+      var a = q.U[0], b = q.U[q.U.length - 1]; q.U = q.U.map(function (t) { return (t - a) / (b - a); }); return q;
+    });
+  }
+  /* the same curve with n control points: knots go into the widest spans until it has them */
+  function refine(c, n) {
+    while (c.P.length < n) {
+      var best = 0, at = 0, i;
+      for (i = 3; i < c.P.length; i++) if (c.U[i + 1] - c.U[i] > best) { best = c.U[i + 1] - c.U[i]; at = (c.U[i] + c.U[i + 1]) / 2; }
+      c = NB.insertKnot(c.P, c.w, 3, c.U, at);
+    }
+    return c;
+  }
+  /* three shapes, twelve cubics each, slot by slot with the same number of control points: so a blend of
+     two shapes is a blend of their control points (and knots), and both ends of it are exact */
+  function morphSets() {
+    var hand = TEXTS.script().map(cubic);
+    function cuts(c, counts) {             // where each letter of a stroke ends, as a curve parameter
+      var at = 0; return counts.slice(0, -1).map(function (k) { at += k; return (at - 2) / (c.P.length - 3); });
+    }
+    var sets = [TEXTS.letters().map(cubic),
+                [hand[0]].concat(split(hand[1], cuts(hand[1], [14, 14, 8, 13, 16])), split(hand[2], cuts(hand[2], [15, 14, 12, 14, 8, 8]))),
+                MISSILE.map(cubic)];
+    for (var i = 0; i < 12; i++) {
+      var n = Math.max(sets[0][i].P.length, sets[1][i].P.length, sets[2][i].P.length);
+      sets.forEach(function (st) { st[i] = refine(st[i], n); });
+    }
+    return sets;
+  }
+
+  KT.ink = { texts: TEXTS, missile: MISSILE, morphSets: morphSets };
 })();
