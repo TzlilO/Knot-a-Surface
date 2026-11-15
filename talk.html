@@ -152,6 +152,13 @@
       <p>Both versions of the text are lists of <b class="c-ctrl">control points</b>. Slide every point from one list to the other and the letters flow into handwriting, and from there into anything else twelve curves can draw. Here, a missile.</p>
       <p class="aside">Each of the three shapes is exact. In between, the control points and the knots travel in straight lines.</p>
     </article>
+    <article class="step nav" data-scene="lens">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A fixed number of Gaussians, <em class="c-splat">on the tracks</em></h2>
+      <p>Now draw the splines the way the method does: with <b class="c-splat">Gaussians</b> that sit on the curves and nowhere else. Their number is fixed, and they are spread over the part of the track that is in view. Move closer and the same Gaussians cover less track, so the writing gets finer, not blurrier.</p>
+      <p class="aside">The corner shows the whole drawing. The box is the view, and every Gaussian is inside it.</p>
+      <span class="do">Zoom with the slider · freeze the shape</span>
+    </article>
     <article class="step nav" data-scene="fit">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>How close is <em>close enough</em>?</h2>
@@ -408,13 +415,6 @@
       <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is in view and facing the lens; a small floor keeps everything else covered. (This demo does not test occlusion.)</p>
       <p>Watch the atlas, bottom left: brighter tiles are holding more Gaussians. Sparsely described charts — ground, treeline — get a smaller share: there is no point sampling finer than a surface’s own detail.</p>
     </article>
-    <article class="step nav" data-scene="zoom">
-      <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>Lock the Gaussians <em>to the view</em></h2>
-      <p>A fixed grid of Gaussians, one per cell like the pixels of a sensor, laid over whatever part of the surface the camera sees. Move closer and the same Gaussians cover a smaller piece of the (u, v) domain: each one stands for less surface, so finer detail appears.</p>
-      <p>From far away, 6,000 Gaussians show the large drawing and a smudge on it. Close up, the same 6,000 resolve the smudge into a second drawing. The picture keeps flowing between the handwriting and the missile; the corner shows the scene from outside, where the lit patch is every Gaussian there is.</p>
-      <p class="aside">This surface is one flat chart, so every cell maps to an exact (u, v). The detail it can reveal ends where the control net does: 144,000 control points carry this picture.</p>
-    </article>
     <article class="step nav" data-scene="lod">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Level of detail, <em>without retraining</em></h2>
@@ -444,6 +444,22 @@
       <h2>Editable <em class="c-surf">by construction</em></h2>
       <p>Take every control point that carries the nose and pull. Thousands of Gaussians follow, still tiling, still on the surface. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
       <span class="do">Turn on nets, drag an amber point</span>
+    </article>
+    <article class="step nav" data-scene="fib1" data-depth="deep">
+      <div class="lvl l1"><i><b></b></i>An aside</div>
+      <h2>So: this method <em>beats everything</em></h2>
+      <p>Every other method, on every scene, from a single photograph, with a thousand times fewer parameters.</p>
+    </article>
+    <article class="step nav" data-scene="fib2" data-depth="deep">
+      <div class="lvl l1"><i><b></b></i>An aside</div>
+      <h2>Alright, alright. I might be <em>exaggerating</em></h2>
+      <p>It beats the strongest baseline on every DTU scan, with fifty times fewer parameters.</p>
+    </article>
+    <article class="step nav" data-scene="fib3" data-depth="deep">
+      <div class="lvl l1"><i><b></b></i>An aside</div>
+      <h2>OK, OK</h2>
+      <p>It wins 4 of the 15 DTU scans and trails on the other 11, averaging 0.50 mm against the baseline’s 0.47. The 10–50× parameter saving is the paper’s projection; the measurement at equal quality is still pending.</p>
+      <p class="aside">The nose is back to its measured length. Moving it took the same handful of control points as before.</p>
     </article>
   </div>
 </section>
@@ -565,6 +581,7 @@
 <script src="talk/kit.js"></script>
 <script src="talk/gl.js"></script>
 <script src="talk/ink.js"></script>
+<script src="talk/face-data.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/sims/flatland.js"></script>
 <script src="talk/sims/basis.js"></script>

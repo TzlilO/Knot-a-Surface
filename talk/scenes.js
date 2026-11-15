@@ -242,16 +242,53 @@
     };
   }
 
+  /* A measured face for the bust (talk/face-data.js). The face mesh is set into the head's own coordinates
+     (its width fills the skull's, its top meets the forehead), then every control point of the head asks,
+     along a horizontal ray from the head's axis, how far out the face is in its direction. Returns, per
+     control point, that radius r, a weight w (1 well inside the face, easing to 0 at its rim) and the
+     height of the nose tip. */
+  function faceFit(F, HN, HM, head) {
+    var V = F.v, Tn = F.t, n = V.length / 3, k = 0.80 / 7.743, top = 0, i, j, a, m;
+    for (i = 1; i < n; i++) if (Math.abs(V[i * 3]) < 0.01 && V[i * 3 + 1] > V[top * 3 + 1]) top = i;      // top of the forehead, on the centre line
+    var y0 = 0.70 - V[top * 3 + 1] * k, z0 = 0.92 * Math.sqrt(1 - 0.70 * 0.70) - V[top * 3 + 2] * k;
+    var P = new Float32Array(n * 3); for (i = 0; i < n; i++) { P[i * 3] = V[i * 3] * k; P[i * 3 + 1] = y0 + V[i * 3 + 1] * k; P[i * 3 + 2] = z0 + V[i * 3 + 2] * k; }
+    var r = new Float32Array(HN * HM), hit = new Float32Array(HN * HM), w = new Float32Array(HN * HM);
+    for (j = 0; j < HM; j++) for (i = 0; i < HN; i++) {
+      var th = i / HN * TAU, h = head(th, Math.max(j / (HM - 1), 0.012), true), dx = Math.sin(th), dz = Math.cos(th), best = 0;
+      for (a = 0; a < Tn.length; a += 3) {                  // ray (0, h.y, 0) + s (dx, 0, dz) against each triangle that spans this height
+        var A = Tn[a] * 3, B = Tn[a + 1] * 3, Cc = Tn[a + 2] * 3, ya = P[A + 1], yb = P[B + 1], yc = P[Cc + 1];
+        if ((ya < h.y && yb < h.y && yc < h.y) || (ya > h.y && yb > h.y && yc > h.y)) continue;
+        var e1x = P[B] - P[A], e1y = yb - ya, e1z = P[B + 2] - P[A + 2], e2x = P[Cc] - P[A], e2y = yc - ya, e2z = P[Cc + 2] - P[A + 2];
+        var px = -dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y, det = e1x * px + e1y * py + e1z * pz; if (Math.abs(det) < 1e-12) continue;
+        var tx = -P[A], ty = h.y - ya, tz = -P[A + 2], u = (tx * px + ty * py + tz * pz) / det; if (u < 0 || u > 1) continue;
+        var qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x, v = (dx * qx + dz * qz) / det; if (v < 0 || u + v > 1) continue;
+        var sd = (e2x * qx + e2y * qy + e2z * qz) / det; if (sd > best) best = sd;
+      }
+      r[j * HN + i] = best; hit[j * HN + i] = best > 0 ? 1 : 0;
+    }
+    for (m = 0; m < 3; m++) {                               // soften the rim of the hit region: three small blurs
+      var nx = new Float32Array(HN * HM);
+      for (j = 0; j < HM; j++) for (i = 0; i < HN; i++) {
+        var sum = 0, c = 0, di, dj;
+        for (dj = -1; dj <= 1; dj++) for (di = -1; di <= 1; di++) { var jj = j + dj; if (jj < 0 || jj >= HM) continue; sum += hit[jj * HN + (i + di + HN) % HN]; c++; }
+        nx[j * HN + i] = sum / c;
+      }
+      hit = nx;
+    }
+    for (i = 0; i < HN * HM; i++) w[i] = r[i] > 0 ? ss(0.5, 0.95, hit[i]) : 0;
+    return { r: r, w: w, noseY: y0 + V[4 * 3 + 1] * k };
+  }
+
   /* ================= BUST — DTU style ================= */
   function bust() {
     var C = [], HS = 0.74, HY = 2.86, boxes = [[-0.95, 0, -0.5, 0.95, 2.1, 0.5], [-0.55, 2.1, -0.6, 0.55, 3.55, 0.6]];
     var PLASTER = [0.86, 0.82, 0.75];
-    function head(theta, t) {                      // head-local point + how far it was pushed out
+    function head(theta, t, plain) {               // head-local point + how far it was pushed out (plain: skull, ears and hair only)
       var sph = t < 0.82, phi = sph ? t / 0.82 * 2.62 : 2.62, sx = Math.sin(theta), cz = Math.cos(theta);
       var x = 0.80 * Math.sin(phi) * sx, y = Math.cos(phi), z = 0.92 * Math.sin(phi) * cz;
       if (!sph) { var q = (t - 0.82) / 0.18, r0 = Math.sin(2.62); y = Math.cos(2.62) - q * 0.72; var rn = KT.lerp(r0, 0.6, ss(0, 0.6, q)); x = 0.80 * rn * sx; z = 0.92 * rn * cz - 0.1 * q; }
       x *= 1 - 0.24 * ss(-0.2, -0.9, y); if (z < 0) z *= 1.1;
-      var f = ss(0.0, 0.3, cz), d = 0;
+      var f = plain ? 0 : ss(0.0, 0.3, cz), d = 0;
       d += 0.27 * gs(x, y, 0, -0.10, 0.085, 0.21) + 0.15 * gs(x, y, 0, -0.24, 0.12, 0.085);                 // nose
       d += 0.07 * gs(x, y, 0, 0.27, 0.44, 0.07);                                                              // brow
       d -= 0.11 * (gs(x, y, 0.30, 0.10, 0.13, 0.085) + gs(x, y, -0.30, 0.10, 0.13, 0.085));                   // eye sockets
@@ -263,13 +300,22 @@
       var ear = 0.15 * Math.exp(-0.5 * ((z + 0.06) * (z + 0.06) / 0.0064 + (y - 0.03) * (y - 0.03) / 0.03)) * ss(0.55, 0.8, Math.abs(sx));
       var hair = 0.045 * ss(0.15, 0.45, y - 0.9 * z + 0.25) * (0.6 + 0.8 * fbm(theta * 5, t * 14));           // a sculpted cap of hair
       var l = Math.hypot(x, z) || 1e-6, out = d + ear + hair, nose = 0.27 * gs(x, y, 0, -0.10, 0.085, 0.21) * f;
+      if (plain) return { x: x, y: y + (sph ? 0.25 * hair : 0), z: z, d: 0, nose: 0, ear: ear, hair: hair };
       return { x: x + x / l * (ear + hair) * 0.9 + 0.15 * d * sx, y: y + (sph ? 0.25 * hair : 0), z: z + z / l * hair * 0.9 + d * (cz > 0 ? 1 : 0), d: d, nose: nose };
     }
-    var HN = 76, HM = 60, noseW = new Float32Array(HN * HM);
+    var F = KT.face, HN = F ? 104 : 76, HM = F ? 80 : 60, noseW = new Float32Array(HN * HM), fit = F && faceFit(F, HN, HM, head);
     chart(C, 'head', { nu: HN, nv: HM, periodicU: true, closed: true, tu: 8, tv: 6, minA: 3, ref: function () { return [0, HY, 0]; } }, function (s, t, i, j) {
-      var h = head(s * TAU, Math.max(t, 0.012)), c = mul(PLASTER, (0.93 + 0.1 * fbm(s * 9, t * 9)) * (1 + 2.2 * Math.min(0, h.d)) * (0.84 + 0.16 * ss(-1.6, -0.6, h.y)));
-      c = mul(c, 1 - 0.22 * gs(h.x, h.y, 0, -0.52, 0.17, 0.014) * ss(0, 0.3, Math.cos(s * TAU)));
-      noseW[j * HN + i] = h.nose;
+      var h = head(s * TAU, Math.max(t, 0.012), !!fit), k = j * HN + i, c;
+      if (fit) {                                   // the face: the measured radius where the mesh was hit, eased into the skull around it
+        var w = fit.w[k], l = Math.hypot(h.x, h.z) || 1e-6, r = l + (fit.r[k] - l) * w, extra = (1 - w) * (h.ear + h.hair) * 0.9, sn = Math.sin(s * TAU), cs = Math.cos(s * TAU);
+        h.x = sn * (r + extra); h.z = cs * (r + extra); h.d = (fit.r[k] - l) * w;
+        noseW[k] = w * gs(h.x, h.y, 0, fit.noseY, 0.075, 0.13) * ss(0.2, 0.7, cs);
+        c = mul(PLASTER, (0.93 + 0.1 * fbm(s * 9, t * 9)) * (1 + 0.9 * Math.min(0, h.d)) * (0.84 + 0.16 * ss(-1.6, -0.6, h.y)));
+      } else {
+        c = mul(PLASTER, (0.93 + 0.1 * fbm(s * 9, t * 9)) * (1 + 2.2 * Math.min(0, h.d)) * (0.84 + 0.16 * ss(-1.6, -0.6, h.y)));
+        c = mul(c, 1 - 0.22 * gs(h.x, h.y, 0, -0.52, 0.17, 0.014) * ss(0, 0.3, Math.cos(s * TAU)));
+        noseW[k] = h.nose;
+      }
       return [h.x * HS, HY + h.y * HS, h.z * HS, c[0], c[1], c[2]];
     });
     revolve(C, 'shoulders', { c: [0, 0, -0.06], nu: 32, tu: 4, tv: 3, minA: 5,
@@ -299,7 +345,8 @@
       rig: { cams: dome, target: [0, 2.5, 0] },
       edit: function (k) {                          // every control point that carries the nose, pulled forward
         var c = C[0], P = c.patch.P, B = c.base, i;
-        for (i = 0; i < noseW.length; i++) { P[i * 3 + 2] = B[i * 3 + 2] + 3.2 * k * noseW[i] * HS; P[i * 3 + 1] = B[i * 3 + 1] + 0.5 * k * noseW[i] * HS; }
+        var fw = fit ? 0.85 : 3.2, up = fit ? 0.1 : 0.5;      // the measured face carries weights up to 1, the sculpted one up to 0.27
+        for (i = 0; i < noseW.length; i++) { P[i * 3 + 2] = B[i * 3 + 2] + fw * k * noseW[i] * HS; P[i * 3 + 1] = B[i * 3 + 1] + up * k * noseW[i] * HS; }
         return [c];
       }
     };
@@ -436,72 +483,6 @@
     };
   }
 
-  /* ================= POSTER — one flat chart carrying a moving picture with detail at two scales =================
-     Two drawings from talk/ink.js, the handwriting and the missile, flow into each other (the spline
-     module's morph): large, filling the plane, and once more small, in the opposite phase, so the
-     picture always holds both shapes at two scales. It lives in the control features: 480 x 300
-     control points, one colour each, repainted while the drawing moves (live). The control points
-     sit on the Greville sites, so (u, v) -> position is exactly linear, which the frustum-locked
-     sampling of the manifold module relies on (chart.plane). */
-  function poster() {
-    var C = [], NU = 480, NV = 300, W = 16, H = 10, Y0 = 0.6, S = NU / 2, BX = 0.93, BY = 0.6;
-    var cv = document.createElement('canvas'); cv.width = NU; cv.height = NV;      // one pixel per control point
-    var g = cv.getContext('2d', { willReadFrequently: true }), sets = KT.ink ? KT.ink.morphSets() : null, was = -1;
-    var U3 = NB.clampedKnots(NU, 3), V3 = NB.clampedKnots(NV, 3);
-    function site(K, k) { return (K[k + 1] + K[k + 2] + K[k + 3]) / 3; }
-    var c = chart(C, 'poster', { nu: NU, nv: NV, tu: 8, tv: 5, cu: 4, cv: 4 }, function (s, t, ci, cj) {
-      return [(site(U3, ci) - 0.5) * W, Y0 + site(V3, cj) * H, 0, 0, 0, 0];
-    });
-    c.plane = { o: [-W / 2, Y0, 0], eu: [W, 0, 0], ev: [0, H, 0] };
-    /* the twelve curves of shape a blended towards shape b by e, drawn through `map` */
-    function strokes(a, b, e, map, width, colour) {
-      g.strokeStyle = colour; g.lineWidth = width; g.lineJoin = g.lineCap = 'round';
-      for (var k = 0; k < 12; k++) {
-        var A = sets[a][k], B = sets[b][k], P = [], U = [], i, n = A.P.length * 8, q;
-        for (i = 0; i < A.P.length; i++) P.push([A.P[i][0] + (B.P[i][0] - A.P[i][0]) * e, A.P[i][1] + (B.P[i][1] - A.P[i][1]) * e]);
-        for (i = 0; i < A.U.length; i++) U.push(A.U[i] + (B.U[i] - A.U[i]) * e);
-        g.beginPath();
-        for (i = 0; i <= n; i++) { q = map(NB.curvePoint(P, null, 3, U, i / n)); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
-        g.stroke();
-      }
-    }
-    /* e = 0: a large missile and small handwriting; e = 1: large handwriting and a small missile */
-    function paint(e) {
-      var x, y, i, cs = Math.cos(0.2), sn = Math.sin(0.2);
-      g.fillStyle = '#0d1524'; g.fillRect(0, 0, NU, NV);
-      g.strokeStyle = 'rgba(120,150,190,0.22)'; g.lineWidth = 0.6; g.beginPath();
-      for (x = 0; x <= NU; x += 30) { g.moveTo(x, 0); g.lineTo(x, NV); }
-      for (y = 0; y <= NV; y += 30) { g.moveTo(0, y); g.lineTo(NU, y); }
-      g.stroke();
-      if (sets) {
-        strokes(2, 1, e, function (q) { return [NU / 2 + (q[0] - 1) * S, NV / 2 - (q[1] - 0.5) * S]; }, 3, '#e8ecf4');
-        strokes(1, 2, e, function (q) {
-          var a = (q[0] - 1) * 0.23, b = (q[1] - 0.5) * 0.23;
-          return [NU / 2 + (BX - 1 + a * cs - b * sn) * S, NV / 2 - (BY - 0.5 + a * sn + b * cs) * S];
-        }, 1.6, '#ffd54f');
-      }
-      var px = g.getImageData(0, 0, NU, NV).data, K = c.patch.C, o = 0, j;
-      for (j = 0; j < NV; j++) for (i = 0; i < NU; i++) { var s = ((NV - 1 - j) * NU + i) * 4; K[o++] = px[s] / 255; K[o++] = px[s + 1] / 255; K[o++] = px[s + 2] / 255; }
-    }
-    paint(0);
-    var bx = (BX - 1) * S / NU * W, by = Y0 + (0.5 + (BY - 0.5) * S / NV) * H;      // the small drawing, on the plane
-    return {
-      charts: C,
-      views: { wide: { th: 0.16, ph: 1.4, r: 16.4, tx: 0, ty: Y0 + H / 2, tz: 0 }, mid: { th: 0.12, ph: 1.42, r: 9.5, tx: bx * 0.7, ty: by - 0.3, tz: 0 },
-               close: { th: 0.04, ph: 1.47, r: 3.6, tx: bx, ty: by, tz: 0 } },
-      tour: ['wide', 'mid', 'close', 'mid'],
-      rig: ring(12, 14, 3, 9, [0, Y0 + H / 2, 0]),
-      edit: function () { return []; },
-      /* called every frame with the scene's clock; true when the picture changed. One cycle: hold the
-         missile, flow into the handwriting, hold it, flow back. */
-      live: function (t) {
-        var T = t % 18, k = T < 5.5 ? 0 : T < 9 ? (T - 5.5) / 3.5 : T < 14.5 ? 1 : 1 - (T - 14.5) / 3.5, e = k * k * k * (k * (6 * k - 15) + 10);
-        if (!sets || Math.abs(e - was) < 1e-4) return false;
-        was = e; paint(e); return true;
-      }
-    };
-  }
-
   KT.scenes = {
     barn:   { label: 'Barn',   suite: 'Tanks and Temples style', build: barn },
     truck:  { label: 'Truck',  suite: 'Tanks and Temples style', build: truck },
@@ -509,8 +490,6 @@
     garden: { label: 'Garden', suite: 'Mip-NeRF 360 style', build: garden },
     studio: { label: 'Studio', suite: 'abstract still life', build: studio },
     /* hidden: not offered in the lab's scene picker or on the landing page; the Hebrew deck loads it by name */
-    breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast },
-    /* hidden too: the manifold module's `zoom` scene loads it (it needs talk/ink.js for its picture) */
-    poster: { label: 'Poster', suite: 'one flat chart, 144,000 control points', hidden: true, plain: true, build: poster }
+    breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast }
   };
 })();
