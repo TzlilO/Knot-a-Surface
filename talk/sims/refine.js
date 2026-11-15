@@ -619,7 +619,7 @@
   var ZLO = -0.14, ZSPAN = 1.28;          // relief range of the side view (control heights overshoot a little)
   var MAP_LO = 1e-4, MAP_HI = 0.1;        // balance map colour range: 0.01 % ... 10 %, logarithmic
   var KSTEPS = [6, 16, 32, 64, 128, 256]; // rows of the balance map that get a tick label
-  var ANG_SCALE = 30;                     // normal-error heat: full red at 30 degrees
+  var ANG_SCALE = 45;                     // normal-error heat: full red at 45 degrees
   var REGIME_K = 2;                       // "balanced" = surface error and sampling error within this factor
 
   /* Hill-shaded relief of H (n x n) into RGBA px. E (optional) = signed error field -> red heat. */
@@ -717,6 +717,13 @@
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-col .rf-ctrl{flex:1.5 1 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;align-content:center}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-ctrl .kt-panel-title{grid-column:1/-1}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-ctrl .rf-pre{grid-row:span 2}',
+      /* a short stage with the panel beside the figure: tighter rows so the whole panel stays on screen */
+      '.kt-sim-refine .rf-dense .rf-col{gap:6px;padding-top:6px;padding-bottom:6px}',
+      '.kt-sim-refine .rf-dense .rf-col .kt-panel{padding:7px 11px;gap:3px}',
+      '.kt-sim-refine .rf-dense .kt-row{min-height:19px}',
+      '.kt-sim-refine .rf-dense .rf-read .kt-val{font-size:13px}',
+      '.kt-sim-refine .rf-dense .rf-read .rf-t2{margin-top:4px;padding-top:6px}',
+      '.kt-sim-refine .rf-dense .kt-seg-btn,.kt-sim-refine .rf-dense .kt-btn,.kt-sim-refine .rf-dense .kt-toggle{padding-top:5px;padding-bottom:5px}',
       /* projector-sized stage: bigger type */
       '.kt-sim-refine .rf-big .kt-lab{font-size:13px}',
       '.kt-sim-refine .rf-big .rf-read .kt-val{font-size:19px}',
@@ -984,9 +991,9 @@
       }
       /* mean angle (degrees) between the normals that are shown and the target's, on the target grid */
       function angleNow() {
-        var key = (st.gauss ? st.dens : 0) + '|' + zVersion;
+        var key = (st.gauss ? st.dens : 0) + '|' + zVersion + '|' + st.shade;
         if (an.key !== key) {
-          if (st.gauss) { st.shade = st.shade; drawnNow(); an.v = dr.ws.N ? angleStats(dr.ws.N, targetNormals(tg)).mean : null; }
+          if (st.gauss) { drawnNow(); an.v = dr.ws.N ? angleStats(dr.ws.N, targetNormals(tg)).mean : null; }
           else { an.buf = fitNormals(m, an.buf); an.v = angleStats(an.buf, targetNormals(tg)).mean; }
           an.key = key;
         }
@@ -1354,10 +1361,12 @@
         var solve = st.versus ? solveVersus : solveMain, modes = tiny ? ['rf-stack'] : ['rf-side', 'rf-stack'];
         for (i = 0; i < modes.length; i++) {                 // try the panel beside and below the figure, keep the larger figure
           wrap.className = cls + ' ' + modes[i];
-          r = stage.getBoundingClientRect(); c = solve(r.width, r.height, g); c.mode = modes[i];
+          if (modes[i] === 'rf-side' && col.scrollHeight > wrap.clientHeight + 1) wrap.className += ' rf-dense';
+          r = stage.getBoundingClientRect(); c = solve(r.width, r.height, g); c.mode = wrap.className;
+          if (modes[i] === 'rf-side' && col.scrollHeight > wrap.clientHeight + 1) c.score *= 0.6;      // the panel would be cut off
           if (!best || c.score > best.score) best = c;
         }
-        wrap.className = cls + ' ' + best.mode;
+        wrap.className = best.mode;
         var sz = cv.fit();
         L = solve(sz.w, sz.h, g);
         L.W = sz.w; L.H = sz.h; L.f1 = g.f1; L.f2 = g.f2; L.squat = squat; L.statusH = g.statusH; L.mode = best.mode;
@@ -1498,7 +1507,7 @@
         txt(wide ? 'ERROR MEASURED IN u' : 'ERROR IN u', x, y - gap - bar - 7, lf, C.dim, 'left', '0.12em');
         ctx.save(); ctx.translate(x + s + gap + bar + L.fs + 1, y); ctx.rotate(Math.PI / 2);
         txt(wide ? 'ERROR MEASURED IN v' : 'ERROR IN v', 0, 0, lf, C.dim, 'left', '0.12em'); ctx.restore();
-        if (!tiny) txt('full bar ' + pctA(st.barScale), x + s, y - gap - bar - 7, font(500, L.fs), C.mute, 'right', '0.04em');
+        if (!tiny) txt('full bar ' + (st.barScale < 0.00995 ? pctA(st.barScale) : pct(st.barScale, 1)), x + s, y - gap - bar - 7, font(500, L.fs), C.mute, 'right', '0.04em');
       }
 
       function drawStatus(x, y, maxW, align) {
@@ -1719,7 +1728,7 @@
           // the three regimes
           var lf = font(600, tiny ? 9 : fs), ls = '0.08em', lh = (tiny ? 9 : fs) + 3;
           var two = g.w < 330;
-          var yT = g.y + Math.round(g.h * 0.30), yB = g.y + Math.round(g.h * 0.74);
+          var yT = g.y + Math.round(g.h * (tiny ? 0.24 : 0.30)), yB = g.y + Math.round(g.h * (tiny ? 0.58 : 0.74));
           if (tiny) {
             halo('CTRL-STARVED', g.x + 4, yT, lf, C.ctrl, 'left', '0px');
             halo('GAUSS-STARVED', g.x + g.w - 4, yB + lh, lf, C.splat, 'right', '0px');
@@ -1733,8 +1742,10 @@
           // "balanced", written along the line
           var ia = Math.floor(nc * 0.36), ib = Math.min(nc - 1, ia + 2);
           var ax = g.x + (ia + 0.5) * cell, ay = balY(g, B.nstar[ia]), bx = g.x + (ib + 0.5) * cell, by = balY(g, B.nstar[ib]);
-          ctx.save(); ctx.translate((ax + bx) / 2, (ay + by) / 2); ctx.rotate(Math.atan2(by - ay, bx - ax));
-          halo('BALANCED', 0, -6, lf, C.ok, 'center', ls); ctx.restore();
+          if (!tiny) {
+            ctx.save(); ctx.translate((ax + bx) / 2, (ay + by) / 2); ctx.rotate(Math.atan2(by - ay, bx - ax));
+            halo('BALANCED', 0, -6, lf, C.ok, 'center', ls); ctx.restore();
+          }
         }
         // axes: control points along x, Gaussians along y
         var lastX = -1e9, tw;
@@ -1753,7 +1764,7 @@
           v = B.rows[ri] * B.rows[ri]; txt(tiny && v >= 1000 ? Math.floor(v / 1000) + 'k' : kfmt(v), g.x - 5, yy, f, C.dim, 'right'); lastY = yy;
         }
         txt(tiny ? 'control points →' : 'CONTROL POINTS →', g.x, g.y + g.h + axB + fs + (tiny ? 1 : 4), f6, C.ctrl, 'left', tiny ? '0px' : '0.1em');
-        if (tiny) txt('Gaussians ↑', g.x, g.y + g.h + axB + 2 * fs + 5, f6, C.splat, 'left', '0px');
+        if (tiny) { txt('Gaussians ↑', g.x, g.y + g.h + axB + 2 * fs + 5, f6, C.splat, 'left', '0px'); if (B.ready) txt('┄ balanced', g.x + g.w, g.y + g.h + axB + 2 * fs + 5, f6, C.ok, 'right', '0px'); }
         else { ctx.save(); ctx.translate(g.x - axL + fs - 1, g.y + g.h); ctx.rotate(-Math.PI / 2); txt('GAUSSIANS →', 0, 0, f6, C.splat, 'left', '0.1em'); ctx.restore(); }
         // colour bar
         if (cbw) {

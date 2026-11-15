@@ -870,7 +870,7 @@
         if (st.nudT > 0) { st.nudT -= dt; hint.textContent = st.nudT > 0 ? 'tangent plane edge-on · stepping aside' : (sc.hint || ''); }
         orbit.update(dt);
         // on a small stage the insets cover the lower part: lift the picture into the free area above them
-        var occ = s.face ? st.ins + 14 + (s.nbr ? 46 : 0) : 0, span = ((s.uv ? 2 : 1) * (st.ins + 8) + 16) / W;
+        var occ = s.face ? st.ins + 14 + (s.nbr ? 46 : 0) : 0, span = Math.max((s.uv ? 2 : 1) * (st.ins + 8) + 16, s.nbr ? 226 : 0) / W;
         st.lift += (0.5 * occ * KT.ease((span - 0.3) / 0.3) - st.lift) * (1 - Math.exp(-4 * dt));
         var vk = W + 'x' + H + ':' + Math.round(st.lift);
         if (vk !== st.viewKey) { st.viewKey = vk; cam.setViewOffset(W, H, 0, Math.round(st.lift), W, H); }

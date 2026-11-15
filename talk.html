@@ -240,19 +240,23 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Differentiate</h2>
       <p>The surface is a polynomial in <span data-tex="u"></span> and <span data-tex="v"></span>, so its partial derivatives are closed‑form. They give two tangent vectors at every point — no finite differences, no neighbours, no learning.</p>
+      <p>They are two different directions, and together they span the tangent plane. The inset shows that plane face‑on, with the true angle between them.</p>
       <div class="eq" data-tex="\mathbf{S}_u=\frac{\partial\mathbf{S}}{\partial u}\qquad \mathbf{S}_v=\frac{\partial\mathbf{S}}{\partial v}"></div>
     </article>
     <article class="step nav" data-scene="normal">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Orientation is the <em>tangent frame</em></h2>
       <p>Cross the tangents for the normal. Stack the three unit vectors and you have the Gaussian’s rotation.</p>
+      <p class="aside">The two tangents are rarely perpendicular, so the second axis is S<sub>v</sub> with its S<sub>u</sub> part removed.</p>
       <div class="eq" data-tex="\mathbf{n}=\frac{\mathbf{S}_u\times\mathbf{S}_v}{\lVert\mathbf{S}_u\times\mathbf{S}_v\rVert}\qquad \mathbf{R}=\big[\,\hat{\mathbf{S}}_u\;\;\hat{\mathbf{S}}_v^{\perp}\;\;\mathbf{n}\,\big]"></div>
     </article>
     <article class="step nav" data-scene="scale">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Size is the distance to the <em>next sample</em></h2>
       <p>Stretch each axis by how far the surface travels across one sampling cell, and keep it paper‑thin along the normal. A flat Gaussian on the surface: a <b class="c-splat">planoid</b>.</p>
-      <p class="aside">In these demos σ is about 0.7 of the cell, so neighbours overlap.</p>
+      <p>That distance is a statement about neighbours. Measure the same size from the cell’s four neighbours in the (u, v) lattice, half the chord between opposite ones, and it agrees with the derivative to about 4 % at 9² samples and 0.2 % at 40². The gap falls as 1/n²; the derivative needs no neighbours at all.</p>
+      <p class="aside">In these demos σ is about 0.7 of the cell, so neighbours overlap. Fitting all eight neighbours gives the same area plus the shear between S<sub>u</sub> and S<sub>v</sub>, which this two‑length formula leaves out.</p>
+      <span class="do">Switch 4 / 8 neighbours, then move the samples slider</span>
       <div class="eq" data-tex="\mathbf{s}=\big(\lVert\mathbf{S}_u\rVert\Delta u,\;\lVert\mathbf{S}_v^{\perp}\rVert\Delta v,\;\epsilon\big)\qquad \boldsymbol{\Sigma}=\mathbf{R}\,\mathrm{diag}(\mathbf{s})^2\,\mathbf{R}^{\top}"></div>
     </article>
     <article class="step nav" data-scene="derive">
