@@ -1,7 +1,7 @@
 /* Knot-a-Surface talk — module `basis`: "Pluck a control point".
    A B-spline / NURBS curve you can take apart: control points, basis functions, local support,
    degree, knots, rational weights and the Cox–de Boor recursion. Tool: SVG, redrawn from state.
-   Standalone: talk/sims/basis.html. Depends on talk/nurbs.js + talk/kit.js only. */
+   Standalone: talk/sims/basis.html. Depends on talk/nurbs.js, talk/kit.js and talk/ink.js. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
@@ -18,8 +18,72 @@
     U: [0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1], p: 2
   };
 
+  var TEXTS = KT.ink.texts, MISSILE = KT.ink.missile;       // the drawings (talk/ink.js)
+  var morphSets = KT.ink.morphSets;
+  var SHAPES = ['letters', 'handwriting', 'missile'];
+
+  /* ---------- how close is the estimate? ----------
+     Ground truth = one of the drawings. Estimate = a least-squares cubic with fewer control points,
+     read out at a number of samples. Both numbers are budgets shared by the strokes in proportion to
+     their length. The gap = distance from each ground-truth point to the sampled estimate. */
+  function trace(c) {                      // points along a curve, a dozen per control point, + chord-length parameter
+    var n = c.P.length * 12, pts = [], T = [0], i, L = 0;
+    for (i = 0; i <= n; i++) pts.push(NB.curvePoint(c.P, null, 3, c.U, i / n));
+    for (i = 1; i <= n; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); T.push(L); }
+    return { pts: pts, T: T.map(function (t) { return t / L; }), len: L };
+  }
+  var _F = new Float64Array(8);
+  function lsq(g, n) {                     // normal equations (banded, so plain elimination is cheap)
+    var U = NB.clampedKnots(n, 3), A = [], bx = new Float64Array(n), by = new Float64Array(n), i, j, k, a, c, f, P = [];
+    for (i = 0; i < n; i++) A.push(new Float64Array(n));
+    for (k = 0; k < g.pts.length; k++) {
+      var sp = NB.findSpan(n, 3, g.T[k], U); NB.basisFuns(sp, g.T[k], 3, U, _F);
+      for (a = 0; a < 4; a++) { i = sp - 3 + a; bx[i] += _F[a] * g.pts[k][0]; by[i] += _F[a] * g.pts[k][1]; for (c = 0; c < 4; c++) A[i][sp - 3 + c] += _F[a] * _F[c]; }
+    }
+    for (i = 0; i < n; i++) A[i][i] += 1e-7;
+    for (i = 0; i < n; i++) for (j = i + 1; j < Math.min(n, i + 4); j++) {
+      f = A[j][i] / A[i][i]; if (!f) continue;
+      for (c = i; c < Math.min(n, i + 4); c++) A[j][c] -= f * A[i][c];
+      bx[j] -= f * bx[i]; by[j] -= f * by[i];
+    }
+    for (i = n - 1; i >= 0; i--) {
+      var x = bx[i], y = by[i];
+      for (c = i + 1; c < Math.min(n, i + 4); c++) { x -= A[i][c] * P[c][0]; y -= A[i][c] * P[c][1]; }
+      P[i] = [x / A[i][i], y / A[i][i]];
+    }
+    return { P: P, U: U };
+  }
+  /* fit every stroke of `truth` with nT control points in all and read it at mT samples; near = true also
+     returns, per ground-truth point, the closest point of the estimate (for drawing the gap) */
+  function estimate(truth, nT, mT, near) {
+    var total = 0, sq = 0, cnt = 0, mx = 0, strokes = [];
+    truth.forEach(function (g) { total += g.len; });
+    truth.forEach(function (g) {
+      var n = Math.max(4, Math.round(nT * g.len / total)), m = Math.max(2, Math.round(mT * g.len / total)), f = lsq(g, n), est = [], i, k;
+      for (i = 0; i < m; i++) est.push(NB.curvePoint(f.P, null, 3, f.U, i / (m - 1)));
+      var w = 3 + Math.ceil(m * 0.06), hit = near ? [] : null;
+      for (k = 0; k < g.pts.length; k++) {
+        var q = g.pts[k], c0 = Math.round(g.T[k] * (m - 1)), bd = 1e9, bq = null;
+        for (i = Math.max(0, c0 - w); i < Math.min(m - 1, c0 + w); i++) {
+          var a = est[i], b = est[i + 1], vx = b[0] - a[0], vy = b[1] - a[1], t = KT.clamp(((q[0] - a[0]) * vx + (q[1] - a[1]) * vy) / (vx * vx + vy * vy || 1), 0, 1);
+          var d = Math.hypot(q[0] - a[0] - t * vx, q[1] - a[1] - t * vy);
+          if (d < bd) { bd = d; if (near) bq = [a[0] + t * vx, a[1] + t * vy]; }
+        }
+        sq += bd * bd; cnt++; if (bd > mx) mx = bd; if (near) hit.push(bq);
+      }
+      strokes.push({ P: f.P, est: est, hit: hit });
+    });
+    return { strokes: strokes, rms: Math.sqrt(sq / cnt), max: mx };
+  }
+  var SWEEP = [12, 16, 22, 30, 42, 58, 80, 110, 150, 210];
+
   var SCENES = {
     ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4 },
+    letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
+                 hint: 'drag any amber point' },
+    script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
+    morph:     { cap: '<b>morphing</b> · letters → handwriting → a missile · only the control points move', morph: 1 },
+    fit:       { cap: '<b>how close?</b> · control points set what the curve can say · samples set how finely it is read', fit: 1 },
     drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any amber point' },
     blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
                  hint: 'scrub the plot to move u' },
@@ -38,7 +102,9 @@
            'slide knots, raise the degree, and add rational weights until the curve is an exact circle.',
     tool: 'SVG · direct manipulation',
     scenes: [
-      { id: 'ducks', label: 'The draftsman’s spline' }, { id: 'drag', label: 'Control points' },
+      { id: 'ducks', label: 'The draftsman’s spline' }, { id: 'letters', label: 'A spline per letter' },
+      { id: 'script', label: 'Handwriting' }, { id: 'morph', label: 'Morph' }, { id: 'fit', label: 'How close?' },
+      { id: 'drag', label: 'Control points' },
       { id: 'blend', label: 'Blending' }, { id: 'local', label: 'Local support' },
       { id: 'degree', label: 'Degree' }, { id: 'knots', label: 'Knots' },
       { id: 'rational', label: 'Rational weights' }, { id: 'recursion', label: 'Cox–de Boor' }
@@ -60,6 +126,18 @@
       var segDeg = ui.seg(panel, { label: 'degree p', value: 3,
         options: [{ v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }],
         onChange: function (v) { st.touched = true; setDegree(v); } });
+      var segM = ui.seg(panel, { label: 'shape', value: 0, options: SHAPES.map(function (n, i) { return { v: i, label: n }; }),
+        onChange: function (v) { st.touched = true; if (st.m && v !== st.m.from) { st.m.to = v; st.m.k = 0; st.m.hold = 0; } } });
+      /* the fit scene's controls */
+      var segT = ui.seg(panel, { label: 'truth', value: 'script', options: [{ v: 'script', label: 'handwriting' }, { v: 'missile', label: 'missile' }],
+        onChange: function (v) { st.touched = true; setTruth(v); } });
+      var slN = ui.slider(panel, { label: 'control points', min: 12, max: 210, step: 1, value: 14, fmt: function (v) { return v.toFixed(0); },
+        onInput: function (v) { st.touched = true; st.f.n = v; refit(false); } });
+      var slM = ui.slider(panel, { label: 'samples', min: 0, max: 1, step: 0.005, value: 0, fmt: function (v) { return samples(v).toFixed(0); },
+        onInput: function (v) { st.touched = true; st.f.m = samples(v); refit(true); } });
+      var segD = ui.seg(panel, { label: 'drawn as', value: 'lines', options: [{ v: 'lines', label: 'lines' }, { v: 'gauss', label: 'gaussians' }],
+        onChange: function (v) { st.touched = true; st.f.mode = v; dirty = true; } });
+      function samples(v) { return Math.round(16 * Math.pow(75, v)); }       // 16 .. 1200, on a log scale
       var slW = ui.slider(panel, { label: 'weight w', min: 0.1, max: 4, step: 0.05, value: 1,
         fmt: function (v) { return v.toFixed(2); },
         onInput: function (v) { st.touched = true; st.w[st.sel] = v; dirty = true; } });
@@ -88,6 +166,48 @@
       function setDegree(p) {
         if (st.circle) load(false);
         st.p = p; st.U = NB.clampedKnots(st.P.length, p); segDeg.set(p); dirty = true;
+        if (st.multi && !st.m) st.multi.forEach(knot);
+      }
+      /* the letter scenes: several curves, each { P, w, U, p, at } (at = where its points start in writing order) */
+      function knot(c) { c.p = Math.min(st.p, c.P.length - 1); c.U = NB.clampedKnots(c.P.length, c.p); }
+      function loadText(name) {
+        var at = 0;
+        st.multi = TEXTS[name]().map(function (P) {
+          var c = { P: P, w: P.map(function () { return 1; }), at: at }; knot(c); at += P.length; return c;
+        });
+        st.pen = 0; st.total = at;
+      }
+      /* the fit scene: st.f = { truth, n, m, mode, now, curve, floor } */
+      function setTruth(name) {
+        var curves = name === 'missile' ? MISSILE : TEXTS.script(), lo = 1e9, hi = -1e9;
+        st.f.truth = curves.map(function (P) { return trace({ P: P, U: NB.clampedKnots(P.length, 3) }); });
+        st.f.truth.forEach(function (g) { g.pts.forEach(function (q) { lo = Math.min(lo, q[1]); hi = Math.max(hi, q[1]); }); });
+        st.f.h = hi - lo; st.f.name = name; segT.set(name);
+        st.f.floor = SWEEP.map(function (n) { return estimate(st.f.truth, n, 1500).rms; });     // the spline alone, read finely
+        refit(true);
+      }
+      function refit(sweep) {
+        var F = st.f; F.now = estimate(F.truth, F.n, F.m, true);
+        if (sweep) F.curve = SWEEP.map(function (n) { return estimate(F.truth, n, F.m).rms; });
+        dirty = true;
+      }
+      function loadFit() {
+        st.f = { n: 14, m: 20, mode: segD.get() }; slN.set(14); slM.set(Math.log(20 / 16) / Math.log(75));
+        setTruth(segT.get());
+      }
+      /* the morph scene: st.m.sets = the three shapes; the curves on screen are a blend of two of them */
+      function loadMorph() {
+        st.m = { sets: morphSets(), from: 0, to: 0, k: 0, hold: 1.6 };
+        st.multi = st.m.sets[0].map(function (c) { return { P: c.P.map(function (q) { return q.slice(); }), w: c.w, U: c.U.slice(), p: 3, at: 0 }; });
+        st.pen = st.total = 1e9; segM.set(0);       // nothing is being written: every curve is drawn in full
+      }
+      function blend() {
+        var m = st.m, e = m.k * m.k * m.k * (m.k * (6 * m.k - 15) + 10);
+        st.multi.forEach(function (c, i) {
+          var a = m.sets[m.from][i], b = m.sets[m.to][i], j;
+          for (j = 0; j < c.P.length; j++) { c.P[j][0] = a.P[j][0] + (b.P[j][0] - a.P[j][0]) * e; c.P[j][1] = a.P[j][1] + (b.P[j][1] - a.P[j][1]) * e; }
+          for (j = 0; j < c.U.length; j++) c.U[j] = a.U[j] + (b.U[j] - a.U[j]) * e;
+        });
       }
 
       /* ---------- layout ---------- */
@@ -96,6 +216,7 @@
         var bh = st.bh * H, topH = H - bh;
         var s = Math.min((W - 2 * padX) / 2, (topH - topPad - 26) / 1);
         L.s = s; L.ox = (W - 2 * s) / 2; L.oy = topPad + (topH - topPad - 26 - s) / 2;
+        if (st.sc.fit && W > 640) L.ox = Math.min(L.ox, Math.max(padX, W - 2 * s - 250));   // keep the drawing clear of the panel
         L.bx0 = padX + 8; L.bx1 = W - padX - 8; L.by0 = topH + 6; L.by1 = H - 44; L.bh = bh;
       }
       function px(q) { return [L.ox + q[0] * L.s, L.oy + (1 - q[1]) * L.s]; }
@@ -120,6 +241,77 @@
       }
 
       /* ---------- drawing ---------- */
+      /* several splines at once; each is drawn as far as the pen has got */
+      function drawText() {
+        var sc = st.sc, big = sc.multi === 'letters', h = '', tip = null, n = 0;
+        var rp = KT.clamp(L.s * (big ? 0.011 : 0.006), 1.6, big ? 4.6 : 2.6), sw = KT.clamp(L.s * 0.008, 1.6, big ? 3.4 : 3);   // small stages: finer marks
+        st.multi.forEach(function (c) {
+          var u = KT.clamp((st.pen - c.at) / c.P.length, 0, 1), d = '', i, q, seg = c.P.length * 10;
+          n += c.P.length;
+          h += '<path d="' + c.P.map(function (k, j) { q = px(k); return (j ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }).join('') +
+               '" fill="none" stroke="' + C.ctrl + '" stroke-width="1" stroke-dasharray="3 4" opacity="' + (big ? 0.55 : 0.3) + '"/>';
+          if (u > 0) {
+            for (i = 0; i <= seg; i++) { q = px(NB.curvePoint(c.P, c.w, c.p, c.U, u * i / seg)); d += (i ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }
+            h += '<path d="' + d + '" fill="none" stroke="' + C.surf + '" stroke-width="' + f(sw) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+            if (u < 1) tip = q;
+          }
+          for (i = 0; i < c.P.length; i++) {
+            q = px(c.P[i]);
+            h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rp) + '" fill="' + C.ctrl + '" stroke="' + C.bg + '" stroke-width="' + (rp > 3 ? 1.5 : 0.8) + '"' + (big ? '' : ' opacity=".7"') + '/>';
+          }
+        });
+        if (tip) h += '<circle cx="' + f(tip[0]) + '" cy="' + f(tip[1]) + '" r="6" fill="' + C.text + '" stroke="' + C.bg + '" stroke-width="2"/>';
+        rd.el.querySelector('.kt-lab').textContent = 'curves';
+        rd.set(st.multi.length + ' splines · ' + n + ' pts');
+        rdErr.el.style.display = 'none'; slW.el.style.display = rowB.style.display = 'none';
+        return h;
+      }
+
+      /* ground truth, the sampled estimate, the gap between them, and the gap against the control-point count */
+      function drawFit() {
+        var F = st.f, h = '', i, q, a, whisk = '', every = Math.max(1, Math.round(F.truth.reduce(function (n, g) { return n + g.pts.length; }, 0) / 420));
+        function path(P) { return P.map(function (k, j) { q = px(k); return (j ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }).join(''); }
+        F.now.strokes.forEach(function (sk, si) {
+          var g = F.truth[si];
+          for (i = 0; i < g.pts.length; i += every) { q = px(g.pts[i]); a = px(sk.hit[i]); if (Math.hypot(q[0] - a[0], q[1] - a[1]) > 1.2) whisk += 'M' + f(q[0]) + ' ' + f(q[1]) + 'L' + f(a[0]) + ' ' + f(a[1]); }
+          h += '<path d="' + path(g.pts) + '" fill="none" stroke="' + C.dim + '" stroke-width="1.6" stroke-linejoin="round" opacity=".8"/>';
+        });
+        h += '<path d="' + whisk + '" stroke="' + C.err + '" stroke-width="1.1" opacity=".8"/>';
+        F.now.strokes.forEach(function (sk) {
+          if (F.mode === 'lines') h += '<path d="' + path(sk.est) + '" fill="none" stroke="' + C.surf + '" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>';
+          else for (i = 0; i < sk.est.length; i++) {       // one Gaussian per sample: centred on it, as long as the gap to its neighbours
+            var e0 = px(sk.est[Math.max(0, i - 1)]), e1 = px(sk.est[Math.min(sk.est.length - 1, i + 1)]); q = px(sk.est[i]);
+            var len = Math.hypot(e1[0] - e0[0], e1[1] - e0[1]) / (i && i < sk.est.length - 1 ? 2 : 1);
+            h += '<ellipse cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" rx="' + f(Math.max(1.6, len * 0.62)) + '" ry="2.6" transform="rotate(' + f(Math.atan2(e1[1] - e0[1], e1[0] - e0[0]) * 57.2958) + ' ' + f(q[0]) + ' ' + f(q[1]) + ')" fill="' + C.splat + '" opacity=".72"/>';
+          }
+          if (F.n <= 110) {
+            h += '<path d="' + path(sk.P) + '" fill="none" stroke="' + C.ctrl + '" stroke-width="1" stroke-dasharray="2 4" opacity=".45"/>';
+            for (i = 0; i < sk.P.length; i++) { q = px(sk.P[i]); h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="2.6" fill="' + C.ctrl + '"/>'; }
+          }
+        });
+        // the plot: mean gap (share of the drawing's height) against control points, log-log
+        if (L.bh > 30 && F.curve) {
+          var x0 = L.bx0 + 34, x1 = L.bx1, y0 = L.by0 + 8, y1 = L.by1, lo = Math.log(0.0005), hi = Math.log(0.25);
+          var X = function (n) { return x0 + (Math.log(n) - Math.log(12)) / (Math.log(210) - Math.log(12)) * (x1 - x0); };
+          var Y = function (e) { return y1 - (KT.clamp(Math.log(e / F.h), lo, hi) - lo) / (hi - lo) * (y1 - y0); };
+          [0.001, 0.01, 0.1].forEach(function (e) {
+            h += '<path d="M' + f(x0) + ' ' + f(Y(e * F.h)) + 'H' + f(x1) + '" stroke="' + C.line + '" stroke-width="1"/>' +
+                 '<text x="' + f(x0 - 6) + '" y="' + f(Y(e * F.h) + 4) + '" text-anchor="end" fill="' + C.mute + '" class="kt-t">' + (e * 100) + '%</text>';
+          });
+          [12, 30, 80, 210].forEach(function (n) { h += '<text x="' + f(X(n)) + '" y="' + f(y1 + 16) + '" text-anchor="middle" fill="' + C.mute + '" class="kt-t">' + n + '</text>'; });
+          var line = function (arr) { return arr.map(function (e, j) { return (j ? 'L' : 'M') + f(X(SWEEP[j])) + ' ' + f(Y(e)); }).join(''); };
+          h += '<path d="' + line(F.floor) + '" fill="none" stroke="' + C.surf + '" stroke-width="1.4" stroke-dasharray="4 4" opacity=".8"/>';
+          h += '<path d="' + line(F.curve) + '" fill="none" stroke="' + C.err + '" stroke-width="2"/>';
+          h += '<circle cx="' + f(X(F.n)) + '" cy="' + f(Y(F.now.rms)) + '" r="5.5" fill="' + C.err + '" stroke="' + C.bg + '" stroke-width="2"/>';
+          h += '<text x="' + f(x1) + '" y="' + f(y0 + 4) + '" text-anchor="end" fill="' + C.mute + '" class="kt-t">mean gap against control points · ' +
+               '<tspan fill="' + C.err + '">with ' + F.m + ' samples</tspan> · <tspan fill="' + C.surf + '">with plenty</tspan></text>';
+        }
+        rd.el.querySelector('.kt-lab').textContent = 'mean gap';
+        rd.set((F.now.rms / F.h * 100).toFixed(2) + ' % · worst ' + (F.now.max / F.h * 100).toFixed(1) + ' %'); rd.tone('err');
+        rdErr.el.style.display = 'none'; slW.el.style.display = rowB.style.display = 'none';
+        return h;
+      }
+
       function draw() {
         layout();
         var sc = st.sc, p = st.p, m = st.P.length, U = st.U, i, q, h = '', a;
@@ -130,6 +322,9 @@
         for (i = 0; i <= 8; i++) { a = L.ox + i * L.s / 4; h += '<path d="M' + f(a) + ' ' + f(L.oy) + 'V' + f(L.oy + L.s) + '"/>'; }
         for (i = 0; i <= 4; i++) { a = L.oy + i * L.s / 4; h += '<path d="M' + f(L.ox) + ' ' + f(a) + 'H' + f(L.ox + 2 * L.s) + '"/>'; }
         h += '</g>';
+        if (st.f) { svg.innerHTML = h + drawFit(); return; }
+        rd.tone('surf');
+        if (st.multi) { svg.innerHTML = h + drawText(); return; }
 
         // control polygon
         var poly = st.P.map(function (c, j) { q = px(c); return (j ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }).join('');
@@ -191,6 +386,7 @@
         svg.innerHTML = h;
 
         // readouts
+        rd.el.querySelector('.kt-lab').textContent = 'continuity';
         rd.set('C' + (p - 1 < 0 ? 0 : p - 1) + ' · ' + m + ' pts · ' + U.length + ' knots');
         rdErr.el.style.display = sc.circle ? '' : 'none';
         slW.el.style.display = sc.circle || !env.embed ? '' : 'none';
@@ -258,6 +454,15 @@
       function local(e) { var r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
       function hit(x, y, touch) {        // touch widens the knot targets; points are already 52 px across
         var best = null, bd = 26, i, q, d;
+        if (st.f) return null;
+        if (st.multi) {
+          bd = touch ? KT.HIT : 13;
+          if (st.m) return null;                 // the morph owns its control points
+          st.multi.forEach(function (c, ci) {
+            for (i = 0; i < c.P.length; i++) { q = px(c.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'text', c: ci, i: i }; } }
+          });
+          return best;
+        }
         for (i = 0; i < st.P.length; i++) { q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; } }
         if (best) return best;
         if (L.bh > 30) {
@@ -271,7 +476,12 @@
         return null;
       }
       function apply(d, x, y) {
-        if (d.kind === 'pt') { st.P[d.i] = unpx(x, y); st.base[d.i] = st.P[d.i].slice(); }
+        if (d.kind === 'text') {                 // a corner is three points on one spot: they move together
+          var c = st.multi[d.c], was = d.was || (d.was = c.P[d.i].slice()), now = unpx(x, y);
+          d.set = d.set || c.P.map(function (k, j) { return k[0] === was[0] && k[1] === was[1] ? j : -1; }).filter(function (j) { return j >= 0; });
+          d.set.forEach(function (j) { c.P[j] = now.slice(); });
+        }
+        else if (d.kind === 'pt') { st.P[d.i] = unpx(x, y); st.base[d.i] = st.P[d.i].slice(); }
         else if (d.kind === 'knot') {
           var u = KT.clamp((x - L.bx0) / (L.bx1 - L.bx0), 0, 1);
           // interior knots may stack on each other, but never on the clamped end knots (that span would be empty)
@@ -308,6 +518,10 @@
           st.w = st.P.map(function () { return 1; });
           st.p = 3; st.U = NB.clampedKnots(st.P.length, 3); segDeg.set(3);
         }
+        st.m = st.f = null; st.multi = null;
+        if (sc.fit) loadFit(); else if (sc.morph) loadMorph(); else if (sc.multi) loadText(sc.multi);
+        segM.el.style.display = sc.morph ? '' : 'none'; segDeg.el.style.display = sc.morph || sc.fit ? 'none' : '';
+        [segT, slN, slM, segD].forEach(function (c) { c.el.style.display = sc.fit ? '' : 'none'; });
         if (sc.sel != null) st.sel = sc.sel;
         slW.set(st.w[st.sel]);
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
@@ -316,10 +530,27 @@
       }
 
       env.loop(function (t, dt) {
-        var sc = st.sc, target = sc.basis ? (sc.pyramid ? 0.56 : 0.32) : 0;
+        var sc = st.sc, target = sc.basis ? (sc.pyramid ? 0.56 : 0.32) : sc.fit ? 0.3 : 0;
         if (Math.abs(st.bh - target) > 0.001) { st.bh += (target - st.bh) * (1 - Math.exp(-7 * dt)); dirty = true; }
         else if (st.bh !== target) { st.bh = target; dirty = true; }
         st.t += dt;
+        if (st.f && !st.touched) {               // refine both together, hold, start over
+          var k = KT.clamp((st.t % 11) / 7.5, 0, 1), n = Math.round(14 * Math.pow(150 / 14, k)), mm2 = Math.round(20 * Math.pow(900 / 20, k));
+          if (n !== st.f.n || mm2 !== st.f.m) { st.f.n = n; st.f.m = mm2; slN.set(n); slM.set(Math.log(mm2 / 16) / Math.log(75)); refit(true); }
+        }
+        if (st.m) {                              // hold a shape, then slide to the next one
+          var mm = st.m;
+          if (mm.to !== mm.from) {
+            mm.k = Math.min(1, mm.k + dt / 2.6); blend(); dirty = true;
+            if (mm.k >= 1) { mm.from = mm.to; mm.hold = 2.2; segM.set(mm.from); }
+          } else if (!st.touched && (mm.hold -= dt) <= 0) { mm.to = (mm.from + 1) % 3; mm.k = 0; }
+        }
+        else if (st.multi) {                     // the pen writes the strokes in order; a touch finishes the writing
+          var was = st.pen;
+          if (st.touched) st.pen = st.total;
+          else { st.pen += sc.rate * dt; if (sc.again && st.pen > st.total + sc.rate * 3) st.pen = 0; }
+          if (was < st.total || st.pen < was) dirty = true;
+        }
         if (!st.touched && !drag) {
           if (sc.wiggle != null) {             // idle motion so the stage is alive before anyone touches it
             var i = sc.wiggle, b = st.base[i];

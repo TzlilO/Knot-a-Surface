@@ -436,6 +436,72 @@
     };
   }
 
+  /* ================= POSTER — one flat chart carrying a moving picture with detail at two scales =================
+     Two drawings from talk/ink.js, the handwriting and the missile, flow into each other (the spline
+     module's morph): large, filling the plane, and once more small, in the opposite phase, so the
+     picture always holds both shapes at two scales. It lives in the control features: 480 x 300
+     control points, one colour each, repainted while the drawing moves (live). The control points
+     sit on the Greville sites, so (u, v) -> position is exactly linear, which the frustum-locked
+     sampling of the manifold module relies on (chart.plane). */
+  function poster() {
+    var C = [], NU = 480, NV = 300, W = 16, H = 10, Y0 = 0.6, S = NU / 2, BX = 0.93, BY = 0.6;
+    var cv = document.createElement('canvas'); cv.width = NU; cv.height = NV;      // one pixel per control point
+    var g = cv.getContext('2d', { willReadFrequently: true }), sets = KT.ink ? KT.ink.morphSets() : null, was = -1;
+    var U3 = NB.clampedKnots(NU, 3), V3 = NB.clampedKnots(NV, 3);
+    function site(K, k) { return (K[k + 1] + K[k + 2] + K[k + 3]) / 3; }
+    var c = chart(C, 'poster', { nu: NU, nv: NV, tu: 8, tv: 5, cu: 4, cv: 4 }, function (s, t, ci, cj) {
+      return [(site(U3, ci) - 0.5) * W, Y0 + site(V3, cj) * H, 0, 0, 0, 0];
+    });
+    c.plane = { o: [-W / 2, Y0, 0], eu: [W, 0, 0], ev: [0, H, 0] };
+    /* the twelve curves of shape a blended towards shape b by e, drawn through `map` */
+    function strokes(a, b, e, map, width, colour) {
+      g.strokeStyle = colour; g.lineWidth = width; g.lineJoin = g.lineCap = 'round';
+      for (var k = 0; k < 12; k++) {
+        var A = sets[a][k], B = sets[b][k], P = [], U = [], i, n = A.P.length * 8, q;
+        for (i = 0; i < A.P.length; i++) P.push([A.P[i][0] + (B.P[i][0] - A.P[i][0]) * e, A.P[i][1] + (B.P[i][1] - A.P[i][1]) * e]);
+        for (i = 0; i < A.U.length; i++) U.push(A.U[i] + (B.U[i] - A.U[i]) * e);
+        g.beginPath();
+        for (i = 0; i <= n; i++) { q = map(NB.curvePoint(P, null, 3, U, i / n)); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
+        g.stroke();
+      }
+    }
+    /* e = 0: a large missile and small handwriting; e = 1: large handwriting and a small missile */
+    function paint(e) {
+      var x, y, i, cs = Math.cos(0.2), sn = Math.sin(0.2);
+      g.fillStyle = '#0d1524'; g.fillRect(0, 0, NU, NV);
+      g.strokeStyle = 'rgba(120,150,190,0.22)'; g.lineWidth = 0.6; g.beginPath();
+      for (x = 0; x <= NU; x += 30) { g.moveTo(x, 0); g.lineTo(x, NV); }
+      for (y = 0; y <= NV; y += 30) { g.moveTo(0, y); g.lineTo(NU, y); }
+      g.stroke();
+      if (sets) {
+        strokes(2, 1, e, function (q) { return [NU / 2 + (q[0] - 1) * S, NV / 2 - (q[1] - 0.5) * S]; }, 3, '#e8ecf4');
+        strokes(1, 2, e, function (q) {
+          var a = (q[0] - 1) * 0.23, b = (q[1] - 0.5) * 0.23;
+          return [NU / 2 + (BX - 1 + a * cs - b * sn) * S, NV / 2 - (BY - 0.5 + a * sn + b * cs) * S];
+        }, 1.6, '#ffd54f');
+      }
+      var px = g.getImageData(0, 0, NU, NV).data, K = c.patch.C, o = 0, j;
+      for (j = 0; j < NV; j++) for (i = 0; i < NU; i++) { var s = ((NV - 1 - j) * NU + i) * 4; K[o++] = px[s] / 255; K[o++] = px[s + 1] / 255; K[o++] = px[s + 2] / 255; }
+    }
+    paint(0);
+    var bx = (BX - 1) * S / NU * W, by = Y0 + (0.5 + (BY - 0.5) * S / NV) * H;      // the small drawing, on the plane
+    return {
+      charts: C,
+      views: { wide: { th: 0.16, ph: 1.4, r: 16.4, tx: 0, ty: Y0 + H / 2, tz: 0 }, mid: { th: 0.12, ph: 1.42, r: 9.5, tx: bx * 0.7, ty: by - 0.3, tz: 0 },
+               close: { th: 0.04, ph: 1.47, r: 3.6, tx: bx, ty: by, tz: 0 } },
+      tour: ['wide', 'mid', 'close', 'mid'],
+      rig: ring(12, 14, 3, 9, [0, Y0 + H / 2, 0]),
+      edit: function () { return []; },
+      /* called every frame with the scene's clock; true when the picture changed. One cycle: hold the
+         missile, flow into the handwriting, hold it, flow back. */
+      live: function (t) {
+        var T = t % 18, k = T < 5.5 ? 0 : T < 9 ? (T - 5.5) / 3.5 : T < 14.5 ? 1 : 1 - (T - 14.5) / 3.5, e = k * k * k * (k * (6 * k - 15) + 10);
+        if (!sets || Math.abs(e - was) < 1e-4) return false;
+        was = e; paint(e); return true;
+      }
+    };
+  }
+
   KT.scenes = {
     barn:   { label: 'Barn',   suite: 'Tanks and Temples style', build: barn },
     truck:  { label: 'Truck',  suite: 'Tanks and Temples style', build: truck },
@@ -443,6 +509,8 @@
     garden: { label: 'Garden', suite: 'Mip-NeRF 360 style', build: garden },
     studio: { label: 'Studio', suite: 'abstract still life', build: studio },
     /* hidden: not offered in the lab's scene picker or on the landing page; the Hebrew deck loads it by name */
-    breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast }
+    breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast },
+    /* hidden too: the manifold module's `zoom` scene loads it (it needs talk/ink.js for its picture) */
+    poster: { label: 'Poster', suite: 'one flat chart, 144,000 control points', hidden: true, plain: true, build: poster }
   };
 })();

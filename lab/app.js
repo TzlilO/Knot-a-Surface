@@ -26,7 +26,7 @@
   try { R = KL.renderer(stage, cam, { capacity: CAP, page: PAGE }); }
   catch (e) { stage.classList.add('dead'); stage.appendChild(el('p', 'lab-dead', 'This figure needs WebGL 2, which this browser does not provide.')); return; }
   var field = { center: R.center, axU: R.axU, axV: R.axV, color: R.color, capacity: CAP };
-  var st = { scn: '', mode: 0, split: false, roll: 0, budget: +query.budget || (small ? 90000 : 200000), adaptive: true, k: 0.72,
+  var st = { scn: '', mode: 0, split: false, roll: 0, budget: +query.budget || (small ? 90000 : 200000), sampling: 'adaptive', k: 0.72,
              tool: 'orbit', brush: 0.5, by: 'feature', thr: 0.55, nets: false, hide: false, drawn: 0 };
   var def = null, charts = [], totalCP = 0, feat = null, need = true, camKey = '', lastAlloc = 0, zr = [1, 30];
   var sel = null;               // { n, cen:[x,y,z], seed, edit:{inflate,lift,scale,tint,amount} } while a selection exists
@@ -72,7 +72,9 @@
     }
   }
 
-  /* ---------- view-adaptive allocation: importance -> per-tile counts -> warped (u,v) lattices ---------- */
+  /* ---------- allocation: importance -> per-tile counts -> warped (u,v) lattices ----------
+     st.sampling: 'even' = by surface area · 'adaptive' = by what the camera sees, with a floor everywhere ·
+     'locked' = the whole budget inside the view frustum, shared by area on screen (nothing outside it) */
   var M = new T.Matrix4();
   function invCdf(m, n, out, dOut) {
     var g = m.length, cdf = new Float64Array(g + 1), i, tot = 0, prev = 0;
@@ -83,6 +85,7 @@
   function allocate() {
     cam.updateMatrixWorld(); M.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     var e = M.elements, cx = cam.position.x, cy = cam.position.y, cz = cam.position.z, totA = 0, totW = 0, z0 = 1e9, z1 = 0;
+    var locked = st.sampling === 'locked', lim = locked ? 1.04 : 1.12;
     charts.forEach(function (c) { totA += c.area; });
     charts.forEach(function (c) {
       var n = c.gu * c.gv, i, o, w; c.w = c.w || new Float32Array(n);
@@ -90,11 +93,11 @@
         o = i * 3; var x = c.cpos[o], y = c.cpos[o + 1], z = c.cpos[o + 2];
         var cw = e[3] * x + e[7] * y + e[11] * z + e[15], px = e[0] * x + e[4] * y + e[8] * z + e[12], py = e[1] * x + e[5] * y + e[9] * z + e[13];
         w = 0;
-        if (cw > 0.05 && Math.abs(px) < cw * 1.12 && Math.abs(py) < cw * 1.12) {
+        if (cw > 0.05 && Math.abs(px) < cw * lim && Math.abs(py) < cw * lim) {
           var dx = cx - x, dy = cy - y, dz = cz - z, d2 = dx * dx + dy * dy + dz * dz;
           var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / Math.sqrt(d2) * c.flip;
           cs = c.closed ? (cs > -0.15 ? 1 : 0.3) : Math.max(0.25, Math.abs(cs));
-          w = c.carea[i] * cs / d2 * c.gain;
+          w = c.carea[i] * cs / d2 * (locked && !c.lock ? 1 : c.gain);
           if (!c.lock) { if (cw < z0) z0 = cw; if (cw > z1) z1 = cw; }
         }
         c.w[i] = w; totW += w;
@@ -113,13 +116,14 @@
           var mu = new Float64Array(cu), mv = new Float64Array(cv), share = 0, lu = 0, lv = 0, a, b, i, imp;
           for (b = 0; b < cv; b++) for (a = 0; a < cu; a++) {
             i = (tl.iv * cv + b) * gu + tl.iu * cu + a;
-            imp = st.adaptive ? FLOOR * c.carea[i] / totA + (1 - FLOOR) * c.w[i] / (totW || 1) : c.carea[i] / totA;
+            imp = locked ? c.w[i] / (totW || 1) : st.sampling === 'adaptive' ? FLOOR * c.carea[i] / totA + (1 - FLOOR) * c.w[i] / (totW || 1) : c.carea[i] / totA;
             share += imp; mu[a] += imp; mv[b] += imp; lu += imp * c.clu[i] / c.tu; lv += imp * c.clv[i] / c.tv;
           }
+          if (!share) { tl.na = tl.nb = 0; return; }             // locked: a tile outside the view gets nothing
           var N = Math.max(4, st.budget * share * scale), ratio = lu / (lv || 1e-12);
           tl.nb = Math.max(c.minB, Math.round(Math.sqrt(N / ratio))); tl.na = Math.max(c.minA, Math.round(N / tl.nb));
-          for (a = 0; a < cu; a++) mu[a] += share / cu * 0.3;
-          for (b = 0; b < cv; b++) mv[b] += share / cv * 0.3;
+          for (a = 0; a < cu; a++) mu[a] += share / cu * (locked ? 0.12 : 0.3);
+          for (b = 0; b < cv; b++) mv[b] += share / cv * (locked ? 0.12 : 0.3);
           tl.us = new Float32Array(tl.na); tl.du = new Float32Array(tl.na); tl.vs = new Float32Array(tl.nb); tl.dv = new Float32Array(tl.nb);
           invCdf(mu, tl.na, tl.us, tl.du); invCdf(mv, tl.nb, tl.vs, tl.dv);
           for (a = 0; a < tl.na; a++) { tl.us[a] = (tl.iu + tl.us[a]) / c.tu; tl.du[a] /= c.tu; }
@@ -141,7 +145,7 @@
     charts.forEach(function (c, ci) {
       c.tiles.forEach(function (tl) {
         var m = tl.na * tl.nb, n0 = n, a, b, i, o;
-        if (n + m > CAP) return;
+        if (!m || n + m > CAP) return;
         NB.patchGrid(c.patch, tl.us, tl.vs, sg);
         n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k);
         if (ch.length < m * 5) ch = new Float32Array(m * 5);
@@ -442,7 +446,7 @@
     $('modes').appendChild(b);
   });
   var slB = slider('budget', { min: 20000, max: CAP - 20000, step: 5000, value: st.budget, fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, on: function (v) { st.budget = v; need = true; } });
-  $('adaptive').addEventListener('change', function () { st.adaptive = this.checked; need = true; });
+  seg('sampling', st.sampling, function (v) { st.sampling = v; need = true; });
   $('nets').addEventListener('change', function () { st.nets = this.checked; showNets(); });
   function setTool(v) { st.tool = v; document.body.dataset.tool = v; ring.style.opacity = 0; segTool.set(v); }
   var segTool = seg('tool', st.tool, setTool);
