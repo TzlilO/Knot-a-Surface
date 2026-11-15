@@ -42,7 +42,8 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `require()`-able under node). `talk/gl.js` = three.js helpers incl. `writePlanoids` (the derived
   Gaussian: centre + tangent axes from S_u, S_v and the sampling interval).
 - Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound), `basis` (SVG curve
-  playground), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
+  playground; its `letters` / `script` scenes draw "Shalom Rafael" as one spline per letter and as
+  three handwritten strokes, from the control polygons in `PRINT` / `HAND`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after

@@ -18,8 +18,63 @@
     U: [0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1], p: 2
   };
 
+  /* ---------- two words, twice: one spline per letter, and joined-up handwriting ----------
+     Letter units: baseline 0, x-height 1, ascender 1.7. K = a corner: three control points on one spot. */
+  function K(x, y) { return [[x, y], [x, y], [x, y]]; }
+  var PRINT = {
+    S: [1.0, [0.95, 1.42], [0.78, 1.8], [0.25, 1.82], [0.0, 1.45], [0.1, 1.02], [0.5, 0.86], [0.92, 0.68], [1.02, 0.25], [0.75, -0.12], [0.25, -0.1], [0.0, 0.28]],
+    h: [0.95, [0.1, 1.7], [0.1, 0.9], K(0.1, 0), [0.1, 0.6], [0.14, 1.04], [0.5, 1.16], [0.86, 1.02], [0.9, 0.5], [0.9, 0]],
+    a: [0.95, [0.88, 0.72], [0.72, 1.12], [0.2, 1.12], [-0.04, 0.5], [0.2, -0.12], [0.72, -0.12], [0.88, 0.35], K(0.88, 1.0), [0.88, 0.4], [0.88, 0]],
+    l: [0.35, [0.1, 1.7], [0.1, 1.0], [0.1, 0.3], [0.16, 0.0], [0.36, 0.03]],
+    o: [1.0, [0.5, 1.03], [0.1, 1.08], [-0.06, 0.5], [0.1, -0.08], [0.5, -0.08], [0.9, -0.08], [1.06, 0.5], [0.9, 1.08], [0.5, 1.03]],
+    m: [1.3, [0.1, 1.0], K(0.1, 0), [0.1, 0.6], [0.15, 1.1], [0.5, 1.14], [0.63, 0.9], [0.65, 0.4], K(0.65, 0), [0.65, 0.6], [0.7, 1.1], [1.05, 1.14], [1.18, 0.9], [1.2, 0.4], [1.2, 0]],
+    R: [1.05, [0.1, 0], [0.1, 0.9], K(0.1, 1.7), [0.65, 1.74], [1.08, 1.56], [1.08, 1.02], [0.65, 0.86], K(0.3, 0.86), [0.6, 0.5], [1.0, 0.0]],
+    f: [0.8, [0.9, 1.46], [0.72, 1.8], [0.36, 1.78], [0.3, 1.3], [0.3, 0.6], K(0.3, 0), K(0.3, 1.0), K(0.02, 1.0), [0.4, 1.0], [0.74, 1.0]],
+    e: [0.95, [0.06, 0.52], [0.5, 0.52], K(0.94, 0.54), [0.9, 0.96], [0.5, 1.14], [0.1, 1.02], [-0.04, 0.5], [0.12, -0.04], [0.5, -0.14], [0.82, -0.02], [0.95, 0.2]]
+  };
+  /* joined-up forms: each letter starts where the one before left the pen (about (0, 0.1)) */
+  var HAND = {
+    S: [1.15, [0.9, 1.45], [0.75, 1.8], [0.3, 1.85], [0.05, 1.5], [0.15, 1.05], [0.5, 0.85], [0.9, 0.6], [0.95, 0.2], [0.7, -0.05], [0.25, -0.02], [0.05, 0.25]],
+    h: [1.0, [0.3, 0.8], [0.52, 1.6], [0.4, 1.95], [0.2, 1.75], [0.18, 1.0], [0.18, 0], [0.18, 0], [0.24, 0.7], [0.5, 1.08], [0.74, 0.9], [0.76, 0.35], [0.82, 0.02], [1.0, 0.1]],
+    /* a and o: the lead-in runs up the left of the bowl and over its top, then the bowl comes back along the same path */
+    a: [1.1, [0.04, 0.5], [0.28, 1.08], [0.74, 0.92], [0.74, 0.92], [0.28, 1.08], [0.04, 0.5], [0.2, 0.0], [0.55, 0.0], [0.8, 0.45], [0.82, 1.0], [0.82, 1.0], [0.82, 0.4], [0.9, 0.02], [1.1, 0.1]],
+    l: [0.55, [0.25, 0.7], [0.5, 1.6], [0.38, 1.95], [0.2, 1.75], [0.17, 1.0], [0.17, 0.3], [0.3, 0.0], [0.55, 0.1]],
+    o: [0.95, [0.02, 0.5], [0.22, 1.06], [0.6, 1.0], [0.6, 1.0], [0.22, 1.06], [0.02, 0.5], [0.15, 0.02], [0.5, -0.04], [0.78, 0.4], [0.7, 0.9], [0.58, 1.0], [0.75, 0.86], [0.95, 0.9]],
+    m: [1.4, [0.12, 1.0], [0.17, 0.5], [0.17, 0], [0.17, 0], [0.22, 0.7], [0.42, 1.08], [0.62, 0.9], [0.64, 0.4], [0.64, 0], [0.64, 0], [0.69, 0.7], [0.89, 1.08], [1.09, 0.9], [1.11, 0.4], [1.17, 0.02], [1.4, 0.12]],
+    R: [1.3, [0.2, 1.7], [0.2, 0.9], [0.2, 0], [0.2, 0], [0.2, 0.9], [0.22, 1.65], [0.6, 1.78], [1.0, 1.55], [0.95, 1.05], [0.55, 0.9], [0.35, 0.9], [0.6, 0.75], [0.85, 0.2], [1.05, 0.02], [1.25, 0.12]],
+    f: [0.6, [0.28, 0.7], [0.5, 1.6], [0.38, 1.95], [0.2, 1.75], [0.17, 1.0], [0.17, 0.0], [0.17, -0.7], [0.3, -0.95], [0.42, -0.6], [0.25, 0.0], [0.2, 0.12], [0.6, 0.1]],
+    e: [0.75, [0.3, 0.42], [0.62, 0.82], [0.5, 1.08], [0.2, 0.98], [0.08, 0.5], [0.25, 0.02], [0.55, 0.0], [0.75, 0.1]]
+  };
+  /* lines = [[stroke, stroke, ...], ...]; a stroke is a run of letters drawn without lifting the pen.
+     Returns one control polygon per stroke, in the world box. o = { font, unit, slant, gap, base: [y per line] } */
+  function setText(lines, o) {
+    var out = [];
+    lines.forEach(function (strokes, li) {
+      var wd = -o.gap, x = 0;
+      strokes.forEach(function (sk) { wd += o.gap; sk.split('').forEach(function (ch) { wd += o.font[ch][0]; }); });
+      strokes.forEach(function (sk) {
+        var P = [];
+        sk.split('').forEach(function (ch, k) {
+          var g = o.font[ch], pts = [].concat.apply([], g.slice(1).map(function (q) { return typeof q[0] === 'number' ? [q] : q; }));
+          if (!k && o.font === HAND && ch === ch.toLowerCase()) pts = [[0, 0.12]].concat(pts);
+          pts.forEach(function (q) { P.push([1 + (x + q[0] + o.slant * q[1] - wd / 2) * o.unit, o.base[li] + q[1] * o.unit]); });
+          x += g[0];
+        });
+        x += o.gap; out.push(P);
+      });
+    });
+    return out;
+  }
+  var TEXTS = {
+    letters: function () { return setText([['S', 'h', 'a', 'l', 'o', 'm'], ['R', 'a', 'f', 'a', 'e', 'l']], { font: PRINT, unit: 0.23, slant: 0, gap: 0.3, base: [0.57, 0.08] }); },
+    script:  function () { return setText([['S', 'halom'], ['Rafael']], { font: HAND, unit: 0.19, slant: 0.22, gap: 0.12, base: [0.6, 0.21] }); }
+  };
+
   var SCENES = {
     ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4 },
+    letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
+                 hint: 'drag any amber point' },
+    script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
     drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any amber point' },
     blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
                  hint: 'scrub the plot to move u' },
@@ -38,7 +93,8 @@
            'slide knots, raise the degree, and add rational weights until the curve is an exact circle.',
     tool: 'SVG · direct manipulation',
     scenes: [
-      { id: 'ducks', label: 'The draftsman’s spline' }, { id: 'drag', label: 'Control points' },
+      { id: 'ducks', label: 'The draftsman’s spline' }, { id: 'letters', label: 'A spline per letter' },
+      { id: 'script', label: 'Handwriting' }, { id: 'drag', label: 'Control points' },
       { id: 'blend', label: 'Blending' }, { id: 'local', label: 'Local support' },
       { id: 'degree', label: 'Degree' }, { id: 'knots', label: 'Knots' },
       { id: 'rational', label: 'Rational weights' }, { id: 'recursion', label: 'Cox–de Boor' }
@@ -88,6 +144,16 @@
       function setDegree(p) {
         if (st.circle) load(false);
         st.p = p; st.U = NB.clampedKnots(st.P.length, p); segDeg.set(p); dirty = true;
+        if (st.multi) st.multi.forEach(knot);
+      }
+      /* the letter scenes: several curves, each { P, w, U, p, at } (at = where its points start in writing order) */
+      function knot(c) { c.p = Math.min(st.p, c.P.length - 1); c.U = NB.clampedKnots(c.P.length, c.p); }
+      function loadText(name) {
+        var at = 0;
+        st.multi = TEXTS[name]().map(function (P) {
+          var c = { P: P, w: P.map(function () { return 1; }), at: at }; knot(c); at += P.length; return c;
+        });
+        st.pen = 0; st.total = at;
       }
 
       /* ---------- layout ---------- */
@@ -120,6 +186,32 @@
       }
 
       /* ---------- drawing ---------- */
+      /* several splines at once; each is drawn as far as the pen has got */
+      function drawText() {
+        var sc = st.sc, big = sc.multi === 'letters', h = '', tip = null, n = 0;
+        var rp = KT.clamp(L.s * (big ? 0.011 : 0.006), 1.6, big ? 4.6 : 2.6), sw = KT.clamp(L.s * 0.008, 1.6, big ? 3.4 : 3);   // small stages: finer marks
+        st.multi.forEach(function (c) {
+          var u = KT.clamp((st.pen - c.at) / c.P.length, 0, 1), d = '', i, q, seg = c.P.length * 10;
+          n += c.P.length;
+          h += '<path d="' + c.P.map(function (k, j) { q = px(k); return (j ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }).join('') +
+               '" fill="none" stroke="' + C.ctrl + '" stroke-width="1" stroke-dasharray="3 4" opacity="' + (big ? 0.55 : 0.3) + '"/>';
+          if (u > 0) {
+            for (i = 0; i <= seg; i++) { q = px(NB.curvePoint(c.P, c.w, c.p, c.U, u * i / seg)); d += (i ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }
+            h += '<path d="' + d + '" fill="none" stroke="' + C.surf + '" stroke-width="' + f(sw) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+            if (u < 1) tip = q;
+          }
+          for (i = 0; i < c.P.length; i++) {
+            q = px(c.P[i]);
+            h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rp) + '" fill="' + C.ctrl + '" stroke="' + C.bg + '" stroke-width="' + (rp > 3 ? 1.5 : 0.8) + '"' + (big ? '' : ' opacity=".7"') + '/>';
+          }
+        });
+        if (tip) h += '<circle cx="' + f(tip[0]) + '" cy="' + f(tip[1]) + '" r="6" fill="' + C.text + '" stroke="' + C.bg + '" stroke-width="2"/>';
+        rd.el.querySelector('.kt-lab').textContent = 'curves';
+        rd.set(st.multi.length + ' splines · ' + n + ' pts');
+        rdErr.el.style.display = 'none'; slW.el.style.display = rowB.style.display = 'none';
+        return h;
+      }
+
       function draw() {
         layout();
         var sc = st.sc, p = st.p, m = st.P.length, U = st.U, i, q, h = '', a;
@@ -130,6 +222,7 @@
         for (i = 0; i <= 8; i++) { a = L.ox + i * L.s / 4; h += '<path d="M' + f(a) + ' ' + f(L.oy) + 'V' + f(L.oy + L.s) + '"/>'; }
         for (i = 0; i <= 4; i++) { a = L.oy + i * L.s / 4; h += '<path d="M' + f(L.ox) + ' ' + f(a) + 'H' + f(L.ox + 2 * L.s) + '"/>'; }
         h += '</g>';
+        if (st.multi) { svg.innerHTML = h + drawText(); return; }
 
         // control polygon
         var poly = st.P.map(function (c, j) { q = px(c); return (j ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }).join('');
@@ -191,6 +284,7 @@
         svg.innerHTML = h;
 
         // readouts
+        rd.el.querySelector('.kt-lab').textContent = 'continuity';
         rd.set('C' + (p - 1 < 0 ? 0 : p - 1) + ' · ' + m + ' pts · ' + U.length + ' knots');
         rdErr.el.style.display = sc.circle ? '' : 'none';
         slW.el.style.display = sc.circle || !env.embed ? '' : 'none';
@@ -258,6 +352,13 @@
       function local(e) { var r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
       function hit(x, y, touch) {        // touch widens the knot targets; points are already 52 px across
         var best = null, bd = 26, i, q, d;
+        if (st.multi) {
+          bd = touch ? KT.HIT : 13;
+          st.multi.forEach(function (c, ci) {
+            for (i = 0; i < c.P.length; i++) { q = px(c.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'text', c: ci, i: i }; } }
+          });
+          return best;
+        }
         for (i = 0; i < st.P.length; i++) { q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; } }
         if (best) return best;
         if (L.bh > 30) {
@@ -271,7 +372,12 @@
         return null;
       }
       function apply(d, x, y) {
-        if (d.kind === 'pt') { st.P[d.i] = unpx(x, y); st.base[d.i] = st.P[d.i].slice(); }
+        if (d.kind === 'text') {                 // a corner is three points on one spot: they move together
+          var c = st.multi[d.c], was = d.was || (d.was = c.P[d.i].slice()), now = unpx(x, y);
+          d.set = d.set || c.P.map(function (k, j) { return k[0] === was[0] && k[1] === was[1] ? j : -1; }).filter(function (j) { return j >= 0; });
+          d.set.forEach(function (j) { c.P[j] = now.slice(); });
+        }
+        else if (d.kind === 'pt') { st.P[d.i] = unpx(x, y); st.base[d.i] = st.P[d.i].slice(); }
         else if (d.kind === 'knot') {
           var u = KT.clamp((x - L.bx0) / (L.bx1 - L.bx0), 0, 1);
           // interior knots may stack on each other, but never on the clamped end knots (that span would be empty)
@@ -308,6 +414,7 @@
           st.w = st.P.map(function () { return 1; });
           st.p = 3; st.U = NB.clampedKnots(st.P.length, 3); segDeg.set(3);
         }
+        if (sc.multi) loadText(sc.multi); else st.multi = null;
         if (sc.sel != null) st.sel = sc.sel;
         slW.set(st.w[st.sel]);
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
@@ -320,6 +427,12 @@
         if (Math.abs(st.bh - target) > 0.001) { st.bh += (target - st.bh) * (1 - Math.exp(-7 * dt)); dirty = true; }
         else if (st.bh !== target) { st.bh = target; dirty = true; }
         st.t += dt;
+        if (st.multi) {                          // the pen writes the strokes in order; a touch finishes the writing
+          var was = st.pen;
+          if (st.touched) st.pen = st.total;
+          else { st.pen += sc.rate * dt; if (sc.again && st.pen > st.total + sc.rate * 3) st.pen = 0; }
+          if (was < st.total || st.pen < was) dirty = true;
+        }
         if (!st.touched && !drag) {
           if (sc.wiggle != null) {             // idle motion so the stage is alive before anyone touches it
             var i = sc.wiggle, b = st.base[i];
