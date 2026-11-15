@@ -61,7 +61,7 @@
 </section>
 
 <!-- ============================================================ 01 THE PROBLEM -->
-<section class="chapter" data-sim="flatland" data-rail="01" data-title="A million free ellipsoids" data-min40="5" data-min20="3">
+<section class="chapter" data-sim="flatland" data-rail="01" data-title="A million free ellipsoids" data-min40="4.5" data-min20="2.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="free">
@@ -152,6 +152,13 @@
       <p>Both versions of the text are lists of <b class="c-ctrl">control points</b>. Slide every point from one list to the other and the letters flow into handwriting, and from there into anything else twelve curves can draw. Here, a missile.</p>
       <p class="aside">Each of the three shapes is exact. In between, the control points and the knots travel in straight lines.</p>
     </article>
+    <article class="step nav" data-scene="lens">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A fixed number of Gaussians, <em class="c-splat">on the tracks</em></h2>
+      <p>Now draw the splines the way the method does: with <b class="c-splat">Gaussians</b> that sit on the curves and nowhere else. Their number is fixed, and they are spread over the part of the track that is in view. Move closer and the same Gaussians cover less track, so the writing gets finer, not blurrier.</p>
+      <p class="aside">The corner shows the whole drawing. The box is the view, and every Gaussian is inside it.</p>
+      <span class="do">Zoom with the slider · freeze the shape</span>
+    </article>
     <article class="step nav" data-scene="fit">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>How close is <em>close enough</em>?</h2>
@@ -207,14 +214,14 @@
 </section>
 
 <!-- ============================================================ 03 PLANOID -->
-<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="8" data-min20="4.25">
+<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="7" data-min20="3.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="net">
       <div class="num">03</div><div class="kick">The core idea</div>
       <h2>Calculus makes the splat</h2>
       <p>A Gaussian needs a position, an orientation and a size. The surface already knows all three.</p>
-      <div class="time">≈ 8 min</div>
+      <div class="time">≈ 7 min</div>
     </article>
     <article class="step nav" data-scene="net">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -233,19 +240,23 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Differentiate</h2>
       <p>The surface is a polynomial in <span data-tex="u"></span> and <span data-tex="v"></span>, so its partial derivatives are closed‑form. They give two tangent vectors at every point — no finite differences, no neighbours, no learning.</p>
+      <p>They are two different directions, and together they span the tangent plane. The inset shows that plane face‑on, with the true angle between them.</p>
       <div class="eq" data-tex="\mathbf{S}_u=\frac{\partial\mathbf{S}}{\partial u}\qquad \mathbf{S}_v=\frac{\partial\mathbf{S}}{\partial v}"></div>
     </article>
     <article class="step nav" data-scene="normal">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Orientation is the <em>tangent frame</em></h2>
       <p>Cross the tangents for the normal. Stack the three unit vectors and you have the Gaussian’s rotation.</p>
+      <p class="aside">The two tangents are rarely perpendicular, so the second axis is S<sub>v</sub> with its S<sub>u</sub> part removed.</p>
       <div class="eq" data-tex="\mathbf{n}=\frac{\mathbf{S}_u\times\mathbf{S}_v}{\lVert\mathbf{S}_u\times\mathbf{S}_v\rVert}\qquad \mathbf{R}=\big[\,\hat{\mathbf{S}}_u\;\;\hat{\mathbf{S}}_v^{\perp}\;\;\mathbf{n}\,\big]"></div>
     </article>
     <article class="step nav" data-scene="scale">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Size is the distance to the <em>next sample</em></h2>
       <p>Stretch each axis by how far the surface travels across one sampling cell, and keep it paper‑thin along the normal. A flat Gaussian on the surface: a <b class="c-splat">planoid</b>.</p>
-      <p class="aside">In these demos σ is about 0.7 of the cell, so neighbours overlap.</p>
+      <p>That distance is a statement about neighbours. Measure the same size from the cell’s four neighbours in the (u, v) lattice, half the chord between opposite ones, and it agrees with the derivative to about 4 % at 9² samples and 0.2 % at 40². The gap falls as 1/n²; the derivative needs no neighbours at all.</p>
+      <p class="aside">In these demos σ is about 0.7 of the cell, so neighbours overlap. Fitting all eight neighbours gives the same area plus the shear between S<sub>u</sub> and S<sub>v</sub>, which this two‑length formula leaves out.</p>
+      <span class="do">Switch 4 / 8 neighbours, then move the samples slider</span>
       <div class="eq" data-tex="\mathbf{s}=\big(\lVert\mathbf{S}_u\rVert\Delta u,\;\lVert\mathbf{S}_v^{\perp}\rVert\Delta v,\;\epsilon\big)\qquad \boldsymbol{\Sigma}=\mathbf{R}\,\mathrm{diag}(\mathbf{s})^2\,\mathbf{R}^{\top}"></div>
     </article>
     <article class="step nav" data-scene="derive">
@@ -279,7 +290,7 @@
 </section>
 
 <!-- ============================================================ 04 LEDGER -->
-<section class="chapter" data-sim="ledger" data-rail="04" data-title="The parameter ledger" data-min40="3" data-min20="1.5">
+<section class="chapter" data-sim="ledger" data-rail="04" data-title="The parameter ledger" data-min40="2.5" data-min20="1.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="gaussian">
@@ -314,24 +325,25 @@
 </section>
 
 <!-- ============================================================ 05 REFINE -->
-<section class="chapter" data-sim="refine" data-rail="05" data-title="Two-layer density" data-min40="5.5" data-min20="2.25">
+<section class="chapter" data-sim="refine" data-rail="05" data-title="Two-layer density" data-min40="5" data-min20="2">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="coarse">
       <div class="num">05</div><div class="kick">Adaptive refinement</div>
       <h2>Two knobs, not one</h2>
-      <p>3DGS adds detail one way: clone or split a Gaussian. We have two layers, and they don’t interfere.</p>
-      <div class="time">≈ 6 min</div>
+      <p>3DGS adds detail one way: clone or split a Gaussian. We have two layers: separate knobs, which have to be kept in balance.</p>
+      <div class="time">≈ 5 min</div>
     </article>
     <article class="step nav" data-scene="coarse">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Start <em>coarse</em></h2>
       <p>A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
+      <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">cyan</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
     </article>
     <article class="step nav" data-scene="insert" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Layer A — <em class="c-ctrl">insert a knot</em></h2>
-      <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %.</p>
+      <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %. In the side view the cyan curve stays where it was when the knot lands; only a new amber control point appears.</p>
       <p>Compare with 3DGS densification, which decides by accumulated view‑space gradients and spawns new, independent primitives.</p>
     </article>
     <article class="step nav" data-scene="insert" data-depth="deep">
@@ -354,20 +366,32 @@
     <article class="step nav" data-scene="versus">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Same parameters, spent <em>better</em></h2>
-      <p>The adaptive net: 0.92 % error. A uniform net of the same size: 4.4 %. The best uniform net we could find near that size still sits at 3.1 %.</p>
+      <p>The adaptive net: 0.92 % error. A uniform net of the same size: 4.4 %. The best uniform net we could find near that size still sits at 3.1 %. Under each map is the same cut from the side: there the uniform net misses the terrain by 34 % of the relief, the adaptive one by 2.5 %.</p>
       <p class="aside">All three are fitted live by the same optimiser against the same known, noise‑free height field: a demonstration of the mechanism, not a benchmark.</p>
     </article>
     <article class="step nav" data-scene="sampling">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Layer B — <em class="c-splat">sampling density</em></h2>
-      <p>Now change how many Gaussians are drawn. The surface, its error and its parameter count do not move.</p>
-      <p><b>Capacity</b> lives in the knots. <b>Rendering resolution</b> lives in the samples. Two decisions, cleanly separated.</p>
+      <p>Now change how many Gaussians are drawn. The surface does not move: 156 parameters, 0.92 % error. What moves is the <b>drawn</b> error, measured from the Gaussians themselves: 3.9 % with 64 of them, 0.95 % with 4,096, and from there it sits at the surface’s own 0.92 %.</p>
+      <p><b>Capacity</b> lives in the knots. <b>Rendering resolution</b> lives in the samples. Two separate decisions.</p>
+    </article>
+    <article class="step nav" data-scene="balance">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Balance the two, <em>or waste one</em></h2>
+      <p>Neither knob works alone. 25 control points drawn with 65,536 Gaussians: 6.3 % error, the same as with 1,024. 4,092 control points drawn with 64 Gaussians: 3.7 %, although the surface itself is within 0.006 % of the terrain. 400 control points with 16,384 Gaussians: 0.09 %.</p>
+      <p class="aside">Every cell of the map is measured in the page: that many Gaussians are rendered from that net and compared with the terrain. Along the green line the surface’s error and the sampling error are equal.</p>
+      <span class="do">Try the three presets, or click a cell of the map</span>
+    </article>
+    <article class="step nav" data-scene="normals" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Normals come <em>with the surface</em></h2>
+      <p>Each Gaussian takes its normal from the surface, <span data-tex="\mathbf{S}_u\times\mathbf{S}_v"></span>; nothing is estimated from neighbours. On the refined net the normals are 3.2° from the terrain’s on average; on the 5 × 5 net, 12.1°.</p>
     </article>
   </div>
 </section>
 
 <!-- ============================================================ 06 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="7" data-min20="3.5">
+<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6.5" data-min20="3.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene">
@@ -408,13 +432,6 @@
       <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is in view and facing the lens; a small floor keeps everything else covered. (This demo does not test occlusion.)</p>
       <p>Watch the atlas, bottom left: brighter tiles are holding more Gaussians. Sparsely described charts — ground, treeline — get a smaller share: there is no point sampling finer than a surface’s own detail.</p>
     </article>
-    <article class="step nav" data-scene="zoom">
-      <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>Lock the Gaussians <em>to the view</em></h2>
-      <p>A fixed grid of Gaussians, one per cell like the pixels of a sensor, laid over whatever part of the surface the camera sees. Move closer and the same Gaussians cover a smaller piece of the (u, v) domain: each one stands for less surface, so finer detail appears.</p>
-      <p>From far away, 6,000 Gaussians show the large drawing and a smudge on it. Close up, the same 6,000 resolve the smudge into a second drawing. The picture keeps flowing between the handwriting and the missile; the corner shows the scene from outside, where the lit patch is every Gaussian there is.</p>
-      <p class="aside">This surface is one flat chart, so every cell maps to an exact (u, v). The detail it can reveal ends where the control net does: 144,000 control points carry this picture.</p>
-    </article>
     <article class="step nav" data-scene="lod">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Level of detail, <em>without retraining</em></h2>
@@ -445,13 +462,82 @@
       <p>Take every control point that carries the nose and pull. Thousands of Gaussians follow, still tiling, still on the surface. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
       <span class="do">Turn on nets, drag an amber point</span>
     </article>
+    <article class="step nav" data-scene="fib1" data-depth="deep">
+      <div class="lvl l1"><i><b></b></i>An aside</div>
+      <h2>So: this method <em>beats everything</em></h2>
+      <p>Every other method, on every scene, from a single photograph, with a thousand times fewer parameters.</p>
+    </article>
+    <article class="step nav" data-scene="fib2" data-depth="deep">
+      <div class="lvl l1"><i><b></b></i>An aside</div>
+      <h2>Alright, alright. I might be <em>exaggerating</em></h2>
+      <p>It beats the strongest baseline on every DTU scan, with fifty times fewer parameters.</p>
+    </article>
+    <article class="step nav" data-scene="fib3" data-depth="deep">
+      <div class="lvl l1"><i><b></b></i>An aside</div>
+      <h2>OK, OK</h2>
+      <p>It wins 4 of the 15 DTU scans and trails on the other 11, averaging 0.50 mm against the baseline’s 0.47. The 10–50× parameter saving is the paper’s projection; the measurement at equal quality is still pending.</p>
+      <p class="aside">The nose is back to its measured length. Moving it took the same handful of control points as before.</p>
+    </article>
   </div>
 </section>
 
-<!-- ============================================================ 07 EVIDENCE -->
-<section class="wide" data-rail="07" data-title="Evidence" data-min40="3" data-min20="1.5">
+<!-- ============================================================ 07 STRUCTURE -->
+<section class="chapter" data-sim="structure" data-rail="07" data-title="The surface is also an index" data-min40="3" data-min20="1.5">
+  <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav opener" data-scene="bag">
+      <div class="num">07</div><div class="kick">What structure buys</div>
+      <h2>The surface is also an index</h2>
+      <p>A 3DGS scene is a list of Gaussians in no particular order. Ours hang on spline charts, so each one has an address. That decides how hard the everyday operations are.</p>
+      <div class="time">≈ 3 min</div>
+    </article>
+    <article class="step nav" data-scene="bag">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>The same Gaussians, <em>stored two ways</em></h2>
+      <p>Colour each Gaussian by its position in memory. In a list, neighbours in memory are strangers in space. On charts, memory order is surface order: chart by chart, row by row.</p>
+      <p class="aside">The list is emulated: the same surfaces sampled at jittered places, nudged off the surface, turned, resized and shuffled. It is not a trained 3DGS model.</p>
+    </article>
+    <article class="step nav" data-scene="neighbours">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Neighbours: <em>search</em>, or <em>read</em></h2>
+      <p>To find what lies next to a Gaussian, a list needs a spatial index, built first and rebuilt whenever Gaussians move. And distance alone cannot tell a wheel from the street it stands on: the <b class="c-err">red</b> neighbours belong to another surface.</p>
+      <p>On a chart the neighbours are the next addresses, <span data-tex="(i\pm1,\,j\pm1)"></span>. Nothing is searched, and they are neighbours along the surface.</p>
+      <span class="do">Move over the scene</span>
+    </article>
+    <article class="step nav" data-scene="mesh" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A mesh, <em>for the asking</em></h2>
+      <p>Join each address to the next and there are the triangles, at whatever resolution was sampled: the lattice is the tessellation. Joining a list’s nearest neighbours gives a scribble, with <b class="c-err">red</b> edges bridging separate surfaces.</p>
+      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors, which is not run here.</p>
+    </article>
+    <article class="step nav" data-scene="segments" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Parts: <em>cluster</em>, or <em>look up</em></h2>
+      <p>Clustering the list by position cuts the wall in two and fuses the truck with the street. On charts the part is the chart, and any finer cut is a 2D image operation in (u, v).</p>
+    </article>
+    <article class="step nav" data-scene="segments">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>What the address <em>buys</em></h2>
+      <table class="cmp">
+        <thead><tr><th></th><th>A list of Gaussians</th><th>Spline charts</th></tr></thead>
+        <tbody>
+          <tr><th>Neighbours</th><td>build an index, then search by distance</td><td>read the next addresses, along the surface</td></tr>
+          <tr><th>Normals</th><td>estimate from the neighbours</td><td>the surface’s own, exact</td></tr>
+          <tr><th>Mesh</th><td>TSDF or Poisson extraction</td><td>join the lattice</td></tr>
+          <tr><th>Parts</th><td>cluster, or lift 2D masks</td><td>the chart, then image operations in (u, v)</td></tr>
+          <tr><th>Detail level</th><td>prune, merge or retrain</td><td>sample again</td></tr>
+          <tr><th>Editing</th><td>select Gaussians, move each</td><td>move control points</td></tr>
+        </tbody>
+      </table>
+      <p class="aside">The limit: across a seam between two charts none of this is free. Adjacency there has to be stored or searched, as in a list.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ 08 EVIDENCE -->
+<section class="wide" data-rail="08" data-title="Evidence" data-min40="3" data-min20="1.5">
   <article class="step nav">
-    <div class="lvl">07 · Evidence</div>
+    <div class="lvl">08 · Evidence</div>
     <h2 class="thesis">Does a representation this constrained still <em>reconstruct real objects</em>?</h2>
     <div class="exhibits">
       <div class="exhibit" id="ex-dtu">
@@ -512,6 +598,7 @@
 <script src="talk/kit.js"></script>
 <script src="talk/gl.js"></script>
 <script src="talk/ink.js"></script>
+<script src="talk/face-data.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/sims/flatland.js"></script>
 <script src="talk/sims/basis.js"></script>
@@ -519,6 +606,7 @@
 <script src="talk/sims/ledger.js"></script>
 <script src="talk/sims/refine.js"></script>
 <script src="talk/sims/manifold.js"></script>
+<script src="talk/sims/structure.js"></script>
 <script src="talk/deck.js"></script>
 </body>
 </html>

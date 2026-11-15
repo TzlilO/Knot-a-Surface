@@ -47,9 +47,16 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with
   matching control-point counts by knot insertion, so a blend is a lerp of control points and knots;
   `fit` takes a drawing as ground truth, fits it by least squares with n control points, reads it at m
-  samples and shows the gap in red plus a measured gap-vs-control-points plot; the drawings themselves
-  live in `talk/ink.js` = `KnotTalk.ink`, shared with the `poster` scene), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
-  `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
+  samples and shows the gap in red plus a measured gap-vs-control-points plot; `lens` draws the morph's
+  curves ONLY as a fixed number of Gaussians that sit on them, spread evenly over the track inside a
+  zoomable view window (2D, with an outside-view inset and a freeze toggle): Gaussians never go on empty
+  plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero; lit translucent
+  sheet, solid depth-tested vectors via `gl.vector` / `gl.sheet` / `gl.hidden`, a face-on tangent-plane
+  inset, and a scale stage that measures the size from the lattice cell's 4 or 8 neighbours against the
+  derivative formula),
+  `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
+  draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
+  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
@@ -57,11 +64,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   capture rig and an `edit(k)` animation). Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
-  so it is still one draw call; the band labels and dividers are DOM, moved every frame). Scene `zoom`
-  = frustum-locked sampling (`lockSample`): a fixed GW x GH grid of Gaussians, one per view cell, placed
-  where the cell's rays meet a PLANAR chart (`chart.plane`, only the hidden `poster` scene has one), so
-  moving closer spends the same budget on a smaller (u, v) window; a corner inset renders the same
-  Gaussians from outside with the frustum.
+  so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
+  head is shaped from MediaPipe's canonical face mesh (`talk/face-data.js`, Apache-2.0; `faceFit` casts a
+  ray per control point; without that file it falls back to sculpted bumps); scenes `fib1..3` ease
+  `def.edit(k)` (the nose) to the length the step asks for.
+  `structure` (talk/sims/structure.js, chapter 07) = the truck scene stored two ways in two viewports: a
+  shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
+  and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
+  ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured.
+- Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
+  away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
+  written still meets the budget (the far side of a closed chart gets zero weight).
 - Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
   Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the

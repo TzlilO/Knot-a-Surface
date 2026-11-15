@@ -25,14 +25,16 @@
     charts: { scn: 'barn', view: 'charts', cam: 'wide', cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
     nets:   { scn: 'barn', view: 'charts', cam: 'wide', nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
     budget: { scn: 'barn', view: 'splats', tour: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
-    zoom:   { scn: 'poster', view: 'splats', tour: 1, lock: 1, budget: 6000, cap: 'a fixed grid of Gaussians, locked to the view · move closer: same count, finer detail',
-              hint: 'drag to turn · pinch or ctrl-scroll to move closer' },
     lod:    { scn: 'barn', view: 'splats', cam: 'close', ab: 1, rim: 0.6, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
     truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, cap: 'same method, another capture' },
     bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, cap: 'a scanned object under a camera dome' },
     garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, cap: 'an object inside an unbounded surround' },
     edit:   { scn: 'bust', view: 'splats', cam: 'a', breathe: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
+    /* an aside in three steps: the nose is as long as the claim on the slide is tall */
+    fib1:   { scn: 'bust', view: 'splats', cam: 'a', nose: 2.5, cap: 'the nose is as long as the claim is tall' },
+    fib2:   { scn: 'bust', view: 'splats', cam: 'a', nose: 1.7, cap: 'a little closer to the truth' },
+    fib3:   { scn: 'bust', view: 'splats', cam: 'a', nose: 0, cap: 'what was actually measured' },
     studio: { scn: 'studio', view: 'splats', cam: 'wide', cap: 'the abstract still life' },
     /* chrome-free, for pages that embed the scene as a backdrop (mount with { bare: true }) */
     hero:   { scn: 'barn', view: 'splats', tour: 1, cap: '' }
@@ -46,7 +48,7 @@
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
       { id: 'scene', label: 'Barn' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
-      { id: 'budget', label: 'Fixed budget' }, { id: 'zoom', label: 'Locked to the view' }, { id: 'lod', label: 'Level of detail' }, { id: 'truck', label: 'Truck' },
+      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'truck', label: 'Truck' },
       { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'edit', label: 'Edit' }, { id: 'studio', label: 'Still life' }
     ],
     create: function (env) {
@@ -55,7 +57,7 @@
       var R = G.renderer(root, cam, env.opts.clear), scene = new T.Scene();
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
-                 budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
+                 budget: +env.opts.budget || (small ? 30000 : 90000), k: 0.72, cull: true, nose: 0, noseOn: -1, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
       var def = null, charts = [], totalCP = 0, netL = null, pts = null, ptPos = null, rigL = null;
       var need = true, lastAlloc = 0, camKey = '', fit = 1;
       /* a named camera of the current scene, backed off on narrow stages so the subject stays in frame */
@@ -81,6 +83,7 @@
       var tgA = ui.toggle(rowT, { label: 'adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
       var tgN = ui.toggle(rowT, { label: 'nets', value: false, onChange: function (v) { st.nets = v; showNets(); } });
       var tgR = ui.toggle(rowT, { label: 'cameras', value: false, onChange: function (v) { st.rig = v; showNets(); } });
+      ui.toggle(rowT, { label: 'no back faces', value: true, onChange: function (v) { st.cull = v; need = true; } });
       var rdG = ui.readout(panel, { label: 'Gaussians drawn', tone: 'splat' });
       var rdV = ui.readout(panel, { label: 'budget in view', tone: 'ok' });
       var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
@@ -93,10 +96,6 @@
       });
       root.appendChild(split);
       var roll = 0, zr = [1, 10], size = { w: 1, h: 1 };
-      /* frustum-locked sampling (scene `zoom`): an outside view in a corner shows where the Gaussians are */
-      var cam2 = new T.PerspectiveCamera(30, 1.6, 0.1, 200), inset = ui.el('div', 'kt-inset', '<span></span>'), frame = G.lines(40, C.text, 0.7);
-      root.appendChild(inset); frame.obj.visible = false; scene.add(frame.obj);
-      cam2.position.set(15, 13, 27); cam2.lookAt(0, 5, 4); cam2.updateMatrixWorld();
       function showView() {
         var i = MODES.map(function (m) { return m.v; }).indexOf(st.view), all = i < 0;
         field.uniforms.uMode.value = all ? 0 : i;
@@ -207,6 +206,7 @@
         for (i = 0; i < n; i++) { var e = at((i + 1) / n); out[i] = at((i + 0.5) / n); dOut[i] = e - prev; prev = e; }
       }
       function allocate() {
+        var goal = st.budget * boost;          // lattices are laid for a little more than the budget: back faces drop out when written
         cam.updateMatrixWorld(); M.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
         var e = M.elements, cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
         var totA = 0, totW = 0, inView = 0, z0 = 1e9, z1 = 0;
@@ -222,7 +222,7 @@
               var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / dl * c.flip;
               // open charts: foreshortening. closed charts: the near side counts in full (flat planoids must
               // stay small all the way to the silhouette), the hidden far side keeps a thin share
-              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : 0.3; }
+              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : st.cull ? 0 : 0.3; }      // culled: the far side asks for nothing
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
               w = c.carea[i] * cs / d2 * c.gain;
               if (cw < z0) z0 = cw; if (cw > z1) z1 = cw;
@@ -232,7 +232,7 @@
         });
         // size every tile's lattice; rounding to na x nb drifts off the budget, so a second pass rescales
         var total = sizeTiles(1, true);
-        if (Math.abs(total - st.budget) > 0.001 * st.budget) sizeTiles(st.budget / total, false);
+        if (Math.abs(total - goal) > 0.001 * goal) sizeTiles(goal / total, false);
         rdV.set(Math.round(inView * 100) + ' %');
         if (z1 > z0) zr = [z0 * 0.9, z1 * 1.05];      // depth of what is in view: the range the depth colours span
 
@@ -249,7 +249,7 @@
               share += imp; mu[a] += imp; mv[b] += imp; lu += imp * c.clu[i] / c.tu; lv += imp * c.clv[i] / c.tv;
               if (first && c.vis[i]) inView += imp;
             }
-            var N = Math.max(4, st.budget * share * scale), ratio = lu / (lv || 1e-12);   // aim for square cells in world space
+            var N = Math.max(4, goal * share * scale), ratio = lu / (lv || 1e-12);   // aim for square cells in world space
             // curved closed charts keep a minimum count around the bend so flat planoids can follow it
             tl.nb = Math.max(c.minB, Math.round(Math.sqrt(N / ratio))); tl.na = Math.max(c.minA, Math.round(N / tl.nb));
             for (a = 0; a < cu; a++) mu[a] += share / cu * 0.3;                       // bounded contrast inside a tile:
@@ -266,81 +266,34 @@
         }
       }
 
-      /* One Gaussian per cell of a fixed GW x GH grid over the VIEW, like pixels on a sensor: each cell's
-         four corner rays are intersected with the plane, the Gaussian sits in the middle of that footprint
-         and is as large as it. Cells that look past the surface get nothing. */
-      var _a = new T.Vector3(), _d = [new T.Vector3(), new T.Vector3(), new T.Vector3(), new T.Vector3()], _Nu = new Float64Array(8), _Nv = new Float64Array(8);
-      function lockSample() {
-        var c = charts[0], pl = c.plane, p = c.patch, asp = size.w / size.h;
-        var GW = Math.max(2, Math.round(Math.sqrt(st.budget * asp))), GH = Math.max(2, Math.round(st.budget / GW)), i, j, k, n = 0;
-        cam.updateMatrixWorld();
-        [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (q, t) { _d[t].set(q[0], q[1], 0.5).unproject(cam).sub(cam.position); });
-        var ox = pl.o[0] - cam.position.x, oy = pl.o[1] - cam.position.y, oz = pl.o[2] - cam.position.z;
-        var nx = pl.eu[1] * pl.ev[2] - pl.eu[2] * pl.ev[1], ny = pl.eu[2] * pl.ev[0] - pl.eu[0] * pl.ev[2], nz = pl.eu[0] * pl.ev[1] - pl.eu[1] * pl.ev[0];
-        var on = ox * nx + oy * ny + oz * nz, lu = pl.eu[0] * pl.eu[0] + pl.eu[1] * pl.eu[1] + pl.eu[2] * pl.eu[2], lv = pl.ev[0] * pl.ev[0] + pl.ev[1] * pl.ev[1] + pl.ev[2] * pl.ev[2];
-        var hits = new Float32Array((GW + 1) * (GH + 1) * 3), ok = new Uint8Array((GW + 1) * (GH + 1));
-        for (j = 0; j <= GH; j++) for (i = 0; i <= GW; i++) {          // where each cell corner's ray meets the plane
-          var a = i / GW, b = j / GH;
-          _a.copy(_d[0]).multiplyScalar((1 - a) * (1 - b)).addScaledVector(_d[1], a * (1 - b)).addScaledVector(_d[2], (1 - a) * b).addScaledVector(_d[3], a * b);
-          var dn = _a.x * nx + _a.y * ny + _a.z * nz, t = on / dn; k = j * (GW + 1) + i;
-          if (Math.abs(dn) > 1e-9 && t > 0) { ok[k] = 1; hits[k * 3] = cam.position.x + _a.x * t; hits[k * 3 + 1] = cam.position.y + _a.y * t; hits[k * 3 + 2] = cam.position.z + _a.z * t; }
-        }
-        var cx = field.center, ux = field.axU, vx = field.axV, cl = field.color, rgb = G.rgb(c.hex), area = 0, corner = [];
-        for (j = 0; j < GH; j++) for (i = 0; i < GW; i++) {
-          var k0 = j * (GW + 1) + i, k1 = k0 + 1, k2 = k0 + GW + 1, k3 = k2 + 1; if (!(ok[k0] && ok[k1] && ok[k2] && ok[k3])) continue;
-          var q = [0, 0, 0], fu = [0, 0, 0], fv = [0, 0, 0];
-          for (k = 0; k < 3; k++) {
-            q[k] = (hits[k0 * 3 + k] + hits[k1 * 3 + k] + hits[k2 * 3 + k] + hits[k3 * 3 + k]) / 4;
-            fu[k] = (hits[k1 * 3 + k] + hits[k3 * 3 + k] - hits[k0 * 3 + k] - hits[k2 * 3 + k]) / 2;
-            fv[k] = (hits[k2 * 3 + k] + hits[k3 * 3 + k] - hits[k0 * 3 + k] - hits[k1 * 3 + k]) / 2;
-          }
-          var u = ((q[0] - pl.o[0]) * pl.eu[0] + (q[1] - pl.o[1]) * pl.eu[1] + (q[2] - pl.o[2]) * pl.eu[2]) / lu;
-          var v = ((q[0] - pl.o[0]) * pl.ev[0] + (q[1] - pl.o[1]) * pl.ev[1] + (q[2] - pl.o[2]) * pl.ev[2]) / lv;
-          if (u < 0 || u > 1 || v < 0 || v > 1 || n >= CAP) continue;
-          var su = NB.findSpan(p.mu, 3, u, p.Uk), sv = NB.findSpan(p.mv, 3, v, p.Vk), r = 0, gg = 0, bl = 0, a2, b2, w, o;
-          NB.basisFuns(su, u, 3, p.Uk, _Nu); NB.basisFuns(sv, v, 3, p.Vk, _Nv);
-          for (b2 = 0; b2 < 4; b2++) for (a2 = 0; a2 < 4; a2++) { w = _Nu[a2] * _Nv[b2]; o = ((sv - 3 + b2) * p.nu + su - 3 + a2) * 3; r += w * p.C[o]; gg += w * p.C[o + 1]; bl += w * p.C[o + 2]; }
-          o = n * 3;
-          for (k = 0; k < 3; k++) { cx[o + k] = q[k]; ux[o + k] = fu[k] * st.k; vx[o + k] = fv[k] * st.k; field.aux[o + k] = rgb[k]; }
-          cl[o] = r; cl[o + 1] = gg; cl[o + 2] = bl; n++;
-          area += Math.hypot(fu[1] * fv[2] - fu[2] * fv[1], fu[2] * fv[0] - fu[0] * fv[2], fu[0] * fv[1] - fu[1] * fv[0]);
-        }
-        field.setCount(n); field.commit(n); c.count = n;
-        rdG.set(n.toLocaleString('en-US') + ' of ' + (GW * GH).toLocaleString('en-US')); rdV.set('100 %');
-        var share = area / Math.sqrt(lu * lv) / (n || 1);          // of the whole surface, per Gaussian
-        inset.firstChild.textContent = 'outside view · ' + GW + ' × ' + GH + ' Gaussians · each covers 1/' + Math.round(1 / (share || 1)).toLocaleString('en-US') + ' of the surface';
-        // the view's frustum and its footprint, for the outside view
-        var A = frame.arr, m = 0, ed = [[0, 0], [GW, 0], [GW, GH], [0, GH]].map(function (e) { return (e[1] * (GW + 1) + e[0]) * 3; });
-        function seg(x0, y0, z0, x1, y1, z1) { A[m++] = x0; A[m++] = y0; A[m++] = z0; A[m++] = x1; A[m++] = y1; A[m++] = z1; }
-        for (k = 0; k < 4; k++) {
-          var e0 = ed[k], e1 = ed[(k + 1) % 4], c0 = [pl.o[0] + (k === 1 || k === 2 ? pl.eu[0] : 0), pl.o[1] + (k > 1 ? pl.ev[1] : 0), pl.o[2]], c1k = (k + 1) % 4;
-          seg(cam.position.x, cam.position.y, cam.position.z, hits[e0], hits[e0 + 1], hits[e0 + 2]);
-          seg(hits[e0], hits[e0 + 1], hits[e0 + 2], hits[e1], hits[e1 + 1], hits[e1 + 2]);
-          seg(c0[0], c0[1], c0[2], pl.o[0] + (c1k === 1 || c1k === 2 ? pl.eu[0] : 0), pl.o[1] + (c1k > 1 ? pl.ev[1] : 0), pl.o[2]);
-        }
-        frame.set(m / 3);
+      var sg = { pos: new Float32Array(CAP * 3), su: new Float32Array(CAP * 3), sv: new Float32Array(CAP * 3), col: new Float32Array(CAP * 3) };
+      /* Back faces of closed charts are never written: they cannot be seen in this frame, so they should not
+         spend the budget. What is written then falls short of it, so the next lattices are laid larger (boost). */
+      var boost = 1;
+      function resample() {
+        var n = emit();
+        if (st.cull) { boost = KT.clamp(boost * st.budget / Math.max(1, n), 1, 4); if (Math.abs(n - st.budget) > 0.1 * st.budget) n = emit(); } else boost = 1;
+        field.setCount(n); field.commit(n);
+        rdG.set(n.toLocaleString('en-US'));
         if (env.opts.onStats) env.opts.onStats({ scene: st.scn, drawn: n, controlPoints: totalCP, params: totalCP * PER_CP, charts: charts.length });
       }
-
-      var sg = { pos: new Float32Array(CAP * 3), su: new Float32Array(CAP * 3), sv: new Float32Array(CAP * 3), col: new Float32Array(CAP * 3) };
-      function resample() {
-        if (st.sc.lock && charts[0].plane) return lockSample();
+      function emit() {
         allocate();
-        var n = 0;
+        var n = 0, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 };
         charts.forEach(function (c) {
           var rgb = G.rgb(c.hex), n0 = n, i;
+          eye.flip = c.flip;
           c.tiles.forEach(function (tl) {
-            if (n + tl.na * tl.nb > CAP) return;         // cannot happen while the slider tops out below CAP
+            if (tl.na * tl.nb > CAP) return;
             NB.patchGrid(c.patch, tl.us, tl.vs, sg);
-            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k);
+            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, null, st.cull && c.closed ? eye : null);
           });
+          c.count = n - n0;
           for (i = n0 * 3; i < n * 3; i += 3) { field.aux[i] = rgb[0]; field.aux[i + 1] = rgb[1]; field.aux[i + 2] = rgb[2]; }
           c.lab.textContent = c.count.toLocaleString('en-US') + ' G';
           drawTile(c);
         });
-        field.setCount(n); field.commit(n);
-        rdG.set(n.toLocaleString('en-US'));
-        if (env.opts.onStats) env.opts.onStats({ scene: st.scn, drawn: n, controlPoints: totalCP, params: totalCP * PER_CP, charts: charts.length });
+        return n;
       }
       function drawTile(c) {
         var s = c.cv.fit(), g = c.cv.ctx, w = s.w, h = s.h, i;
@@ -422,7 +375,7 @@
       }
       function paintCap() {
         var s = KT.scenes[st.scn];
-        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (st.scn === 'studio' || s.plain ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
+        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
         badge.style.display = st.sc.ab ? '' : 'none';
       }
       function setScene(id) {
@@ -431,12 +384,10 @@
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
         st.view = sc.view; segV.set(sc.view); showView(); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
-        // a scene may bring its own budget (the locked grid is deliberately coarse); the user's comes back afterwards
-        if (sc.budget) { if (st.own == null) st.own = st.budget; st.budget = sc.budget; } else if (st.own != null) { st.budget = st.own; st.own = null; }
-        slB.set(Math.min(st.budget, CAP - 20000)); root.classList.toggle('kt-locking', !!sc.lock);
-        field.uniforms.uRim.value = sc.lock ? 0 : sc.rim || 0.3; field.uniforms.uFlat.value = sc.lock ? 1 : 0;    // a picture is shown as it is
+        field.uniforms.uRim.value = sc.rim || 0.3;
         var fresh = st.scn !== sc.scn;
         loadScene(sc.scn); showNets(); paintCap();
+        st.noseOn = -1; if (sc.nose == null) st.nose = 0;           // the scene was just reset to its own shape
         hint.textContent = sc.hint || '';
         orbit.touched = false;
         orbit.to(view(sc.cam || 'wide'), fresh);
@@ -454,29 +405,25 @@
           st.abT += dt;
           if (st.abT > 3.4) { st.abT = 0; st.adaptive = !st.adaptive; tgA.set(st.adaptive); paintBadge(); need = true; }
         }
+        if (sc.nose != null) {                              // the nose eases to the length this step asks for
+          st.nose += (sc.nose - st.nose) * (1 - Math.exp(-2.4 * dt)); if (Math.abs(sc.nose - st.nose) < 0.004) st.nose = sc.nose;
+          if (st.nose !== st.noseOn) { st.noseOn = st.nose; def.edit(st.nose).forEach(coarse); if (st.nets) updateNets(); need = true; }
+        }
         if (sc.breathe && !st.touchedEdit && !dragCP) {     // the scene's own edit, eased in and out
           def.edit(0.5 - 0.5 * Math.cos(st.t * 1.15)).forEach(coarse);
           if (st.nets) updateNets();
           need = true;
         }
-        if (def.live && def.live(st.t)) need = true;       // a scene whose picture moves repaints its control features
         var home = def.views[sc.cam || 'wide'];
         if (!orbit.touched && !sc.tour && (sc.cam || 'wide') === 'wide') orbit.goal.th = home.th + 0.14 * Math.sin(t * 0.16);
         orbit.update(dt, sc.tour ? 1.5 : 3);
         var e = cam.matrixWorld.elements, key = (e[12] + e[13] * 3 + e[14] * 7 + e[8] * 11 + e[9] * 13).toFixed(3);
-        if (key !== camKey && t - lastAlloc > (sc.lock ? 0.03 : 0.09)) { camKey = key; need = true; }
+        if (key !== camKey && t - lastAlloc > 0.09) { camKey = key; need = true; }
         if (need) { need = false; lastAlloc = t; resample(); }
         var ud = field.uniforms.uDepth.value, kz = 1 - Math.exp(-5 * dt);
         ud.x += (zr[0] - ud.x) * kz; ud.y += (zr[1] - ud.y) * kz;
         if (st.view === 'split') { roll = wrap(roll + ROLL * dt, 1); field.uniforms.uSplit.value.y = roll; placeSplit(); }
         R.renderer.render(scene, cam);
-        if (sc.lock) {                           // the same Gaussians once more, seen from outside, in the corner
-          var iw = Math.round(size.w * (small ? 0.46 : 0.36)), ih = Math.round(iw / 1.6), rr = R.renderer;
-          inset.style.width = iw + 'px'; inset.style.height = ih + 'px';
-          frame.obj.visible = true; rr.setScissorTest(true); rr.setScissor(10, 10, iw, ih); rr.setViewport(10, 10, iw, ih); rr.setClearColor(0x0b101a, 1);
-          rr.render(scene, cam2);
-          frame.obj.visible = false; rr.setScissorTest(false); rr.setViewport(0, 0, size.w, size.h); rr.setClearColor(env.opts.clear === 'transparent' ? 0x000000 : 0x07090f, env.opts.clear === 'transparent' ? 0 : 1);
-        }
       });
 
       if (!document.getElementById('kt-manifold-css')) {
@@ -493,9 +440,6 @@
           '.kt-sim-manifold .kt-tile-s{font:500 10px/1 var(--f-mono);color:var(--mute);margin-top:3px;white-space:nowrap}' +
           '.kt-sim-manifold .kt-caption{line-height:1.6}.kt-sim-manifold.kt-embed .kt-hint{display:none}' +
           '.kt-sim-manifold.kt-compact .kt-atlas{display:none}' +
-          '.kt-sim-manifold .kt-inset{position:absolute;z-index:4;left:10px;bottom:10px;border:1px solid var(--line2);border-radius:6px;pointer-events:none;display:none}' +
-          '.kt-sim-manifold .kt-inset span{position:absolute;left:8px;top:7px;right:8px;font:600 10px/1.3 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}' +
-          '.kt-sim-manifold.kt-locking .kt-inset{display:block}.kt-sim-manifold.kt-locking .kt-atlas{display:none}' +
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
           '.kt-sim-manifold.kt-bare .kt-hint,.kt-sim-manifold.kt-bare .kt-ab,.kt-sim-manifold.kt-bare .kt-gear{display:none!important}' +
           '.kt-sim-manifold .kt-panel .kt-seg .kt-seg-box{margin-left:0;width:100%}' +
@@ -522,7 +466,7 @@
         load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },
         resize: function (w, h) {
-          R.resize(w, h); need = true; size.w = w; size.h = h; cam2.aspect = 1.6; cam2.updateProjectionMatrix();
+          R.resize(w, h); need = true; size.w = w; size.h = h;
           R.renderer.getDrawingBufferSize(field.uniforms.uRes.value);
           var f = KT.clamp(1.4 / (w / h), 1, 1.7);
           if (f !== fit) { fit = f; if (!orbit.touched) orbit.to(view(st.sc.tour ? def.tour[st.tourI] : st.sc.cam || 'wide'), true); }

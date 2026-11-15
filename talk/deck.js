@@ -186,7 +186,7 @@
     else if (k === 'Escape') { setFocus(false); keys.classList.remove('on'); }
     else if (k === 't' || k === 'T') { if (clock.t0) clock.t0 = 0; else startClock(); tick(); }
     else if (k === '?') keys.classList.toggle('on');
-    else if (k >= '0' && k <= '9') {                 // 0 = cover, 1-7 = that chapter, 8/9 = takeaways
+    else if (k >= '0' && k <= '9') {                 // 0 = cover, 1-8 = that chapter, 9 = takeaways
       var c = k === '0' ? chapters[0] : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
       go(firstNav(c));
     }
