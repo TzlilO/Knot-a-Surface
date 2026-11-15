@@ -1128,7 +1128,7 @@
         if (!beginInsert(autoPace(), true)) {
           st.mode = 'idle';
           setStatus('BUDGET REACHED · ' + thousands(m.nu * m.nv) + ' / ' + thousands(st.budget) + ' CONTROL POINTS',
-                    'RMSE ' + pct(st.rmse0) + ' → ' + pctA(ms.rmse) + ' · ' + st.inserted + ' knots, clustered over the crater', 'ok');
+                    'RMSE ' + pct(st.rmse0) + ' → ' + pctA(ms.rmse) + ' · ' + st.inserted + (m.nu * m.nv > 400 ? ' knots inserted' : ' knots, clustered over the crater'), 'ok');
         }
       }
       function pruneNext() {
@@ -1498,7 +1498,7 @@
         txt(wide ? 'ERROR MEASURED IN u' : 'ERROR IN u', x, y - gap - bar - 7, lf, C.dim, 'left', '0.12em');
         ctx.save(); ctx.translate(x + s + gap + bar + L.fs + 1, y); ctx.rotate(Math.PI / 2);
         txt(wide ? 'ERROR MEASURED IN v' : 'ERROR IN v', 0, 0, lf, C.dim, 'left', '0.12em'); ctx.restore();
-        if (!tiny) txt('full bar ' + pct(st.barScale, st.barScale < 0.01 ? 2 : 1), x + s, y - gap - bar - 7, font(500, L.fs), C.mute, 'right', '0.04em');
+        if (!tiny) txt('full bar ' + pctA(st.barScale), x + s, y - gap - bar - 7, font(500, L.fs), C.mute, 'right', '0.04em');
       }
 
       function drawStatus(x, y, maxW, align) {
