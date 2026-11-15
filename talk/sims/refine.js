@@ -1340,8 +1340,8 @@
       }
       /* versus: two maps side by side, each with its own side view under it */
       function solveVersus(CW, CH, g) {
-        var pad = g.pad, fs = g.fs, top = g.compact ? 40 : 0;
-        var gapM = tiny ? 10 : 28, head = fs + 12, foot = tiny ? 104 : big ? 190 : 156, SA = CFG.ZW * ZSPAN, gapV = tiny ? 5 : 10;
+        var pad = g.pad, fs = g.fs, top = g.compact ? 36 : 0;
+        var gapM = tiny ? 10 : 28, head = fs + 12, foot = tiny ? 88 : big ? 190 : 156, SA = CFG.ZW * ZSPAN, gapV = tiny ? 5 : 10;
         var sp = Math.floor(Math.min((CW - 2 * pad - gapM) / 2, (CH - top - 2 * pad - head - foot - gapV) / (1 + SA)));
         var hs = Math.round(SA * sp);
         return { score: sp, versus: true, sp: sp, hs: hs, gapV: gapV, gap: gapM, head: head, foot: foot, fs: fs, pad: pad,
@@ -1559,7 +1559,7 @@
       }
       function drawSide(R, mod, d, o) {
         if (R.w < 60 || R.h < 24) return;
-        var K = Math.max(48, Math.min(512, Math.round(R.w / 1.5))), useG = !!o.gauss, k, i, j;
+        var K = Math.max(256, Math.min(512, Math.round(R.w / 1.5))), useG = !!o.gauss, k, i, j;   // >= 256 samples: the gap it reports does not depend on the stage size
         sideData(d, mod, K, useG);
         var xs = d.xs, shown = useG ? d.drawn : d.fit, normals = st.shade === 'normal';
         function X(u) { return R.x + u * R.w; }
@@ -1752,8 +1752,8 @@
         ctx.font = f;
         for (ci = 0; ci < nc; ci++) {
           if (!B.cols) break;
-          var lab = kfmt(B.cols[ci].pts), xx = g.x + (ci + 0.5) * cell; tw = ctx.measureText(lab).width;
-          if (ci !== 0 && ci !== nc - 1 && (xx - tw / 2 < lastX + 7 || xx + tw / 2 > g.x + g.w - ctx.measureText(kfmt(B.cols[nc - 1].pts)).width - 10)) continue;
+          var lab = tiny && B.cols[ci].pts >= 1000 ? Math.floor(B.cols[ci].pts / 1000) + 'k' : kfmt(B.cols[ci].pts), xx = g.x + (ci + 0.5) * cell; tw = ctx.measureText(lab).width;
+          if (ci !== 0 && ci !== nc - 1 && (xx - tw / 2 < lastX + 7 || xx + tw / 2 > g.x + g.w - (tiny ? 2 * fs : ctx.measureText(kfmt(B.cols[nc - 1].pts)).width) - 10)) continue;
           txt(lab, xx, g.y + g.h + fs + 3, f, C.dim, 'center'); ctx.font = f; lastX = xx + tw / 2;
         }
         var lastY = -1e9;
@@ -1894,7 +1894,7 @@
         // the same state from the side
         drawSide(L.side, m, sdA, { gauss: st.gauss, dimCtrl: st.gauss });
         if (L.labS) sideCaption(L.side, st.gauss, L.side.y - 8);
-        else txt('SIDE · v = ' + st.cut.toFixed(2), L.side.x + L.side.w + 8, L.side.y + 10, font(600, 10), C.dim, 'left', '0.08em');
+        else halo('SIDE · v = ' + st.cut.toFixed(2), L.side.x + 5, L.side.y + L.side.h - 5, font(600, 9), C.dim, 'left', '0.06em');
         if (L.arr === 'col' && !tiny) {     // the cut, carried down from the map to the side view
           ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath();
           ctx.moveTo(x - 6.5, cutY()); ctx.lineTo(x - 6.5, L.side.y + L.side.h * 0.5); ctx.lineTo(x - 1, L.side.y + L.side.h * 0.5);
@@ -1949,9 +1949,11 @@
         var nd = ms.rmse < 0.0995 && baseMs.rmse < 0.0995 ? 2 : 1;
         txt(pct(ms.rmse, nd), xa, yb, font(600, fb, F_DISP), better ? C.ok : C.text, 'left', '-0.01em');
         txt(pct(baseMs.rmse, nd), xb, yb, font(600, fb, F_DISP), better ? C.err : C.text, 'left', '-0.01em');
-        var yl = yb + fs + (tiny ? 4 : 9), pts = thousands(m.nu * m.nv);
-        fitTxt('RMSE · ' + pts + ' CONTROL POINTS', xa, yl, 500, fs, C.dim, 'left', '0.1em', sp);
-        fitTxt('RMSE · ' + pts + ' CONTROL POINTS', xb, yl, 500, fs, C.dim, 'left', '0.1em', sp);
+        var yl = tiny ? yb : yb + fs + 9, pts = thousands(m.nu * m.nv);
+        if (!tiny) {
+          fitTxt('RMSE · ' + pts + ' CONTROL POINTS', xa, yl, 500, fs, C.dim, 'left', '0.1em', sp);
+          fitTxt('RMSE · ' + pts + ' CONTROL POINTS', xb, yl, 500, fs, C.dim, 'left', '0.1em', sp);
+        }
         var ratio = baseMs.rmse / ms.rmse, same = Math.abs(ratio - 1) < 0.005;
         var head = same ? 'SAME ERROR · THE TWO NETS COINCIDE'
                  : better ? '×' + ratio.toFixed(1) + ' LOWER ERROR AT EQUAL PARAMETERS' : 'UNIFORM IS ×' + (1 / ratio).toFixed(1) + ' BETTER HERE';

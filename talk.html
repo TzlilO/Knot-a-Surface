@@ -331,18 +331,19 @@
     <article class="step nav opener" data-scene="coarse">
       <div class="num">05</div><div class="kick">Adaptive refinement</div>
       <h2>Two knobs, not one</h2>
-      <p>3DGS adds detail one way: clone or split a Gaussian. We have two layers, and they don’t interfere.</p>
+      <p>3DGS adds detail one way: clone or split a Gaussian. We have two layers: separate knobs, which have to be kept in balance.</p>
       <div class="time">≈ 5 min</div>
     </article>
     <article class="step nav" data-scene="coarse">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Start <em>coarse</em></h2>
       <p>A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
+      <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">cyan</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
     </article>
     <article class="step nav" data-scene="insert" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Layer A — <em class="c-ctrl">insert a knot</em></h2>
-      <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %.</p>
+      <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %. In the side view the cyan curve stays where it was when the knot lands; only a new amber control point appears.</p>
       <p>Compare with 3DGS densification, which decides by accumulated view‑space gradients and spawns new, independent primitives.</p>
     </article>
     <article class="step nav" data-scene="insert" data-depth="deep">
@@ -365,14 +366,26 @@
     <article class="step nav" data-scene="versus">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Same parameters, spent <em>better</em></h2>
-      <p>The adaptive net: 0.92 % error. A uniform net of the same size: 4.4 %. The best uniform net we could find near that size still sits at 3.1 %.</p>
+      <p>The adaptive net: 0.92 % error. A uniform net of the same size: 4.4 %. The best uniform net we could find near that size still sits at 3.1 %. Under each map is the same cut from the side: there the uniform net misses the terrain by 34 % of the relief, the adaptive one by 2.5 %.</p>
       <p class="aside">All three are fitted live by the same optimiser against the same known, noise‑free height field: a demonstration of the mechanism, not a benchmark.</p>
     </article>
     <article class="step nav" data-scene="sampling">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Layer B — <em class="c-splat">sampling density</em></h2>
-      <p>Now change how many Gaussians are drawn. The surface, its error and its parameter count do not move.</p>
-      <p><b>Capacity</b> lives in the knots. <b>Rendering resolution</b> lives in the samples. Two decisions, cleanly separated.</p>
+      <p>Now change how many Gaussians are drawn. The surface does not move: 156 parameters, 0.92 % error. What moves is the <b>drawn</b> error, measured from the Gaussians themselves: 3.9 % with 64 of them, 0.95 % with 4,096, and from there it sits at the surface’s own 0.92 %.</p>
+      <p><b>Capacity</b> lives in the knots. <b>Rendering resolution</b> lives in the samples. Two separate decisions.</p>
+    </article>
+    <article class="step nav" data-scene="balance">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Balance the two, <em>or waste one</em></h2>
+      <p>Neither knob works alone. 25 control points drawn with 65,536 Gaussians: 6.3 % error, the same as with 1,024. 4,092 control points drawn with 64 Gaussians: 3.7 %, although the surface itself is within 0.006 % of the terrain. 400 control points with 16,384 Gaussians: 0.09 %.</p>
+      <p class="aside">Every cell of the map is measured in the page: that many Gaussians are rendered from that net and compared with the terrain. Along the green line the surface’s error and the sampling error are equal.</p>
+      <span class="do">Try the three presets, or click a cell of the map</span>
+    </article>
+    <article class="step nav" data-scene="normals" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Normals come <em>with the surface</em></h2>
+      <p>Each Gaussian takes its normal from the surface, <span data-tex="\mathbf{S}_u\times\mathbf{S}_v"></span>; nothing is estimated from neighbours. On the refined net the normals are 3.2° from the terrain’s on average; on the 5 × 5 net, 12.1°.</p>
     </article>
   </div>
 </section>

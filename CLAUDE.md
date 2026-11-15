@@ -50,8 +50,13 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   samples and shows the gap in red plus a measured gap-vs-control-points plot; `lens` draws the morph's
   curves ONLY as a fixed number of Gaussians that sit on them, spread evenly over the track inside a
   zoomable view window (2D, with an outside-view inset and a freeze toggle): Gaussians never go on empty
-  plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
-  `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
+  plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero; lit translucent
+  sheet, solid depth-tested vectors via `gl.vector` / `gl.sheet` / `gl.hidden`, a face-on tangent-plane
+  inset, and a scale stage that measures the size from the lattice cell's 4 or 8 neighbours against the
+  derivative formula),
+  `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
+  draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
+  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
