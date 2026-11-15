@@ -43,7 +43,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   Gaussian: centre + tangent axes from S_u, S_v and the sampling interval).
 - Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound), `basis` (SVG curve
   playground; its `letters` / `script` scenes draw "Shalom Rafael" as one spline per letter and as
-  three handwritten strokes, from the control polygons in `PRINT` / `HAND`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
+  three handwritten strokes, from the control polygons in `PRINT` / `HAND`; `morph` blends letters →
+  handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with
+  matching control-point counts by knot insertion, so a blend is a lerp of control points and knots), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after

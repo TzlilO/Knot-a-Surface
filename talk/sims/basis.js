@@ -70,11 +70,81 @@
     script:  function () { return setText([['S', 'halom'], ['Rafael']], { font: HAND, unit: 0.19, slant: 0.22, gap: 0.12, base: [0.6, 0.21] }); }
   };
 
+  /* ---------- a third shape, and the morph between all three ----------
+     A missile drawn as twelve strokes, in the world box, nose to the right; MISSILE[i] takes the place
+     of letter i (S h a l o m / R a f a e l), chosen so the strokes travel short, uncrossed paths. */
+  var MISSILE = (function () {
+    var flame = [[0.44, 0.545], [0.33, 0.605], [0.22, 0.53], K(0.09, 0.5), [0.22, 0.47], [0.33, 0.395], [0.44, 0.455]];
+    var parts = [
+      flame,                                                                               // S  exhaust plume
+      [[0.74, 0.57], K(0.58, 0.76), K(0.44, 0.76), [0.5, 0.57]],                           // h  tail fin, top
+      [[0.5, 0.57], [0.76, 0.57], [1.02, 0.57], [1.28, 0.57]],                             // a  body, top edge
+      [[1.08, 0.57], K(0.98, 0.675), K(0.88, 0.675), [0.84, 0.57]],                        // l  wing, top
+      [[1.28, 0.57], [1.262, 0.535], [1.262, 0.465], [1.28, 0.43]],                        // o  seeker band
+      [[1.28, 0.57], [1.42, 0.57], [1.55, 0.548], K(1.63, 0.5), [1.55, 0.452], [1.42, 0.43], [1.28, 0.43]],   // m  nose cone
+      [[0.44, 0.52], [0.35, 0.538], [0.27, 0.5], [0.35, 0.462], [0.44, 0.48]],             // R  inner flame
+      [[0.74, 0.43], K(0.58, 0.24), K(0.44, 0.24), [0.5, 0.43]],                           // a  tail fin, bottom
+      [[0.5, 0.57], [0.44, 0.553], [0.44, 0.447], [0.5, 0.43]],                            // f  nozzle
+      [[0.5, 0.43], [0.76, 0.43], [1.02, 0.43], [1.28, 0.43]],                             // a  body, bottom edge
+      [[1.08, 0.43], K(0.98, 0.325), K(0.88, 0.325), [0.84, 0.43]],                        // e  wing, bottom
+      [[0.8, 0.57], [0.782, 0.535], [0.782, 0.465], [0.8, 0.43]]                           // l  body band
+    ];
+    var c = Math.cos(0.2), sn = Math.sin(0.2), k = 1.12;                                   // a little larger, nose up
+    return parts.map(function (P) {
+      return [].concat.apply([], P.map(function (q) { return typeof q[0] === 'number' ? [q] : q; })).map(function (q) {
+        var x = (q[0] - 0.87) * k, y = (q[1] - 0.5) * k; return [1 + x * c - y * sn, 0.5 + x * sn + y * c];
+      });
+    });
+  })();
+  function cubic(P) { return { P: P, w: P.map(function () { return 1; }), U: NB.clampedKnots(P.length, 3) }; }
+  /* cut one cubic into pieces at the parameters `cuts` (a knot inserted three times splits the curve exactly) */
+  function split(c, cuts) {
+    var out = [], lo = 0;
+    cuts.concat([1]).forEach(function (u) {
+      if (u >= 1) { out.push(c); return; }
+      var n = 3 - c.U.filter(function (t) { return Math.abs(t - u) < 1e-9; }).length, j;
+      while (n-- > 0) c = NB.insertKnot(c.P, c.w, 3, c.U, u);
+      for (j = 0; Math.abs(c.U[j] - u) > 1e-9; j++);
+      out.push({ P: c.P.slice(0, j), w: c.w.slice(0, j), U: c.U.slice(0, j + 3).concat([u]) });
+      c = { P: c.P.slice(j - 1), w: c.w.slice(j - 1), U: [u].concat(c.U.slice(j)) };
+    });
+    return out.map(function (q) {          // each piece on its own [0, 1]
+      var a = q.U[0], b = q.U[q.U.length - 1]; q.U = q.U.map(function (t) { return (t - a) / (b - a); }); return q;
+    });
+  }
+  /* the same curve with n control points: knots go into the widest spans until it has them */
+  function refine(c, n) {
+    while (c.P.length < n) {
+      var best = 0, at = 0, i;
+      for (i = 3; i < c.P.length; i++) if (c.U[i + 1] - c.U[i] > best) { best = c.U[i + 1] - c.U[i]; at = (c.U[i] + c.U[i + 1]) / 2; }
+      c = NB.insertKnot(c.P, c.w, 3, c.U, at);
+    }
+    return c;
+  }
+  /* three shapes, twelve cubics each, slot by slot with the same number of control points: so a blend of
+     two shapes is a blend of their control points (and knots), and both ends of it are exact */
+  function morphSets() {
+    var hand = TEXTS.script().map(cubic);
+    function cuts(c, counts) {             // where each letter of a stroke ends, as a curve parameter
+      var at = 0; return counts.slice(0, -1).map(function (k) { at += k; return (at - 2) / (c.P.length - 3); });
+    }
+    var sets = [TEXTS.letters().map(cubic),
+                [hand[0]].concat(split(hand[1], cuts(hand[1], [14, 14, 8, 13, 16])), split(hand[2], cuts(hand[2], [15, 14, 12, 14, 8, 8]))),
+                MISSILE.map(cubic)];
+    for (var i = 0; i < 12; i++) {
+      var n = Math.max(sets[0][i].P.length, sets[1][i].P.length, sets[2][i].P.length);
+      sets.forEach(function (st) { st[i] = refine(st[i], n); });
+    }
+    return sets;
+  }
+  var SHAPES = ['letters', 'handwriting', 'missile'];
+
   var SCENES = {
     ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4 },
     letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
                  hint: 'drag any amber point' },
     script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
+    morph:     { cap: '<b>morphing</b> · letters → handwriting → a missile · only the control points move', morph: 1 },
     drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any amber point' },
     blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
                  hint: 'scrub the plot to move u' },
@@ -94,7 +164,7 @@
     tool: 'SVG · direct manipulation',
     scenes: [
       { id: 'ducks', label: 'The draftsman’s spline' }, { id: 'letters', label: 'A spline per letter' },
-      { id: 'script', label: 'Handwriting' }, { id: 'drag', label: 'Control points' },
+      { id: 'script', label: 'Handwriting' }, { id: 'morph', label: 'Morph' }, { id: 'drag', label: 'Control points' },
       { id: 'blend', label: 'Blending' }, { id: 'local', label: 'Local support' },
       { id: 'degree', label: 'Degree' }, { id: 'knots', label: 'Knots' },
       { id: 'rational', label: 'Rational weights' }, { id: 'recursion', label: 'Cox–de Boor' }
@@ -116,6 +186,8 @@
       var segDeg = ui.seg(panel, { label: 'degree p', value: 3,
         options: [{ v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }],
         onChange: function (v) { st.touched = true; setDegree(v); } });
+      var segM = ui.seg(panel, { label: 'shape', value: 0, options: SHAPES.map(function (n, i) { return { v: i, label: n }; }),
+        onChange: function (v) { st.touched = true; if (st.m && v !== st.m.from) { st.m.to = v; st.m.k = 0; st.m.hold = 0; } } });
       var slW = ui.slider(panel, { label: 'weight w', min: 0.1, max: 4, step: 0.05, value: 1,
         fmt: function (v) { return v.toFixed(2); },
         onInput: function (v) { st.touched = true; st.w[st.sel] = v; dirty = true; } });
@@ -144,7 +216,7 @@
       function setDegree(p) {
         if (st.circle) load(false);
         st.p = p; st.U = NB.clampedKnots(st.P.length, p); segDeg.set(p); dirty = true;
-        if (st.multi) st.multi.forEach(knot);
+        if (st.multi && !st.m) st.multi.forEach(knot);
       }
       /* the letter scenes: several curves, each { P, w, U, p, at } (at = where its points start in writing order) */
       function knot(c) { c.p = Math.min(st.p, c.P.length - 1); c.U = NB.clampedKnots(c.P.length, c.p); }
@@ -154,6 +226,20 @@
           var c = { P: P, w: P.map(function () { return 1; }), at: at }; knot(c); at += P.length; return c;
         });
         st.pen = 0; st.total = at;
+      }
+      /* the morph scene: st.m.sets = the three shapes; the curves on screen are a blend of two of them */
+      function loadMorph() {
+        st.m = { sets: morphSets(), from: 0, to: 0, k: 0, hold: 1.6 };
+        st.multi = st.m.sets[0].map(function (c) { return { P: c.P.map(function (q) { return q.slice(); }), w: c.w, U: c.U.slice(), p: 3, at: 0 }; });
+        st.pen = st.total = 1e9; segM.set(0);       // nothing is being written: every curve is drawn in full
+      }
+      function blend() {
+        var m = st.m, e = m.k * m.k * m.k * (m.k * (6 * m.k - 15) + 10);
+        st.multi.forEach(function (c, i) {
+          var a = m.sets[m.from][i], b = m.sets[m.to][i], j;
+          for (j = 0; j < c.P.length; j++) { c.P[j][0] = a.P[j][0] + (b.P[j][0] - a.P[j][0]) * e; c.P[j][1] = a.P[j][1] + (b.P[j][1] - a.P[j][1]) * e; }
+          for (j = 0; j < c.U.length; j++) c.U[j] = a.U[j] + (b.U[j] - a.U[j]) * e;
+        });
       }
 
       /* ---------- layout ---------- */
@@ -354,6 +440,7 @@
         var best = null, bd = 26, i, q, d;
         if (st.multi) {
           bd = touch ? KT.HIT : 13;
+          if (st.m) return null;                 // the morph owns its control points
           st.multi.forEach(function (c, ci) {
             for (i = 0; i < c.P.length; i++) { q = px(c.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'text', c: ci, i: i }; } }
           });
@@ -414,7 +501,9 @@
           st.w = st.P.map(function () { return 1; });
           st.p = 3; st.U = NB.clampedKnots(st.P.length, 3); segDeg.set(3);
         }
-        if (sc.multi) loadText(sc.multi); else st.multi = null;
+        st.m = null;
+        if (sc.morph) loadMorph(); else if (sc.multi) loadText(sc.multi); else st.multi = null;
+        segM.el.style.display = sc.morph ? '' : 'none'; segDeg.el.style.display = sc.morph ? 'none' : '';
         if (sc.sel != null) st.sel = sc.sel;
         slW.set(st.w[st.sel]);
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
@@ -427,7 +516,14 @@
         if (Math.abs(st.bh - target) > 0.001) { st.bh += (target - st.bh) * (1 - Math.exp(-7 * dt)); dirty = true; }
         else if (st.bh !== target) { st.bh = target; dirty = true; }
         st.t += dt;
-        if (st.multi) {                          // the pen writes the strokes in order; a touch finishes the writing
+        if (st.m) {                              // hold a shape, then slide to the next one
+          var mm = st.m;
+          if (mm.to !== mm.from) {
+            mm.k = Math.min(1, mm.k + dt / 2.6); blend(); dirty = true;
+            if (mm.k >= 1) { mm.from = mm.to; mm.hold = 2.2; segM.set(mm.from); }
+          } else if (!st.touched && (mm.hold -= dt) <= 0) { mm.to = (mm.from + 1) % 3; mm.k = 0; }
+        }
+        else if (st.multi) {                     // the pen writes the strokes in order; a touch finishes the writing
           var was = st.pen;
           if (st.touched) st.pen = st.total;
           else { st.pen += sc.rate * dt; if (sc.again && st.pen > st.total + sc.rate * 3) st.pen = 0; }
