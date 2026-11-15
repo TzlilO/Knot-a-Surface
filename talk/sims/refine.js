@@ -592,7 +592,7 @@
   function pctA(x) { return pct(x, x < 0.00095 ? 3 : x < 0.0995 ? 2 : 1); }       // as many digits as the size needs
   function expStr(x) { return x === 0 ? '0' : x.toExponential(1).replace('e-', 'e−'); }
   function thousands(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-  function kfmt(n) { return n >= 10000 ? Math.round(n / 1000) + 'k' : thousands(n); }
+  function kfmt(n) { return n >= 10000 ? Math.floor(n / 1000) + 'k' : thousands(n); }
   function now() { return root.performance && root.performance.now ? root.performance.now() : Date.now(); }
 
   /* colour ramps -> 256-entry LUTs */
@@ -613,12 +613,12 @@
   var PAL_TGT = ramp([[0, '#161c26'], [0.30, '#2c3644'], [0.58, '#58677b'], [0.80, '#96a5b9'], [1, '#ecf0f6']]);
   var PAL_GSS = ramp([[0, '#1a1230'], [0.30, '#35235a'], [0.58, '#74509b'], [0.80, '#ce93d8'], [1, '#f8e9fb']]);   // what the Gaussians draw
   var PAL_ERR = ramp([[0, '#2a0c0e', 0], [0.14, '#521819', 0.46], [0.42, '#b93b39', 0.92], [0.72, '#ef5350', 1], [1, '#ffd9d2', 1]]);
-  var PAL_MAP = ramp([[0, '#0d1b2a'], [0.30, '#1d2334'], [0.52, '#5a2026'], [0.74, '#b93b39'], [0.90, '#ef5350'], [1, '#ffd9d2']]);
   var EGAM = 0.9;                         // display gamma of the error heat
   var LX = -0.50, LY = -0.62, LZ = 0.62, ZS = 0.55, GSAT = 1.15;
   (function () { var n = Math.sqrt(LX * LX + LY * LY + LZ * LZ); LX /= n; LY /= n; LZ /= n; })();
   var ZLO = -0.14, ZSPAN = 1.28;          // relief range of the side view (control heights overshoot a little)
   var MAP_LO = 1e-4, MAP_HI = 0.1;        // balance map colour range: 0.01 % ... 10 %, logarithmic
+  var KSTEPS = [6, 16, 32, 64, 128, 256]; // rows of the balance map that get a tick label
   var ANG_SCALE = 30;                     // normal-error heat: full red at 30 degrees
   var REGIME_K = 2;                       // "balanced" = surface error and sampling error within this factor
 
@@ -670,10 +670,12 @@
     }
   }
   function normalCss(nx, ny, nz) { return 'rgb(' + Math.round(127.5 + 127.5 * nx) + ',' + Math.round(127.5 - 127.5 * ny) + ',' + Math.round(127.5 + 127.5 * nz) + ')'; }
-  function mapCss(e) {                    // balance-map colour of a drawn error
-    var t = (Math.log(Math.max(e, 1e-9)) - Math.log(MAP_LO)) / (Math.log(MAP_HI) - Math.log(MAP_LO));
-    var li = ((KT.clamp(t, 0, 1) * 255) | 0) * 4;
-    return 'rgb(' + (PAL_MAP[li] | 0) + ',' + (PAL_MAP[li + 1] | 0) + ',' + (PAL_MAP[li + 2] | 0) + ')';
+  /* balance-map colour of a drawn error: half-decade bands, so equal errors read as one colour and the
+     iso-error contours (L-shaped: neither knob helps alone) are the band edges */
+  var MAP_BANDS = ['#0f2233', '#1c2c47', '#3a2643', '#6c2536', '#a3302f', '#de463f', '#ffb3a6'];
+  function mapCss(e) {
+    var k = Math.floor(2 * Math.log(Math.max(e, 1e-12) / MAP_LO) / Math.LN10 + 1e-9);
+    return MAP_BANDS[k < 0 ? 0 : k > 6 ? 6 : k];
   }
 
   var CSS_DONE = false;
@@ -711,6 +713,7 @@
       '.kt-sim-refine .rf-stack .rf-read .kt-panel-title{display:none}',
       '.kt-sim-refine .rf-stack .rf-read .kt-readout{flex-direction:column;align-items:flex-start;gap:3px;min-height:0}',
       '.kt-sim-refine .rf-stack .rf-read .kt-val{margin-left:0}',
+      '.kt-sim-refine .rf-stack.rf-gon .rf-x,.kt-sim-refine .rf-stack:not(.rf-gon) .rf-gx,.kt-sim-refine .rf-stack.rf-non .rf-x2{display:none}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-col .rf-ctrl{flex:1.5 1 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;align-content:center}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-ctrl .kt-panel-title{grid-column:1/-1}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-ctrl .rf-pre{grid-row:span 2}',
@@ -887,7 +890,7 @@
         return r;
       }
       var rdNet = readout('control points', 'net', 'ctrl');
-      var rdPar = readout('learnable params', 'params', 'ctrl', 'rf-x3');
+      var rdPar = readout('parameters', 'params', 'ctrl', 'rf-x3');
       var rdKn = readout('interior knots', 'knots', 'ctrl', 'rf-x');
       var rdRmse = readout('surface RMSE', 'surface', 'err');
       var rdMax = readout('max error', 'max err', 'err', 'rf-x2');
@@ -925,6 +928,7 @@
         fmt: function (i) { return densOf(i) + '²'; },
         onInput: function (i) { st.dens = densOf(i); st.densAuto = false; st.tour = null; if (!st.gauss) { st.gauss = true; tgG.set(true); relayout(); } } });
       slDens.el.classList.add('rf-dens');
+      var densVal = slDens.el.querySelector('.kt-val');
 
       if (env.embed) {                    // inside the deck, never keep keyboard focus: space and arrows belong to it
         col.addEventListener('click', function () { var a = document.activeElement; if (a && col.contains(a) && a.blur) a.blur(); });
@@ -935,12 +939,12 @@
       var st = { scene: '', run: true, view: 'fit', shade: 'height', gauss: false, dens: 24, densAuto: false, densT: 0,
                  mode: 'idle', timer: 0, rate: 12, acc: 0, op: null, pending: null, versus: false,
                  ceiling: null, blocked: null, pruned: 0, ptsFrom: 0, inserted: 0, barScale: 0, holdScale: false,
-                 budget: CFG.BUDGET, cut: 0.365, bal: false, tour: null, want: null, preset: '', batch: false };
+                 budget: CFG.BUDGET, cut: 0.365, bal: false, tour: null, want: null, preset: '', batch: false, manual: false };
       var m = null, ms = null, base = null, baseMs = null, bestU = null;
       var fx = [], dirty = true, dirtyB = true, zVersion = 0;
       var status = { l1: '', l2: '', tone: 'text', live: null };
       var Wc = 0, Hc = 0, L = null, tiny = false, big = false;
-      var perf = { top: 0, frame: 0 };
+      var perf = { top: 0, frame: 0 }, lastFrame = 0;
 
       /* display buffers */
       var disp = { n: 0 };
@@ -1139,7 +1143,7 @@
       /* ---------- user controls ---------- */
       function busy() { return !!st.op; }
       function userInsert() {
-        if (busy()) return; st.mode = 'idle'; st.pending = null; st.tour = null; st.rmse0 = st.rmse0 || ms.rmse;
+        if (busy()) return; st.mode = 'idle'; st.pending = null; manual(); st.rmse0 = st.rmse0 || ms.rmse;
         if (!beginInsert(PACE.button, false)) {
           var w = worstSpan(ms, CFG.MIN_SAMPLES);
           if (w) setStatus('CAP REACHED · ' + thousands(m.nu * m.nv) + ' OF ' + thousands(CFG.MAX_PTS) + ' CONTROL POINTS', 'one more knot would add ' + (w.axis === 'u' ? m.nv : m.nu) + ' control points', 'text');
@@ -1147,15 +1151,16 @@
         }
       }
       function userRemove() {
-        if (busy()) return; st.mode = 'idle'; st.pending = null; st.tour = null;
+        if (busy()) return; st.mode = 'idle'; st.pending = null; manual();
         if (!st.pruned) st.ptsFrom = m.nu * m.nv;
         if (!beginRemove(PACE.button)) blockedStatus('NO KNOT CAN GO WITHIN TOLERANCE');
       }
       function userAuto() {
-        if (busy()) return; st.pending = null; st.tour = null; st.mode = 'auto'; st.timer = autoPace().gap; st.rmse0 = st.rmse0 || ms.rmse;
+        if (busy()) return; st.pending = null; manual(); st.mode = 'auto'; st.timer = autoPace().gap; st.rmse0 = st.rmse0 || ms.rmse;
         if (m.nu * m.nv >= st.budget) setStatus('BUDGET ' + thousands(st.budget) + ' CONTROL POINTS', 'raise the budget (up to ' + thousands(CFG.MAX_PTS) + ') to keep inserting', 'text');
       }
-      function userReset() { st.tour = null; st.preset = ''; markPreset(); enterCoarse(true); }
+      function userReset() { manual(); enterCoarse(true); }
+      function manual() { st.tour = null; st.preset = ''; st.want = null; st.manual = true; markPreset(); }
 
       /* ---------- the three regimes ---------- */
       function markPreset() { for (var k in preBtn) preBtn[k].classList.toggle('on', k === st.preset || (k === 'tour' && !!st.tour)); }
@@ -1163,8 +1168,8 @@
         var snapS = which === 'ctrl' ? S.coarse() : B.cols[which === 'gauss' ? B.cols.length - 1 : B.balCol].snap;
         clearRun(); setModel(S.restore(snapS));
         st.inserted = 0; st.pruned = 0; st.ceiling = null; st.blocked = null; st.rmse0 = S.coarseRmse; st.barScale = 0;
-        st.gauss = true; tgG.set(true); st.densAuto = false; st.dens = REGIMES[which].n; slDens.set(densIdx(st.dens));
-        st.view = 'fit'; segMap.set('fit'); st.preset = which; st.want = null; st.bal = true;
+        st.gauss = true; tgG.set(true); st.densAuto = false; setDens(REGIMES[which].n);
+        st.view = 'fit'; segMap.set('fit'); st.preset = which; st.want = null; st.bal = true; st.manual = false;
         setStatus('', '', 'text'); markPreset(); relayout();
       }
       function wantPreset(which) {         // the nets beyond 5 x 5 come from the measured sequence: wait for it
@@ -1181,7 +1186,7 @@
         rdAng.el.classList.toggle('rf-hide', v !== 'normal');
         if (!st.batch) relayout();
       }
-      function setDens(n) { st.dens = n; slDens.set(densIdx(n)); }
+      function setDens(n) { st.dens = n; slDens.set(densIdx(n)); densVal.textContent = n + '²'; }
       function enterCoarse(animate) {
         clearRun(); st.inserted = 0; st.pruned = 0; st.ceiling = null; st.blocked = null;
         if (animate) {
@@ -1197,7 +1202,7 @@
         if (!known) return;
         st.batch = true;
         st.scene = id; st.barScale = 0; st.versus = id === 'versus'; st.densAuto = false;
-        st.bal = id === 'sampling' || id === 'balance'; st.tour = null; st.want = null; st.preset = '';
+        st.bal = id === 'sampling' || id === 'balance'; st.tour = null; st.want = null; st.preset = ''; st.manual = false;
         st.budget = CFG.BUDGET; slBud.set(BUDGETS.indexOf(CFG.BUDGET));
         setShade(id === 'normals' ? 'normal' : 'height');
         rdUni.el.classList.toggle('rf-hide', !st.versus);
@@ -1328,7 +1333,7 @@
       }
       /* versus: two maps side by side, each with its own side view under it */
       function solveVersus(CW, CH, g) {
-        var pad = g.pad, fs = g.fs, top = g.compact ? 30 : 0;
+        var pad = g.pad, fs = g.fs, top = g.compact ? 40 : 0;
         var gapM = tiny ? 10 : 28, head = fs + 12, foot = tiny ? 104 : big ? 190 : 156, SA = CFG.ZW * ZSPAN, gapV = tiny ? 5 : 10;
         var sp = Math.floor(Math.min((CW - 2 * pad - gapM) / 2, (CH - top - 2 * pad - head - foot - gapV) / (1 + SA)));
         var hs = Math.round(SA * sp);
@@ -1430,26 +1435,33 @@
          normal S_u x S_v seen from above, so it points downhill and grows with the tilt.
          Cached; redrawn only when it changes. Too dense to draw one by one: the picture underneath is
          already what they render. */
-      var gT = { c: document.createElement('canvas'), key: '' };
-      function paintGauss(g, s) {
-        var gs = ensureGauss(), n = gs.n, sp = s / n, r0 = sp * 0.42, a, b, o, cx, cy, len = sp * 1.5;
-        g.beginPath();
-        for (b = 0; b < n; b++) for (a = 0; a < n; a++) { cx = (a + 0.5) * sp; cy = (b + 0.5) * sp; g.moveTo(cx + r0, cy); g.arc(cx, cy, r0, 0, 6.2832); }
-        g.strokeStyle = 'rgba(248,233,251,' + (sp > 11 ? 0.7 : 0.45) + ')'; g.lineWidth = sp > 9 ? 1.1 : sp > 6 ? 0.8 : 0.5; g.stroke();
+      var gT = { c: document.createElement('canvas'), key: '', dot: document.createElement('canvas') };
+      function paintGauss(g, s, dpr) {
+        var gs = ensureGauss(), n = gs.n, sp = s / n, r0 = sp * 0.42, a, b, o, cx, cy, len = sp * 0.95;
+        // every footprint is the same circle: draw one row of them, then stamp the row n times
+        var lw = sp > 9 ? 1.1 : 0.8, d = gT.dot, dc, rh = Math.ceil(sp * dpr) + 2;
+        d.width = Math.round(s * dpr); d.height = rh; dc = d.getContext('2d'); dc.setTransform(dpr, 0, 0, dpr, 0, 0);
+        dc.beginPath();
+        for (a = 0; a < n; a++) { cx = (a + 0.5) * sp; dc.moveTo(cx + r0, rh / dpr / 2); dc.arc(cx, rh / dpr / 2, r0, 0, 6.2832); }
+        dc.strokeStyle = 'rgba(248,233,251,' + (sp > 11 ? 0.7 : 0.5) + ')'; dc.lineWidth = lw; dc.stroke();
+        for (b = 0; b < n; b++) g.drawImage(d, 0, (b + 0.5) * sp - rh / dpr / 2, s, rh / dpr);
+        if (sp < 9) return;
+        // its normal S_u x S_v, seen from above
         g.beginPath();
         for (b = 0; b < n; b++) for (a = 0; a < n; a++) {
           o = b * n + a; cx = (a + 0.5) * sp; cy = (b + 0.5) * sp;
           g.moveTo(cx, cy); g.lineTo(cx + gs.nx[o] * len, cy + gs.ny[o] * len);
         }
-        g.strokeStyle = sp > 9 ? '#ffffff' : 'rgba(255,255,255,.8)'; g.lineWidth = sp > 14 ? 1.6 : sp > 8 ? 1.2 : 0.8; g.stroke();
+        g.strokeStyle = 'rgba(7,9,15,.5)'; g.lineWidth = (sp > 14 ? 1.5 : 1.1) + 1.6; g.lineCap = 'round'; g.stroke();
+        g.strokeStyle = '#ffffff'; g.lineWidth = sp > 14 ? 1.5 : 1.1; g.stroke();
       }
       function drawGauss(x, y, s) {
-        if (s / st.dens < 4.5) return;
+        if (s / st.dens < 6.5) return;
         var dpr = cv.size.dpr, px = Math.round(s * dpr), key = st.dens + '|' + px + '|' + zVersion;
         if (gT.key !== key) {
           if (gT.c.width !== px) gT.c.width = gT.c.height = px;
           var g = gT.c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, s, s);
-          paintGauss(g, s); gT.key = key;
+          paintGauss(g, s, dpr); gT.key = key;
         }
         ctx.drawImage(gT.c, x, y, s, s);
       }
@@ -1633,16 +1645,20 @@
       }
       /* caption of the side view: what the lines are, in their colours */
       function sideCaption(R, useG, y) {
-        var f = font(600, L.fs), f5 = font(500, L.fs), x = R.x, parts, i, w;
-        txt(R.w > 330 ? 'SIDE VIEW · CUT AT v = ' + st.cut.toFixed(3) : 'SIDE · v = ' + st.cut.toFixed(2), x, y, f, C.dim, 'left', '0.12em');
+        var f = font(600, L.fs), f5 = font(500, L.fs), x, parts, i, w, tot = 0, lw;
+        var long = 'SIDE VIEW · CUT AT v = ' + st.cut.toFixed(3), short = 'SIDE · v = ' + st.cut.toFixed(2);
         parts = [['target', 'rgba(221,229,240,.9)'], ['surface', C.surf], ['control', C.ctrl]];
         if (useG) parts.push(['Gaussians', C.splat]);
         parts.push(['error', C.err]);
         ctx.font = f5; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.02em';
-        var tot = 0; for (i = 0; i < parts.length; i++) tot += ctx.measureText(parts[i][0]).width + 12;
-        if (R.w < 330 + tot) { if (R.w < 190 + tot) return; }
+        for (i = 0; i < parts.length; i++) tot += ctx.measureText(parts[i][0]).width + 12;
+        ctx.font = f; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.12em';
+        lw = ctx.measureText(long).width;
+        if (lw + 14 + tot > R.w) { long = short; lw = ctx.measureText(short).width; }
+        txt(long, R.x, y, f, C.dim, 'left', '0.12em');
+        if (lw + 14 + tot > R.w) return;
         x = R.x + R.w;
-        for (i = parts.length - 1; i >= 0; i--) { w = ctx.measureText(parts[i][0]).width; txt(parts[i][0], x, y, f5, parts[i][1], 'right', '0.02em'); ctx.font = f5; x -= w + 12; }
+        for (i = parts.length - 1; i >= 0; i--) { ctx.font = f5; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.02em'; w = ctx.measureText(parts[i][0]).width; txt(parts[i][0], x, y, f5, parts[i][1], 'right', '0.02em'); x -= w + 12; }
       }
 
       /* the cut line on the map, with its grip */
@@ -1671,7 +1687,7 @@
       function balY(g, n) { var r = B.rows; return g.y + g.h - (Math.log(n / r[0]) / Math.log(r[r.length - 1] / r[0]) * (r.length - 1) + 0.5) * g.cell; }
       function drawBalance(R, t) {
         var nr = B.rows.length, nc = B.cols ? B.cols.length : 12, fs = tiny ? 9.5 : L.fs - 1, i, ci, ri, v, f = font(500, fs), f6 = font(600, fs);
-        var titleH = fs + 10, axL = Math.round(fs * 3.1), axB = fs + 6, axT = tiny ? fs + 3 : fs + 7;
+        var titleH = fs + 10, axL = Math.round(tiny ? fs * 3.3 : fs * 4.6), axB = fs + 6, axT = tiny ? fs + 3 : fs + 7;
         var d = drawnNow(), reg = regime(), vb = tiny || R.h < 300 ? 0 : L.f1 + L.f2 + 40;
         var cbw = R.w - axL >= 290 ? 54 : 0;
         var cell = Math.floor(Math.min((R.w - axL - cbw) / nc, (R.h - titleH - axB - axT - vb) / nr));
@@ -1680,8 +1696,11 @@
         if (!vb && !tiny) g.y += Math.round(Math.max(0, R.h - titleH - axB - axT - g.h) / 2);
         L.bg = g;
         // title
-        fitTxt(tiny ? 'DRAWN ERROR' : 'DRAWN ERROR · MEASURED', R.x, g.y - 8, 600, fs + (tiny ? 0 : 1), C.dim, 'left', '0.12em', B.ready ? R.w : R.w - 70);
-        if (!B.ready) txt('measuring ' + Math.round(100 * B.done) + ' %', g.x + g.w, g.y - 8, f, C.mute, 'right', '0.04em');
+        if (tiny) fitTxt(B.ready ? 'DRAWN ERROR' : 'MEASURING ' + Math.round(100 * B.done) + ' %', R.x, g.y - 8, 600, fs, C.dim, 'left', '0.1em', R.w);
+        else {
+          fitTxt('DRAWN ERROR · MEASURED', R.x, g.y - 8, 600, fs + 1, C.dim, 'left', '0.12em', B.ready ? R.w : R.w - 110);
+          if (!B.ready) txt('measuring ' + Math.round(100 * B.done) + ' %', g.x + g.w, g.y - 8, f, C.mute, 'right', '0.04em');
+        }
         // cells
         ctx.fillStyle = 'rgba(255,255,255,.025)'; ctx.fillRect(g.x, g.y, g.w, g.h);
         if (B.cols) for (ci = 0; ci < nc; ci++) for (ri = 0; ri < nr; ri++) {
@@ -1699,19 +1718,20 @@
           ctx.restore();
           // the three regimes
           var lf = font(600, tiny ? 9 : fs), ls = '0.08em', lh = (tiny ? 9 : fs) + 3;
-          var two = g.w < 300;
+          var two = g.w < 330;
+          var yT = g.y + Math.round(g.h * 0.30), yB = g.y + Math.round(g.h * 0.74);
           if (tiny) {
-            halo('CTRL-STARVED', g.x + 4, g.y + lh + 1, lf, C.ctrl, 'left', '0px');
-            halo('GAUSS-STARVED', g.x + g.w - 4, g.y + g.h - 5, lf, C.splat, 'right', '0px');
+            halo('CTRL-STARVED', g.x + 4, yT, lf, C.ctrl, 'left', '0px');
+            halo('GAUSS-STARVED', g.x + g.w - 4, yB + lh, lf, C.splat, 'right', '0px');
           } else if (two) {
-            halo('STARVED OF', g.x + 7, g.y + lh + 4, lf, C.ctrl, 'left', ls); halo('CONTROL POINTS', g.x + 7, g.y + 2 * lh + 4, lf, C.ctrl, 'left', ls);
-            halo('STARVED OF', g.x + g.w - 7, g.y + g.h - lh - 7, lf, C.splat, 'right', ls); halo('GAUSSIANS', g.x + g.w - 7, g.y + g.h - 7, lf, C.splat, 'right', ls);
+            halo('STARVED OF', g.x + 7, yT, lf, C.ctrl, 'left', ls); halo('CONTROL POINTS', g.x + 7, yT + lh, lf, C.ctrl, 'left', ls);
+            halo('STARVED OF', g.x + g.w - 7, yB, lf, C.splat, 'right', ls); halo('GAUSSIANS', g.x + g.w - 7, yB + lh, lf, C.splat, 'right', ls);
           } else {
-            halo('STARVED OF CONTROL POINTS', g.x + 8, g.y + lh + 5, lf, C.ctrl, 'left', ls);
-            halo('STARVED OF GAUSSIANS', g.x + g.w - 8, g.y + g.h - 8, lf, C.splat, 'right', ls);
+            halo('STARVED OF CONTROL POINTS', g.x + 8, yT, lf, C.ctrl, 'left', ls);
+            halo('STARVED OF GAUSSIANS', g.x + g.w - 8, yB + lh, lf, C.splat, 'right', ls);
           }
           // "balanced", written along the line
-          var ia = Math.floor(nc * 0.42), ib = Math.min(nc - 1, ia + 2);
+          var ia = Math.floor(nc * 0.36), ib = Math.min(nc - 1, ia + 2);
           var ax = g.x + (ia + 0.5) * cell, ay = balY(g, B.nstar[ia]), bx = g.x + (ib + 0.5) * cell, by = balY(g, B.nstar[ib]);
           ctx.save(); ctx.translate((ax + bx) / 2, (ay + by) / 2); ctx.rotate(Math.atan2(by - ay, bx - ax));
           halo('BALANCED', 0, -6, lf, C.ok, 'center', ls); ctx.restore();
@@ -1725,21 +1745,21 @@
           if (ci !== 0 && ci !== nc - 1 && (xx - tw / 2 < lastX + 7 || xx + tw / 2 > g.x + g.w - ctx.measureText(kfmt(B.cols[nc - 1].pts)).width - 10)) continue;
           txt(lab, xx, g.y + g.h + fs + 3, f, C.dim, 'center'); ctx.font = f; lastX = xx + tw / 2;
         }
-        var lastY = 1e9;
+        var lastY = -1e9;
         for (ri = nr - 1; ri >= 0; ri--) {
+          if (KSTEPS.indexOf(B.rows[ri]) < 0) continue;
           var yy = g.y + (nr - 1 - ri + 0.5) * cell + fs * 0.36;
-          if (ri !== nr - 1 && ri !== 0 && (yy > lastY - 2 * fs + 2 || yy - fs < (g.y + 0.5 * cell + fs * 0.36) + 4)) { continue; }
-          if (ri === 0 && yy - fs < lastY + 2 && lastY < 1e8 && yy < lastY + fs + 2) continue;
-          txt(kfmt(B.rows[ri] * B.rows[ri]), g.x - 5, yy, f, C.dim, 'right'); lastY = yy;
+          if (yy - lastY < fs + 3 && ri !== 0) continue;
+          v = B.rows[ri] * B.rows[ri]; txt(tiny && v >= 1000 ? Math.floor(v / 1000) + 'k' : kfmt(v), g.x - 5, yy, f, C.dim, 'right'); lastY = yy;
         }
         txt(tiny ? 'control points →' : 'CONTROL POINTS →', g.x, g.y + g.h + axB + fs + (tiny ? 1 : 4), f6, C.ctrl, 'left', tiny ? '0px' : '0.1em');
-        ctx.save(); ctx.translate(g.x - axL + fs - 1, g.y + g.h); ctx.rotate(-Math.PI / 2);
-        txt(tiny ? 'Gaussians →' : 'GAUSSIANS →', 0, 0, f6, C.splat, 'left', tiny ? '0px' : '0.1em'); ctx.restore();
+        if (tiny) txt('Gaussians ↑', g.x, g.y + g.h + axB + 2 * fs + 5, f6, C.splat, 'left', '0px');
+        else { ctx.save(); ctx.translate(g.x - axL + fs - 1, g.y + g.h); ctx.rotate(-Math.PI / 2); txt('GAUSSIANS →', 0, 0, f6, C.splat, 'left', '0.1em'); ctx.restore(); }
         // colour bar
         if (cbw) {
           var cx = g.x + g.w + 12, k;
-          for (k = 0; k < g.h; k++) { ctx.fillStyle = mapCss(MAP_LO * Math.pow(MAP_HI / MAP_LO, 1 - k / (g.h - 1))); ctx.fillRect(cx, g.y + k, 7, 1.5); }
-          [0.1, 0.01, 0.001, 0.0001].forEach(function (e, q) { txt(pct(e, q > 1 ? q - 1 : 0), cx + 11, g.y + (q / 3) * (g.h - fs) + fs - 1, f, C.dim, 'left'); });
+          for (k = 0; k < 6; k++) { ctx.fillStyle = MAP_BANDS[5 - k]; ctx.fillRect(cx, g.y + k * g.h / 6, 7, g.h / 6 - 1); }
+          [0.1, 0.01, 0.001, 0.0001].forEach(function (e, q) { txt(pct(e, q > 1 ? q - 1 : 0), cx + 11, g.y + (q / 3) * g.h + (q === 0 ? fs - 1 : q === 3 ? 0 : fs * 0.36), f, C.dim, 'left'); });
         }
         // where we are
         var ox = balX(g, m.nu * m.nv), pulse = 0.5 + 0.5 * Math.sin(t * 4);
@@ -1787,10 +1807,10 @@
           status.l2 = 'mean angle to the target’s normals ' + (a == null ? '—' : a.toFixed(1) + '°') + ' · on the 5 × 5 net it is ' + S.coarseAngle().toFixed(1) + '°';
           return;
         }
-        if (!d) return;
-        if (st.preset || st.scene === 'balance') {
+        if (!d || (st.manual && status.l1)) return;
+        if (st.preset) {
           reg = regime(); status.tone = reg === 'bal' ? 'ok' : reg === 'ctrl' ? 'ctrl' : 'splat'; status.live = null;
-          status.l1 = REGIMES[reg].head + ' · ' + pts + ' CONTROL POINTS × ' + G + ' GAUSSIANS';
+          status.l1 = REGIMES[reg].head + (tiny ? ' · ' + pts + ' × ' + G : ' · ' + pts + ' CONTROL POINTS × ' + G + ' GAUSSIANS');
           if (reg === 'ctrl') {
             ri = B.rows.indexOf(32); e2 = B.cols && B.cols[0].pts === m.nu * m.nv && ri >= 0 ? B.E[ri] : NaN;
             status.l2 = 'drawn error ' + pctA(d.rmse) + ' · the surface itself is off by ' + pctA(ms.rmse) +
@@ -1805,7 +1825,7 @@
         }
         if (st.scene === 'sampling' || !status.l1) {
           status.tone = 'splat'; status.live = null;
-          status.l1 = 'LAYER B · ' + G + ' GAUSSIANS · DRAWN ERROR ' + pctA(d.rmse);
+          status.l1 = (tiny ? '' : 'LAYER B · ') + G + ' GAUSSIANS · DRAWN ERROR ' + pctA(d.rmse);
           status.l2 = 'surface untouched · still ' + pts + ' parameters · surface RMSE ' + pctA(ms.rmse);
         }
       }
@@ -1863,7 +1883,7 @@
         // the same state from the side
         drawSide(L.side, m, sdA, { gauss: st.gauss, dimCtrl: st.gauss });
         if (L.labS) sideCaption(L.side, st.gauss, L.side.y - 8);
-        else tag('SIDE · v = ' + st.cut.toFixed(2), L.side.x + 4, L.side.y + 4, C.dim, L.side.w - 8);
+        else txt('SIDE · v = ' + st.cut.toFixed(2), L.side.x + L.side.w + 8, L.side.y + 10, font(600, 10), C.dim, 'left', '0.08em');
         if (L.arr === 'col' && !tiny) {     // the cut, carried down from the map to the side view
           ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath();
           ctx.moveTo(x - 6.5, cutY()); ctx.lineTo(x - 6.5, L.side.y + L.side.h * 0.5); ctx.lineTo(x - 1, L.side.y + L.side.h * 0.5);
@@ -1986,7 +2006,7 @@
         if (!c) return;
         st.tour = null; clearRun(); setModel(S.restore(B.cols[c.ci].snap));
         st.inserted = 0; st.pruned = 0; st.ceiling = null; st.blocked = null; st.rmse0 = S.coarseRmse; st.barScale = 0;
-        st.densAuto = false; setDens(B.rows[c.ri]); st.preset = 'cell'; st.view = 'fit'; segMap.set('fit'); setStatus('', '', 'text'); markPreset();
+        st.densAuto = false; setDens(B.rows[c.ri]); st.preset = 'cell'; st.manual = false; st.view = 'fit'; segMap.set('fit'); setStatus('', '', 'text'); markPreset();
         if (!st.gauss) setGauss(true);
       });
 
@@ -1997,9 +2017,11 @@
       }
       env.loop(function (t, dt) {
         if (!m || !L) return;
-        if (st.bal || st.want) { if (!B.ready) S.balStep(7); if (st.want && B.cols) applyPreset(st.want); }
+        var t0 = now(), gapMs = lastFrame ? t0 - lastFrame : 16; lastFrame = t0;
+        // the balance map is measured in slices: 8 ms a frame, more when frames are slow anyway
+        if (st.bal || st.want) { if (!B.ready) S.balStep(KT.clamp(0.3 * gapMs, 8, 60)); if (st.want && B.cols) applyPreset(st.want); }
         if (st.run) step(dt);
-        var t0 = now(); draw(t, dt); perf.frame = now() - t0;
+        t0 = now(); draw(t, dt); perf.frame = now() - t0;
       });
 
       var r0 = rootEl.getBoundingClientRect();

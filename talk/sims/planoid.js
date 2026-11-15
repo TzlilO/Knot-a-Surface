@@ -162,7 +162,7 @@
       var a, b;
       function own(o, order) { o.frustumCulled = false; if (order != null) o.renderOrder = order; scene.add(o); return o; }
       function ghostLines(l, opacity, order) {              // the part of a line set that lies behind something
-        return own(new T.LineSegments(l.obj.geometry, G.hidden(l.mat.color, opacity, true)), order);
+        return own(new T.LineSegments(l.obj.geometry, G.hidden(l.mat.color, opacity, 'line')), order);
       }
 
       var grid = new T.GridHelper(9, 18, 0x243652, 0x162238); grid.position.y = FLOOR; scene.add(grid);
@@ -211,7 +211,7 @@
       plGeo.addGroup(0, 6, 0); plGeo.addGroup(6, 6, 1);
       function flat(color, opacity) { return new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: T.DoubleSide, depthWrite: false }); }
       var plane = own(new T.Mesh(plGeo, [flat(C.surf, 0.09), flat(C.surf, 0.22)]), 4);
-      var planeHid = own(new T.Mesh(plGeo, G.hidden(C.surf, 0.045)), 5);
+      var planeHid = own(new T.Mesh(plGeo, G.hidden(C.surf, 0.045, 'flat')), 5);
       var plGrid = G.lines(40, C.surf, 0.26), plEdge = G.lines(8, '#d7f1ff', 0.85), mark = G.lines(8, '#ffffff', 0.9);
       own(plGrid.obj, 5); own(plEdge.obj, 6); own(mark.obj, 6);
       var plEdgeHid = ghostLines(plEdge, 0.25, 7);
@@ -223,7 +223,7 @@
         var pos = new Float32Array((EL + 1) * 2 * 3), g = new T.BufferGeometry(), ix = [], i;
         for (i = 0; i < EL; i++) ix.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
         g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setIndex(ix);
-        var mesh = own(new T.Mesh(g, flat(color, opacity)), order), hid = own(new T.Mesh(g, G.hidden(color, opacity * 0.3)), order);
+        var mesh = own(new T.Mesh(g, flat(color, opacity)), order), hid = own(new T.Mesh(g, G.hidden(color, opacity * 0.3, 'flat')), order);
         return { mesh: mesh, hid: hid,
           /* centre c, axes A and B (1 sigma), lifted by `lift` along nr, half-width hw as a fraction of the radius */
           set: function (c, A, B, nr, lift, hw) {
@@ -819,7 +819,7 @@
           var n = Math.round(Math.exp(KT.lerp(Math.log(6), Math.log(150), 0.5 - 0.5 * Math.cos(st.t * 0.55))));
           if (n !== st.n) { st.n = n; slN.set(n); fieldDirty = latDirty = true; }
         }
-        if (surfDirty) { updateSurface(); latDirty = probeDirty = true; surfDirty = false; }
+        if (surfDirty) { updateSurface(); probeDirty = true; if (s.nbr) latDirty = true; surfDirty = false; }
         if (latDirty) { layers(); if (s.nbr) updateLattice(); latDirty = false; }
         if (s.field && fieldDirty) { updateField(); fieldDirty = false; }
         if (s.field) {
@@ -853,11 +853,12 @@
         if (s.tan && pr && st.nudge && !busy) {
           camDir.copy(cam.position).sub(probe.position).normalize();
           var c = pr.n[0] * camDir.x + pr.n[1] * camDir.y + pr.n[2] * camDir.z, sg2 = c < 0 ? -1 : 1, ac = Math.abs(c);
-          if (ac < EDGE) {                     // turn towards the side of the plane we are already on
-            var kk = 1 - Math.exp(-3.2 * dt * (1 - ac / EDGE) - 0.4 * dt);
-            var dth = wrap(Math.atan2(sg2 * pr.n[0], sg2 * pr.n[2]) - orbit.cur.th) * kk;
-            var dph = (KT.clamp(Math.acos(KT.clamp(sg2 * pr.n[1], -1, 1)), 0.12, 1.5) - orbit.cur.ph) * kk;
-            if (orbit.touched) { g.th += dth; g.ph = KT.clamp(g.ph + dph, 0.12, 1.5); } else { st.nud.th += dth; st.nud.ph += dph; }
+          if (ac < EDGE) {                     // turn towards the side of the plane we are already on, and stop as soon as it reads
+            var dth = wrap(Math.atan2(sg2 * pr.n[0], sg2 * pr.n[2]) - orbit.cur.th);
+            var dph = KT.clamp(Math.acos(KT.clamp(sg2 * pr.n[1], -1, 1)), 0.12, 1.5) - orbit.cur.ph, kk;
+            if (orbit.touched) {               // the user's view: aim a little ahead of where the camera is
+              kk = 0.1 + 0.1 * (1 - ac / EDGE); g.th = orbit.cur.th + dth * kk; g.ph = KT.clamp(orbit.cur.ph + dph * kk, 0.12, 1.5);
+            } else { kk = 1 - Math.exp(-1.1 * dt); st.nud.th += dth * kk; st.nud.ph += dph * kk; }
             st.nudT = 1.6;
           } else if (ac > EDGE * 1.25) { var dk = Math.exp(-0.35 * dt); st.nud.th *= dk; st.nud.ph *= dk; }
         }

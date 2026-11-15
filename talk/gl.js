@@ -248,11 +248,13 @@
   /* ---------- depth cues: things that are hidden stay visible, but faint ----------
      A material that draws only where something nearer has already written depth. Put it on a second object
      that shares the geometry (and the transform) of the real one and render it afterwards (renderOrder):
-     the part of a control net, an arrow or a plane that lies behind the surface shows through, dimmed. */
-  gl.hidden = function (color, opacity, line) {
-    var M = line ? T.LineBasicMaterial : T.MeshBasicMaterial;
+     the part of a control net, an arrow or a plane that lies behind the surface shows through, dimmed.
+     kind: 'line' for line sets, 'flat' for open sheets (both faces), omitted for closed solids (front faces
+     only, so a solid does not show through itself). */
+  gl.hidden = function (color, opacity, kind) {
+    var M = kind === 'line' ? T.LineBasicMaterial : T.MeshBasicMaterial;
     return new M({ color: color, transparent: true, opacity: opacity, depthFunc: T.GreaterDepth, depthWrite: false,
-                   side: T.DoubleSide });
+                   side: kind === 'flat' ? T.DoubleSide : T.FrontSide });
   };
 
   /* A vector as a solid object: a lit cylinder and cone (needs lights in the scene), depth-tested, with a dark
