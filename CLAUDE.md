@@ -72,6 +72,19 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
   ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured.
+  `touch` (talk/sims/touch.js, chapter 07b "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
+  an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
+  loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
+  `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
+  shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list). Fixed sub-steps,
+  seeded, every number on screen measured; only the launch direction of `flight` is chosen.
+- Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
+  as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
+  rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the
+  old dithered look. A new 3D module must use it too.
+- Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
+  (`talk/audio/tracks.js`, empty by default: no recording is in the repo) while the step is active; M mutes; the
+  `.credit` line of a step shows only when a track has loaded.
 - Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
   away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
   written still meets the budget (the far side of a closed chart gets zero weight).

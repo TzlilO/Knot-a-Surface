@@ -19,23 +19,26 @@
   var ROLL = 0.03, SLANT = 0.2;     // split screen: band travel in stage widths per second, and the lean of its dividers
   function wrap(x, m) { return ((x % m) + m) % m; }
 
+  /* The talk runs on ONE subject: `scan`, a real DTU object (talk/dtu-data.js; without that file the barn
+     stands in). The hand-modelled scenes stay as tabs of the lab page. atlas: 1 shows the (u,v) tiles, tools: 1 the toggles. */
   var SCENES = {
-    scene:  { scn: 'barn', view: 'splats', cam: 'wide', rig: 1, cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
-    modes:  { scn: 'barn', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
-    charts: { scn: 'barn', view: 'charts', cam: 'wide', cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
-    nets:   { scn: 'barn', view: 'charts', cam: 'wide', nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
-    budget: { scn: 'barn', view: 'splats', tour: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
-    lod:    { scn: 'barn', view: 'splats', cam: 'close', ab: 1, rim: 0.6, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
-    truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, cap: 'same method, another capture' },
-    bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, cap: 'a scanned object under a camera dome' },
-    garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, cap: 'an object inside an unbounded surround' },
-    edit:   { scn: 'bust', view: 'splats', cam: 'a', breathe: 1, cap: 'editable by construction · move control points, the Gaussians follow',
+    scene:  { scn: 'scan', view: 'splats', cam: 'wide', cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
+    modes:  { scn: 'scan', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
+    charts: { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
+    nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
+    budget: { scn: 'scan', view: 'splats', tour: 1, atlas: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
+    lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
+    barn:   { scn: 'barn', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'a building and its grounds' },
+    truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'same method, another capture' },
+    bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'a scanned object under a camera dome' },
+    garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'an object inside an unbounded surround' },
+    edit:   { scn: 'bust', view: 'splats', cam: 'a', breathe: 1, tools: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
     /* an aside in three steps: the nose is as long as the claim on the slide is tall */
     fib1:   { scn: 'bust', view: 'splats', cam: 'a', nose: 2.5, cap: 'the nose is as long as the claim is tall' },
     fib2:   { scn: 'bust', view: 'splats', cam: 'a', nose: 1.7, cap: 'a little closer to the truth' },
     fib3:   { scn: 'bust', view: 'splats', cam: 'a', nose: 0, cap: 'what was actually measured' },
-    studio: { scn: 'studio', view: 'splats', cam: 'wide', cap: 'the abstract still life' },
+    studio: { scn: 'studio', view: 'splats', cam: 'wide', atlas: 1, cap: 'the abstract still life' },
     /* chrome-free, for pages that embed the scene as a backdrop (mount with { bare: true }) */
     hero:   { scn: 'barn', view: 'splats', tour: 1, cap: '' }
   };
@@ -47,9 +50,9 @@
            'The scenes are procedural stand-ins modelled after Tanks and Temples, DTU and Mip-NeRF 360 captures, not the datasets.',
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
-      { id: 'scene', label: 'Barn' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
-      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'truck', label: 'Truck' },
-      { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'edit', label: 'Edit' }, { id: 'studio', label: 'Still life' }
+      { id: 'scene', label: 'The object' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
+      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'edit', label: 'Edit' },
+      { id: 'barn', label: 'Barn' }, { id: 'truck', label: 'Truck' }, { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'studio', label: 'Still life' }
     ],
     create: function (env) {
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
@@ -75,11 +78,12 @@
           st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
           loadScene(v); orbit.touched = false; orbit.to(view('wide'), true); paintCap();
         } });
+      segS.el.classList.add('mf-pick');
       var slB = ui.slider(panel, { label: 'budget', min: 6000, max: CAP - 20000, step: 2000, value: Math.min(st.budget, CAP - 20000),
         fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, onInput: function (v) { st.budget = v; need = true; } });
       var segV = ui.seg(panel, { value: 'splats', options: MODES.concat([{ v: 'split', label: 'all' }]),
         onChange: function (v) { st.view = v; showView(); } });
-      var rowT = ui.el('div', 'kt-row'); panel.appendChild(rowT);
+      var rowT = ui.el('div', 'kt-row mf-tog'); panel.appendChild(rowT);
       var tgA = ui.toggle(rowT, { label: 'adaptive', value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
       var tgN = ui.toggle(rowT, { label: 'nets', value: false, onChange: function (v) { st.nets = v; showNets(); } });
       var tgR = ui.toggle(rowT, { label: 'cameras', value: false, onChange: function (v) { st.rig = v; showNets(); } });
@@ -125,6 +129,7 @@
       function loadScene(key) {
         if (st.scn === key) { charts.forEach(function (c) { c.patch.P.set(c.base); coarse(c); }); updateNets(); need = true; return; }
         st.scn = key; def = KT.scenes[key].build(); charts = def.charts; segS.set(key);
+        field.uniforms.uFlat.value = def.photo || KT.scenes[key].photo ? 1 : 0;   // colours from photographs are already lit
         [netL && netL.obj, pts, rigL && rigL.obj].forEach(function (o) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
         totalCP = 0; var segs = 0;
         charts.forEach(function (c) {
@@ -375,12 +380,14 @@
       }
       function paintCap() {
         var s = KT.scenes[st.scn];
-        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
+        cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (s.note != null ? s.note && ' · ' + s.note : st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
         badge.style.display = st.sc.ab ? '' : 'none';
       }
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
         if (id === 'hero' && env.opts.scn && KT.scenes[env.opts.scn]) sc = Object.assign({}, sc, { scn: env.opts.scn });
+        if (!KT.scenes[sc.scn]) sc = Object.assign({}, sc, { scn: 'barn' });
+        root.classList.toggle('mf-noatlas', !sc.atlas); root.classList.toggle('mf-tools', !!sc.tools);
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
         st.view = sc.view; segV.set(sc.view); showView(); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
@@ -423,7 +430,7 @@
         var ud = field.uniforms.uDepth.value, kz = 1 - Math.exp(-5 * dt);
         ud.x += (zr[0] - ud.x) * kz; ud.y += (zr[1] - ud.y) * kz;
         if (st.view === 'split') { roll = wrap(roll + ROLL * dt, 1); field.uniforms.uSplit.value.y = roll; placeSplit(); }
-        R.renderer.render(scene, cam);
+        G.draw(R, scene, cam);
       });
 
       if (!document.getElementById('kt-manifold-css')) {
@@ -439,7 +446,10 @@
           '.kt-sim-manifold .kt-tile-n{font:600 11px/1 var(--f-mono);color:var(--text);margin-top:5px;font-variant-numeric:tabular-nums;white-space:nowrap}' +
           '.kt-sim-manifold .kt-tile-s{font:500 10px/1 var(--f-mono);color:var(--mute);margin-top:3px;white-space:nowrap}' +
           '.kt-sim-manifold .kt-caption{line-height:1.6}.kt-sim-manifold.kt-embed .kt-hint{display:none}' +
-          '.kt-sim-manifold.kt-compact .kt-atlas{display:none}' +
+          '.kt-sim-manifold.kt-compact .kt-atlas,.kt-sim-manifold.mf-noatlas .kt-atlas{display:none}' +
+          // in the deck the steps drive the scene: no picker, and the toggles only on a step that asks for them (tools: 1)
+          '.kt-sim-manifold.kt-embed .mf-pick,.kt-sim-manifold.kt-embed:not(.mf-tools) .mf-tog{display:none}' +
+
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
           '.kt-sim-manifold.kt-bare .kt-hint,.kt-sim-manifold.kt-bare .kt-ab,.kt-sim-manifold.kt-bare .kt-gear{display:none!important}' +
           '.kt-sim-manifold .kt-panel .kt-seg .kt-seg-box{margin-left:0;width:100%}' +

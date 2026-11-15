@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Knot-a-Surface — the talk</title>
-<meta name="description" content="Knot-a-Surface: surfaces first, Gaussians second. A scroll-driven thesis talk with six live simulations, from a single spline to a manifold of spline charts.">
+<meta name="description" content="Knot-a-Surface: surfaces first, Gaussians second. A scroll-driven thesis talk with eight live simulations, from a single spline to a manifold of spline charts.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="talk/vendor/katex.min.css">
@@ -19,13 +19,14 @@
   <div class="cut" role="group" aria-label="Talk length"><button type="button" data-cut="20">20′</button><button type="button" data-cut="40">40′</button></div>
   <div class="clock" title="Click or press T to start / reset the pace clock"></div>
   <button type="button" class="help" aria-label="Keyboard shortcuts">?</button>
+  <button type="button" class="sound" aria-label="Mute the music" title="M · mute" hidden>♪</button>
 </div>
 <div class="keys">
   <div><kbd>→</kbd><kbd>space</kbd>next step</div>
   <div><kbd>←</kbd>previous step</div>
   <div><kbd>F</kbd>focus the simulation · <kbd>esc</kbd>back</div>
-  <div><kbd>1</kbd>–<kbd>7</kbd>jump to a chapter · <kbd>0</kbd>cover</div>
-  <div><kbd>T</kbd>start / reset the pace clock</div>
+  <div><kbd>1</kbd>–<kbd>8</kbd>jump to a chapter · <kbd>0</kbd>cover</div>
+  <div><kbd>T</kbd>start / reset the pace clock · <kbd>M</kbd>mute the music</div>
   <div>20′ hides the deep-dive steps · 40′ shows everything</div>
 </div>
 
@@ -36,7 +37,7 @@
   <div class="cover-text">
     <h1>Knot‑a‑<span>Surface</span></h1>
     <p class="tag">Surfaces first. <em>Gaussians second.</em></p>
-    <div class="by"><span><b>Tzlil Ovadia</b></span><span>Six live simulations · one idea</span><span class="go">scroll, or press → to begin</span></div>
+    <div class="by"><span><b>Tzlil Ovadia</b></span><span>Eight live simulations · one idea</span><span class="go">scroll, or press → to begin</span></div>
   </div>
 </section>
 
@@ -214,7 +215,7 @@
 </section>
 
 <!-- ============================================================ 03 PLANOID -->
-<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="7" data-min20="3.75">
+<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="6.5" data-min20="3.5">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="net">
@@ -391,14 +392,14 @@
 </section>
 
 <!-- ============================================================ 06 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6.5" data-min20="3.25">
+<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="5" data-min20="2.5">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene">
       <div class="num">06</div><div class="kick">Scaling to scenes · full power</div>
       <h2>A manifold of splines</h2>
       <p>One patch is a bent rectangle. A real scene needs an atlas of them.</p>
-      <div class="time">≈ 7 min</div>
+      <div class="time">≈ 5 min</div>
     </article>
     <article class="step nav" data-scene="scene">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -527,9 +528,54 @@
           <tr><th>Parts</th><td>cluster, or lift 2D masks</td><td>the chart, then image operations in (u, v)</td></tr>
           <tr><th>Detail level</th><td>prune, merge or retrain</td><td>sample again</td></tr>
           <tr><th>Editing</th><td>select Gaussians, move each</td><td>move control points</td></tr>
+          <tr><th>Contact</th><td>pick a density threshold, or extract a mesh first</td><td>closest point and normal, on the surface</td></tr>
         </tbody>
       </table>
       <p class="aside">The limit: across a seam between two charts none of this is free. Adjacency there has to be stored or searched, as in a list.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ 07b CONTACT -->
+<section class="chapter" data-sim="touch" data-rail="07b" data-title="Can’t touch this" data-min40="2" data-min20="1">
+  <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30">
+      <div class="num">07<small>b</small></div><div class="kick">A list against charts · contact</div>
+      <h2>Can’t touch this</h2>
+      <p>A game, a physics engine and an editor all begin with the same question: where is the surface, and which way does it face? A list of Gaussians has no answer. A spline does.</p>
+      <div class="time">≈ 2 min</div>
+      <p class="credit">♪ “U Can’t Touch This” · MC Hammer, 1990 · built on “Super Freak”, Rick James, 1981</p>
+    </article>
+    <article class="step nav" data-scene="ghost" data-audio="touch" data-audio-len="30">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Drop a ball on a list: <em class="c-err">nothing to hit</em></h2>
+      <p>A list of Gaussians is a density, not a boundary. With no rule, the ball falls straight through. Treat every Gaussian as a loose particle and the ball knocks them away, because nothing holds them together.</p>
+      <p class="aside">A real pipeline first picks a density threshold or extracts a mesh: a separate algorithm with its own errors. The list is emulated from the same bowl; it is not a trained 3DGS model.</p>
+    </article>
+    <article class="step nav" data-scene="solid" data-audio="touch" data-audio-len="30">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>On a spline, contact is <em class="c-surf">a formula</em></h2>
+      <p>Find the closest point <span data-tex="\mathbf{S}(u,v)"></span> to the ball, take the normal <span data-tex="\mathbf{S}_u\times\mathbf{S}_v"></span>, reflect the velocity about it. Restitution is one material constant: set it to 1 and the energy stays at 100 %, bounce after bounce.</p>
+      <p class="aside">The closest point takes five Gauss–Newton steps in (u, v), started from the previous answer. The ball is a point mass with a radius; it does not spin.</p>
+      <span class="do">Move restitution</span>
+    </article>
+    <article class="step nav" data-scene="brittle" data-depth="deep" data-audio="touch" data-audio-len="30">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Toughness: <em>how much it can give back</em></h2>
+      <p>An impact asks the surface for an impulse, <span data-tex="m(1+e)\,|\mathbf{v}\cdot\mathbf{n}|"></span>. Below the toughness the surface holds. Above it, it breaks into pieces of the (u, v) domain, and each piece carries its Gaussians with it.</p>
+      <p class="aside">A material rule, not a fracture solver: the pieces are rigid and do not collide with each other.</p>
+    </article>
+    <article class="step nav" data-scene="elastic" data-depth="deep" data-audio="touch" data-audio-len="30">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Put the control points <em class="c-ctrl">on springs</em></h2>
+      <p>The contact force goes to the sixteen control points that shape that address, shared out by their basis weights. The surface gives, throws the ball back, and the ripple runs through the net. The Gaussians are derived again every frame.</p>
+    </article>
+    <article class="step nav" data-scene="flight" data-replay data-audio="touch" data-audio-len="30">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2><em>Out of bounds</em></h2>
+      <p>A hard bounce throws the ball out of the spline bowl and into the list. There every Gaussian is on its own, and the bowl comes apart.</p>
+      <p class="aside">Only the direction of the launch is chosen, so that the ball lands in the other bowl. The bounce, the flight and the scatter are simulated. How hard overlapping Gaussians push each other apart is an invented constant: a list defines no such force.</p>
     </article>
   </div>
 </section>
@@ -607,6 +653,8 @@
 <script src="talk/sims/refine.js"></script>
 <script src="talk/sims/manifold.js"></script>
 <script src="talk/sims/structure.js"></script>
+<script src="talk/sims/touch.js"></script>
+<script src="talk/audio/tracks.js"></script>
 <script src="talk/deck.js"></script>
 </body>
 </html>

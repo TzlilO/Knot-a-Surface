@@ -85,8 +85,46 @@
     $$('.stage-frame.is-current').forEach(function (f) { f.classList.remove('is-current'); });
     var fr = $('.stage-frame', sec); if (fr) fr.classList.add('is-current'); else setFocus(false);
     try { history.replaceState(null, '', '#s' + n._i); } catch (e) {}
+    sound(n);
     tick();
   }
+
+  /* ================= a step may carry a sound =================
+     <article ... data-audio="name" data-audio-len="30">: while such a step is active the first seconds of the
+     track loop, faded in and out. Names are resolved in KnotTalk.tracks (talk/audio/tracks.js); a name that is
+     not listed there is silent, and the mute button and the credit line (.credit) stay hidden. M mutes.
+     Browsers only start sound after a key or a click. */
+  var snd = { a: null, src: '', len: 30, ok: false, want: false, mute: false, vol: 0, raf: 0, btn: $('.sound') };
+  function sound(n) {
+    var src = (KT.tracks || {})[n.dataset.audio] || '';
+    if (src && src !== snd.src) {
+      if (snd.a) snd.a.pause();
+      snd.src = src; snd.ok = false; snd.vol = 0; snd.len = +n.dataset.audioLen || 30;
+      var a = snd.a = new Audio(src); a.preload = 'auto'; a.volume = 0;
+      a.addEventListener('canplay', function () { if (a === snd.a) { snd.ok = true; paintSound(); fade(); } });
+      a.addEventListener('timeupdate', function () { if (a.currentTime >= snd.len) a.currentTime = 0; });
+      a.addEventListener('ended', function () { a.currentTime = 0; a.play().catch(function () {}); });
+    }
+    snd.want = !!src; paintSound(); fade();
+  }
+  function paintSound() {
+    document.body.classList.toggle('has-sound', snd.ok);
+    snd.btn.hidden = !(snd.ok && snd.want); snd.btn.classList.toggle('off', snd.mute);
+  }
+  function fade() {
+    cancelAnimationFrame(snd.raf);
+    var a = snd.a, goal = snd.want && !snd.mute ? 0.6 : 0, last = performance.now();
+    if (!a || !snd.ok) return;
+    if (goal && a.paused) a.play().catch(function () {});     // refused before the first key or click: retried on the next one
+    (function stepFade(now) {
+      var d = Math.max(0, now - last) / 600; last = now;      // 0.6 s from silence to full
+      snd.vol = goal > snd.vol ? Math.min(goal, snd.vol + d) : Math.max(goal, snd.vol - d);
+      a.volume = snd.vol;
+      if (snd.vol !== goal) snd.raf = requestAnimationFrame(stepFade); else if (!goal) a.pause();
+    })(last);
+  }
+  snd.btn.addEventListener('click', function () { snd.mute = !snd.mute; paintSound(); fade(); });
+  ['keydown', 'pointerdown'].forEach(function (ev) { document.addEventListener(ev, function () { if (snd.want && snd.ok && !snd.mute && snd.a.paused) fade(); }); });
 
   var bar = $('.progress'), queued = false;
   function onScroll() {
@@ -185,6 +223,7 @@
     else if (k === 'f' || k === 'F') setFocus(!document.body.classList.contains('focus'));
     else if (k === 'Escape') { setFocus(false); keys.classList.remove('on'); }
     else if (k === 't' || k === 'T') { if (clock.t0) clock.t0 = 0; else startClock(); tick(); }
+    else if (k === 'm' || k === 'M') snd.btn.click();
     else if (k === '?') keys.classList.toggle('on');
     else if (k >= '0' && k <= '9') {                 // 0 = cover, 1-8 = that chapter, 9 = takeaways
       var c = k === '0' ? chapters[0] : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
