@@ -152,6 +152,13 @@
       <p>Both versions of the text are lists of <b class="c-ctrl">control points</b>. Slide every point from one list to the other and the letters flow into handwriting, and from there into anything else twelve curves can draw. Here, a missile.</p>
       <p class="aside">Each of the three shapes is exact. In between, the control points and the knots travel in straight lines.</p>
     </article>
+    <article class="step nav" data-scene="fit">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>How close is <em>close enough</em>?</h2>
+      <p>Take the handwriting as the truth and try to say it with fewer <b class="c-ctrl">control points</b>. Too few, and the curve cannot express it. Too few samples, and even a good curve is read out too coarsely. The <b class="c-err">red gap</b> closes only when both are refined.</p>
+      <p class="aside">The plot is the measured gap against the number of control points: once with the samples in use, once with plenty. It behaves like the step of a numerical method: refine and the error falls, starve either one and it stalls.</p>
+      <span class="do">Move the two sliders</span>
+    </article>
     <article class="step nav" data-scene="drag" data-depth="deep">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Control points <em class="c-ctrl">steer</em>. The curve follows.</h2>
@@ -401,6 +408,13 @@
       <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is in view and facing the lens; a small floor keeps everything else covered. (This demo does not test occlusion.)</p>
       <p>Watch the atlas, bottom left: brighter tiles are holding more Gaussians. Sparsely described charts — ground, treeline — get a smaller share: there is no point sampling finer than a surface’s own detail.</p>
     </article>
+    <article class="step nav" data-scene="zoom">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Lock the Gaussians <em>to the view</em></h2>
+      <p>A fixed grid of Gaussians, one per cell like the pixels of a sensor, laid over whatever part of the surface the camera sees. Move closer and the same Gaussians cover a smaller piece of the (u, v) domain: each one stands for less surface, so finer detail appears.</p>
+      <p>From far away, 6,000 Gaussians show a missile. Close up, the same 6,000 read the small writing on its body. The corner shows the scene from outside: the lit patch is where every Gaussian is.</p>
+      <p class="aside">This surface is one flat chart, so every cell maps to an exact (u, v). The detail it can reveal ends where the control net does: 144,000 control points carry this picture.</p>
+    </article>
     <article class="step nav" data-scene="lod">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Level of detail, <em>without retraining</em></h2>
@@ -497,6 +511,7 @@
 <script src="talk/nurbs.js"></script>
 <script src="talk/kit.js"></script>
 <script src="talk/gl.js"></script>
+<script src="talk/ink.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/sims/flatland.js"></script>
 <script src="talk/sims/basis.js"></script>

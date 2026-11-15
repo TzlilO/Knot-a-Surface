@@ -45,7 +45,10 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   playground; its `letters` / `script` scenes draw "Shalom Rafael" as one spline per letter and as
   three handwritten strokes, from the control polygons in `PRINT` / `HAND`; `morph` blends letters →
   handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with
-  matching control-point counts by knot insertion, so a blend is a lerp of control points and knots), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
+  matching control-point counts by knot insertion, so a blend is a lerp of control points and knots;
+  `fit` takes a drawing as ground truth, fits it by least squares with n control points, reads it at m
+  samples and shows the gap in red plus a measured gap-vs-control-points plot; the drawings themselves
+  live in `talk/ink.js` = `KnotTalk.ink`, shared with the `poster` scene), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
@@ -54,7 +57,11 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   capture rig and an `edit(k)` animation). Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
-  so it is still one draw call; the band labels and dividers are DOM, moved every frame).
+  so it is still one draw call; the band labels and dividers are DOM, moved every frame). Scene `zoom`
+  = frustum-locked sampling (`lockSample`): a fixed GW x GH grid of Gaussians, one per view cell, placed
+  where the cell's rays meet a PLANAR chart (`chart.plane`, only the hidden `poster` scene has one), so
+  moving closer spends the same budget on a smaller (u, v) window; a corner inset renders the same
+  Gaussians from outside with the frustum.
 - Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
   Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the
@@ -93,7 +100,8 @@ plain static files and classic scripts like the talk. It reuses `talk/nurbs.js`,
   accumulation. While nothing moves, frames are averaged with a new dither, a sub-pixel camera jitter and
   a jittered light, so Gaussian fringes, shadows and occlusion converge (64 frames, then it stops
   drawing). Anything that changes the picture must call `invalidate()` (or pass `soft` / use `live`).
-- `lab/app.js` = sampling (a port of the manifold module's per-tile view-adaptive allocation), per-control-
+- `lab/app.js` = sampling (a port of the manifold module's per-tile allocation; `st.sampling` = even /
+  adaptive / locked, where locked puts the whole budget inside the view frustum by area on screen), per-control-
   point channels `c.A` (feature colour x3, similarity, selection) blended to the Gaussians with the same
   basis as colour, picking (nearest Gaussian on the ray), tools (sculpt = soft brush on control points;
   select by feature similarity or by chart, then inflate / lift / scale / tint / hide), the split screen.

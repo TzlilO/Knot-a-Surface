@@ -40,7 +40,9 @@
     <section>
       <h2>Sampling</h2>
       <div class="row" id="budget"><label for="budget-in">Gaussian budget</label><input id="budget-in" type="range"><output></output></div>
-      <label class="check"><input type="checkbox" id="adaptive" checked><span>View‑adaptive sampling</span></label>
+      <div class="seg small" id="sampling" aria-label="Where the Gaussians go">
+        <button type="button" data-v="even" title="Spread by surface area">Even</button><button type="button" data-v="adaptive" title="Follow the camera, keep a floor everywhere">View‑adaptive</button><button type="button" data-v="locked" title="All of the budget inside the view">Locked to view</button>
+      </div>
       <label class="check"><input type="checkbox" id="nets"><span>Show control nets</span></label>
       <dl class="nums">
         <div><dt>Gaussians drawn</dt><dd id="n-g" class="c-splat">–</dd></div>
