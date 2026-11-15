@@ -61,13 +61,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
   charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
-  capture rig and an `edit(k)` animation). Its views are the splat shader's render modes (`uMode` in
+  capture rig and an `edit(k)` animation). The deck's chapter 06 runs on ONE subject, scene `scan`: a REAL
+  DTU object (scan 122, an owl) baked offline by `python3 -I tools/dtu/fit.py <data-dir> 122` into
+  `talk/dtu-data.js` (`KnotTalk.dtu`, must load before `talk/scenes.js`; without it the barn stands in).
+  It is an offline fit to the dataset's depth maps and photographs: never call it trained or a result of
+  the method. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
+  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
   head is shaped from MediaPipe's canonical face mesh (`talk/face-data.js`, Apache-2.0; `faceFit` casts a
-  ray per control point; without that file it falls back to sculpted bumps); scenes `fib1..3` ease
-  `def.edit(k)` (the nose) to the length the step asks for.
+  ray per control point; without that file it falls back to sculpted bumps).
   `structure` (talk/sims/structure.js, chapter 07) = the truck scene stored two ways in two viewports: a
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index

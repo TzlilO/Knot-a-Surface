@@ -40,7 +40,8 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
   pages themselves sibling-load the cores).
 - **Thesis talk**: `talk.html` + `talk/` are plain static files with no build step
   (`kit.js` module registry, `nurbs.js` spline math, `gl.js` three.js helpers, `scenes.js` spline-chart
-  scenes (barn / truck / bust / garden stand-ins), `deck.js`/`deck.css`
+  scenes (barn / truck / bust / garden stand-ins, and `scan`: a real DTU object fitted offline by
+  `tools/dtu/fit.py` into `talk/dtu-data.js`), `deck.js`/`deck.css`
   scroll engine, one module per simulation in `talk/sims/`). three.js and KaTeX are vendored in
   `talk/vendor/` so the talk runs offline. The evidence numbers live at the top of `talk/deck.js`.
 - **Deploy**: `bash deploy/deploy-site.sh` = flatten + build + commit + push to `main`

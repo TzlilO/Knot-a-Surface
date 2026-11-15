@@ -508,7 +508,19 @@
       views: { wide: { th: 0.30, ph: 1.22, r: 8.6, tx: 0, ty: ty, tz: tz }, close: { th: -0.15, ph: 1.20, r: 3.3, tx: 0.15, ty: ty * 1.5, tz: 0.2 },
                a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz } },
       tour: ['wide', 'close', 'a', 'b'],
-      rig: { cams: D.cams, target: T }               // the scan's own camera positions, in the object's frame
+      rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
+      /* the owl cocks its head: every control point above the shoulders, tilted about an axis that points at
+         the cameras, so no part of the sheet's open back turns into view. The numbers are this object's
+         (scan 122); another scan has no edit */
+      edit: D.scan !== 122 ? null : function (k) {
+        var c = C[0], P = c.patch.P, B = c.base, i, w, a, x, y;
+        for (i = 0; i < P.length; i += 3) {
+          w = KT.clamp((B[i + 1] - 2.3) / 0.55, 0, 1); if (!w) continue;
+          a = 0.3 * k * w * w * (3 - 2 * w); x = B[i] - 0.24; y = B[i + 1] - 2.45;
+          P[i] = 0.24 + x * Math.cos(a) - y * Math.sin(a); P[i + 1] = 2.45 + x * Math.sin(a) + y * Math.cos(a);
+        }
+        return [c];
+      }
     };
   }
 
@@ -523,5 +535,5 @@
   };
   /* the real object, when its data file was loaded before this one. `note` is what a caption may say about it */
   if (KT.dtu) KT.scenes.scan = { label: KT.dtu.label || 'Scan', suite: 'DTU scan ' + KT.dtu.scan, photo: true,
-                                 note: 'fitted offline to its depth maps and photographs · not trained', build: scan };
+                                 note: 'fitted offline, not trained', build: scan };
 })();
