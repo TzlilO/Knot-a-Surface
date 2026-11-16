@@ -31,11 +31,20 @@ cached, so it can be as elaborate as you like; only `move` runs every frame.
 
 ```js
 name: { label: 'shown in the picker', beak: [r, g, b], lid: [r, g, b], view: 'through',   // view: optional
-  colour: function (s) { ...; s.r = ; s.g = ; s.b = ; /* optional */ s.a = ; },
-  eye: function (d, lx, ly) { return [r, g, b]; },      // optional
-  move: function (s, t) { s.x += ; s.y += ; s.z += ; }  // optional
+  p: { opacity: 0.34, gloss: 1 },                                                         // its properties, at their defaults
+  knobs: [{ k: 'opacity', label: 'opacity', min: 0.08, max: 1, step: 0.01 }],             // the ones the simulator may turn
+  colour: function (s, p) { ...; s.r = ; s.g = ; s.b = ; /* optional */ s.a = ; },
+  eye: function (d, lx, ly) { return [r, g, b]; },         // optional
+  move: function (s, t, p) { s.x += ; s.y += ; s.z += ; }  // optional
 }
 ```
+
+Every number that is a property of the material (how opaque, how glossy, how stiff, how much of a pattern)
+belongs in `p`, read through the last argument, and gets a `knobs` entry: the simulator builds one slider per
+entry, and the landing page's teaser turns them too. Name knobs after physical properties, give them ranges in
+which the material still reads, and make `move` respond the way the property would (the jelly's `stiffness`
+divides the amplitude and multiplies the frequencies by its square root, like a mass on a spring). A knob that
+`colour` reads repaints the owl on every change, which is fine; do not read `p` anywhere but in the rule.
 
 What the rule can see in `s`:
 
@@ -64,7 +73,7 @@ What it can write:
 - `eye(d, lx, ly)`: colour inside an eye socket; `d` = 0 centre .. 1 rim, `lx`, `ly` = -1..1 across it. Eyes
   and beak are always solid. Without `eye` the sockets take the body colour.
 - `lid`: the colour that closes over the eyes when the owl blinks. Pick the body colour around the eyes.
-- `move(s, t)`: displace the point for this frame (t in seconds). It runs for every control point of the owl
+- `move(s, t, p)`: displace the point for this frame (t in seconds). It runs for every control point of the owl
   every frame, so keep it to a few sines. Tie the amplitude to height above the feet (`s.y - 1.45`) so the feet
   stay on the book.
 

@@ -513,32 +513,45 @@
      the renderer then shows what is behind, and the far side of the owl, through it; eyes and beak stay
      solid); and `move(s, t)` may add to s.x, s.y, s.z every frame: a material that is not rigid. Opacity and
      motion are scaled in by the wipe. `view` names the camera the material is shown from (default: the
-     step's own): a see-through one wants `through`, where the books lie behind the owl. */
+     step's own): a see-through one wants `through`, where the books lie behind the owl.
+     KNOBS: `p` holds the material's own properties (opacity, gloss, stiffness, ...) at their defaults, and
+     `knobs` says which of them the simulator may turn and how far: [{ k, label, min, max, step }]. `colour` and
+     `move` get p as their last argument. Turning a knob that `colour` reads repaints the owl (tune(), below).
+     animate(t, paint, material, from) wipes `material` in over `from` (default: `stone`, the photograph). */
   var MATS = {
+    stone: { label: 'stone' },                                    // the photograph's own colours: nothing is changed
     snowy: { label: 'snowy owl', beak: [0.09, 0.085, 0.08], lid: [0.80, 0.79, 0.76],
+      p: { albedo: 0.9, barring: 0.5 },
+      knobs: [{ k: 'albedo', label: 'albedo', min: 0.4, max: 1, step: 0.01 }, { k: 'barring', label: 'barring', min: 0, max: 1, step: 0.01 }],
       // white where the stone is bright, dark bars where the carving has grooves (fewer of them on the head)
-      colour: function (s) {
-        var t = s.head ? ss(0.06, 0.3, s.sh) : ss(0.2, 0.62, s.sh), w = 0.45 + 0.55 * s.sh;
-        s.r = 0.15 + (0.90 * w - 0.15) * t; s.g = 0.12 + (0.89 * w - 0.12) * t; s.b = 0.10 + (0.86 * w - 0.10) * t;
+      colour: function (s, p) {
+        var b = 2 * p.barring, t = s.head ? ss(0.06 * b, 0.3 * b + 1e-3, s.sh) : ss(0.2 * b, 0.62 * b + 1e-3, s.sh), w = p.albedo * (0.45 + 0.55 * s.sh);
+        s.r = 0.15 + (w - 0.15) * t; s.g = 0.12 + (0.99 * w - 0.12) * t; s.b = 0.10 + (0.955 * w - 0.10) * t;
       },
       eye: function (d) { return d < 0.42 ? [0.02, 0.02, 0.02] : d < 0.86 ? [0.95, 0.70, 0.08] : [0.08, 0.07, 0.06]; } },
     jelly: { label: 'alien jelly', view: 'through', beak: [0.03, 0.40, 0.12], lid: [0.12, 0.72, 0.22],
+      p: { opacity: 0.34, gloss: 1, stiffness: 1 },
+      knobs: [{ k: 'opacity', label: 'opacity', min: 0.08, max: 1, step: 0.01 }, { k: 'gloss', label: 'gloss', min: 0, max: 2, step: 0.02 },
+              { k: 'stiffness', label: 'stiffness', min: 0.25, max: 4, step: 0.05 }],
       // a green gel you can see through: a third opaque where you look straight into it, more where it thins out
       // towards the rim (lime there), the carving's relief smoothed over, and two painted highlights (a lamp up
       // and to the left, a broad sheen from above), which are solid
-      colour: function (s) {
+      colour: function (s, p) {
         var f = Math.pow(1 - Math.max(0, Math.abs(s.nz)), 1.5), w = 0.65 + 0.35 * s.sh;
-        var hl = 0.9 * Math.pow(Math.max(0, -0.22 * s.nx + 0.44 * s.ny + 0.87 * s.nz), 30) + 0.25 * Math.pow(Math.max(0, 0.7 * s.ny + 0.7 * s.nz), 10);
+        var hl = p.gloss * (0.9 * Math.pow(Math.max(0, -0.22 * s.nx + 0.44 * s.ny + 0.87 * s.nz), 30) + 0.25 * Math.pow(Math.max(0, 0.7 * s.ny + 0.7 * s.nz), 10));
         s.r = (0.10 + 0.60 * f) * w + hl; s.g = (0.80 + 0.20 * f) * w + hl; s.b = (0.22 + 0.20 * f) * w + hl;
-        s.a = Math.min(1, 0.34 + 0.26 * f + 1.4 * hl);
+        s.a = Math.min(1, p.opacity * (1 + 0.76 * f) + 1.4 * hl);
       },
       eye: function (d, lx, ly) { return Math.hypot(lx + 0.32, ly - 0.34) < 0.24 ? [0.95, 1, 0.95] : d < 0.82 ? [0.01, 0.06, 0.02] : [0.45, 1, 0.35]; },
-      // it wobbles: a sway that grows with the height above the feet, and a ripple climbing the body
-      move: function (s, t) {
-        var h = Math.max(0, s.y - 1.45), a = 0.045 * Math.pow(h, 1.5) * (0.65 + 0.35 * Math.sin(0.9 * t)), rp = 0.016 * Math.sin(9 * s.y - 7 * t);
-        s.x += a * Math.sin(5.0 * t) + rp * s.nx; s.z += 0.7 * a * Math.sin(4.3 * t + 1.3) + rp * s.nz; s.y -= 0.012 * h * (0.5 + 0.5 * Math.sin(10 * t));
+      // it wobbles: a sway that grows with the height above the feet, and a ripple climbing the body. Like a
+      // mass on a spring, a stiffer jelly moves less (1 / stiffness) and faster (the square root of it)
+      move: function (s, t, p) {
+        var q = Math.sqrt(p.stiffness), h = Math.max(0, s.y - 1.45), a = 0.045 / p.stiffness * Math.pow(h, 1.5) * (0.65 + 0.35 * Math.sin(0.9 * t));
+        var rp = 0.016 / p.stiffness * Math.sin(9 * s.y - 7 * q * t);
+        s.x += a * Math.sin(5.0 * q * t) + rp * s.nx; s.z += 0.7 * a * Math.sin(4.3 * q * t + 1.3) + rp * s.nz; s.y -= 0.012 / p.stiffness * h * (0.5 + 0.5 * Math.sin(10 * q * t));
       } }
   };
+  Object.keys(MATS).forEach(function (k) { MATS[k].rev = 0; });
   function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
   function owlLife(c) {
     var P = c.patch.P, K = c.patch.C, B = c.base, K0 = new Float32Array(K), n = B.length / 3, nu = c.patch.nu, nv = c.patch.nv;
@@ -568,39 +581,50 @@
     }
     lid.forEach(function (l) { l[0] /= l[3]; l[1] /= l[3]; l[2] /= l[3]; });
     function sample(i) { var o = i * 3; s.x = B[o]; s.y = B[o + 1]; s.z = B[o + 2]; s.nx = N[o]; s.ny = N[o + 1]; s.nz = N[o + 2]; s.sh = SH[i]; s.head = B[o + 1] > 2.85; return s; }
-    /* the colours of a material on every control point of the owl, worked out the first time it is asked for */
-    function bake(m) {
-      if (m.K) return m.K;
-      var K1 = m.K = new Float32Array(K0), A1 = null, q, k, rgb;
+    /* the colours (and opacities) of a material on every control point of the owl: worked out the first time it
+       is asked for, and again after one of its knobs was turned. -> { K, A (or null), rev } */
+    var baked = {};
+    function bake(name) {
+      var m = MATS[name], bk = baked[name], q, k, rgb;
+      if (bk && bk.rev === m.rev) return bk;
+      bk = baked[name] = bk || { K: new Float32Array(K0), A: null }; bk.rev = m.rev;
+      if (!m.colour) return bk;
+      var K1 = bk.K, A1 = bk.A; if (A1) A1.fill(1);
       for (i = 0; i < n; i++) if (M[i]) {
-        o = i * 3; s.a = 1; m.colour(sample(i)); K1[o] = s.r; K1[o + 1] = s.g; K1[o + 2] = s.b;
-        if (s.a < 1) { A1 = A1 || new Float32Array(n).fill(1); A1[i] = s.a + (1 - s.a) * BK[i]; }
-        if (BK[i] && m.beak) for (k = 0; k < 3; k++) K1[o + k] += (m.beak[k] * (0.6 + 0.4 * SH[i]) - K1[o + k]) * BK[i];
+        o = i * 3; s.a = 1; m.colour(sample(i), m.p); rgb = [s.r, s.g, s.b];
+        if (BK[i] && m.beak) for (k = 0; k < 3; k++) rgb[k] += (m.beak[k] * (0.6 + 0.4 * SH[i]) - rgb[k]) * BK[i];
+        for (k = 0; k < 3; k++) K1[o + k] = K0[o + k] + (rgb[k] - K0[o + k]) * M[i];        // feathered into the books at the owl's edge
+        if (s.a < 1) { A1 = A1 || (bk.A = new Float32Array(n).fill(1)); A1[i] = 1 + (s.a + (1 - s.a) * BK[i] - 1) * M[i]; }
       }
       if (m.eye) for (q = 0; q < eyes.length; q += 3) {
         o = eyes[q] * 3; e = EYES[eyes[q + 1]]; x = (B[o] - e[0]) / RE; y = eyes[q + 2];
         rgb = m.eye(Math.hypot(x, y), x, y); K1[o] = rgb[0]; K1[o + 1] = rgb[1]; K1[o + 2] = rgb[2];
         if (A1) A1[eyes[q]] = 1;
       }
-      m.A = A1;
-      return K1;
+      return bk;
     }
-    var painted = -1, shut = -1, cur = null, K1 = K0;
-    function colour(i, front) {
-      var o = i * 3, m = M[i] * ss(front, front + 0.25, B[o + 1]);
-      K[o] = K0[o] + (K1[o] - K0[o]) * m; K[o + 1] = K0[o + 1] + (K1[o + 1] - K0[o + 1]) * m; K[o + 2] = K0[o + 2] + (K1[o + 2] - K0[o + 2]) * m;
-      if (cur.A) AL[i] = 1 + (cur.A[i] - 1) * m;
+    var painted = -1, shut = -1, key = '', to = null, src = null;
+    function colour(i, front) {                    // one control point: `from` above the wipe's front, `material` below it
+      var o = i * 3, m = ss(front, front + 0.25, B[o + 1]), F = src.K, T2 = to.K;
+      K[o] = F[o] + (T2[o] - F[o]) * m; K[o + 1] = F[o + 1] + (T2[o + 1] - F[o + 1]) * m; K[o + 2] = F[o + 2] + (T2[o + 2] - F[o + 2]) * m;
+      if (to.A || src.A) { var a0 = src.A ? src.A[i] : 1; AL[i] = a0 + ((to.A ? to.A[i] : 1) - a0) * m; }
       return m;
     }
-    return function (t, paint, material) {
-      var mat = MATS[material] || MATS.snowy;
-      if (mat !== cur) { cur = mat; K1 = bake(mat); painted = -1; }
+    return function (t, paint, material, from) {
+      var mat = MATS[material] || MATS.snowy, old = MATS[from] || MATS.stone, k;
+      to = bake(MATS[material] ? material : 'snowy'); src = bake(MATS[from] ? from : 'stone');
+      k = material + to.rev + '<' + from + src.rev; if (k !== key) { key = k; painted = -1; }
       var breath = 0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 3.4), tc = t % 9, tb = t % 3.7;
       var tilt = 0.3 * ss(4, 4.7, tc) * (1 - ss(7, 7.7, tc)), blink = ss(3.0, 3.09, tb) * (1 - ss(3.12, 3.26, tb));
-      var ca = Math.cos(tilt), sa = Math.sin(tilt), q, a, cw, sw, front = 3.7 - 2.7 * paint, soft = paint && mat.move;
+      var ca = Math.cos(tilt), sa = Math.sin(tilt), q, a, cw, sw, front = 3.7 - 2.7 * paint;
+      var soft = (paint > 0 && mat.move) || (paint < 1 && old.move);
       for (q = 0; q < body.length; q++) {
         i = body[q]; o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
-        if (soft && (w = M[i] * ss(front, front + 0.25, y))) { sample(i); mat.move(s, t); x += (s.x - x) * w; y += (s.y - y) * w; z += (s.z - z) * w; }
+        if (soft && M[i]) {                        // what is not rigid moves: the new material below the front, the old one above it
+          w = M[i] * ss(front, front + 0.25, y);
+          if (mat.move && w) { sample(i); mat.move(s, t, mat.p); x += (s.x - B[o]) * w; y += (s.y - B[o + 1]) * w; z += (s.z - B[o + 2]) * w; }
+          if (old.move && (w = M[i] - w) > 0) { sample(i); old.move(s, t, old.p); x += (s.x - B[o]) * w; y += (s.y - B[o + 1]) * w; z += (s.z - B[o + 2]) * w; }
+        }
         w = bw[q * 2];
         if (w) { var dx = B[o] - (-0.08 + 0.26 * (B[o + 1] - 1.7)), dz = B[o + 2] - 0.18, dl = 0.045 * breath * w / (Math.hypot(dx, dz) || 1); x += dx * dl; z += dz * dl; }
         w = bw[q * 2 + 1];
@@ -612,10 +636,13 @@
         P[o] = x; P[o + 1] = y; P[o + 2] = z;
       }
       if (paint !== painted) for (painted = paint, shut = -1, i = 0; i < n; i++) if (M[i]) colour(i, front);
-      c.alpha = mat.A && paint ? AL : null;
+      c.alpha = (to.A && paint > 0) || (src.A && paint < 1) ? AL : null;       // see-through somewhere, right now
       if (blink !== shut) for (shut = blink, q = 0; q < eyes.length; q += 3) {      // the lid comes down from above
         i = eyes[q]; o = i * 3; var m = colour(i, front);
-        if (eyes[q + 2] > 1 - 2 * blink) { var l = lid[eyes[q + 1]], L = mat.lid || [0.8, 0.8, 0.8]; K[o] = l[0] + (L[0] - l[0]) * m; K[o + 1] = l[1] + (L[1] - l[1]) * m; K[o + 2] = l[2] + (L[2] - l[2]) * m; }
+        if (eyes[q + 2] > 1 - 2 * blink) {
+          var l = lid[eyes[q + 1]], L0 = old.lid || l, L1 = mat.lid || l;
+          K[o] = L0[0] + (L1[0] - L0[0]) * m; K[o + 1] = L0[1] + (L1[1] - L0[1]) * m; K[o + 2] = L0[2] + (L1[2] - L0[2]) * m;
+        }
       }
       return [c];
     };
@@ -635,12 +662,15 @@
          a scan baked with `--register scans` brings its own */
       views: D.views || { wide: { th: 0.30, ph: 1.22, r: 8.6, tx: 0, ty: ty, tz: tz }, close: { th: -0.15, ph: 1.20, r: 3.3, tx: 0.15, ty: ty * 1.5, tz: 0.2 },
                a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz },
-               through: { th: -0.55, ph: 1.14, r: 5.0, tx: 0.1, ty: 2.3, tz: 0.2 } },      // close, three-quarter: the books behind the body
+               through: { th: -0.55, ph: 1.14, r: 5.0, tx: 0.1, ty: 2.3, tz: 0.2 },        // close, three-quarter: the books behind the body
+               near: { th: 0.30, ph: 1.2, r: 5.8, tx: 0.05, ty: 2.2, tz: 0.2 } },             // the owl and its books fill the frame, from the front
       tour: D.tour || ['wide', 'close', 'a', 'b'],
       rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
       /* scan 122 only: the owl alive and repainted (owlLife); another scan has neither */
       animate: D.scan === 122 ? owlLife(C[0]) : null,
-      materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label, view: MATS[k].view }; }) : null
+      materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label, view: MATS[k].view, knobs: MATS[k].knobs || [], p: MATS[k].p }; }) : null,
+      /* turn a knob of a material: its value changes for every owl on the page, and they repaint */
+      tune: function (v, k, x) { var m = MATS[v]; if (m && m.p && m.p[k] !== x) { m.p[k] = x; m.rev++; } }
     };
   }
 

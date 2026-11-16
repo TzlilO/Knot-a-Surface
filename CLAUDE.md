@@ -12,7 +12,11 @@ knot chart, surface-prior bench) ship as sibling pages.
 ## Build & deploy
 - The site root `index.html` is the hand-written landing page (its own source of truth — NOT a
   flatten output): a chrome-free `manifold` hero (`KnotTalk.mount('manifold', el, {bare:true,
-  scene:'hero', onStats})`) plus links to the talk, its lab modules and the older pages.
+  scene:'teaser', onStats})`) plus links to the talk, its lab modules and the older pages. Scene `teaser`
+  (`tease()` in `talk/sims/manifold.js`) is a 30.6 s loop on the owl that ends exactly where it begins: three
+  readings in rolling bands (normals, Gaussians, the picture), a dissolve into the picture (`uFade`), the materials
+  wiping in one over another with a knob sweep, and back. Everything in it is a function of the time in the loop;
+  keep it that way (the length is nine breaths of the owl, so its tilt and blink are at rest at both ends).
 - Other pages' source of truth: the `*.dc.html` design files. `python3 deploy/flatten.py` rewrites
   links and emits the deployed pages (`project-page.html` = the previous landing page with the
   measured-results table, `terrain.html`, `knot.html`,
@@ -73,7 +77,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   (`buildMesh` / `stepMesh`; instances are written in reverse window order so `setCount` retires the stitched ones).
   The owl's `animate(t, paint)` (`owlLife` in `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as
   control-point edits, and `paint` wipes a MATERIAL in (scene `paint`): one entry of `MATS`, a rule that writes control
-  colours and optionally control opacities (`s.a`) and motion (`move`); the picker fills itself from `MATS`. To add or
+  colours and optionally control opacities (`s.a`) and motion (`move`), with its properties in `p` and the ones the
+  simulator may turn in `knobs` (one slider each; `tune()` repaints); `animate(t, paint, material, from)` wipes one
+  material in over another; the picker fills itself from `MATS`. To add or
   tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
   `edit(k)`. Opacity: `gl.splats(n, {alpha: true})` gives a field an opacity per Gaussian; while its
   `ktSplat.thin` is set, `gl.draw` draws the solid Gaussians as before and the see-through ones as two more layers

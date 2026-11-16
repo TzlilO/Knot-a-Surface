@@ -130,7 +130,11 @@
   /* uMode picks what a Gaussian shows: 0 appearance, 1 depth, 2 normal, 3 the Gaussian itself (drawn
      smaller, so each one reads), 4 its aux colour (the chart it belongs to). With uSplit = (bands,
      roll, slant) the mode is chosen per pixel instead: slanted screen bands, one mode each, shifted
-     by roll (a fraction of the width) — every mode of the same frame, side by side. */
+     by roll (a fraction of the width) — every mode of the same frame, side by side. uBand (when its x
+     is not negative) = (mode, mode, mode, how many of them): the bands show those modes in turn, over
+     and over; otherwise band k shows mode k.
+     uFade 0..1 dissolves whatever is shown into appearance: at 1 every band is the plain picture, so
+     the split can be switched off (or on) without a jump. */
   var FRAG = [
     'precision highp float;',
     '#if defined(DEPTH) || defined(ACCUM)',                       // gl.draw cuts at weight 0.236 where the dither cut near 0.42:
@@ -139,7 +143,7 @@
     '#define SHARP 1.0',
     '#endif',
     'uniform vec3 uLight; uniform float uRim; uniform float uFlat;',
-    'uniform float uMode; uniform vec3 uSplit; uniform vec2 uRes; uniform vec2 uDepth; uniform vec3 uTint;',
+    'uniform float uMode; uniform vec3 uSplit; uniform vec2 uRes; uniform vec2 uDepth; uniform vec3 uTint; uniform vec4 uBand; uniform float uFade;',
     'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vAux; varying float vZ;',
     '#ifdef OUT2',                                               // a second target: (opacity x weight) beside (colour x weight, weight)
     'varying float vA; layout(location = 1) out highp vec4 oAlpha;',
@@ -152,8 +156,10 @@
     'void main(){',
     '  float m = uMode;',
     '  if (uSplit.x > 0.5) m = floor(fract((gl_FragCoord.x + uSplit.z * (uRes.y - gl_FragCoord.y)) / uRes.x - uSplit.y) * uSplit.x);',
+    '  if (uSplit.x > 0.5 && uBand.x > -0.5) { m = mod(m, uBand.w); m = m < 0.5 ? uBand.x : m < 1.5 ? uBand.y : uBand.z; }',
     '  bool own = m > 2.5 && m < 3.5;',
-    '  float q2 = dot(vQ, vQ), K = (own ? 3.6 : 1.0) * SHARP, g0 = exp(-0.5 * q2 * (own ? 3.6 : 1.0));',
+    '  float ow = own ? 1.0 - uFade : 0.0, kk = mix(1.0, 3.6, ow);',      // a single Gaussian grows back to its full footprint as it fades
+    '  float q2 = dot(vQ, vQ), K = kk * SHARP, g0 = exp(-0.5 * q2 * kk);',
     '#if defined(DEPTH) || defined(ACCUM)',
     // band-limit each Gaussian to the pixel grid: widen it by half a pixel (measured in its own units, from
     // the screen derivatives) and lower it so its total stays the same. A Gaussian much smaller than a pixel,
@@ -172,7 +178,7 @@
     '#elif defined(ACCUM)',
     '  float w = max(g - 0.1 * lp, 0.0) / 0.9;',                  // weight: falls to zero before the edge of the quad
     '  if (w <= 0.0) discard;',
-    '  if (own) w *= 0.15;',                                      // single Gaussians keep their soft profile (see the resolve)
+    '  w *= mix(1.0, 0.15, ow);',                                 // single Gaussians keep their soft profile (see the resolve)
     '#elif defined(BLEND)',
     '  a = g;',
     '#else',
@@ -181,10 +187,12 @@
     '  vec3 nn = normalize(vN);',                                  // a planoid has two faces: light the one we see
     '  if (dot(nn, cameraPosition - vW) < 0.0) nn = -nn;',
     '  float d = max(dot(nn, uLight), 0.0);',
-    '  vec3 c = (own ? uTint : m > 3.5 ? vAux : vCol) * mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat);',
-    '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g0), own ? 1.0 : uRim);',
+    '  float lit = mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat), rimv = 0.55 + 0.45 * smoothstep(0.12, 0.75, g0);',
+    '  vec3 c = (own ? uTint : m > 3.5 ? vAux : vCol) * lit;',
+    '  c *= mix(1.0, rimv, own ? 1.0 : uRim);',
     '  if (m > 0.5 && m < 1.5) c = ramp(clamp(log(vZ / uDepth.x) / log(uDepth.y / uDepth.x), 0.0, 1.0));',
     '  else if (m > 1.5 && m < 2.5) c = nn * 0.5 + 0.5;',
+    '  if (uFade > 0.0) c = mix(c, vCol * lit * mix(1.0, rimv, uRim), uFade);',
     '#if defined(ACCUM)',
     '  gl_FragColor = vec4(c * w, w);',
     '#ifdef OUT2',
@@ -215,6 +223,7 @@
     var U = { uGain: { value: 1 }, uRim: { value: 0.6 }, uFlat: { value: 0 }, uLayer: { value: -1 },
               uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
               uMode: { value: 0 }, uSplit: { value: new T.Vector3(0, 0, 0) }, uRes: { value: new T.Vector2(1, 1) },
+              uBand: { value: new T.Vector4(-1, 0, 0, 0) }, uFade: { value: 0 },
               uDepth: { value: new T.Vector2(1, 10) }, uTint: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) } };
     function variant(def, o) {            // the same shader and the same uniforms, compiled for another pass
       return new T.ShaderMaterial(Object.assign({ vertexShader: lay + def + VERT, fragmentShader: lay + def + FRAG, side: T.DoubleSide, uniforms: U }, o));
