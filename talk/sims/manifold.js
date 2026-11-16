@@ -33,6 +33,8 @@
     lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
     /* the same Gaussians meshed twice: as an (emulated) list, by neighbour search, and on the charts' lattices, by a 2 x 2 window */
     mesh:   { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, cap: 'tessellation · the same Gaussians as a list (emulated) and on the lattice' },
+    /* the same, from the lattice's turn on (the deck's second mesh step; the list is still meshed for the board) */
+    stitch: { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, from: 'lattice', cap: 'tessellation · on the lattice: no search, two triangles per stop of a 2 × 2 window' },
     edit:   { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, tools: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
     paint:  { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, paint: 1, cap: 'material edit · the same net, new control colours' },
@@ -413,7 +415,8 @@
          them. Its triangles then appear in the order the list made them, which is no order at all; bridges and
          non-manifold edges in red, the rims of its holes in faint red.
          The board compares the two, graded by the same audit; every number on it is measured on the page. The step plays
-         the list first, then the lattice; picking one (`mesh from`) stops that. A new budget, or the ground put away,
+         the list first, then the lattice; picking one (`mesh from`) stops that, and scene `stitch` starts at the lattice
+         (between the two scenes the mesh is kept, not rebuilt). A new budget, or the ground put away,
          rebuilds both once the slider has rested for REST seconds. The stitched lattice downloads as PLY, GLB, OBJ or
          STL (talk/meshio.js), in metres where the scene has a physical scale. ---------- */
       var ML = KT.meshList, IO = KT.meshio, mesh = null;
@@ -432,7 +435,15 @@
         ioNote = ui.el('div', 'mf-io-note'); io.appendChild(ioNote);
       }
       function remesh() { if (mesh) mesh.due = mesh.age + REST; }    // the budget moved: rebuild once it rests
-      function syncMesh() { if (st.sc.mesh) buildMesh(); else dropMesh(); }
+      /* what a mesh is built from: the scene, the budget and the charts that are on */
+      function meshKey() { return st.scn + ' ' + Math.min(st.budget, CAP) + ' ' + charts.map(function (c) { return c.off ? 0 : 1; }).join(''); }
+      /* a scene with `mesh` builds one and plays the list, then the lattice; one with `from: 'lattice'` starts there.
+         Between such scenes on the same Gaussians nothing is rebuilt or measured again: the play starts over */
+      function syncMesh() {
+        if (!st.sc.mesh) { dropMesh(); return; }
+        if (mesh && !mesh.due && mesh.key === meshKey()) { mesh.auto = !st.sc.from; showPhase(st.sc.from || 'list'); }
+        else { if (mesh) mesh.due = 0; buildMesh(); }          // a new scene starts where it starts, even with a budget change pending
+      }
       function dropMesh() {
         if (!mesh) return;
         [mesh.tri, mesh.wire, mesh.fresh, mesh.win, mesh.dot].concat(mesh.lobj || []).forEach(function (o) { scene.remove(o); o.material.dispose(); o.geometry.dispose(); });
@@ -503,7 +514,7 @@
         wgeo.setAttribute('position', tri.geometry.attributes.position); wgeo.setIndex(new T.BufferAttribute(lat.edge, 1));
         kgeo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
         mesh = { parts: parts, lat: lat, V: V, Q: lat.Q, pos: pos, col: col, nrm: nrm, t: 0, rt: 0, hold: 0, age: 0, due: 0, done: false, latA: null,
-          auto: was ? was.auto : true, phase: 'lattice', hex: charts.map(function (c) { return G.rgb(c.hex); }), tri: tri,
+          auto: was ? was.auto : !st.sc.from, phase: 'lattice', key: meshKey(), hex: charts.map(function (c) { return G.rgb(c.hex); }), tri: tri,
           // every edge faintly, the ones just stitched brightly, and the window itself: its four samples and a dot
           wire: new T.LineSegments(wgeo, new T.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0.1 })),
           fresh: new T.LineSegments(wgeo.clone(), new T.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0.6 })),
@@ -513,7 +524,7 @@
         mesh.win.renderOrder = mesh.dot.renderOrder = 6; root.classList.add('mf-mesh');
         // the list (the same samples as a 3DGS list would hold them, emulated over a few frames, then meshed) and the lattice's audit
         mesh.L = null; mesh.job = null; mesh.ejob = ML.emulator(parts, 7); mesh.ajob = ML.auditor(lat.tri, lat.nTri, lat);
-        showPhase(was ? was.phase : 'list');
+        showPhase(was ? was.phase : st.sc.from || 'list');
         paintIO();
       }
       function writeLattice() {
@@ -901,7 +912,7 @@
           '.kt-sim-manifold.kt-embed .mf-pick,.kt-sim-manifold.kt-embed:not(.mf-tools) .mf-tog{display:none}' +
           '.kt-sim-manifold:not(.mf-mesh) .mf-tri,.kt-sim-manifold.mf-mesh .mf-samp,.kt-sim-manifold:not(.mf-paint) .mf-mat,.kt-sim-manifold:not(.mf-paint) .mf-target{display:none}' +
           // scene `mesh`: the board (list against lattice, bottom left) and the export rows of the panel
-          '.kt-sim-manifold .mf-board{position:absolute;z-index:5;left:12px;bottom:12px;max-width:calc(100% - 24px);padding:9px 11px 8px;pointer-events:none;' +
+          '.kt-sim-manifold .mf-board{position:absolute;z-index:4;left:12px;bottom:12px;max-width:calc(100% - 24px);padding:9px 11px 8px;pointer-events:none;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
           'font:500 11px/1.3 var(--f-mono);color:var(--dim)}.kt-sim-manifold:not(.mf-mesh) .mf-board,.kt-sim-manifold.kt-bare .mf-board{display:none}' +
           '.kt-sim-manifold .mf-board>b{display:block;color:var(--text);font-weight:600;margin-bottom:6px}' +
@@ -919,6 +930,11 @@
           '@media (max-width:640px){.kt-sim-manifold .mf-board{left:6px;bottom:6px;max-width:calc(100% - 12px);padding:6px 8px;font-size:9.5px}' +
           '.kt-sim-manifold .mf-board>b{margin-bottom:3px}.kt-sim-manifold .mf-board th,.kt-sim-manifold .mf-board td{padding:1px 0 1px 9px}' +
           '.kt-sim-manifold .mf-board thead th{font-size:8.5px;letter-spacing:.03em}.kt-sim-manifold .mf-key{display:none}}' +
+          // the panel stays above the board: on a folded stage the board steps aside while the controls are open, and on a
+          // narrow page the panel ends above it (and scrolls), so the export is never under the board
+          '.kt-sim-manifold.kt-compact.kt-open .mf-board{display:none}' +
+          '@media (max-width:640px){.kt-sim-manifold.mf-mesh:not(.kt-embed) .kt-tr{max-height:calc(100% - 160px);overflow:auto}' +
+          '.kt-sim-manifold.mf-mesh:not(.kt-embed) .kt-tr>*{flex-shrink:0}}' +
           '.kt-sim-manifold .mf-knobs{border-top:1px solid var(--line);margin-top:6px;padding-top:4px}' +
           // with the tool layer's panel on a narrow stage, this panel keeps to the upper half (it scrolls), that one to the lower
           '.kt-sim-manifold.kt-compact.kt-open.mf-handson .kt-tr{max-height:calc(50% - 48px);overflow:auto}' +

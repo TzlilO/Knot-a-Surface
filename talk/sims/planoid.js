@@ -47,11 +47,11 @@
                 cap: '<b>rotation</b> · R = [ Ŝ<sub>u</sub> · Ŝ<sub>v</sub><sup>⊥</sup> · n ]' },
     scale:    { show: 'probe tan nor ell nbr face uv tile', n: 9, rock: 0.55, fixed: [0.28, 0.5],
                 cap: '<b>scale</b> · s = ( ‖S<sub>u</sub>‖Δu , ‖S<sub>v</sub><sup>⊥</sup>‖Δv , ε ) — the step to the neighbouring samples',
-                hint: 'drag in the (u,v) chart · switch 4 / 8 neighbours · one size / own cell' },
+                hint: 'drag in the (u,v) chart · 4 / 8 neighbours · one size / own cell' },
     derive:   { show: 'net probe tan nor ell nbr face', n: 9, wig: 1, fixed: [0.56, 0.44], rock: 0.4,
                 cap: '<b>nothing is learned per Gaussian</b> · move the surface, the splat and its neighbours re-derive' },
     fill:     { show: 'field uv tile', n: 14, rim: 1, cap: '<b>fill the chart</b> · one Gaussian per (u,v) sample · outline = 1σ',
-                hint: 'one size / own cell · take the samples and σ / cell sliders' },
+                hint: 'one size / own cell · take the samples slider' },
     stitch:   { show: 'field uv stitch', n: 12, rim: 1, view: { th: 0.72, ph: 0.86, r: 6.9 },
                 cap: '<b>stitch</b> · a 2 × 2 window over the (u,v) lattice: two triangles per stop',
                 hint: 'take the samples slider to run it again' },
@@ -164,7 +164,10 @@
          The control points stand on a regular grid in x and z; only their heights are fitted. ground(x, z) is the
          target: the terrain on [0,1]^2 laid over the patch's square, normalised so its relief spans HS (0.35 of the
          width, the proportions chapter 05 uses). The fit is linear least squares over FG x FG samples at the cell
-         centres of (u, v): the height of S(u, v) against the terrain at the same (x, z). Scene `net` shows it run —
+         centres of (u, v): the height of S(u, v) against the terrain at the same (x, z), each sample weighted by the
+         area of the map it stands for, |x_u z_v - x_v z_u| (the even control points crowd the samples in the middle
+         of the map; unweighted, the crater there would count for more). So the error is the RMS over the map, the
+         measure chapter 05 takes on an even grid of it. Scene `net` shows it run —
          Jacobi-preconditioned conjugate gradients from a flat net, each step a glide along its search direction to
          the minimum on that line; every other scene starts from the converged net (`base`). Six control points a
          side hold the rolling ground and blur the crater: that is where chapter 05 starts. */
@@ -174,6 +177,8 @@
         tLo = 1e9; tHi = -1e9;
         for (var b = 0; b < 128; b++) for (var a = 0; a < 128; a++) { var h = TERR((a + 0.5) / 128, (b + 0.5) / 128); if (h < tLo) tLo = h; if (h > tHi) tHi = h; }
       })();
+      /* the area of the map (x, z) a sample stands for: |x_u z_v - x_v z_u| from the tangents at float offset t */
+      function mapArea(SU, SV, t) { return Math.abs(SU[t] * SV[t + 2] - SU[t + 2] * SV[t]); }
       function ground(x, z) {
         if (TERR) return HB + HS * (TERR(x / SPAN + 0.5, z / SPAN + 0.5) - tLo) / (tHi - tLo);
         x = x / SPAN * 2; z = z / SPAN * 2;          // without talk/terrain.js: the module's old analytic bump stands in
@@ -190,16 +195,19 @@
         o = (2 * NU + 3) * 3; patch.C[o] = 1; patch.C[o + 1] = 0.86; patch.C[o + 2] = 0.30;   // one loud control feature
         patch.P.set(base);
       })();
-      var FG = 40, FIT = (function () {          // the normal equations, once: A = B^T B / N, rhs = B^T t / N, tt = t.t / N
-        var n = NU * NV, us = new Float64Array(FG), a, b, i, j, q, r, s;
+      var FG = 40, FIT = (function () {          // the normal equations, once: A = B^T W B / N, rhs = B^T W t / N, tt = t.W t / N
+        var n = NU * NV, us = new Float64Array(FG), a, b, i, j, q, r, s, N = FG * FG;
         for (a = 0; a < FG; a++) us[a] = (a + 0.5) / FG;
-        var gp = { pos: new Float32Array(FG * FG * 3) }; NB.patchGrid(patch, us, us, gp);     // x(u), z(v): heights do not enter
-        var TB = NB.axisTable(patch.Uk, NU, 3, us), A = new Float64Array(n * n), rhs = new Float64Array(n), tg = new Float64Array(FG * FG);
-        var idx = new Int32Array(16), w = new Float64Array(16), tt = 0, mean = 0, N = FG * FG;
+        var gp = { pos: new Float32Array(N * 3), su: new Float32Array(N * 3), sv: new Float32Array(N * 3) };
+        NB.patchGrid(patch, us, us, gp);          // x(u), z(v): heights do not enter
+        var TB = NB.axisTable(patch.Uk, NU, 3, us), A = new Float64Array(n * n), rhs = new Float64Array(n), tg = new Float64Array(N), wt = new Float64Array(N);
+        var idx = new Int32Array(16), w = new Float64Array(16), tt = 0, mean = 0, ws = 0, k;
+        for (s = 0; s < N; s++) { wt[s] = mapArea(gp.su, gp.sv, s * 3); ws += wt[s]; }
+        for (s = 0; s < N; s++) wt[s] *= N / ws;                         // mean weight 1
         for (b = 0; b < FG; b++) for (a = 0; a < FG; a++) {
-          s = b * FG + a; tg[s] = ground(gp.pos[s * 3], gp.pos[s * 3 + 2]); tt += tg[s] * tg[s]; mean += tg[s];
+          s = b * FG + a; k = wt[s]; tg[s] = ground(gp.pos[s * 3], gp.pos[s * 3 + 2]); tt += k * tg[s] * tg[s]; mean += k * tg[s];
           for (q = 0; q < 4; q++) for (r = 0; r < 4; r++) { idx[q * 4 + r] = (TB.span[b] - 3 + q) * NU + TB.span[a] - 3 + r; w[q * 4 + r] = TB.N[a * 4 + r] * TB.N[b * 4 + q]; }
-          for (i = 0; i < 16; i++) { rhs[idx[i]] += w[i] * tg[s]; for (j = 0; j < 16; j++) A[idx[i] * n + idx[j]] += w[i] * w[j]; }
+          for (i = 0; i < 16; i++) { rhs[idx[i]] += k * w[i] * tg[s]; for (j = 0; j < 16; j++) A[idx[i] * n + idx[j]] += k * w[i] * w[j]; }
         }
         for (i = 0; i < n * n; i++) A[i] /= N;
         for (i = 0; i < n; i++) rhs[i] /= N;
@@ -249,19 +257,24 @@
         for (i = 0; i < FIT.n; i++) patch.P[i * 3 + 1] = c.done ? c.Z[i] : c.from[i] + e * c.al * c.p[i];
         surfDirty = true;
       }
-      /* measured on the net as shown: RMS and largest |surface - terrain| over all FG x FG samples, as a share of the relief;
-         a red tick at every other sample */
-      var rgFull = { pos: new Float32Array(FG * FG * 3) }, fitStat = { rms: 0, max: 0 };
+      /* measured on the net as shown: RMS (weighted by the map's area, as the fit) and largest |surface - terrain| over all
+         FG x FG samples, as a share of the relief, against the terrain under each sample where it is now (a dragged
+         control point moves samples in x and z too); a red tick at every other sample */
+      var rgFull = { pos: new Float32Array(FG * FG * 3), su: new Float32Array(FG * FG * 3), sv: new Float32Array(FG * FG * 3) },
+          rgT = new Float64Array(FG * FG), fitStat = { rms: 0, max: 0 };
       function updateResid() {
         NB.patchGrid(patch, FIT.us, FIT.us, rgFull);
-        var P = rgFull.pos, A = resid.arr, se = 0, mx = 0, e, s, a, b, o = 0, N = FG * FG, c = st.fit;
-        for (s = 0; s < N; s++) { e = Math.abs(P[s * 3 + 1] - FIT.tg[s]); se += e * e; if (e > mx) mx = e; }
+        var P = rgFull.pos, A = resid.arr, se = 0, ws = 0, mx = 0, e, s, a, b, k, o = 0, N = FG * FG, c = st.fit;
+        for (s = 0; s < N; s++) {
+          rgT[s] = ground(P[s * 3], P[s * 3 + 2]); e = Math.abs(P[s * 3 + 1] - rgT[s]); k = mapArea(rgFull.su, rgFull.sv, s * 3);
+          se += k * e * e; ws += k; if (e > mx) mx = e;
+        }
         for (b = 0; b < TD; b++) for (a = 0; a < TD; a++) {
           s = (b * 2 + 1) * FG + a * 2 + 1;
-          A[o] = P[s * 3]; A[o + 1] = P[s * 3 + 1]; A[o + 2] = P[s * 3 + 2]; A[o + 3] = P[s * 3]; A[o + 4] = FIT.tg[s]; A[o + 5] = P[s * 3 + 2]; o += 6;
+          A[o] = P[s * 3]; A[o + 1] = P[s * 3 + 1]; A[o + 2] = P[s * 3 + 2]; A[o + 3] = P[s * 3]; A[o + 4] = rgT[s]; A[o + 5] = P[s * 3 + 2]; o += 6;
         }
         resid.set(o / 3);
-        fitStat.rms = Math.sqrt(se / N) / HS; fitStat.max = mx / HS;
+        fitStat.rms = Math.sqrt(se / (ws || 1)) / HS; fitStat.max = mx / HS;
         rdFit.set(pct(fitStat.rms)); rdMax.set(pct(fitStat.max));
         rdIt.set(!c ? '—' : c.user ? 'stopped: a point was moved' : c.done ? 'converged · ' + c.it + ' CG steps' : 'CG step ' + (c.it + 1));
         hudDirty = true;
@@ -278,10 +291,10 @@
               '<br>RMS error <b class="e">' + pct(fitStat.rms) + '</b> of the relief · largest <b class="e">' + pct(fitStat.max) + '</b>';
         } else if (s.tile && tl.own) {
           var one = tl.b >= 0.5; A = one ? tl.one : tl.own; B = one ? tl.own : tl.one;
-          h = '<b class="s">' + (one ? 'one size for all' : 'each sized to its own cell') + '</b> · uncovered <b class="e">' + pct(A.unc) +
-              '</b> · piled 3+ deep <b>' + pct(A.pile) + '</b><br><span class="m">' + (one ? 'own cell' : 'one size') + ': uncovered ' + pct(B.unc) + ' · 3+ deep ' + pct(B.pile) + '</span>';
+          h = '<b class="s">' + (one ? 'one size for all' : 'each sized to its cell') + '</b> · uncovered <b class="e">' + pct(A.unc) +
+              '</b> · 3+ deep <b>' + pct(A.pile) + '</b><br><span class="m">' + (one ? 'sized to cells' : 'one size') + ': uncovered ' + pct(B.unc) + ' · 3+ deep ' + pct(B.pile) + '</span>';
         } else if (s.stitch && sx.n) {
-          h = '<b class="u">' + (sx.q * 2) + '</b> / ' + (sx.Q * 2) + ' triangles · two at every stop of the 2 × 2 window · ' + sx.V + ' samples';
+          h = '<b class="u">' + (sx.q * 2) + '</b> / ' + (sx.Q * 2) + ' triangles · <b class="s">' + (sx.V - sx.passed) + '</b> / ' + sx.V + ' Gaussians still drawn';
         } else if (sc.sweep) {
           var ft = kn.ft[kn.cur];
           h = '<span class="big s">' + (kn.cur * kn.cur).toLocaleString('en-US') + '</span> Gaussians from <span class="big c">' + (NU * NV * PER_CP) + '</span> stored numbers' +
@@ -290,15 +303,20 @@
           a = ad.stat;
           var eq = a.sIn && a.uIn ? Math.round(a.n * (a.uIn / a.sIn) * (a.uIn / a.sIn)) : null;
           h = '<b class="s">' + a.n.toLocaleString('en-US') + '</b> Gaussians, fixed · <b class="s">' + Math.round(100 * a.ins / a.n) + ' %</b> of them in the camera’s view' +
-              ' (<b>' + Math.round(100 * a.view) + ' %</b> of the surface)<br>cell side in view <b>' + pctW(a.sIn) + '</b> of the width, outside <b>' +
-              pctW(a.sOut) + '</b> · even lattice <b>' + pctW(a.uIn) + '</b>';
+              '<br>the view covers <b>' + Math.round(100 * a.view) + ' %</b> of the surface<br>cell side there <b>' + pctW(a.sIn) + '</b> of the width · even lattice <b>' +
+              pctW(a.uIn) + '</b>';
           rdIn.set(a.ins.toLocaleString('en-US') + ' · ' + Math.round(100 * a.ins / a.n) + ' %'); rdFp.set(Math.round(100 * a.view) + ' % of the surface');
           rdSpc.el.lastChild.innerHTML = pctW(a.sIn) + ' <i>·</i> ' + pctW(a.sOut); rdUni.set(pctW(a.uIn));
           rdEq.set(eq ? '≈ ' + eq.toLocaleString('en-US') + ' Gaussians' : '—');
         }
+        h = h.replace(/ %/g, '\u00a0%');                  // a number keeps its unit on its line
         if (h !== hudHtml) { hudHtml = h; hud.innerHTML = h; hud.style.display = h ? '' : 'none'; hudPlace(); }
       }
-      function hudPlace() { hud.style.top = Math.round(cap.offsetTop + cap.offsetHeight + 7) + 'px'; }
+      function hudPlace() {                       // caption and numbers clear of the panel while that is open, the numbers under the caption
+        var pw = panel.offsetParent ? panel.offsetWidth + 30 : 10, mw = Math.round(KT.clamp(root.clientWidth - 14 - pw, 160, 620)) + 'px';
+        hud.style.maxWidth = mw; cap.style.maxWidth = root.classList.contains('kt-compact') ? '' : mw;
+        hud.style.top = Math.round(cap.offsetTop + cap.offsetHeight + 7) + 'px';
+      }
 
       /* ---------- scene objects ----------
          Draw order: opaque things (control points, arrows, splat field) first, then by renderOrder:
@@ -477,8 +495,8 @@
       var triEdge = G.lines(SQ * 10, C.surf, 0.9); own(triEdge.obj, 2);
       var triNew = G.lines(10, '#ffffff', 1); own(triNew.obj, 3);
       var winGeo = new T.BufferGeometry(); winGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
-      var win = ovOwn(new T.LineLoop(winGeo, new T.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true })), 6);
-      var winDot = ovOwn(new T.Points(winGeo, new T.PointsMaterial({ color: 0xffffff, size: 6, sizeAttenuation: false, depthTest: false, transparent: true })), 6);
+      var win = ovOwn(new T.LineLoop(winGeo, new T.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, fog: false })), 6);
+      var winDot = ovOwn(new T.Points(winGeo, new T.PointsMaterial({ color: 0xffffff, size: 6, sizeAttenuation: false, depthTest: false, transparent: true, fog: false })), 6);
 
       // adaptive: a second camera (body + frustum, in the neutral colour) and the outline of what it sees on the surface
       var obs = new T.PerspectiveCamera(21, 1.45, 0.05, 30);
@@ -1459,8 +1477,10 @@
             g.restore();
           }
         }
-        uvLab.textContent = s.nbr ? (w < 150 ? '(u, v) · ' + st.nb + ' nbrs' : '(u, v) · ' + st.nb + ' neighbours') : s.stitch ? '(u, v) · 2 × 2 window' :
-                            s.adapt ? (w < 150 ? '(u, v) · warped' : '(u, v) · warped lattice') : s.tile ? (w < 150 ? '(u, v) · 1σ' : '(u, v) · 1σ footprints') : '(u, v) chart';
+        // the label is set in capitals: a lower-case σ would turn into Σ, so it keeps its case
+        var lab = s.nbr ? (w < 150 ? '(u, v) · ' + st.nb + ' nbrs' : '(u, v) · ' + st.nb + ' neighbours') : s.stitch ? (w < 150 ? '2 × 2 window' : '(u, v) · 2 × 2 window') :
+                  s.adapt ? (w < 150 ? '(u, v) · warped' : '(u, v) · warped lattice') : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : '(u, v) · 1<i>σ</i> footprints') : '(u, v) chart';
+        if (uvLab.innerHTML !== lab) uvLab.innerHTML = lab;
       }
 
       /* ---------- the tangent plane, face-on ----------
@@ -1815,6 +1835,7 @@
           '.kt-sim-planoid .kt-uv-cv{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}' +
           '.kt-sim-planoid .kt-uv-lab{position:absolute;z-index:1;left:6px;top:6px;pointer-events:none;font:600 10px/1 var(--f-mono);' +
           'letter-spacing:.12em;text-transform:uppercase;color:var(--dim);background:rgba(7,9,15,.82);padding:3px 5px;border-radius:4px;white-space:nowrap}' +
+          '.kt-sim-planoid .kt-uv-lab i{font-style:normal;text-transform:none}' +
           '.kt-sim-planoid.kt-ins-small .kt-wide{display:none}.kt-sim-planoid.kt-ins-small .kt-uv-lab{letter-spacing:.04em;font-size:9px}' +
           '.kt-sim-planoid .kt-nbsw{position:absolute;z-index:5;left:12px;bottom:calc(20px + var(--kt-ins));padding:4px 4px 4px 10px;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(10px)}' +
@@ -1824,13 +1845,14 @@
           '.kt-sim-planoid .kt-readout .kt-lab sub,.kt-sim-planoid .kt-readout .kt-lab sup{font-size:8px;line-height:0}' +
           '.kt-sim-planoid .kt-readout .kt-lab i,.kt-sim-planoid .kt-readout .kt-val i{font-style:normal;color:var(--mute)}' +
           '.kt-sim-planoid .kt-pl-sz .kt-seg-btn.on{background:var(--splat)}' +
-          '.kt-sim-planoid .kt-pl-hud{position:absolute;z-index:4;left:14px;top:34px;max-width:min(64%,620px);pointer-events:none;' +
+          '.kt-sim-planoid .kt-pl-hud{position:absolute;z-index:4;left:7px;top:34px;max-width:min(64%,620px);pointer-events:none;' +
+          'padding:2px 7px 3px;border-radius:6px;background:rgba(7,9,15,.55);' +
           'font:500 11px/1.6 var(--f-mono);letter-spacing:.03em;color:var(--dim);text-shadow:0 1px 3px rgba(7,9,15,.9)}' +
           '.kt-sim-planoid .kt-pl-hud b{font-weight:600;color:var(--text)}.kt-sim-planoid .kt-pl-hud .m{color:var(--mute)}' +
           '.kt-sim-planoid .kt-pl-hud .s{color:var(--splat)}.kt-sim-planoid .kt-pl-hud .c{color:var(--ctrl)}' +
           '.kt-sim-planoid .kt-pl-hud .e{color:var(--err)}.kt-sim-planoid .kt-pl-hud .u{color:var(--surf)}' +
           '.kt-sim-planoid .kt-pl-hud .big{font:600 21px/1.25 var(--f-mono);letter-spacing:0}' +
-          '.kt-sim-planoid.kt-compact .kt-pl-hud,.kt-sim-planoid.kt-ins-small .kt-pl-hud{left:10px;font-size:10px;line-height:1.5;max-width:calc(100% - 20px)}' +
+          '.kt-sim-planoid.kt-compact .kt-pl-hud,.kt-sim-planoid.kt-ins-small .kt-pl-hud{left:3px;font-size:10px;line-height:1.5;max-width:calc(100% - 20px)}' +
           '.kt-sim-planoid.kt-compact .kt-pl-hud .big,.kt-sim-planoid.kt-ins-small .kt-pl-hud .big{font-size:16px}';
         document.head.appendChild(css);
       }

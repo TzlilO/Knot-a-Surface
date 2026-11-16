@@ -52,6 +52,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `cover`: the owl and the rabbit (hidden scene `duo`, DTU scans 122 and 55 side by side, the rabbit at the
   owl's scale) on a 22 s loop: the picture, a dissolve into rolling bands (normals, Gaussians, visual) and back,
   with a slow camera sway. Home goes to the opening.
+- Slide master (`talk/master.js` + `talk/master.css`): D (or the HUD list button) opens a drawer listing every
+  `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
+  part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
+  emptied section goes with its stage and rail entry); the clock and the cut buttons count only what is on.
+  `data-off` on a section or step = off until the presenter turns it on (chapter 07 ships off). localStorage
+  `kt-parts` holds only the presenter's overrides, keyed `rail · step title` (renaming a step drops its choice);
+  deck.js applies them before the first frame; "Reset to defaults" and "Show all". `talk.html?master` (or `#master`)
+  = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
+  postMessage to a window opened from the drawer, and the storage event; deck.js mounts nothing there
+  (`body.kt-presenter`). `KnotTalk.deck` is the deck's handle (steps, sections, go / step, set / refresh /
+  setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`).
 - `talk/kit.js` = `KnotTalk.register(name, {title, blurb, tool, scenes, create(env)})` registry,
   lifecycle (`env.loop` pauses offscreen), UI helpers, and the standalone lab shell
   (`KnotTalk.standalone(name)`, used by every `talk/sims/<name>.html`).

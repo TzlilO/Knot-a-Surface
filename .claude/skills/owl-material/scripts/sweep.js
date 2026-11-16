@@ -39,8 +39,16 @@ const ROOT = 'file://' + path.resolve(__dirname, '../../../..') + '/';
         await p.evaluate(v => { const A = KnotTalk.mounted[0].api, G = KnotTalk.gl, d = G.draw; A.setMaterial(v); G.draw = () => {}; for (let i = 0; i < 130; i++) window.__step(33); G.draw = d; }, m);
         await step(p, 3);
       }
+      // every target: the whole object, the owl alone, a selection made with the wand on the atlas (on the DINOv3 features)
+      const tgs = await p.evaluate(() => [...document.querySelectorAll('.mf-target .kt-seg-btn')].map(x => x.textContent));
+      for (const t of tgs) {
+        await p.evaluate(v => { const A = KnotTalk.mounted[0].api, G = KnotTalk.gl, d = G.draw; A.setTarget(v);
+          if (v === 'selection') { const H = A.hands(); H.channel('feat'); H.wandAt(150, 300); }
+          G.draw = () => {}; for (let i = 0; i < 130; i++) window.__step(33); G.draw = d; }, t);
+        await step(p, 3);
+      }
       await p.evaluate(() => { const A = KnotTalk.mounted[0].api; A.setScene('scene'); A.setScene('paint'); A.setScene('edit'); }); await step(p, 3);
-      return ids.length + ' scenes, materials: ' + (mats.join(', ') || 'none');
+      return ids.length + ' scenes, materials: ' + (mats.join(', ') || 'none') + '; targets: ' + (tgs.join(', ') || 'none');
     });
     if (only === 'lab') continue;
     await page('talk.html', w, h, async p => {

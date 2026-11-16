@@ -30,8 +30,11 @@ Where a material goes is its TARGET, a second control next to the picker (`objec
 `object`): every control point of the scanned object (the owl and the books, all that is stone), the owl alone (a
 mask segmented offline from the DINOv3 features of the photographs and the net's geometry, with a feathered edge;
 without its file, a line by hand), or what the presenter selects on the Hands atlas (wand, brush, eraser, on any
-channel), feathered the same way. The table is a chart of its own and is never painted. A rule does not know its
-target: write it for any control point of the object.
+channel, on the atlas or on the object), feathered the same way. The table is a chart of its own and is never
+painted. A rule does not know its target: write it for any control point of the object. The talk does not load the
+scan's DINOv3 features (`talk/dtu/features122.js`, 648 KB); it fetches them the first time `selection` is picked, and
+the atlas offers the DINOv3 channel from then on. The selection needs `talk/hands.js` on the page; without it the
+control offers `object · owl` only.
 
 ## Writing the rule
 

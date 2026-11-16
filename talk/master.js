@@ -3,15 +3,17 @@
    #master) is the presenter view: the same list as a page of its own, for a second window of the same browser. It
    follows the talk window (the active step, the cut, the clock) and drives it: previous / next (its buttons, or
    ← → PageUp PageDown space), a click on a title, the cut, T for the clock.
-   Every section is listed with its steps, each with a switch, its minutes in both cuts (the section's data-min40 /
-   data-min20, shared evenly by its steps) and the totals of what is on. What a switch does is deck.js's ("parts",
-   KnotTalk.deck): a step that is off leaves the deck as a deep step does in the short cut. Parts that talk.html marks
-   data-off start off and carry an "off by default" tag. Saved per browser (localStorage 'kt-parts', every access
-   guarded): only the presenter's overrides of the page's defaults, so "reset" returns to the page's own choice and a
-   later change of a default still reaches every part the presenter never touched; "show all" turns everything on.
+   Every section is listed with its steps (a section of one step is one row), each with a switch, its minutes in both
+   cuts (the section's data-min40 / data-min20, shared evenly by its steps; struck through, what a part that is off
+   would take) and the totals of what is on. What a switch does is deck.js's ("parts", KnotTalk.deck): a step that is
+   off leaves the deck as a deep step does in the short cut. Parts that talk.html marks data-off start off and carry an
+   "off by default" tag. Saved per browser (localStorage 'kt-parts', every access guarded): only the presenter's
+   overrides of the page's defaults, so "reset" returns to the page's own choice and a later change of a default still
+   reaches every part the presenter never touched; "show all" turns everything on. deck.js applies them at load.
    Between windows: a BroadcastChannel where there is one, postMessage between a window and the one it opened, and
-   the storage event for the overrides. Every message has an id, so one that arrives twice is applied once. With none
-   of them (some file:// setups) the drawer in the talk window still works on its own. */
+   the storage event for the overrides. Every message has an id, so one that arrives twice is applied once; only the
+   window where a switch was turned saves. The talk window is the authority: the presenter view shows what it last
+   said. With none of these channels (some file:// setups) the drawer in the talk window still works on its own. */
 (function () {
   'use strict';
   var KT = window.KnotTalk || {}, D = KT.deck;
@@ -29,6 +31,11 @@
   /* ---------- saved choices: only the overrides of the page's defaults ---------- */
   function parse(v) { try { var o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch (e) { return {}; } }
   var wipe = false;                                 // "reset": forget every saved override, also of steps this copy of the page lacks
+  /* only the window where the presenter acted saves: a change that came from another window (its message, or its save
+     seen through the storage event) is applied here without saving it again, so a late echo cannot overwrite a newer
+     choice */
+  var afar = 0;
+  function fromAfar(f) { afar++; try { f(); } finally { afar--; } }
   function save() {
     try {
       var ls = window.localStorage, o = wipe ? {} : parse(ls.getItem(STORE)), now = D.overrides(), k;
@@ -118,14 +125,17 @@
   function row(cls, lab, name, aria) {
     var r = el('div', 'ktm-row ' + cls);
     var tog = el('input', 'ktm-tog'); tog.type = 'checkbox'; tog.dataset.col = 'tog'; tog.setAttribute('aria-label', aria);
+    var hit = el('label', 'ktm-hit'); hit.appendChild(tog);         // the whole cell takes the tap, not just the switch
     var go = el('button', 'ktm-go'); go.type = 'button'; go.dataset.col = 'go'; go.textContent = name;
     var nm = el('span', 'ktm-name'); nm.appendChild(go);
     var m40 = el('span', 'ktm-m'), m20 = el('span', 'ktm-m');
-    r.appendChild(tog); r.appendChild(el('span', 'ktm-rail', lab)); r.appendChild(nm); r.appendChild(m40); r.appendChild(m20);
+    r.appendChild(hit); r.appendChild(el('span', 'ktm-rail', lab)); r.appendChild(nm); r.appendChild(m40); r.appendChild(m20);
     return { row: r, tog: tog, go: go, name: nm, m40: m40, m20: m20 };
   }
   var grp = -1;
   D.sections.forEach(function (sec) {
+    var navs = D.navs(sec);
+    if (!navs.length) return;                              // nothing in it to show or hide
     var g = sec.closest('.prelude') ? 0 : 1;
     if (g !== grp) {                                       // the light opening and the cover, then the talk
       grp = g;
@@ -134,13 +144,16 @@
       gl.appendChild(G.m40); gl.appendChild(G.m20); list.appendChild(gl); groups.push(G);
     }
     groups[groups.length - 1].secs.push(sec);
-    var navs = D.navs(sec), single = navs.length === 1 && navs[0] === sec, title = sec.dataset.title || D.title(navs[0]);
+    // a part of one step (the cover, a single slide) is one row: its switch is the step's
+    var single = navs.length === 1, title = sec.dataset.title || D.title(navs[0]);
     var li = el('li', 'ktm-sec'), R = row('ktm-srow' + (single ? ' ktm-one' : ''), sec.dataset.rail || '', title,
       (sec.dataset.rail || '') + ' · ' + title + (single ? '' : ', all its steps'));
     R.sec = sec; R.navs = navs; li.appendChild(R.row);
-    if (sec.hasAttribute('data-off')) R.name.appendChild(tag('off by default', 'def', 'talk.html marks this part data-off: it stays off until you switch it on'));
+    if (single && navs[0].matches('.step[data-depth="deep"]')) R.name.appendChild(tag('deep', '', 'A deep-dive: the short cut leaves it out'));
+    if (sec.hasAttribute('data-off') || (single && navs[0].hasAttribute('data-off')))
+      R.name.appendChild(tag('off by default', 'def', 'talk.html marks this part data-off: it stays off until you switch it on'));
     secRows.push(R);
-    if (single) { R.name.appendChild(tag('now', 'now')); byStep.set(sec, R); }
+    if (single) { R.name.appendChild(tag('now', 'now')); byStep.set(navs[0], R); }
     else {
       var ol = el('ol', 'ktm-steps');
       navs.forEach(function (n, k) {
@@ -163,10 +176,12 @@
     link: $('.ktm-link', panel), st: $('.ktm-st', panel), open: $('.ktm-open', panel), was: null
   } : null;
 
-  function setNum(span, v, full, cutName) {
-    span.textContent = mins(v);
-    span.classList.toggle('is-cut', v < full - 1e-9);
-    span.title = cutName + ': ' + mins(v) + (v < full - 1e-9 ? ' of ' + mins(full) : '');
+  /* minutes of a part in one cut: what is on of it; a part that is off shows what it would take, struck through (CSS) */
+  function setNum(span, v, full, cutName, off) {
+    var part = !off && v > 0 && v < full - 1e-9;
+    span.textContent = mins(off ? full : v);
+    span.classList.toggle('is-cut', part);
+    span.title = cutName + ': ' + (off ? (full > 0 ? 'off · ' + mins(full) + ' when on' : 'not in it') : mins(v) + (part ? ' of ' + mins(full) : ''));
   }
   var lastCur = null;
   function paint() {
@@ -192,9 +207,12 @@
       R.row.classList.toggle('is-out', on > 0 && !shown);
       R.row.classList.toggle('is-now', !!cur && (cur === R.sec || R.sec.contains(cur)));
       R.go.setAttribute('aria-disabled', String(!shown));
-      R.go.title = shown ? 'Go to this part' : 'Off in this cut: switch it on to go there';
-      setNum(R.m40, D.budget(R.sec, 40), D.minutes(R.sec, 40), 'long cut');
-      setNum(R.m20, D.budget(R.sec, 20), D.minutes(R.sec, 20), 'short cut');
+      R.go.title = shown ? 'Go to this part' : on ? 'The short cut leaves it out' : 'Off: switch it on to go there';
+      // a section's full minutes in a cut are what the cut shows of it (a section of deep steps only has none in the short one)
+      var f40 = R.navs.some(function (n) { return D.inCut(n, 40); }) ? D.minutes(R.sec, 40) : 0;
+      var f20 = R.navs.some(function (n) { return D.inCut(n, 20); }) ? D.minutes(R.sec, 20) : 0;
+      setNum(R.m40, D.budget(R.sec, 40), f40, 'long cut', !on);
+      setNum(R.m20, D.budget(R.sec, 20), f20, 'short cut', !on);
     });
     stepRows.forEach(function (S) {
       var on = D.isOn(S.n), shown = on && D.inCut(S.n, m);
@@ -204,8 +222,9 @@
       S.row.classList.toggle('is-now', S.n === cur);
       S.go.setAttribute('aria-disabled', String(!shown));
       S.go.title = shown ? 'Go to this step' : on ? 'A deep-dive: the short cut leaves it out' : 'Off: switch it on to go there';
-      var a = on ? D.share(S.n, 40) : 0, b = on && D.inCut(S.n, 20) ? D.share(S.n, 20) : 0;
-      S.m40.textContent = mins(a); S.m20.textContent = mins(b);
+      var a = D.share(S.n, 40), b = D.share(S.n, 20);          // share() is 0 where the cut leaves the step out
+      setNum(S.m40, on ? a : 0, a, 'long cut', !on);
+      setNum(S.m20, on ? b : 0, b, 'short cut', !on);
     });
     if (live) {
       live.cur.textContent = cur ? label(cur) : '–';
@@ -389,17 +408,19 @@
       if (d.type === 'state') {
         view.linked = true; view.cut = d.cut === 20 ? 20 : 40; view.cur = d.cur || null; view.t0 = +d.t0 || 0; view.plan = +d.plan || 0;
         var o = d.over && typeof d.over === 'object' ? d.over : {};
-        if (!same(o, D.overrides())) D.setOverrides(o); else paint();          // setOverrides repaints through kt-parts
+        // the talk window's word on what is on (setOverrides repaints through kt-parts)
+        if (!same(o, D.overrides())) fromAfar(function () { D.setOverrides(o); }); else paint();
       } else if (d.type === 'bye') { view.linked = false; paint(); }
       return;
     }
     var n;
     if (d.type === 'hello') sendState();
-    else if (d.type === 'set') {
+    else if (d.type === 'set') fromAfar(function () {
       (d.keys || []).forEach(function (k) { if ((n = D.byKey(k))) D.set(n, !!d.on); });
       D.refresh();
-    } else if (d.type === 'all') { D.steps.forEach(function (x) { D.set(x, true); }); D.refresh(); }
-    else if (d.type === 'reset') D.setOverrides({});
+    });
+    else if (d.type === 'all') fromAfar(function () { D.steps.forEach(function (x) { D.set(x, true); }); D.refresh(); });
+    else if (d.type === 'reset') fromAfar(function () { D.setOverrides({}); });
     else if (d.type === 'go') { if ((n = D.byKey(d.key))) D.go(n); }
     else if (d.type === 'step') D.step(d.d < 0 ? -1 : 1);
     else if (d.type === 'cut') D.setCut(d.m === 20 ? 20 : 40);
@@ -408,14 +429,16 @@
   /* another window of this browser saved a change: apply what changed (twice is harmless) */
   window.addEventListener('storage', function (e) {
     if (e.key !== STORE && e.key !== null) return;
-    if (e.key === null) { D.setOverrides({}); return; }                       // storage cleared
-    var a = parse(e.oldValue), b = parse(e.newValue), k, n, changed = false, keys = Object.assign({}, a, b);
-    for (k in keys) if (a[k] !== b[k] && (n = D.byKey(k))) { D.set(n, own(b, k) ? !!b[k] : D.defaultOn(n)); changed = true; }
-    if (changed) D.refresh();
+    fromAfar(function () {
+      if (e.key === null) { D.setOverrides({}); return; }                     // storage cleared
+      var a = parse(e.oldValue), b = parse(e.newValue), k, n, changed = false, keys = Object.assign({}, a, b);
+      for (k in keys) if (a[k] !== b[k] && (n = D.byKey(k))) { D.set(n, own(b, k) ? !!b[k] : D.defaultOn(n)); changed = true; }
+      if (changed) D.refresh();
+    });
   });
   ['kt-parts', 'kt-cut', 'kt-clock', 'kt-step'].forEach(function (t) {
     document.addEventListener(t, function () {
-      if (t === 'kt-parts') save();
+      if (t === 'kt-parts' && !afar) save();
       paint(); sendState();
     });
   });

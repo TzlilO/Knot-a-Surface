@@ -16,7 +16,8 @@ body.ktm-on .hud .master{color:var(--text);border-color:var(--dim)}
 @keyframes ktm-in{from{transform:translateX(28px);opacity:0}}
 
 /* ---------- the panel ---------- */
-.ktm{display:flex;flex-direction:column;height:100%;color-scheme:dark;background:var(--bg3);color:var(--text);
+.ktm{--c1:2.3rem;--c2:1.8rem;--cm:3.1rem;--gap:.55rem;--px:1.3rem;   /* the list's columns: switch, label, title, long, short */
+  display:flex;flex-direction:column;height:100%;color-scheme:dark;background:var(--bg3);color:var(--text);
   font:400 .8rem/1.4 var(--f-ui);-webkit-font-smoothing:antialiased;text-align:left}
 .ktm *{box-sizing:border-box}
 .ktm button{font:inherit;color:inherit}
@@ -50,8 +51,8 @@ body.ktm-on .hud .master{color:var(--text);border-color:var(--dim)}
 
 /* ---------- the list: section rows, step rows under them ---------- */
 .ktm-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:2.5rem}
-.ktm-cols,.ktm-row,.ktm-grp{display:grid;grid-template-columns:2.3rem 1.8rem minmax(0,1fr) 3.1rem 3.1rem;column-gap:.55rem;align-items:center;
-  padding:0 1.3rem}
+.ktm-cols,.ktm-row,.ktm-grp{display:grid;grid-template-columns:var(--c1) var(--c2) minmax(0,1fr) var(--cm) var(--cm);column-gap:var(--gap);
+  align-items:center;padding:0 var(--px)}
 .ktm-cols{position:sticky;top:0;z-index:2;padding-top:.55rem;padding-bottom:.55rem;background:var(--bg3);border-bottom:1px solid var(--line);
   font:600 .54rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
 .ktm-cols span:first-child,.ktm-grp span:first-child{grid-column:1 / 4}
@@ -75,7 +76,10 @@ body.ktm-on .hud .master{color:var(--text);border-color:var(--dim)}
 .ktm-srow .ktm-m{font-weight:600;color:var(--text)}
 .ktm-srow .ktm-m.is-cut{text-decoration:underline dotted var(--mute);text-underline-offset:3px}
 
-/* the switch: a native checkbox (Space toggles it; a section's is mixed while only some of its steps are on) */
+/* the switch: a native checkbox (Space toggles it; a section's is mixed while only some of its steps are on), in a label
+   that fills its cell so that a finger need not hit the switch itself */
+.ktm-hit{display:flex;align-items:center;align-self:stretch;min-width:0;cursor:pointer}
+.ktm-step .ktm-hit{justify-content:center}
 .ktm-tog{--w:2.05rem;--h:1.2rem;--r:.3rem;appearance:none;-webkit-appearance:none;flex:none;width:var(--w);height:var(--h);margin:0;cursor:pointer;
   border:1px solid var(--line2);border-radius:99px;
   background:radial-gradient(circle at calc(var(--h) / 2 - 1px) 50%,var(--mute) var(--r),transparent calc(var(--r) + .5px)) var(--bg);
@@ -84,7 +88,7 @@ body.ktm-on .hud .master{color:var(--text);border-color:var(--dim)}
   background:radial-gradient(circle at calc(100% - var(--h) / 2 + 1px) 50%,var(--bg) var(--r),transparent calc(var(--r) + .5px)) var(--text)}
 .ktm-tog:indeterminate{border-color:var(--dim);
   background:radial-gradient(circle at 50% 50%,var(--text) var(--r),transparent calc(var(--r) + .5px)) var(--line2)}
-.ktm-step .ktm-tog{--w:1.8rem;--h:1.05rem;--r:.26rem;justify-self:center}
+.ktm-step .ktm-tog{--w:1.8rem;--h:1.05rem;--r:.26rem}
 
 /* tags: deep-dive, off by default, the active step */
 .ktm-tag{display:inline-block;padding:.16rem .4rem;border:1px solid var(--line2);border-radius:4px;white-space:nowrap;
@@ -93,9 +97,10 @@ body.ktm-on .hud .master{color:var(--text);border-color:var(--dim)}
 .ktm-tag.now{display:none;border-color:var(--text);background:var(--text);color:var(--bg)}
 .ktm-row.is-now .ktm-tag.now{display:inline-block}
 
-/* states: off (struck and dim), on but left out by the cut in use (dim), the active step (a bar, as on the rail) */
-.ktm-row.is-off .ktm-go{opacity:.45;text-decoration:line-through;text-decoration-thickness:1px}
-.ktm-row.is-off .ktm-m,.ktm-row.is-off .ktm-rail{opacity:.45}
+/* states: off (struck and dim; its minutes are what it would take), on but left out by the cut in use (dim), the active
+   step (a bar, as on the rail) */
+.ktm-row.is-off .ktm-go,.ktm-row.is-off .ktm-m{opacity:.45;text-decoration:line-through;text-decoration-thickness:1px}
+.ktm-row.is-off .ktm-rail{opacity:.45}
 .ktm-row.is-out .ktm-go,.ktm-row.is-out .ktm-m{opacity:.6}
 .ktm-srow.is-now .ktm-rail{background:var(--text);color:var(--bg);opacity:1}
 .ktm-step.is-now,.ktm-one.is-now{background:rgba(221,229,240,.07)}
@@ -127,12 +132,13 @@ body.kt-presenter>:not(.ktm){display:none!important}
 @media (max-width:560px){
   .ktm-head{padding:.9rem 1rem .8rem}
   .ktm-note{font-size:.72rem}
-  .ktm-cols,.ktm-row,.ktm-grp{grid-template-columns:2.2rem 1.4rem minmax(0,1fr) 2.75rem 2.75rem;column-gap:.4rem;padding-left:1rem;padding-right:1rem}
+  .ktm{--c1:2.2rem;--c2:1.4rem;--cm:2.75rem;--gap:.4rem;--px:1rem}
   .ktm-cuts b{font-size:1.3rem}
   .ktm-live{grid-template-columns:minmax(0,1fr);padding:.8rem 1rem}
   .ktm-nav button{flex:1}
 }
 @media (pointer:coarse){
+  .ktm{--c1:2.75rem}                                  /* room for the larger section switch */
   .ktm-tog{--w:2.6rem;--h:1.55rem;--r:.42rem}
   .ktm-step .ktm-tog{--w:2.35rem;--h:1.4rem;--r:.38rem}
   .ktm-row{min-height:2.9rem}

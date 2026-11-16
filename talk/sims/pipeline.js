@@ -3,25 +3,33 @@
    tools/dtu/pipeline.py in the scene frame and units of talk/dtu-data.js (+y up, the table at y = 0, 1 unit = 80 mm).
      photos      the dataset's 64 calibrated cameras as frusta (pose and pinhole from the file). The photographs themselves
                  are not shown: their terms of use could not be checked (`photos: null` in the file).
-     sfm         the dataset's sparse COLMAP points, each appearing when its SECOND camera is added (a point needs two
-                 views). COLMAP matched and triangulated them WITH the dataset's calibrated poses: no pose was estimated.
+     sfm         the sparse COLMAP points that come with the copy of the dataset used (Y1ue/DTU), each appearing once its
+                 SECOND camera is added (a point needs two views). COLMAP matched and triangulated them WITH the dataset's
+                 calibrated poses: no pose was estimated.
      init3dgs    the 3DGS initialisation from those points as the reference implementation (graphdeco-inria) makes it:
                  one isotropic Gaussian per point, variance = the mean squared distance to its three nearest neighbours
-                 (simple-knn's distCUDA2; done here exactly, with a k-d tree), the point's colour, opacity 0.1. Drawn the
-                 way 3DGS draws: EWA-projected, sorted, alpha-composited (a material of this module, inside gl.draw's
-                 frame). An inset magnifies one Gaussian and its three neighbours. Nothing is trained.
-     initspline  a 12 x 16 cubic chart fitted by pipeline.py to the sparse points only (robust least squares, no depth
-                 map): its amber control net and Gaussians derived from it (gl.writePlanoids), with the file's numbers.
-     levels      the coarse-to-fine levels of fit.py's GEOMETRIC fit of the owl's chart to the fused depth maps (layout,
+                 (simple-knn's distCUDA2; done here exactly, once, with a k-d tree), the point's colour, opacity 0.1. Drawn
+                 the way 3DGS draws: EWA-projected, sorted, alpha-composited (a material of this module, inside gl.draw's
+                 frame). A magnifier shows one Gaussian, its three nearest neighbours and the Gaussians within 12 sigma of
+                 it (the rest of the cloud cut away). Nothing is trained.
+     initspline  a 12 x 16 cubic chart fitted by pipeline.py to the sparse points (robust least squares; no depth map for
+                 its geometry, only its axis and angular range come from fit.py's layout): its amber control net and
+                 Gaussians derived from it (gl.writePlanoids), with the file's numbers.
+     levels      the coarse-to-fine levels of fit.py's GEOMETRIC fit of the owl's chart to the depth maps (layout,
                  levels 1 to 3, then the shipped net of talk/dtu-data.js), morphing at fixed (u, v), each with its
                  measured distance to the 303,155 measured points. Not training, not iterations of an optimiser. Level 1
                  is a little further from the surface than the layout, and the rms rises from level 3 to level 4
                  (numbers only, no net): both real, both shown.
-     train       with talk/dtu/train122.js (KnotTalk.dtuTrain[122], exported from a real 3DGS run): its snapshots one
-                 after another (they cannot be interpolated: Gaussians are cloned and pruned between them), with the
-                 Gaussians in each checkpoint, those kept in the file, and the logged loss and PSNR. Without that file the
-                 run is PENDING, said so on screen, and the stage shows the stand-in: the 3DGS initialisation beside the
-                 levels of the geometric fit.
+     train       with talk/dtu/train122.js loaded: the snapshots of a real 3DGS run, one after another (never interpolated:
+                 Gaussians are cloned, split and pruned between them), with the Gaussians in each checkpoint, those kept in
+                 the file, and the logged loss and PSNR. Contract (arrays decoded):
+                   KnotTalk.dtuTrain[122] = { note, unit: 'owl frame, 1 unit = 80 mm', log: { iter: [], loss: [], psnr: [] },
+                     snaps: [{ iter, ntotal, n, p: Float32Array(3n) centres, s: Float32Array(3n) per-axis sigma (owl units),
+                               q: Float32Array(4n) unit quaternions (w, x, y, z), c: Uint8Array(3n) sRGB, a: Uint8Array(n) opacity 0..255 }] }
+                 Without that file the run is PENDING, said so on screen, and the stage shows the stand-in: the 3DGS
+                 initialisation beside the levels of the geometric fit.
+   Drawing: the light scenes (photos, sfm) are drawn every frame and sway; the Gaussian scenes hold the camera still and
+   draw only when something changes (the view, a control, a morph, a new probe), so a still stage costs nothing.
    Every number on screen comes from those files or is measured in the page.
    Tool: WebGL (three.js). Standalone: talk/sims/pipeline.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js and
    dtu/pipeline122.js; on dtu-data.js for the shipped owl; on dtu/train122.js when it exists. */
@@ -34,13 +42,15 @@
   var RATE = { photos: 9, sfm: 4.6 };          // cameras added per second
   var HOLD = 3.6, MORPH = 1.2, SNAP = 2.6;     // levels: seconds a level holds, seconds a morph takes; train: seconds per snapshot
   var KS = 0.72;                 // sigma of a derived Gaussian as a fraction of its sampling interval (as in the manifold module)
+  var LOCR = 12, LOCCAP = 2048;  // the magnifier shows the Gaussians whose centres lie within LOCR sigma of the one it looks at (the nearest LOCCAP)
+  var SWAY = { photos: 1, sfm: 1 };   // scenes whose camera sways by itself; the others hold still, and draw only when something changes
 
   var SCENES = {
     photos: { view: 'rig', cap: '<b>the photographs</b> · DTU scan 122 · 64 calibrated cameras<br>each frustum is one camera: its pose and pinhole as the dataset gives them. The photographs themselves are not shown' },
-    sfm: { view: 'rig', cap: '<b>sparse points</b> · the dataset’s own COLMAP model<br>features matched and triangulated with the dataset’s calibrated poses: no pose was estimated · a point appears when a second camera sees it' },
+    sfm: { view: 'rig', cap: '<b>sparse points</b> · COLMAP, as it comes with the copy of the dataset used here<br>features matched and triangulated with the dataset’s calibrated poses: no pose was estimated · a point appears once two of its cameras are in' },
     init3dgs: { view: 'owl', cap: '<b>3DGS initialisation</b> · as the reference implementation makes it<br>one round Gaussian per sparse point · σ from its three nearest neighbours · the point’s colour · opacity 0.1 · nothing trained' },
-    initspline: { view: 'owl', cap: '<b>our initialisation</b> · one cubic chart fitted to the same points<br>12 × 16 control points, robust least squares on the sparse points only (no depth map) · every Gaussian derived from the chart' },
-    levels: { view: 'owl', cap: '<b>coarse to fine</b> · the owl’s chart fitted offline to the fused depth maps<br>a geometric fit, not training: each level is a finer grid of nodes pulled onto the measured surface' },
+    initspline: { view: 'owl', cap: '<b>our initialisation</b> · one cubic chart fitted to the same points<br>12 × 16 control points by robust least squares on the sparse points alone (only its axis and angular range come from the depth-map fit) · every Gaussian derived from the chart' },
+    levels: { view: 'owl', cap: '<b>coarse to fine</b> · the owl’s chart fitted offline to the dataset’s depth maps<br>a geometric fit, not training: each level a finer grid of nodes, pulled onto an envelope first, then onto the measured points' },
     train: { view: 'owl', cap: '' }
   };
 
@@ -75,7 +85,8 @@
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var pr = function () { return R.renderer.getPixelRatio(); };
       var st = { scene: '', sc: SCENES.photos, t: 0, k: 0, kGo: NC, play: true, w: 2, h: 2, split: false, rects: null, narrow: false,
-                 rayJ: -1, rayT: 9, sortKey: '', sortT: 0, nets: true, pts: true, opa: 'init', nInit: small ? 10000 : 20000 };
+                 rayJ: -1, rayT: 9, nets: true, pts: true, opa: 'init', nInit: small ? 10000 : 20000 };
+      var need = true;                             // something changed: draw the next frame (otherwise a still stage is not drawn again)
 
       /* ================= the rig: 64 frusta from the file's poses and pinhole ================= */
       function axes(c) { var r = c.R; return [[r[0], r[1], r[2]], [r[3], r[4], r[5]], [r[6], r[7], r[8]]]; }   // camera x (right), y (down), z (forward) in scene axes
@@ -187,58 +198,69 @@
 
       /* ================= 3DGS Gaussians, drawn as 3DGS draws them =================
          Each Gaussian: centre, 3D covariance (upper triangle), colour, opacity. The vertex shader projects the covariance
-         with the Jacobian of the perspective map (EWA, as the reference rasterizer; + 0.3 px^2 on the diagonal, its low-pass)
-         and spans a quad to 3 sigma along the 2D axes; the fragment is opacity x exp(-d^2 / 2), cut below 1/255, blended
-         back to front over what is behind (the instances are sorted by depth on the CPU when the camera turns). */
-      var GS = (function () {
-        var cap = NP, i;
-        if (TR) TR.snaps.forEach(function (s) { cap = Math.max(cap, s.n); });
+         with the Jacobian of the perspective map, its x/z and y/z clamped to 1.3 x the field of view (EWA, as the reference
+         rasterizer; + 0.3 px^2 on the diagonal, its low-pass), and spans a quad along the 2D axes out to where
+         opacity x exp(-d^2 / 2) falls below 1/255 (at most 3 sigma): the reference adds nothing beyond it. Like the
+         reference it culls only what is behind the eye or wholly off screen, never a Gaussian for being large. The
+         fragment is opacity x exp(-d^2 / 2) (at most 0.99), blended back to front over what is behind (the instances are
+         sorted by depth on the CPU when the view turns). Two fields share the shader: the cloud, and the few Gaussians
+         around one of them that the magnifier shows. */
+      var gsMat = new T.ShaderMaterial({
+        transparent: true, depthWrite: false, depthTest: true,
+        uniforms: { uFocal: { value: new T.Vector2(1, 1) }, uView: { value: new T.Vector2(1, 1) }, uLim: { value: new T.Vector2(1, 1) },
+                    uOpa: { value: -1 } },
+        vertexShader: [
+          'attribute vec3 iC; attribute vec3 iA; attribute vec3 iB; attribute vec4 iK;',
+          'uniform vec2 uFocal; uniform vec2 uView; uniform vec2 uLim; uniform float uOpa;',
+          'varying vec2 vQ; varying vec4 vK;',
+          'void main(){',
+          '  vec4 e = viewMatrix * vec4(iC, 1.0); float z = -e.z, op = uOpa >= 0.0 ? uOpa : iK.a;',
+          '  vQ = vec2(0.0); vK = vec4(0.0);',
+          '  if (z < 0.02 || op * 255.0 <= 1.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }',
+          '  mat3 V = mat3(iA.x, iA.y, iA.z, iA.y, iB.x, iB.y, iA.z, iB.y, iB.z);',
+          '  float tx = clamp(e.x / z, -uLim.x, uLim.x) * z, ty = clamp(e.y / z, -uLim.y, uLim.y) * z;',
+          '  mat3 J = mat3(uFocal.x / z, 0.0, 0.0, 0.0, uFocal.y / z, 0.0, uFocal.x * tx / (z * z), uFocal.y * ty / (z * z), 0.0);',
+          '  mat3 M = J * mat3(viewMatrix); mat3 TV = M * V;',
+          '  vec3 m0 = vec3(M[0][0], M[1][0], M[2][0]), m1 = vec3(M[0][1], M[1][1], M[2][1]);',
+          '  vec3 t0 = vec3(TV[0][0], TV[1][0], TV[2][0]), t1 = vec3(TV[0][1], TV[1][1], TV[2][1]);',
+          '  float a = dot(t0, m0) + 0.3, b = dot(t0, m1), c = dot(t1, m1) + 0.3;',
+          '  float mid = 0.5 * (a + c), rad = length(vec2(0.5 * (a - c), b)), l1 = mid + rad, l2 = max(mid - rad, 0.1);',
+          '  vec2 d = vec2(b, l1 - a); float dl = length(d);',
+          '  vec2 v1 = dl > 1e-6 ? d / dl : (a >= c ? vec2(1.0, 0.0) : vec2(0.0, 1.0)), v2 = vec2(-v1.y, v1.x);',
+          '  float k = min(3.0, sqrt(2.0 * log(255.0 * op))), r1 = k * sqrt(l1), r2 = k * sqrt(l2);',
+          '  vec2 ctr = uFocal * e.xy / z, h = 0.5 * uView;',
+          '  if (abs(ctr.x) > h.x + r1 || abs(ctr.y) > h.y + r1) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }',
+          '  vec2 off = position.x * r1 * v1 + position.y * r2 * v2;',
+          '  vQ = position.xy * k; vK = vec4(iK.rgb, op);',
+          '  vec4 p = projectionMatrix * e;',
+          '  gl_Position = vec4((ctr + off) / h, p.z / p.w, 1.0);',
+          '}'].join('\n'),
+        fragmentShader: [
+          'precision highp float;',
+          'varying vec2 vQ; varying vec4 vK;',
+          'void main(){',
+          '  float a = vK.a * exp(-0.5 * dot(vQ, vQ));',
+          '  if (a < 1.0 / 255.0) discard;',
+          '  gl_FragColor = vec4(vK.rgb, min(a, 0.99));',
+          '}'].join('\n')
+      });
+      /* the camera's focal length, the viewport (device pixels) and the reference's clamp of the Jacobian: call before each draw */
+      function gsPrep(camera, vw, vh) {
+        var P = camera.projectionMatrix.elements, u = gsMat.uniforms;
+        u.uFocal.value.set(P[0] * vw / 2, P[5] * vh / 2); u.uView.value.set(vw, vh); u.uLim.value.set(1.3 / P[0], 1.3 / P[5]);
+      }
+      function gsField(cap, order) {
         var base = new T.PlaneGeometry(2, 2), g = new T.InstancedBufferGeometry(), at = {};
         g.index = base.index; g.setAttribute('position', base.getAttribute('position'));
         [['iC', 3], ['iA', 3], ['iB', 3], ['iK', 4]].forEach(function (s) {
           var a = new T.InstancedBufferAttribute(new Float32Array(cap * s[1]), s[1]); a.setUsage(T.DynamicDrawUsage); g.setAttribute(s[0], a); at[s[0]] = a;
         });
         g.instanceCount = 0;
-        var mat = new T.ShaderMaterial({
-          transparent: true, depthWrite: false, depthTest: true,
-          uniforms: { uFocal: { value: new T.Vector2(1, 1) }, uView: { value: new T.Vector2(1, 1) }, uAlpha: { value: 1 }, uOpa: { value: -1 } },
-          vertexShader: [
-            'attribute vec3 iC; attribute vec3 iA; attribute vec3 iB; attribute vec4 iK;',
-            'uniform vec2 uFocal; uniform vec2 uView; uniform float uAlpha; uniform float uOpa;',
-            'varying vec2 vQ; varying vec4 vK;',
-            'void main(){',
-            '  vec4 e = viewMatrix * vec4(iC, 1.0); vec4 p = projectionMatrix * e; float z = -e.z;',
-            '  vQ = vec2(0.0); vK = vec4(0.0);',
-            '  if (z < 0.01 || abs(p.x) > 1.3 * p.w || abs(p.y) > 1.3 * p.w) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }',
-            '  mat3 V = mat3(iA.x, iA.y, iA.z, iA.y, iB.x, iB.y, iA.z, iB.y, iB.z);',
-            '  mat3 J = mat3(uFocal.x / z, 0.0, 0.0, 0.0, uFocal.y / z, 0.0, uFocal.x * e.x / (z * z), uFocal.y * e.y / (z * z), 0.0);',
-            '  mat3 M = J * mat3(viewMatrix); mat3 TV = M * V;',
-            '  vec3 m0 = vec3(M[0][0], M[1][0], M[2][0]), m1 = vec3(M[0][1], M[1][1], M[2][1]);',
-            '  vec3 t0 = vec3(TV[0][0], TV[1][0], TV[2][0]), t1 = vec3(TV[0][1], TV[1][1], TV[2][1]);',
-            '  float a = dot(t0, m0) + 0.3, b = dot(t0, m1), c = dot(t1, m1) + 0.3;',
-            '  float mid = 0.5 * (a + c), rad = length(vec2(0.5 * (a - c), b)), l1 = mid + rad, l2 = max(mid - rad, 0.1);',
-            '  vec2 d = vec2(b, l1 - a); float dl = length(d);',
-            '  vec2 v1 = dl > 1e-6 ? d / dl : (a >= c ? vec2(1.0, 0.0) : vec2(0.0, 1.0)), v2 = vec2(-v1.y, v1.x);',
-            '  float r1 = 3.0 * sqrt(l1), r2 = 3.0 * sqrt(l2);',
-            '  if (r1 > 3.0 * max(uView.x, uView.y)) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }',
-            '  vec2 off = position.x * r1 * v1 + position.y * r2 * v2;',
-            '  vQ = position.xy * 3.0; vK = iK; if (uOpa >= 0.0) vK.a = uOpa; vK.a *= uAlpha;',
-            '  gl_Position = vec4(p.xy / p.w + off * 2.0 / uView, p.z / p.w, 1.0);',
-            '}'].join('\n'),
-          fragmentShader: [
-            'precision highp float;',
-            'varying vec2 vQ; varying vec4 vK;',
-            'void main(){',
-            '  float a = vK.a * exp(-0.5 * dot(vQ, vQ));',
-            '  if (a < 1.0 / 255.0) discard;',
-            '  gl_FragColor = vec4(vK.rgb, min(a, 0.99));',
-            '}'].join('\n')
-        });
-        var mesh = new T.Mesh(g, mat); mesh.frustumCulled = false; mesh.renderOrder = 2; scene.add(mesh);
+        var mesh = new T.Mesh(g, gsMat); mesh.frustumCulled = false; mesh.renderOrder = order; mesh.visible = false; scene.add(mesh);
         var src = { C: new Float32Array(cap * 3), A: new Float32Array(cap * 3), B: new Float32Array(cap * 3), K: new Float32Array(cap * 4) };
-        var depth = new Float32Array(cap), key = new Uint16Array(cap), order = new Uint32Array(cap), cnt = new Uint32Array(65536);
+        var depth = new Float32Array(cap), key = new Uint16Array(cap), ord = new Uint32Array(cap), cnt = new Uint32Array(65536);
         return {
-          mesh: mesh, mat: mat, cap: cap, n: 0, src: src, what: '',
+          mesh: mesh, cap: cap, n: 0, src: src, what: '', key: '',
           /* back to front along the camera's view direction (the order does not depend on where the camera is) */
           sort: function (camera) {
             var n = this.n, e = camera.matrixWorld.elements, fx = -e[8], fy = -e[9], fz = -e[10], mn = Infinity, mx = -Infinity, j, s, v;
@@ -247,10 +269,10 @@
             cnt.fill(0);
             for (j = 0; j < n; j++) { v = ((mx - depth[j]) * sc) | 0; key[j] = v; cnt[v]++; }
             for (s = 0, j = 0; j < 65536; j++) { v = cnt[j]; cnt[j] = s; s += v; }
-            for (j = 0; j < n; j++) order[cnt[key[j]]++] = j;
+            for (j = 0; j < n; j++) ord[cnt[key[j]]++] = j;
             var oc = at.iC.array, oa = at.iA.array, ob = at.iB.array, ok = at.iK.array, q, t;
             for (j = 0; j < n; j++) {
-              q = order[j]; t = q * 3;
+              q = ord[j]; t = q * 3;
               oc[j * 3] = src.C[t]; oc[j * 3 + 1] = src.C[t + 1]; oc[j * 3 + 2] = src.C[t + 2];
               oa[j * 3] = src.A[t]; oa[j * 3 + 1] = src.A[t + 1]; oa[j * 3 + 2] = src.A[t + 2];
               ob[j * 3] = src.B[t]; ob[j * 3 + 1] = src.B[t + 1]; ob[j * 3 + 2] = src.B[t + 2];
@@ -259,13 +281,52 @@
             ['iC', 'iA', 'iB', 'iK'].forEach(function (k) { at[k].updateRange.offset = 0; at[k].updateRange.count = n * at[k].itemSize; at[k].needsUpdate = true; });
             g.instanceCount = n;
           },
-          /* the camera's focal length and the viewport, in device pixels (call before each draw) */
-          prep: function (camera, vw, vh) {
-            var P = camera.projectionMatrix.elements;
-            mat.uniforms.uFocal.value.set(P[0] * vw / 2, P[5] * vh / 2); mat.uniforms.uView.value.set(vw, vh);
+          /* sort again when the view direction has turned (or the content changed) since the last sort; true if it did */
+          sortFor: function (camera) {
+            var e = camera.matrixWorld.elements, k = Math.round(e[8] * 300) + ',' + Math.round(e[9] * 300) + ',' + Math.round(e[10] * 300) + ':' + this.what + ':' + this.n;
+            if (k === this.key) return false;
+            this.key = k; this.sort(camera); return true;
           }
         };
+      }
+      var GS = gsField((function () { var c = NP; if (TR) TR.snaps.forEach(function (s) { c = Math.max(c, s.n); }); return c; })(), 2);
+      var LOC = gsField(LOCCAP, 2);
+      /* The cloud is drawn into a single-sampled target (soft Gaussians gain nothing from the canvas's multisampling, which
+         only makes every blended fragment dearer) and laid over the screen, premultiplied, so a transparent stage stays
+         transparent. The target is drawn again only when the view or the Gaussians change (cloudOk = false): the
+         magnifier can move on without redrawing the cloud. */
+      var rtC = new T.WebGLRenderTarget(4, 4, { minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false, stencilBuffer: false });
+      var comp = (function () {
+        var tri = new T.BufferGeometry();
+        tri.setAttribute('position', new T.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+        var m = new T.ShaderMaterial({
+          transparent: true, depthTest: false, depthWrite: false, blending: T.CustomBlending,
+          blendSrc: T.OneFactor, blendDst: T.OneMinusSrcAlphaFactor, blendSrcAlpha: T.OneFactor, blendDstAlpha: T.OneMinusSrcAlphaFactor,
+          uniforms: { tC: { value: rtC.texture }, uSize: { value: new T.Vector2(4, 4) } },
+          vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
+          fragmentShader: 'uniform sampler2D tC; uniform vec2 uSize; void main(){ gl_FragColor = texture2D(tC, gl_FragCoord.xy / uSize); }'
+        });
+        var q = new T.Mesh(tri, m); q.frustumCulled = false;
+        var sc = new T.Scene(); sc.add(q);
+        return { scene: sc, cam: new T.Camera(), mat: m };
       })();
+      var cloudOk = false, V2 = new T.Vector2(), CC = new T.Color();
+      /* the cloud (GS, the only thing visible when this is called) in the rectangle q = [x, y, w, h] (CSS px, y from the
+         bottom), over a screen already cleared there; the renderer's viewport and scissor must be q */
+      function drawCloud(camera, q) {
+        var r = R.renderer, p = pr(), size = r.getDrawingBufferSize(V2), auto = r.autoClear;
+        if (rtC.width !== size.x || rtC.height !== size.y) { rtC.setSize(size.x, size.y); comp.mat.uniforms.uSize.value.copy(size); cloudOk = false; }
+        if (!cloudOk) {
+          var cc = r.getClearColor(CC).getHex(), ca = r.getClearAlpha();
+          rtC.viewport.set(q[0] * p, q[1] * p, q[2] * p, q[3] * p).floor(); rtC.scissor.copy(rtC.viewport); rtC.scissorTest = true;
+          r.setRenderTarget(rtC); r.setClearColor(0x000000, 0); r.clear(true, false, false);
+          r.autoClear = false; gsPrep(camera, q[2] * p, q[3] * p);
+          r.render(scene, camera);
+          r.setRenderTarget(null); r.setClearColor(cc, ca);
+          cloudOk = true;
+        }
+        r.autoClear = false; r.render(comp.scene, comp.cam); r.autoClear = auto;
+      }
 
       /* the reference initialisation: sigma^2 = mean squared distance to the three nearest other points (exact, k-d tree) */
       var INIT = null;
@@ -329,7 +390,7 @@
           s.A[i * 3] = v; s.A[i * 3 + 1] = 0; s.A[i * 3 + 2] = 0; s.B[i * 3] = v; s.B[i * 3 + 1] = 0; s.B[i * 3 + 2] = v;
           s.K[i * 4] = SF.C[i * 3] / 255; s.K[i * 4 + 1] = SF.C[i * 3 + 1] / 255; s.K[i * 4 + 2] = SF.C[i * 3 + 2] / 255; s.K[i * 4 + 3] = 0.1;
         }
-        GS.n = NP; GS.what = 'init'; st.sortKey = '';
+        GS.n = NP; GS.what = 'init'; need = true; cloudOk = false;
       }
       function gsSnap(k) {                         // fill it with snapshot k of the real run: covariance = R diag(s^2) R^T
         var S = TR.snaps[k], n = Math.min(S.n, GS.cap), s = GS.src, i, w, x, y, z, l, sx, sy, sz;
@@ -348,7 +409,7 @@
           s.B[i * 3 + 2] = r20 * r20 * sx + r21 * r21 * sy + r22 * r22 * sz;
           s.K[i * 4] = S.c[i * 3] / 255; s.K[i * 4 + 1] = S.c[i * 3 + 1] / 255; s.K[i * 4 + 2] = S.c[i * 3 + 2] / 255; s.K[i * 4 + 3] = S.a[i] / 255;
         }
-        GS.n = n; GS.what = 'snap' + k; st.sortKey = '';
+        GS.n = n; GS.what = 'snap' + k; need = true; cloudOk = false;
       }
 
       /* ================= Gaussians derived from charts (the talk's own renderer) ================= */
@@ -374,7 +435,7 @@
         var key = na + 'x' + nb, d = dcache[key];
         if (!d) d = dcache[key] = [new Float32Array(na).fill(1 / na), new Float32Array(nb).fill(1 / nb)];
         var n = G.writePlanoids(field, 0, g, na, nb, d[0], d[1], KS, rgb || null);
-        field.setCount(n); field.commit(n); st.drawn = n;
+        field.setCount(n); field.commit(n); st.drawn = n; need = true;
         return n;
       }
       function paint(g, rgb, n) { for (var i = 0; i < n; i++) { g.col[i * 3] = rgb[0]; g.col[i * 3 + 1] = rgb[1]; g.col[i * 3 + 2] = rgb[2]; } }
@@ -447,8 +508,9 @@
         // a net that lies on the surface (dense, interpolating) would flicker in and out of the Gaussians: while it shows,
         // their depth is written one sigma back (gl.js's pre-pass variant), as the manifold module does
         var k = field.mesh.userData.ktSplat; if (k) { k.front = k.front || k.core; k.core = st.thin ? k.depth : k.front; }
+        need = true;
       }
-      function showNet(v) { net.obj.visible = netP.visible = !!v; var k = field.mesh.userData.ktSplat; if (k && !v) { k.front = k.front || k.core; k.core = k.front; } }
+      function showNet(v) { net.obj.visible = netP.visible = !!v; var k = field.mesh.userData.ktSplat; if (k && !v) { k.front = k.front || k.core; k.core = k.front; } need = true; }
 
       /* ================= one Gaussian under a magnifier (init3dgs) ================= */
       var cam2 = new T.PerspectiveCamera(8, 1, 0.005, 60);
@@ -487,6 +549,23 @@
         probe.lines.set(6); probe.pts.geometry.attributes.position.needsUpdate = true;
         return { c: c, s: s, p: p, dist: dist };
       }
+      /* what the magnifier shows: the Gaussians whose centres lie within LOCR sigma of the probe's (the nearest LOCCAP of
+         them), copied from the cloud. The rest of the cloud, in front and behind, is cut away */
+      function probeFill() {
+        var p = probe.list[probe.i];
+        if (LOC.what === 'loc' + p) return;
+        var I = initGauss(), P = SF.P, s = I.sig[p], R2 = LOCR * LOCR * s * s, cx = P[p * 3], cy = P[p * 3 + 1], cz = P[p * 3 + 2], hit = [], i, d, dx, dy, dz;
+        for (i = 0; i < NP; i++) { dx = P[i * 3] - cx; dy = P[i * 3 + 1] - cy; dz = P[i * 3 + 2] - cz; d = dx * dx + dy * dy + dz * dz; if (d < R2) hit.push([d, i]); }
+        var cut = hit.length > LOCCAP;
+        if (cut) { hit.sort(function (a, b) { return a[0] - b[0]; }); hit.length = LOCCAP; }
+        var A = GS.src, B = LOC.src;
+        hit.forEach(function (h, j) {
+          var q = h[1];
+          B.C.set(A.C.subarray(q * 3, q * 3 + 3), j * 3); B.A.set(A.A.subarray(q * 3, q * 3 + 3), j * 3);
+          B.B.set(A.B.subarray(q * 3, q * 3 + 3), j * 3); B.K.set(A.K.subarray(q * 4, q * 4 + 4), j * 4);
+        });
+        LOC.n = hit.length; LOC.what = 'loc' + p; probe.count = hit.length; probe.R = cut ? Math.sqrt(hit[LOCCAP - 1][0]) : LOCR * s;   // the radius shown
+      }
 
       /* ================= chrome ================= */
       var parts = [];
@@ -511,7 +590,7 @@
       /* init3dgs */
       var rdG = row('Gaussians', 'init3dgs', 'splat'), rdS = row('σ, median', 'init3dgs'), rdO = row('opacity', 'init3dgs'), rdNu = row('numbers stored', 'init3dgs', '', true);
       var segO = ui.seg(panel, { label: 'opacity', value: 'init', options: [{ v: 'init', label: '0.1 (init)' }, { v: 'one', label: '1' }],
-        onChange: function (v) { st.opa = v; GS.mat.uniforms.uOpa.value = v === 'one' ? 1 : -1; } });
+        onChange: function (v) { st.opa = v; gsMat.uniforms.uOpa.value = v === 'one' ? 1 : -1; need = true; cloudOk = false; } });
       only(segO.el, 'init3dgs');
       /* initspline */
       var rdCP = row('control points', 'initspline', 'ctrl'), rdFit = row('fitted to', 'initspline'), rdTo = row('to those points', 'initspline', 'err'),
@@ -522,7 +601,7 @@
       only(slN.el, 'initspline');
       var rowT = only(ui.el('div', 'kt-row pl-btns'), 'initspline levels'); panel.appendChild(rowT);
       var tgN = ui.toggle(rowT, { label: 'control net', value: true, onChange: function (v) { st.nets = v; netFor(); } });
-      var tgP = ui.toggle(rowT, { label: 'sparse points', value: true, onChange: function (v) { st.pts = v; sfm.visible = v && st.scene === 'initspline'; } });
+      var tgP = ui.toggle(rowT, { label: 'sparse points', value: true, onChange: function (v) { st.pts = v; sfm.visible = v && st.scene === 'initspline'; need = true; } });
       only(tgP.el, 'initspline');
       /* levels */
       var rdL = row('level', 'levels'), rdLe = row('rms · p95 · median', 'levels', 'err'), rdL1 = row('measured points within 1 mm', 'levels', '', true), rdLo = row('nodes on the measured surface', 'levels', '', true);
@@ -583,7 +662,7 @@
       }
 
       /* ================= train ================= */
-      var trn = { i: 0, t: 0, auto: true, fade: 1, want: -1 };
+      var trn = { i: 0, t: 0, auto: true, want: -1 };
       function logAt(it) {                         // the run's logged loss and PSNR at iteration it (the nearest logged one at or before it)
         var L = TR.log || {}, I = L.iter || [], o = { loss: null, li: null, psnr: null, pi: null }, j;
         for (j = 0; j < I.length; j++) {
@@ -603,12 +682,8 @@
       }
       function trainStep(dt) {
         if (!TR) { levelsStep(dt); return; }
-        if (trn.want >= 0) {                       // a short dissolve: out, swap, in
-          trn.fade = Math.max(0, trn.fade - dt / 0.22);
-          if (trn.fade === 0) { trn.i = trn.want; trn.want = -1; gsSnap(trn.i); paintSnap(); }
-        } else trn.fade = Math.min(1, trn.fade + dt / 0.22);
-        GS.mat.uniforms.uAlpha.value = trn.fade;
-        if (trn.auto && trn.want < 0) { trn.t += dt; if (trn.t > (trn.i === TR.snaps.length - 1 ? SNAP * 1.8 : SNAP)) snapGo((trn.i + 1) % TR.snaps.length); }
+        if (trn.want >= 0) { trn.i = trn.want; trn.want = -1; gsSnap(trn.i); paintSnap(); }     // a cut: one snapshot, then the next
+        if (trn.auto) { trn.t += dt; if (trn.t > (trn.i === TR.snaps.length - 1 ? SNAP * 1.8 : SNAP)) snapGo((trn.i + 1) % TR.snaps.length); }
       }
       function sideL() { return '<b>3DGS</b> · iteration 0 of a run that has not been made yet<br>the initialisation, untrained: ' + fmt(NP) + ' Gaussians, opacity 0.1'; }
       function sideR() {
@@ -722,11 +797,15 @@
         return r;
       }
       function aspect() { var q = st.split ? st.rects[0] : null; return q ? q[2] / q[3] : st.w / Math.max(1, st.h); }
-      function view(name) {
-        var v;
-        if (name === 'rig') { v = { th: 0.62, ph: 0.98, tx: RIGC[0], ty: RIGC[1] - 0.6, tz: RIGC[2] }; v.r = fitView(RIGPTS, v, aspect(), 0.86); }
-        else { v = { th: 0.30, ph: 1.24, tx: TGT[0], ty: TGT[1] + 0.05, tz: TGT[2] }; v.r = fitView(OWLPTS, v, aspect(), st.split ? 0.84 : 0.74); }
-        return v;
+      var vcache = {};
+      function view(name) {                        // fitted once per view, stage shape and split (a copy: callers change it)
+        var key = name + '|' + aspect().toFixed(3) + '|' + (st.split ? 1 : 0), v = vcache[key];
+        if (!v) {
+          if (name === 'rig') { v = { th: 0.62, ph: 0.98, tx: RIGC[0], ty: RIGC[1] - 0.6, tz: RIGC[2] }; v.r = fitView(RIGPTS, v, aspect(), 0.86); }
+          else { v = { th: 0.30, ph: 1.24, tx: TGT[0], ty: TGT[1] + 0.05, tz: TGT[2] }; v.r = fitView(OWLPTS, v, aspect(), st.split ? 0.84 : 0.74); }
+          vcache[key] = v;
+        }
+        return Object.assign({}, v);
       }
       function home() {                           // sfm: from the rig in towards the cloud as it fills
         var v = view(st.sc.view);
@@ -756,21 +835,21 @@
         rays.obj.visible = id === 'sfm'; probe.show(false);
         GS.mesh.visible = id === 'init3dgs' || id === 'train';
         field.mesh.visible = id === 'initspline' || id === 'levels' || st.split;
-        GS.mat.uniforms.uOpa.value = id === 'init3dgs' && st.opa === 'one' ? 1 : -1; GS.mat.uniforms.uAlpha.value = 1;
+        gsMat.uniforms.uOpa.value = id === 'init3dgs' && st.opa === 'one' ? 1 : -1;
         inset.style.display = mark.style.display = 'none';
         if (id === 'photos' || id === 'sfm') { st.k = 0; st.play = true; setRays(-1); st.kShown = -1; }
         if (id === 'init3dgs' || (id === 'train' && !TR)) { gsInit(); rdS.set(f2(INIT.med * MM) + ' mm'); probe.i = 0; probe.t = 0; }
         if (id === 'initspline') writeInit();
         if (id === 'levels' || st.split) { var L = levels(); L.auto = true; L.t = 0; levelGo(0); L.f = 1; L.dirty = true; L.fromFlat = 0; }
-        if (id === 'train' && TR) { trn.auto = true; trn.t = 0; trn.want = -1; trn.fade = 1; trn.i = 0; gsSnap(0); paintSnap(); if (slS) slS.set(0); }
+        if (id === 'train' && TR) { trn.auto = true; trn.t = 0; trn.want = -1; trn.i = 0; gsSnap(0); paintSnap(); if (slS) slS.set(0); }
         netFor();
         // words
         var c = sc.cap;
-        if (id === 'train') c = TR ? '<b>3DGS training</b> · one real run of the reference implementation on the same photographs and points<br>snapshots, one after another: Gaussians are cloned and pruned between them, so they cannot be blended'
+        if (id === 'train') c = TR ? '<b>3DGS training</b> · one real 3DGS run on the same photographs and points<br>its snapshots, one after another: Gaussians are cloned, split and pruned between them, so they are not blended'
                                    : '<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>left, the 3DGS initialisation, untrained · right, a stand-in: the levels of the offline geometric fit, which is not training';
         cap.innerHTML = c;
         pend.style.display = id === 'train' && !TR ? '' : 'none';
-        pend.innerHTML = '<b>real 3DGS run: pending</b><br>tools/train trains the reference implementation on a GPU; this step replays its snapshots once they are exported';
+        pend.innerHTML = '<b>real 3DGS run: pending</b><br>it needs a GPU (tools/train); this step replays the run’s snapshots once they are exported to talk/dtu/train122.js';
         hint.textContent = { photos: 'drag to orbit', sfm: 'drag the cameras slider to scrub', init3dgs: 'drag to orbit', initspline: 'drag to orbit', levels: 'pick a level, or let them run', train: TR ? 'drag the snapshot slider' : '' }[id];
         tagL.style.display = tagR.style.display = bar.style.display = st.split ? '' : 'none';
         if (st.split) { tagL.innerHTML = sideL(); tagR.innerHTML = sideR(); }
@@ -778,7 +857,7 @@
         note.style.display = id === 'train' && TR && TR.note ? '' : 'none';
         layout();
         orbit.touched = false; orbit.to(home(), first);
-        plotDirty = true;
+        plotDirty = true; need = true; cloudOk = false;
         if (env.opts.onStats) env.opts.onStats(stats());
       }
       function stats() {
@@ -802,16 +881,13 @@
         } else st.rects = null;
         plotDirty = true;
       }
-      function sortIfNeeded(t) {
-        var e = cam.matrixWorld.elements, key = (e[8] * 97).toFixed(1) + (e[9] * 97).toFixed(1) + (e[10] * 97).toFixed(1) + GS.what + GS.n;
-        if (key !== st.sortKey && (t - st.sortT > 0.08 || !st.sortKey)) { st.sortKey = key; st.sortT = t; GS.sort(cam); }
-      }
       env.loop(function (t, dt) {
         if (st.w < 4 || st.h < 4) return;
-        var id = st.scene;
+        var id = st.scene, go = false;
         st.t += dt;
         /* the scene's own clock */
         if (id === 'photos' || id === 'sfm') {
+          go = true;                               // light scenes (lines and points): drawn every frame
           if (st.play) st.k = Math.min(NC, st.k + dt * RATE[id]);
           rig.set(st.k, id === 'sfm'); sfm.material.uniforms.uK.value = id === 'sfm' ? st.k : NC;
           if (id === 'sfm') {
@@ -823,12 +899,14 @@
         }
         if (id === 'levels') levelsStep(dt);
         if (id === 'train') trainStep(dt);
-        if (id === 'init3dgs' && probe.list.length) { probe.t += dt; if (probe.t > 3.4) { probe.t = 0; probe.i = (probe.i + 1) % probe.list.length; } }
-        /* camera */
-        if (!orbit.touched) { var v = home(); v.th += 0.12 * Math.sin(st.t * 0.17); orbit.to(v); }
-        orbit.update(dt, 2.4);
-        if (GS.mesh.visible) sortIfNeeded(t);
+        if (id === 'init3dgs' && probe.list.length) { probe.t += dt; if (probe.t > 3.4) { probe.t = 0; probe.i = (probe.i + 1) % probe.list.length; need = true; } }
+        /* camera: the light scenes sway a little by themselves, the others hold still until dragged */
+        if (!orbit.touched) { var v = home(); if (SWAY[id]) v.th += 0.12 * Math.sin(st.t * 0.17); orbit.to(v); }
+        if (orbit.update(dt, 2.4)) { go = true; cloudOk = false; }
+        if (GS.mesh.visible && GS.sortFor(cam)) { go = true; cloudOk = false; }
         if (plotDirty && plot.style.display !== 'none') drawPlot();
+        if (!go && !need) return;                  // nothing changed: the canvas keeps the last frame
+        need = false;
         /* draw */
         var rr = R.renderer, p = pr();
         if (st.split) {
@@ -837,33 +915,35 @@
             var q = st.rects[k]; rr.setViewport(q[0], q[1], q[2], q[3]); rr.setScissor(q[0], q[1], q[2], q[3]);
             cam.aspect = q[2] / q[3]; cam.updateProjectionMatrix();
             GS.mesh.visible = k === 0; field.mesh.visible = k === 1;
-            GS.prep(cam, q[2] * p, q[3] * p);
-            G.draw(R, scene, cam);
+            if (k === 0) { rr.clear(); drawCloud(cam, q); } else G.draw(R, scene, cam);
           }
           rr.setScissorTest(false); rr.setViewport(0, 0, st.w, st.h);
           GS.mesh.visible = field.mesh.visible = true;
           return;
         }
         cam.aspect = st.w / st.h; cam.updateProjectionMatrix();
-        GS.prep(cam, st.w * p, st.h * p);
-        if (id === 'init3dgs') probe.show(false);
-        G.draw(R, scene, cam);
+        if (GS.mesh.visible) { rr.clear(); drawCloud(cam, [0, 0, st.w, st.h]); }     // init3dgs, train: the cloud alone
+        else G.draw(R, scene, cam);
         if (id === 'init3dgs' && probe.list.length) drawInset(p);
       });
-      function drawInset(p) {                      // the magnifier: the same Gaussians seen through a narrow lens on one of them
+      function drawInset(p) {                      // the magnifier: one Gaussian and those around it, through a narrow lens
         var rr = R.renderer, iw = Math.round(Math.min(st.w * (st.narrow ? 0.46 : 0.3), 300)), ih = Math.round(iw * 0.78), ix = 12;
         var top = st.narrow ? Math.min(st.h - ih - 12, 92) : st.h - ih - 12, iy = st.h - top - ih;      // CSS top of the inset, and its GL y (from the bottom)
+        probeFill();
         var a = probeAim(), e = cam.matrixWorld.elements;
         var zMain = (a.c[0] - cam.position.x) * -e[8] + (a.c[1] - cam.position.y) * -e[9] + (a.c[2] - cam.position.z) * -e[10];
         var mag = (ih / (2 * a.dist * Math.tan(cam2.fov / 2 * Math.PI / 180))) / (st.h / (2 * zMain * Math.tan(cam.fov / 2 * Math.PI / 180)));
         cam2.aspect = iw / ih; cam2.updateProjectionMatrix();
+        LOC.sortFor(cam2);
         rr.setScissorTest(true); rr.setViewport(ix, iy, iw, ih); rr.setScissor(ix, iy, iw, ih);
-        GS.prep(cam2, iw * p, ih * p); probe.show(true);
+        gsPrep(cam2, iw * p, ih * p); probe.show(true); GS.mesh.visible = false; LOC.mesh.visible = true;
         G.draw(R, scene, cam2);
-        probe.show(false); rr.setScissorTest(false); rr.setViewport(0, 0, st.w, st.h); GS.prep(cam, st.w * p, st.h * p);
+        probe.show(false); GS.mesh.visible = true; LOC.mesh.visible = false;
+        rr.setScissorTest(false); rr.setViewport(0, 0, st.w, st.h);
         var I = INIT, P = SF.P, d = [0, 1, 2].map(function (q) { var n = I.near[a.p * 3 + q]; return Math.hypot(P[n * 3] - a.c[0], P[n * 3 + 1] - a.c[1], P[n * 3 + 2] - a.c[2]) * MM; });
         var s = inset.style; s.display = ''; s.left = ix + 'px'; s.top = top + 'px'; s.width = iw + 'px'; s.height = ih + 'px';
-        insetLab.innerHTML = '<b>×' + Math.round(mag) + '</b> · one Gaussian: <em>σ ' + f2(a.s * MM) + ' mm</em><br>its 3 nearest: ' + d.map(f2).join(', ') + ' mm';
+        insetLab.innerHTML = '<b>×' + Math.round(mag) + '</b> · one Gaussian: <em>σ ' + f2(a.s * MM) + ' mm</em><br>its 3 nearest: ' + d.map(f2).join(', ') + ' mm' +
+                             '<br>shown: the ' + fmt(probe.count) + ' within ' + f2(probe.R * MM) + ' mm of it';
         var sp = G.project(cam, a.c[0], a.c[1], a.c[2], st.w, st.h);
         mark.style.display = sp ? '' : 'none'; if (sp) { mark.style.left = sp[0] + 'px'; mark.style.top = sp[1] + 'px'; }
       }
@@ -874,7 +954,7 @@
         resize: function (w, h) {
           R.resize(w, h); st.w = w; st.h = h; layout();
           if (!orbit.touched) orbit.to(home(), true);
-          plotDirty = true;
+          plotDirty = true; need = true; cloudOk = false;   // a resized canvas is blank until drawn again
         },
         destroy: function () { R.renderer.dispose(); }
       };

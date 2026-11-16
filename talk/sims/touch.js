@@ -40,8 +40,9 @@
    overlaps), a scatter and a rattle when Gaussians are knocked loose (the momentum they took, how many came
    loose), a pluck and a wobble on the elastic surface (pitch from the spring stiffness, loudness and wobble from
    the control points' motion), a crack and shards when it breaks (impulse over toughness, the pieces' sizes and
-   speeds), a whoosh at the launch (its speed), a tick for each candidate moment of contact. Nothing plays before
-   a key or pointer press (browsers forbid it), while KnotTalk.muted is true, or while the module is paused.
+   speeds), a whoosh at the launch (its speed), a click for each candidate moment of contact, when it happened. All of it
+   sits above the bass of the chapter's music (talk/audio/beat.js), so it carries over it. Nothing plays before a key
+   or pointer press (browsers forbid it), while KnotTalk.muted is true, or while the module is paused.
    Tool: WebGL (three.js), Web Audio. Standalone: talk/sims/touch.html.
    Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js. */
 (function () {
@@ -129,7 +130,7 @@
      (roll, hiss, wobble): one each per mount, renewed every frame, and if no frame renews them (the module is
      paused off screen, the tab is hidden) they fade out within HOLD seconds and stop by themselves. */
   var SFX = (function () {
-    var ctx = null, bus = null, noise = null, dead = false, armed = false, live = [], cnt = {}, rr = KT.rng(4242);
+    var ctx = null, bus = null, noise = null, dead = false, armed = false, live = [], cnt = {}, next = {}, rr = KT.rng(4242);
     var VOICES = 8, HOLD = 0.22, LAG = 0.012;
     ['knock', 'roll', 'hiss', 'scatter', 'rattle', 'wobble', 'crack', 'shards', 'whoosh', 'tick'].forEach(function (k) { cnt[k] = 0; });
     function wake() {
@@ -160,8 +161,10 @@
     function ok() { var K = window.KnotTalk; return !!ctx && ctx.state === 'running' && !(K && K.muted); }
 
     /* ---- one-shot voices ---- */
-    function voice(kind, peak, tau, pan) {
-      var t = ctx.currentTime + LAG, i, w = -1, lo = 1e9, l, v, node;
+    function voice(kind, peak, tau, pan, delay) {
+      var t0 = ctx.currentTime + LAG + (delay || 0), t = Math.max(t0, next[kind] || 0), i, w = -1, lo = 1e9, l, v, node;
+      if (t > t0 + 0.25) return null;          // frames that came in a burst (a stall): one kind never stacks on itself, nor lags far
+      next[kind] = t + (kind === 'tick' ? 0.015 : 0.03);
       for (i = live.length - 1; i >= 0; i--) if (live[i].end <= t) live.splice(i, 1);
       if (live.length >= VOICES) {
         for (i = 0; i < live.length; i++) { l = live[i].peak * Math.exp(-Math.max(0, t - live[i].t) / live[i].tau); if (l < lo) { lo = l; w = i; } }
@@ -170,7 +173,7 @@
       }
       v = { t: t, peak: peak, tau: tau, end: t + 0.05, srcs: [], left: 0, out: ctx.createGain() };
       node = v.out;
-      if (pan && ctx.createStereoPanner) { var p = ctx.createStereoPanner(); p.pan.value = pan; v.out.connect(p); node = p; }
+      if (ctx.createStereoPanner) { var p = ctx.createStereoPanner(); p.pan.value = pan || 0; v.out.connect(p); node = p; }
       node.connect(bus); live.push(v); cnt[kind]++;
       return v;
     }
@@ -259,7 +262,7 @@
        as the square root of the stiffness, as a spring's frequency does (FSPR at 160 N/m) */
     function pluck(sp, k, pan) {
       if (!ok()) return;
-      var h = KT.clamp(sp / 8, 0, 1), a = 0.035 + 0.13 * Math.pow(h, 0.8), F = FSPR * Math.sqrt(k / 160), v = voice('wobble', a, 0.16, pan); if (!v) return;
+      var h = KT.clamp(sp / 8, 0, 1), a = 0.045 + 0.16 * Math.pow(h, 0.8), F = FSPR * Math.sqrt(k / 160), v = voice('wobble', a, 0.16, pan); if (!v) return;
       var t = v.t, o = osc(v, F * 1.6, t, 1.1), o2 = osc(v, F * 3.2, t, 0.6);
       o.frequency.exponentialRampToValueAtTime(F, t + 0.11); chain(o, amp(t, a, 0.003, 0.16), v.out);
       o2.frequency.exponentialRampToValueAtTime(F * 2, t + 0.11); chain(o2, amp(t, a * 0.3, 0.003, 0.07), v.out);
@@ -268,37 +271,38 @@
     /* the ball leaves the bowl at sp m/s */
     function whoosh(sp, pan) {
       if (!ok()) return;
-      var h = KT.clamp(sp / 14, 0, 1), A = 0.08 + 0.22 * h, f = 260 + 55 * sp, v = voice('whoosh', A, 0.3, pan); if (!v) return;
-      var t = v.t, bp = biq('bandpass', f * 0.55, 1.1), g = amp(null, 0);
-      bp.frequency.setValueAtTime(f * 0.55, t); bp.frequency.exponentialRampToValueAtTime(f, t + 0.12); bp.frequency.exponentialRampToValueAtTime(f * 0.4, t + 0.95);
+      var h = KT.clamp(sp / 14, 0, 1), A = 0.1 + 0.26 * h, f = 420 + 75 * sp, v = voice('whoosh', A, 0.3, pan); if (!v) return;
+      var t = v.t, bp = biq('bandpass', f * 0.6, 1.1), g = amp(null, 0);                // above the ringing springs and the music's bass
+      bp.frequency.setValueAtTime(f * 0.6, t); bp.frequency.exponentialRampToValueAtTime(f, t + 0.12); bp.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.95);
       g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(A, t + 0.08); g.gain.setTargetAtTime(0, t + 0.1, 0.24);
       chain(hiss(v, t, 1.3), bp, g, v.out);
-      chain(hiss(v, t, 1.0), biq('lowpass', 300, 0.7), amp(t, A * 0.5, 0.06, 0.2), v.out);
+      chain(hiss(v, t, 1.0), biq('lowpass', 300, 0.7), amp(t, A * 0.3, 0.06, 0.2), v.out);
     }
     /* moment: candidate i says "contact": a dry click, a little lower for each later definition (a click, not a note:
        the chapter's music has its own) */
-    function tick(i, pan) {
+    function tick(i, pan, delay) {
       if (!ok()) return;
-      var f = 3000 * Math.pow(0.92, i), v = voice('tick', 0.16, 0.003, pan); if (!v) return;
-      chain(play(v, grains([[0, f, 0.0024, 0.16], [0, f * 1.47, 0.0011, 0.1]], 0.03), v.t), v.out);
+      var f = 3000 * Math.pow(0.92, i), v = voice('tick', 0.13, 0.003, pan, delay); if (!v) return;
+      chain(play(v, grains([[0, f, 0.0024, 0.13], [0, f * 1.47, 0.0011, 0.08]], 0.03), v.t), v.out);
     }
     function hush() { if (!ctx) return; var t = ctx.currentTime; live.forEach(function (v) { cut(v, t); }); live = []; }
 
     /* ---- sustained voices ---- */
-    function glide(p, x, t, tc) { p.cancelScheduledValues(t); p.setTargetAtTime(x, t, tc); }
+    function glide(p, x, t, tc, fresh) { p.cancelScheduledValues(t); if (fresh) p.setValueAtTime(x, t); else p.setTargetAtTime(x, t, tc); }
     function channel(kind) {
       var c = { g: null, srcs: [], until: 0, lvl: 0, quiet: -9, p: null };
-      function make(t) {
+      function make(t, f0) {
         var g = c.g = ctx.createGain(), s, f;
-        g.gain.setValueAtTime(0, t); g.connect(bus); c.srcs = []; c.p = {};
+        g.gain.value = 0; g.connect(bus); c.srcs = []; c.p = {};                 // silent until set() raises it
         if (kind === 'wobble') {                                                 // a soft tone and its octave
           var o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), lp = biq('lowpass', 1400, 0.6);
+          o1.frequency.value = f0 || FSPR; o2.frequency.value = 2 * (f0 || FSPR);
           o1.start(t); o2.start(t); c.srcs.push(o1, o2);
           chain(o1, lp, g); chain(o2, amp(null, 0.22), lp); c.p.f = o1.frequency; c.p.f2 = o2.frequency;
         } else {
           s = ctx.createBufferSource(); s.buffer = noise; s.loop = true; s.start(t, rr() * 2); c.srcs.push(s);
-          if (kind === 'roll') { f = biq('lowpass', 200, 0.9); chain(s, f, biq('highpass', 70, 0.7), g); }
-          else { f = biq('bandpass', 1700, 0.55); chain(s, f, biq('lowpass', 3800, 0.5), g); }
+          if (kind === 'roll') { f = biq('lowpass', f0 || 200, 0.9); chain(s, f, biq('highpass', 70, 0.7), g); }
+          else { f = biq('bandpass', f0 || 1700, 0.55); chain(s, f, biq('lowpass', 3800, 0.5), g); }
           c.p.f = f.frequency;
         }
         c.srcs[0].onended = function () { try { g.disconnect(); } catch (e) {} };
@@ -312,14 +316,15 @@
           if (c.lvl > 0) c.quiet = t;
           c.lvl = 0; return;
         }
-        if (!alive) { c.stop(); make(t); }
+        if (!alive) { c.stop(); make(t, f); }
         if (c.lvl === 0 && t - c.quiet > 0.25 && kind !== 'wobble') cnt[kind]++;   // a wobble is counted by its pluck
         p = c.g.gain; p.cancelScheduledValues(t);
+        if (!alive) p.setValueAtTime(0, t);                                      // a new voice rises from silence
         p.setTargetAtTime(level, t, level >= c.lvl ? 0.02 : 0.08);
         p.setTargetAtTime(0, t + HOLD, 0.05);                                    // the next frame renews this; if none comes, it fades
         c.until = t + HOLD + 0.45;
         c.srcs.forEach(function (s) { try { s.stop(c.until); } catch (e) {} });
-        if (f) { glide(c.p.f, f, t, kind === 'wobble' ? 0.012 : 0.04); if (c.p.f2) glide(c.p.f2, 2 * f, t, 0.012); }
+        if (f) { glide(c.p.f, f, t, kind === 'wobble' ? 0.012 : 0.04, !alive); if (c.p.f2) glide(c.p.f2, 2 * f, t, 0.012, !alive); }
         c.lvl = level;
       };
       c.stop = function () {
@@ -846,7 +851,7 @@
           cur = gap.v[i]; up = CANDS[i].lev != null; thr = up ? CANDS[i].lev : 0;
           if (up ? cur < thr : cur > thr) continue;
           f = KT.clamp((prev[i] - thr) / ((prev[i] - cur) || 1e-30), 0, 1);   // where in the sub-step it crossed
-          mo.t[i] = tNow - HM + f * HM; mo.y[i] = yPrev + f * (ball.p[1] - yPrev) - BR; mo.who[i] = gap.who[i]; au.tick.push(i);
+          mo.t[i] = tNow - HM + f * HM; mo.y[i] = yPrev + f * (ball.p[1] - yPrev) - BR; mo.who[i] = gap.who[i]; au.tick.push([i, mo.t[i]]);
         }
         mo.val = gap.v.slice();
       }
@@ -986,7 +991,7 @@
         x = au.rest ? au.restV / au.rest : 0;                                         // rolling: the share of the frame in resting contact, at its speed
         chRoll.set(au.rest && au.simT ? 0.11 * Math.pow(KT.clamp(x / 2.5, 0, 1), 1.2) * Math.min(1, au.rest / au.simT) : 0, 200 + 130 * x);
         x = au.calls ? au.inside / au.calls : 0;                                       // sinking through a list with no rule
-        chHiss.set(x > 0 ? 0.09 * Math.pow(KT.clamp(x / 140, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.35, 1.2) : 0, (1200 + 90 * speed()) / Math.pow(stretch, 0.3));
+        chHiss.set(x > 0 ? 0.13 * Math.pow(KT.clamp(x / 100, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.5, 1.2) : 0, (1200 + 90 * speed()) / Math.pow(stretch, 0.3));
         if (au.hits && au.first) { SFX.scatter(au.jl, au.hits, pan); au.first = false; au.lastN = prt.n; au.ratT = SFX.now(); }   // the ball meets loose particles
         else if (!au.first) {                                                         // and every Gaussian knocked loose since rattles
           x = prt.n - au.lastN; if (x < 0) x = 0; au.lastN = prt.n; au.rat += x;
@@ -1001,10 +1006,13 @@
           }
           x = Math.sqrt(e2 / ((NC - 2) * (NC - 2)));                                  // rms speed of the control points, m/s: loudness ~ their kinetic energy
           au.env = Math.max(x, au.env * Math.exp(-dt / 0.15));
-          chWob.set(au.env > 0.08 ? 0.14 * Math.pow(KT.clamp(au.env / 1.4, 0, 1), 2) : 0, FSPR * Math.sqrt(mat.stiff / 160) * (1 + 0.05 * KT.clamp(vm / ws / 0.6, -1, 1)));
+          chWob.set(au.env > 0.08 ? 0.11 * Math.pow(KT.clamp(au.env / 1.4, 0, 1), 2) : 0, FSPR * Math.sqrt(mat.stiff / 160) * (1 + 0.05 * KT.clamp(vm / ws / 0.6, -1, 1)));
         } else { chWob.set(0); au.env = 0; }
         if (au.launch) SFX.whoosh(au.launch, pan);                                    // out of the bowl
-        au.tick.forEach(function (i) { SFX.tick(i, pan); });                          // moment: a definition says "contact"
+        if (au.tick.length) {                                                         // moment: a definition says "contact", heard when it
+          var T1 = run.t - run.tr, T0 = T1 - au.simT, last = -1;                      // did within the frame (a frame late), 15 ms apart at least
+          au.tick.forEach(function (q) { last = Math.max(au.simT > 0 ? KT.clamp((q[1] - T0) / au.simT, 0, 1) * dt : 0, last + 0.015); SFX.tick(q[0], pan, last); });
+        }
         quiet();
       }
 
@@ -1273,7 +1281,7 @@
           '.kt-sim-touch .kt-side{position:absolute;z-index:4;left:10px;bottom:10px;pointer-events:none;font:500 11px/1.5 var(--f-mono);letter-spacing:.03em;color:var(--dim);' +
           'padding:8px 11px;background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(680px,calc(100% - 20px))}' +
           '.kt-sim-touch .kt-side b{color:var(--text);font-weight:600;letter-spacing:.06em;text-transform:uppercase}' +
-          '.kt-sim-touch .kt-side i{font-style:normal;color:var(--mute)}.kt-sim-touch .kt-side em{font-style:normal;color:var(--ok);font-weight:600}' +
+          '.kt-sim-touch .kt-side i{font-style:normal;color:var(--mute)}.kt-sim-touch .kt-side em{font:inherit;font-weight:600;letter-spacing:inherit;color:var(--ok)}' +   // (the deck sets every em in a serif italic)
           '.kt-sim-touch .kt-side em.bad{color:var(--err)}.kt-sim-touch .kt-side sub,.kt-sim-touch .kt-side sup{font-size:.8em;line-height:0}' +
           '.kt-sim-touch .kt-mo{display:none;margin:0 0 4px}.kt-sim-touch .kt-mo.on{display:block}.kt-sim-touch .kt-mo svg{display:block;overflow:visible}' +
           '.kt-sim-touch .kt-mo text{font:600 9.5px/1 var(--f-mono);letter-spacing:.02em}' +
