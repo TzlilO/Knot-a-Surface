@@ -494,47 +494,113 @@
        table  — the fitted table plane, as far as the photographs show it.
      `seen` on a chart (Uint8Array, one per control point) is 1 where the surface was measured and 0 where a
      small hole was inpainted. photo: true — the colours already hold the light of the photographs. */
-  /* The owl of scan 122, alive: animate(t, paint) writes control points and control colours and returns the
-     charts whose shape changed. Everything is an edit of the chart's own net. Regions are in the object's
-     frame (scene units, 1 = 80 mm), read off the fitted surface:
+  /* The owl of scan 122, alive: animate(t, paint, material) writes control points and control colours and
+     returns the charts whose shape changed. Everything is an edit of the chart's own net. Regions are in the
+     object's frame (scene units, 1 = 80 mm), read off the fitted surface:
        breathing — the chest moves out and back along the horizontal direction away from the body's axis;
        head      — every point above the shoulders tilts about an axis that points at the cameras (so the
                    sheet's open back never turns into view), now and then;
        blinking  — a lid colour closes over each eye socket from above;
-       paint     — 0..1 wipes new control colours down from the head: a snowy owl. They are computed from
-                   the photograph colours by a rule (white where the stone is bright, dark bars where the
-                   carving has grooves, yellow eyes, dark beak), nothing is painted by hand or generated. */
+       paint     — 0..1 wipes a MATERIAL down from the head.
+     A material is one entry of MATS. Its colours are a rule, evaluated once per control point of the owl;
+     nothing is painted by hand or generated. The rule sees a sample s:
+       s.x, s.y, s.z     where the point is (its position in the scan);
+       s.nx, s.ny, s.nz  the unit normal of the control net there, pointing out of the owl (the cameras are at +z);
+       s.sh              0..1, how bright the photograph is there: the carving's relief (grooves are dark);
+       s.head            whether the point is above the shoulders;
+     and writes s.r, s.g, s.b. Optional: `eye(d, lx, ly)` -> [r, g, b] inside an eye socket (d = 0 centre .. 1
+     rim, lx / ly = -1..1 across it), `beak` and `lid` colours; `colour` may also set s.a, an opacity (1 = solid:
+     the renderer then shows what is behind, and the far side of the owl, through it; eyes and beak stay
+     solid); and `move(s, t)` may add to s.x, s.y, s.z every frame: a material that is not rigid. Opacity and
+     motion are scaled in by the wipe. */
+  var MATS = {
+    snowy: { label: 'snowy owl', beak: [0.09, 0.085, 0.08], lid: [0.80, 0.79, 0.76],
+      // white where the stone is bright, dark bars where the carving has grooves (fewer of them on the head)
+      colour: function (s) {
+        var t = s.head ? ss(0.06, 0.3, s.sh) : ss(0.2, 0.62, s.sh), w = 0.45 + 0.55 * s.sh;
+        s.r = 0.15 + (0.90 * w - 0.15) * t; s.g = 0.12 + (0.89 * w - 0.12) * t; s.b = 0.10 + (0.86 * w - 0.10) * t;
+      },
+      eye: function (d) { return d < 0.42 ? [0.02, 0.02, 0.02] : d < 0.86 ? [0.95, 0.70, 0.08] : [0.08, 0.07, 0.06]; } },
+    jelly: { label: 'alien jelly', beak: [0.03, 0.40, 0.12], lid: [0.12, 0.72, 0.22],
+      // a green gel you can see through: bright lime where it thins out towards the rim, the carving's relief
+      // smoothed over, and two painted highlights (a lamp up and to the left, a broad sheen from above), which are solid
+      colour: function (s) {
+        var f = Math.pow(1 - Math.max(0, Math.abs(s.nz)), 1.5), w = 0.6 + 0.4 * s.sh;
+        var hl = 0.9 * Math.pow(Math.max(0, -0.22 * s.nx + 0.44 * s.ny + 0.87 * s.nz), 30) + 0.25 * Math.pow(Math.max(0, 0.7 * s.ny + 0.7 * s.nz), 10);
+        s.r = (0.03 + 0.62 * f) * w + hl; s.g = (0.55 + 0.45 * f) * w + hl; s.b = (0.14 + 0.22 * f) * w + hl;
+        s.a = Math.min(1, 0.5 + 0.2 * f + hl);
+      },
+      eye: function (d, lx, ly) { return Math.hypot(lx + 0.32, ly - 0.34) < 0.24 ? [0.95, 1, 0.95] : d < 0.82 ? [0.01, 0.06, 0.02] : [0.45, 1, 0.35]; },
+      // it wobbles: a sway that grows with the height above the feet, and a ripple climbing the body
+      move: function (s, t) {
+        var h = Math.max(0, s.y - 1.45), a = 0.045 * Math.pow(h, 1.5) * (0.65 + 0.35 * Math.sin(0.9 * t)), rp = 0.016 * Math.sin(9 * s.y - 7 * t);
+        s.x += a * Math.sin(5.0 * t) + rp * s.nx; s.z += 0.7 * a * Math.sin(4.3 * t + 1.3) + rp * s.nz; s.y -= 0.012 * h * (0.5 + 0.5 * Math.sin(10 * t));
+      } }
+  };
+  function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
   function owlLife(c) {
-    var P = c.patch.P, K = c.patch.C, B = c.base, K0 = new Float32Array(K), K1 = new Float32Array(K), n = B.length / 3;
-    var EYES = [[0.127, 3.214], [0.470, 3.262]], RE = 0.092, BEAK = [0.335, 3.02], WHITE = [0.90, 0.89, 0.86], BAR = [0.15, 0.12, 0.10];
-    var body = [], bw = [], eyes = [], M = new Float32Array(n), i, o, x, y, z, e, d, w, lid = [[0, 0, 0, 0], [0, 0, 0, 0]];
-    function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
+    var P = c.patch.P, K = c.patch.C, B = c.base, K0 = new Float32Array(K), n = B.length / 3, nu = c.patch.nu, nv = c.patch.nv;
+    var EYES = [[0.127, 3.214], [0.470, 3.262]], RE = 0.092, BEAK = [0.335, 3.02];
+    var body = [], bw = [], eyes = [], M = new Float32Array(n), N = new Float32Array(n * 3), SH = new Float32Array(n), BK = new Float32Array(n);
+    var AL = new Float32Array(n).fill(1);                          // the opacity of every control point, as the renderer reads it (c.alpha)
+    var i, j, o, x, y, z, e, d, w, lid = [[0, 0, 0, 0], [0, 0, 0, 0]], s = {};
     c.baseC = K0;
+    for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {            // normals of the net: (next - previous) along u, cross, along v
+      var a = (j * nu + Math.max(0, i - 1)) * 3, b = (j * nu + Math.min(nu - 1, i + 1)) * 3, g = (Math.max(0, j - 1) * nu + i) * 3, h = (Math.min(nv - 1, j + 1) * nu + i) * 3;
+      var ux = B[b] - B[a], uy = B[b + 1] - B[a + 1], uz = B[b + 2] - B[a + 2], vx = B[h] - B[g], vy = B[h + 1] - B[g + 1], vz = B[h + 2] - B[g + 2];
+      x = uy * vz - uz * vy; y = uz * vx - ux * vz; z = ux * vy - uy * vx; d = Math.hypot(x, y, z) || 1; o = (j * nu + i) * 3;
+      N[o] = x / d; N[o + 1] = y / d; N[o + 2] = z / d;
+    }
     for (i = 0; i < n; i++) {
       o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
       // where the owl ends and the books begin: a line that rises towards the open page on its left
       M[i] = ss(0, 0.07, y - (x < 0.3 ? 1.56 + 0.25 * x : 1.635 + 1.2 * (x - 0.3)));
-      if (y > 1.7) { body.push(i); bw.push(ss(1.75, 2.2, y) * (1 - ss(2.6, 2.95, y)), ss(2.3, 2.85, y)); }
-      var L = 0.30 * K0[o] + 0.59 * K0[o + 1] + 0.11 * K0[o + 2], sh = Math.min(1, L / 0.30), t = y > 2.85 ? ss(0.06, 0.3, sh) : ss(0.2, 0.62, sh), k;
-      for (k = 0; k < 3; k++) K1[o + k] = BAR[k] + (WHITE[k] * (0.45 + 0.55 * sh) - BAR[k]) * t;
-      d = Math.hypot((x - BEAK[0]) / 0.055, (y - BEAK[1]) / 0.09);
-      if (d < 1.2 && z > 0.3) { w = 1 - ss(0.8, 1.2, d); for (k = 0; k < 3; k++) K1[o + k] += (0.09 * (0.6 + 0.4 * sh) - K1[o + k]) * w; }
+      if (M[i] || y > 1.7) { body.push(i); bw.push(ss(1.75, 2.2, y) * (1 - ss(2.6, 2.95, y)), ss(2.3, 2.85, y)); }
+      SH[i] = Math.min(1, (0.30 * K0[o] + 0.59 * K0[o + 1] + 0.11 * K0[o + 2]) / 0.30);
+      d = Math.hypot((x - BEAK[0]) / 0.055, (y - BEAK[1]) / 0.09); BK[i] = d < 1.2 && z > 0.3 ? 1 - ss(0.8, 1.2, d) : 0;
       for (e = 0; e < 2; e++) {
         d = Math.hypot(x - EYES[e][0], y - EYES[e][1]) / RE; if (z < 0.2) continue;
-        if (d < 1) { eyes.push(i, e, (y - EYES[e][1]) / RE); k = d < 0.42 ? [0.02, 0.02, 0.02] : d < 0.86 ? [0.95, 0.70, 0.08] : [0.08, 0.07, 0.06]; K1[o] = k[0]; K1[o + 1] = k[1]; K1[o + 2] = k[2]; }
+        if (d < 1) eyes.push(i, e, (y - EYES[e][1]) / RE);
         else if (d < 1.5) { lid[e][0] += K0[o]; lid[e][1] += K0[o + 1]; lid[e][2] += K0[o + 2]; lid[e][3]++; }   // the brow: the lid's colour in stone
       }
     }
     lid.forEach(function (l) { l[0] /= l[3]; l[1] /= l[3]; l[2] /= l[3]; });
-    var painted = -1, shut = -1;
-    function colour(i, front) { var o = i * 3, m = M[i] * ss(front, front + 0.25, B[o + 1]); K[o] = K0[o] + (K1[o] - K0[o]) * m; K[o + 1] = K0[o + 1] + (K1[o + 1] - K0[o + 1]) * m; K[o + 2] = K0[o + 2] + (K1[o + 2] - K0[o + 2]) * m; return m; }
-    return function (t, paint) {
+    function sample(i) { var o = i * 3; s.x = B[o]; s.y = B[o + 1]; s.z = B[o + 2]; s.nx = N[o]; s.ny = N[o + 1]; s.nz = N[o + 2]; s.sh = SH[i]; s.head = B[o + 1] > 2.85; return s; }
+    /* the colours of a material on every control point of the owl, worked out the first time it is asked for */
+    function bake(m) {
+      if (m.K) return m.K;
+      var K1 = m.K = new Float32Array(K0), A1 = null, q, k, rgb;
+      for (i = 0; i < n; i++) if (M[i]) {
+        o = i * 3; s.a = 1; m.colour(sample(i)); K1[o] = s.r; K1[o + 1] = s.g; K1[o + 2] = s.b;
+        if (s.a < 1) { A1 = A1 || new Float32Array(n).fill(1); A1[i] = s.a + (1 - s.a) * BK[i]; }
+        if (BK[i] && m.beak) for (k = 0; k < 3; k++) K1[o + k] += (m.beak[k] * (0.6 + 0.4 * SH[i]) - K1[o + k]) * BK[i];
+      }
+      if (m.eye) for (q = 0; q < eyes.length; q += 3) {
+        o = eyes[q] * 3; e = EYES[eyes[q + 1]]; x = (B[o] - e[0]) / RE; y = eyes[q + 2];
+        rgb = m.eye(Math.hypot(x, y), x, y); K1[o] = rgb[0]; K1[o + 1] = rgb[1]; K1[o + 2] = rgb[2];
+        if (A1) A1[eyes[q]] = 1;
+      }
+      m.A = A1;
+      return K1;
+    }
+    var painted = -1, shut = -1, cur = null, K1 = K0;
+    function colour(i, front) {
+      var o = i * 3, m = M[i] * ss(front, front + 0.25, B[o + 1]);
+      K[o] = K0[o] + (K1[o] - K0[o]) * m; K[o + 1] = K0[o + 1] + (K1[o + 1] - K0[o + 1]) * m; K[o + 2] = K0[o + 2] + (K1[o + 2] - K0[o + 2]) * m;
+      if (cur.A) AL[i] = 1 + (cur.A[i] - 1) * m;
+      return m;
+    }
+    return function (t, paint, material) {
+      var mat = MATS[material] || MATS.snowy;
+      if (mat !== cur) { cur = mat; K1 = bake(mat); painted = -1; }
       var breath = 0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 3.4), tc = t % 9, tb = t % 3.7;
       var tilt = 0.3 * ss(4, 4.7, tc) * (1 - ss(7, 7.7, tc)), blink = ss(3.0, 3.09, tb) * (1 - ss(3.12, 3.26, tb));
-      var ca = Math.cos(tilt), sa = Math.sin(tilt), q, a, cw, sw, front = 3.7 - 2.7 * paint;
+      var ca = Math.cos(tilt), sa = Math.sin(tilt), q, a, cw, sw, front = 3.7 - 2.7 * paint, soft = paint && mat.move;
       for (q = 0; q < body.length; q++) {
-        i = body[q]; o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2]; w = bw[q * 2];
-        if (w) { var dx = x - (-0.08 + 0.26 * (y - 1.7)), dz = z - 0.18, dl = 0.045 * breath * w / (Math.hypot(dx, dz) || 1); x += dx * dl; z += dz * dl; }
+        i = body[q]; o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
+        if (soft && (w = M[i] * ss(front, front + 0.25, y))) { sample(i); mat.move(s, t); x += (s.x - x) * w; y += (s.y - y) * w; z += (s.z - z) * w; }
+        w = bw[q * 2];
+        if (w) { var dx = B[o] - (-0.08 + 0.26 * (B[o + 1] - 1.7)), dz = B[o + 2] - 0.18, dl = 0.045 * breath * w / (Math.hypot(dx, dz) || 1); x += dx * dl; z += dz * dl; }
         w = bw[q * 2 + 1];
         if (w) {
           y += 0.012 * breath * w;
@@ -544,9 +610,10 @@
         P[o] = x; P[o + 1] = y; P[o + 2] = z;
       }
       if (paint !== painted) for (painted = paint, shut = -1, i = 0; i < n; i++) if (M[i]) colour(i, front);
+      c.alpha = mat.A && paint ? AL : null;
       if (blink !== shut) for (shut = blink, q = 0; q < eyes.length; q += 3) {      // the lid comes down from above
         i = eyes[q]; o = i * 3; var m = colour(i, front);
-        if (eyes[q + 2] > 1 - 2 * blink) { var l = lid[eyes[q + 1]]; K[o] = l[0] + (0.80 - l[0]) * m; K[o + 1] = l[1] + (0.79 - l[1]) * m; K[o + 2] = l[2] + (0.76 - l[2]) * m; }
+        if (eyes[q + 2] > 1 - 2 * blink) { var l = lid[eyes[q + 1]], L = mat.lid || [0.8, 0.8, 0.8]; K[o] = l[0] + (L[0] - l[0]) * m; K[o + 1] = l[1] + (L[1] - l[1]) * m; K[o + 2] = l[2] + (L[2] - l[2]) * m; }
       }
       return [c];
     };
@@ -569,7 +636,8 @@
       tour: D.tour || ['wide', 'close', 'a', 'b'],
       rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
       /* scan 122 only: the owl alive and repainted (owlLife); another scan has neither */
-      animate: D.scan === 122 ? owlLife(C[0]) : null
+      animate: D.scan === 122 ? owlLife(C[0]) : null,
+      materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label }; }) : null
     };
   }
 

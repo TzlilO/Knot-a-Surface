@@ -72,8 +72,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   lattice per chart, puts the Gaussians on its points and lets a running 2 x 2 window stitch two triangles per stop
   (`buildMesh` / `stepMesh`; instances are written in reverse window order so `setCount` retires the stitched ones).
   The owl's `animate(t, paint)` (`owlLife` in `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as
-  control-point edits, and `paint` wipes rule-based control colours in (scene `paint`, a snowy owl); a scene without
-  `animate` falls back to `edit(k)`. Its views are the splat shader's render modes (`uMode` in
+  control-point edits, and `paint` wipes a MATERIAL in (scene `paint`): one entry of `MATS`, a rule that writes control
+  colours and optionally control opacities (`s.a`) and motion (`move`); the picker fills itself from `MATS`. To add or
+  tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
+  `edit(k)`. Opacity: `gl.splats(n, {alpha: true})` gives a field an opacity per Gaussian; while its
+  `ktSplat.thin` is set, `gl.draw` draws the solid Gaussians as before and the see-through ones as two more layers
+  (far side, near side) blended over them. Other fields and modules are untouched. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`

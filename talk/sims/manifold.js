@@ -37,7 +37,7 @@
     mesh:   { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, cap: 'tessellation · a 2 × 2 window stitches the samples into triangles' },
     edit:   { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, tools: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
-    paint:  { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, paint: 1, cap: 'texture edit · the same net, new control colours' },
+    paint:  { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, paint: 1, cap: 'material edit · the same net, new control colours' },
     studio: { scn: 'studio', view: 'splats', cam: 'wide', atlas: 1, cap: 'the abstract still life' },
     /* chrome-free, for pages that embed the scene as a backdrop (mount with { bare: true }) */
     hero:   { scn: 'barn', view: 'splats', tour: 1, cap: '' }
@@ -62,13 +62,14 @@
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
                  budget: +env.opts.budget || (small ? 30000 : KT.dtu ? 160000 : 90000),   // the scanned object has detail to show for a larger budget
-                 k: 0.72, cull: true, paint: 0, tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
+                 k: 0.72, cull: true, paint: 0, mat: 'snowy', tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false };
+      var segM = null;                 // the material picker of a scene that has materials (shown on the `paint` scene)
       var def = null, charts = [], totalCP = 0, shownCP = 0, netL = null, pts = null, ptPos = null, rigL = null;
       var need = true, lastAlloc = 0, camKey = '', fit = 1;
       /* a named camera of the current scene, backed off on narrow stages so the subject stays in frame */
       function view(name) { var v = Object.assign({}, def.views[name]); v.r *= fit; return v; }
 
-      var field = G.splats(CAP); scene.add(field.mesh);
+      var field = G.splats(CAP, { alpha: true }); scene.add(field.mesh);     // alpha: a chart may carry an opacity per control point (c.alpha)
 
       /* ---------- chrome ---------- */
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
@@ -131,9 +132,15 @@
 
       /* ---------- load a scene: charts, nets, atlas tiles, capture rig ---------- */
       function loadScene(key) {
-        if (st.scn === key) { charts.forEach(function (c) { c.patch.P.set(c.base); if (c.baseC) c.patch.C.set(c.baseC); coarse(c); }); updateNets(); need = true; return; }
+        if (st.scn === key) { charts.forEach(function (c) { c.patch.P.set(c.base); if (c.baseC) c.patch.C.set(c.baseC); c.alpha = null; coarse(c); }); updateNets(); need = true; return; }
         st.scn = key; def = KT.scenes[key].build(); charts = def.charts; segS.set(key);
         field.uniforms.uFlat.value = def.photo || KT.scenes[key].photo ? 1 : 0;   // colours from photographs are already lit
+        if (segM) { segM.el.remove(); segM = null; }
+        if (def.materials) {
+          if (!def.materials.some(function (m) { return m.v === st.mat; })) st.mat = def.materials[0].v;
+          segM = ui.seg(panel, { value: st.mat, options: def.materials, onChange: function (v) { st.mat = v; st.paint = 0; } });
+          segM.el.classList.add('mf-mat');
+        }
         [netL && netL.obj, pts, rigL && rigL.obj].forEach(function (o) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
         totalCP = 0; shownCP = 0; var segs = 0;
         charts.forEach(function (c) {
@@ -234,7 +241,7 @@
               var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / dl * c.flip;
               // open charts: foreshortening. closed charts: the near side counts in full (flat planoids must
               // stay small all the way to the silhouette), the hidden far side keeps a thin share
-              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : st.cull ? 0 : 0.3; }      // culled: the far side asks for nothing
+              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : st.cull && !c.alpha ? 0 : 0.3; }      // culled: the far side asks for nothing (a see-through chart shows it)
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
               w = c.carea[i] * cs / d2 * c.gain;
               if (cw < z0) z0 = cw; if (cw > z1) z1 = cw;
@@ -291,20 +298,29 @@
       }
       function emit() {
         allocate();
-        var n = 0, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 };
+        var n = 0, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 }, thin = false;
         charts.forEach(function (c) {
-          var rgb = G.rgb(c.hex), n0 = n, i;
+          var rgb = G.rgb(c.hex), n0 = n, i, AL = c.alpha, p = c.patch;
           eye.flip = c.flip;
           c.tiles.forEach(function (tl) {
             if (tl.na * tl.nb > CAP) return;
             NB.patchGrid(c.patch, tl.us, tl.vs, sg);
-            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, null, st.cull && c.closed ? eye : null);
+            var t0 = n, k, a, b;
+            // a see-through chart keeps its far side, and each Gaussian takes the opacity of the control point nearest to it
+            n = G.writePlanoids(field, n, sg, tl.na, tl.nb, tl.du, tl.dv, st.k, null, st.cull && c.closed && !AL ? eye : null);
+            if (!AL) { field.alpha.fill(1, t0, n); return; }
+            for (k = t0; k < n; k++) {
+              a = (k - t0) % tl.na; b = ((k - t0) / tl.na) | 0;
+              field.alpha[k] = AL[Math.round(tl.vs[b] * (p.nv - 1)) * p.nu + Math.round(tl.us[a] * (p.nu - 1))];
+            }
+            thin = true;
           });
           c.count = n - n0;
           for (i = n0 * 3; i < n * 3; i += 3) { field.aux[i] = rgb[0]; field.aux[i + 1] = rgb[1]; field.aux[i + 2] = rgb[2]; }
           c.lab.textContent = c.count.toLocaleString('en-US') + ' G';
           drawTile(c);
         });
+        field.mesh.userData.ktSplat.thin = thin;
         return n;
       }
       function drawTile(c) {
@@ -368,7 +384,7 @@
           for (i = n0 * 3; i < n * 3; i += 3) { field.aux[i] = rgb[0]; field.aux[i + 1] = rgb[1]; field.aux[i + 2] = rgb[2]; }
           m.c.lab.textContent = (n - n0).toLocaleString('en-US') + ' G';
         });
-        field.commit(n);
+        field.alpha.fill(1, 0, n); field.mesh.userData.ktSplat.thin = false; field.commit(n);
         var geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('aCol', new T.BufferAttribute(col, 3));
         geo.setIndex(new T.BufferAttribute(tri, 1));
         var wgeo = new T.BufferGeometry(); wgeo.setAttribute('position', geo.attributes.position); wgeo.setIndex(new T.BufferAttribute(edge, 1));
@@ -493,7 +509,7 @@
         var sc = SCENES[id]; if (!sc) return;
         if (id === 'hero' && env.opts.scn && KT.scenes[env.opts.scn]) sc = Object.assign({}, sc, { scn: env.opts.scn });
         if (!KT.scenes[sc.scn]) sc = Object.assign({}, sc, { scn: 'barn' });
-        root.classList.toggle('mf-noatlas', !sc.atlas); root.classList.toggle('mf-tools', !!sc.tools);
+        root.classList.toggle('mf-noatlas', !sc.atlas); root.classList.toggle('mf-tools', !!sc.tools); root.classList.toggle('mf-paint', !!sc.paint);
         st.scene = id; st.sc = sc; st.t = 0; st.tourI = 0; st.tourT = 0; st.abT = 0; st.touchedAB = false; st.touchedEdit = false;
         st.view = sc.view; segV.set(sc.view); showView(); st.nets = !!sc.nets; st.rig = !!sc.rig;
         st.adaptive = true; tgA.set(true); paintBadge();
@@ -520,7 +536,7 @@
         if (sc.breathe && !st.touchedEdit && !dragCP && (def.animate || def.edit)) {
           // the scene's own edit: a life of its own where the scene has one (and a repaint, wiped in), else one move eased in and out
           if (sc.paint && def.animate) st.paint = Math.min(1, st.paint + dt / 3.5);
-          (def.animate ? def.animate(st.t, st.paint) : def.edit(0.5 - 0.5 * Math.cos(st.t * 1.15))).forEach(coarse);
+          (def.animate ? def.animate(st.t, st.paint, st.mat) : def.edit(0.5 - 0.5 * Math.cos(st.t * 1.15))).forEach(coarse);
           if (st.nets) updateNets();
           need = true;
         }
@@ -553,7 +569,7 @@
           '.kt-sim-manifold.kt-compact .kt-atlas,.kt-sim-manifold.mf-noatlas .kt-atlas{display:none}' +
           // in the deck the steps drive the scene: no picker, and the toggles only on a step that asks for them (tools: 1)
           '.kt-sim-manifold.kt-embed .mf-pick,.kt-sim-manifold.kt-embed:not(.mf-tools) .mf-tog{display:none}' +
-          '.kt-sim-manifold:not(.mf-mesh) .mf-tri,.kt-sim-manifold.mf-mesh .mf-samp{display:none}' +
+          '.kt-sim-manifold:not(.mf-mesh) .mf-tri,.kt-sim-manifold.mf-mesh .mf-samp,.kt-sim-manifold:not(.mf-paint) .mf-mat{display:none}' +
 
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
           '.kt-sim-manifold.kt-bare .kt-hint,.kt-sim-manifold.kt-bare .kt-ab,.kt-sim-manifold.kt-bare .kt-gear{display:none!important}' +
@@ -579,6 +595,7 @@
         setScene: setScene, orbit: orbit, camera: cam, points: function () { return ptPos; },   // for tests
         /* for host pages: switch the scene or the budget without the module's own panel */
         load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); syncMesh(); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
+        setMaterial: function (v) { st.mat = v; st.paint = 0; if (segM) segM.set(v); },
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },
         resize: function (w, h) {
           R.resize(w, h); need = true; size.w = w; size.h = h;
