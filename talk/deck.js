@@ -316,7 +316,10 @@
     if (parent) parent.appendChild(e);
     return e;
   }
-  var INK = { text: '#dde5f0', dim: '#8fa4c0', mute: '#5c6f8a', line: '#1b2a42', bg: '#0b1017', ours: '#4fc3f7' };
+  /* the charts' ink, in the page's theme (KnotTalk.theme): on the light talk the kit's light colour code on a glass card */
+  var C = KT.color, INK = KT.theme === 'light'
+    ? { text: C.text, dim: C.dim, mute: C.mute, line: C.line, bg: C.bg, ours: C.surf, hot: '#3c2d1e' }
+    : { text: '#dde5f0', dim: '#8fa4c0', mute: '#5c6f8a', line: '#1b2a42', bg: '#0b1017', ours: '#4fc3f7', hot: '#ffffff' };
   var MONO = 'font-family:var(--f-mono);font-size:10.5px;font-weight:500';
   function tipFor(box) {
     var t = el('div', 'tip'); box.appendChild(t);
@@ -341,6 +344,10 @@
     warn.style.display = bad.length ? '' : 'none';
     warn.textContent = 'Means are computed from the 15 scans shown (the table prints ' + bad.join(', ') + ').';
 
+    // the key's swatches (written in talk.html in the dark ink) take the chart's ink
+    var key = $$('.chart-key i', box);
+    if (key[0]) key[0].style.background = INK.ours;
+    if (key[1]) key[1].style.borderColor = INK.dim;
     var W = 660, H = 290, L = 40, Rm = 10, Tm = 12, B = 34, y0 = 0.2, y1 = 1.0;
     var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Chamfer distance per DTU scan, ours versus PGSR' }, $('.plot', box));
     function X(k) { return L + (k + 0.5) * (W - L - Rm) / n; }
@@ -350,7 +357,7 @@
       svg('text', { x: L - 8, y: Y(v) + 3.5, 'text-anchor': 'end', fill: INK.mute, style: MONO }, s, v.toFixed(1));
     });
     svg('text', { x: L, y: H - 4, fill: INK.mute, style: MONO }, s, 'DTU scan');
-    var tip = tipFor(box), hot = svg('rect', { y: Tm, height: H - Tm - B, fill: '#ffffff', opacity: 0, rx: 4 }, s);
+    var tip = tipFor(box), hot = svg('rect', { y: Tm, height: H - Tm - B, fill: INK.hot, opacity: 0, rx: 4 }, s);
     for (i = 0; i < n; i++) {
       var x = X(i), a = DTU.ours[i], b = DTU.pgsr[i];
       svg('path', { d: 'M' + x + ' ' + Y(a) + 'V' + Y(b), stroke: INK.mute, 'stroke-width': 2, 'stroke-linecap': 'round' }, s);

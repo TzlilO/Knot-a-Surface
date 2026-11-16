@@ -1,5 +1,6 @@
-/* Knot-a-Surface talk — the slide master (talk/master.js): a dark drawer over the deck, or a page of its own in the
-   presenter view (talk.html?master). It keeps the talk's dark tokens over the light opening too: it is a panel.
+/* Knot-a-Surface talk — the slide master (talk/master.js): a drawer over the deck, or a page of its own in the
+   presenter view (talk.html?master). It takes the page's tokens (outside .prelude), so it is light on the light talk
+   (see the end of this file) and dark on a dark page.
    What hides a part in the deck itself is deck.css's (kt-off / kt-gone). Loaded after talk/prelude.css. */
 
 /* the HUD button (talk/master.js puts it before the ? button) */
@@ -147,3 +148,18 @@ body.kt-presenter>:not(.ktm){display:none!important}
   .ktm-dialog,.ktm{touch-action:manipulation}
 }
 @media (prefers-reduced-motion:reduce){.ktm-dialog[open]{animation:none}.ktm-tog{transition:none}}
+
+/* ---------- the light theme (talk.html): the drawer and the presenter view in the talk's light tokens ----------
+   The tokens come from the page (kit.css); only what was written for a dark panel changes here. */
+:root[data-theme="light"] .ktm{color-scheme:light}
+:root[data-theme="light"] .ktm-dialog{border-left:0;box-shadow:-30px 0 80px -30px rgba(88,56,24,.4),inset 1px 0 0 rgba(60,45,30,.08)}
+:root[data-theme="light"] .ktm-dialog::backdrop{background:rgba(60,45,30,.16)}
+:root[data-theme="light"] .ktm-step.is-now,:root[data-theme="light"] .ktm-one.is-now{background:rgba(29,29,31,.05)}
+:root[data-theme="light"] .ktm-h{font-weight:800;letter-spacing:-.025em}
+:root[data-theme="light"] .ktm-cuts b{font-weight:800;letter-spacing:-.03em}
+:root[data-theme="light"] .ktm-cuts button{border-color:transparent;background:var(--bg2);box-shadow:inset 0 0 0 1px var(--line2)}
+:root[data-theme="light"] .ktm-cuts button[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--text)}
+:root[data-theme="light"] .ktm-acts button,:root[data-theme="light"] .ktm-tools button,:root[data-theme="light"] .ktm-live button{background:var(--bg2)}
+:root[data-theme="light"] .ktm-tog{background-color:var(--bg2)}
+:root[data-theme="light"] .ktm-tog:checked{background-color:var(--text)}
+:root[data-theme="light"] .ktm-tog:indeterminate{background-color:var(--line2)}

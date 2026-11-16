@@ -169,6 +169,13 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   definition), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
   own sound switch. The talk's 07b steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
   registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
+- `tools/train/` is for the user's own GPU machine (nothing is trained here): `README.md` (setup, pinned versions),
+  `train3dgs.py` (runs graphdeco-inria/gaussian-splatting at 54c035f on DTU scan 122 from Hugging Face `Y1ue/DTU`;
+  trains on RGB copies of the RGBA photographs, saves PLY snapshots at 0, 100, 300, 1000, 3000, 7000, 15000, 30000
+  and a loss / PSNR log on 8 held-out views) and `export.py` (`python3 -I`, numpy only) -> `talk/dtu/train122.js`
+  = `KnotTalk.dtuTrain[122]` {note, unit, log {iter, loss, psnr}, snaps [{iter, ntotal, n, p, s, q, c, a}]}, in
+  the owl's frame recovered from `talk/dtu/pipeline122.js`'s cameras; it writes nothing unless all 21,760 SfM
+  points land on that file's copies. Never put synthetic test output in `talk/dtu/`.
 - Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
   as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the

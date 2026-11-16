@@ -693,8 +693,8 @@
         if (trn.want >= 0) { trn.i = trn.want; trn.want = -1; gsSnap(trn.i); paintSnap(); }     // a cut: one snapshot, then the next
         if (trn.auto) { trn.t += dt; if (trn.t > (trn.i === TR.snaps.length - 1 ? SNAP * 1.8 : SNAP)) snapGo((trn.i + 1) % TR.snaps.length); }
       }
-      function pendingCap() {                      // the halves sit side by side on a wide stage, one above the other on a tall one
-        var wide = st.w / st.h > 1.25;
+      function pendingCap() {                      // the halves sit side by side, one above the other on a narrow stage (as layout() has it)
+        var wide = st.w >= 560;
         return '<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>' + (wide ? 'left' : 'above') +
                ', the 3DGS initialisation, untrained · ' + (wide ? 'right' : 'below') + ', a stand-in: the levels of the offline geometric fit, which is not training';
       }
@@ -890,8 +890,8 @@
 
       /* ================= frame ================= */
       function layout() {
-        var w = st.w, h = st.h, wide = w / h > 1.25;
-        st.narrow = w < 560;
+        var w = st.w, h = st.h, wide = w >= 560;  // a split shows its halves side by side (the owl is tall), stacked only on a narrow stage
+        st.narrow = !wide;
         root.classList.toggle('pl-narrow', st.narrow); root.classList.toggle('pl-split', st.split);
         if (st.split) {
           st.rects = wide ? [[0, 0, w / 2, h], [w / 2, 0, w / 2, h]] : [[0, h / 2, w, h / 2], [0, 0, w, h / 2]];
@@ -917,7 +917,10 @@
         } else if (st.narrow) R.push([st.scene === 'init3dgs' ? st.inset.x + st.inset.w + 6 : 0, w, capB + 8, (pv ? pv.offsetTop : h) - 8]);
         else {                                     // the panel top right, the caption top left, the plot bottom left, the magnifier under the panel
           var bot = h - 8, pl = plot.offsetParent ? plot : null;
-          if (pl) bot = Math.min(bot, pl.offsetTop - 8);
+          if (pl) {
+            bot = Math.min(bot, pl.offsetTop - 8);
+            R.push([pl.offsetLeft + pl.offsetWidth + 8, pv ? pv.offsetLeft - 8 : w, capB + 8, h - 8]);   // between the plot and the panel
+          }
           R.push([0, pv ? pv.offsetLeft - 8 : w, capB + 8, bot]);
           R.push([0, w, Math.max(capB, pB) + 8, st.scene === 'init3dgs' ? Math.min(bot, st.inset.y - 8) : bot]);
         }

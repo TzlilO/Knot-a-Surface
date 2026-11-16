@@ -61,8 +61,8 @@
 .prelude .p-hero .hero{width:100%;aspect-ratio:1;max-height:76vh;justify-self:center}
 .prelude .p-hero .hero .sim-mount{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
 .prelude .kas .hero{aspect-ratio:1.2}
-/* the cover's readings: labels as glass pills, dividers dark on the light card */
-.prelude .kt-sim-manifold .kt-split i{background:rgba(29,29,31,.22)}
+/* the manifold's readings (the cover's, and chapter 06's on the light talk): dividers dark on the light card */
+:root[data-theme="light"] .kt-sim-manifold .kt-split i,.prelude .kt-sim-manifold .kt-split i{background:rgba(29,29,31,.22)}
 
 /* ---------- full-width moments of the opening ---------- */
 .prelude .wide .step{align-items:center;text-align:center;padding:5rem 2.4rem 6rem 5.5rem}

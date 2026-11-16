@@ -722,10 +722,18 @@
            one size   LA = LB = k sqrt(mean cell area)              cell area = |S_u| |S_v^perp| du dv at each sample:
                                                                     the same total area, one size for all
          `blend` goes from the first (0) to the second (1).
-         Coverage (measured on every change of samples, sigma / cell or surface): an F x F grid of (u,v) cell centres,
-         each weighted by its own surface area |S_u x S_v| / F^2, F = 8 points per lattice cell (192 ... 512 a side).
+         Coverage (measured once per change of samples, sigma / cell or surface, never per frame): an F x F grid of
+         (u,v) points ((i + 0.5) / F, (j + 0.5) / F), each weighted by its own surface area |S_u x S_v| / F^2 (the
+         weights depend on the surface alone and are kept while its control points stay put). F = COVF = 1283 for
+         every sample count: a prime above 8 x NMAX, so a lattice of up to NMAX samples a side gets at least 8 test
+         points per cell along each axis, and as n and F share no factor the points fall at offsets that drift
+         across the cells instead of repeating in each one. (A grid of 4 n points a side, F = 512 at n = 128, sits
+         at the same four offsets in every cell and over-counts what lies there: it read 22 % three deep, own cell,
+         at 128^2 against 5-7 % at the counts around it.)
            uncovered = area of the points inside no footprint / area of the patch
-           piled     = area of the points inside three or more / area of the patch                                  */
+           piled     = area of the points inside three or more / area of the patch
+         The red masks, on the surface and in the chart, are the same counts: per texel the share of its 3 x 3 points
+         left uncovered (COVD texels a side).                                                                         */
       function footSet(cap) {
         function f(k) { return new Float32Array(cap * (k || 1)); }
         return { n: 0, u: f(), v: f(), du: f(), dv: f(), lu: f(), pr: f(), lvp: f(), cx: f(3), e1: f(3), e2: f(3) };
@@ -796,12 +804,15 @@
         outl.set(o / 3);
       }
 
-      // coverage: the area weights of the F x F grid, and the count of footprints over each point
-      var cw = { F: 0, ver: -1, w: null, tot: 0 }, cntA = null, cntB = null;
+      // coverage: the area weights of the F x F grid (cw.net = the control points they were measured on), and the
+      // count of footprints over each point
+      var COVF = 1283, COVD = Math.ceil(COVF / 3);
+      var cw = { F: 0, net: null, w: null, tot: 0 }, cntA = null, cntB = null;
       function coverW(F) {
-        if (cw.F === F && cw.ver === surfVer) return;
-        var fs = centres(F), rows = Math.max(1, Math.floor(NMAX * NMAX / F)), b0, nb, i, t, x, y, z, w, tot = 0;
-        if (cw.F !== F) { cw.w = new Float32Array(F * F); cntA = new Uint8Array(F * F); cntB = new Uint8Array(F * F); }
+        var P = patch.P, b0, nb, i, t, x, y, z, w, tot = 0;
+        if (cw.F === F && cw.net) { for (i = 0; i < P.length && P[i] === cw.net[i]; i++); if (i === P.length) return; }
+        var fs = centres(F), rows = Math.max(1, Math.floor(NMAX * NMAX / F));
+        if (cw.F !== F || !cw.w) { cw.w = new Float32Array(F * F); cntA = new Uint8Array(F * F); cntB = new Uint8Array(F * F); }
         for (b0 = 0; b0 < F; b0 += rows) {
           nb = Math.min(rows, F - b0); NB.patchGrid(patch, fs, fs.subarray(b0, b0 + nb), fg);
           for (i = 0; i < nb * F; i++) {
@@ -810,7 +821,7 @@
             w = Math.sqrt(x * x + y * y + z * z); cw.w[b0 * F + i] = w; tot += w;
           }
         }
-        cw.F = F; cw.ver = surfVer; cw.tot = tot;
+        cw.F = F; cw.tot = tot; (cw.net || (cw.net = new Float32Array(P.length))).set(P);
       }
       function coverCount(S, k, s1, bl, F, cnt) {
         var i, fu, fv, f0, f1, g0, g1, a, b, p1, p2, LA, LB, a1, b1, b2, ea, eb, uc, vc, row, w = cw.w, un = 0, pile = 0;
@@ -846,25 +857,38 @@
         var m = tl.b < 0.5 ? 'own' : 'one';
         if (m !== tl.mode) { tl.mode = m; segSz.set(m); hudDirty = true; }
       }
-      function maskImage(F, cnt) {                       // the uncovered points of one sizing, red, for the chart
-        var cv = document.createElement('canvas'); cv.width = cv.height = F;
-        var g = cv.getContext('2d'), im = g.createImageData(F, F), r = G.rgb(C.err).map(function (x) { return Math.round(x * 255); }), i, fu, fv, o;
-        for (fv = 0; fv < F; fv++) for (fu = 0; fu < F; fu++) {
-          i = fv * F + fu; o = ((F - 1 - fv) * F + fu) * 4;
-          im.data[o] = r[0]; im.data[o + 1] = r[1]; im.data[o + 2] = r[2]; im.data[o + 3] = cnt[i] ? 0 : 200;
+      /* the masks: per texel of a D x D image (D = ceil(F / 3)), the share of its 3 x 3 test points that no footprint
+         covers: one size in red, own cell in green (the overlay texture), and the same shares as red images for the chart */
+      function maskBuild(F, D) {
+        var X, Y, fu, fv, i, m, ua, ub, o, s, r = G.rgb(C.err).map(function (x) { return Math.round(x * 255); });
+        maskSize(D);
+        for (Y = 0; Y < D; Y++) for (X = 0; X < D; X++) {
+          m = ua = ub = 0;
+          for (fv = Y * 3; fv < Y * 3 + 3 && fv < F; fv++) for (fu = X * 3; fu < X * 3 + 3 && fu < F; fu++) {
+            i = fv * F + fu; m++; if (!cntA[i]) ua++; if (!cntB[i]) ub++;
+          }
+          o = (Y * D + X) * 4; maskData[o] = Math.round(255 * ub / m); maskData[o + 1] = Math.round(255 * ua / m); maskData[o + 2] = 0; maskData[o + 3] = 255;
         }
-        g.putImageData(im, 0, 0); return cv;
+        maskTex.needsUpdate = true;
+        function image(cv, ch) {                         // chart row 0 is v = 1: flipped
+          if (!cv || cv.width !== D) { cv = document.createElement('canvas'); cv.width = cv.height = D; }
+          var g = cv.getContext('2d'), im = g.createImageData(D, D);
+          for (Y = 0; Y < D; Y++) for (X = 0; X < D; X++) {
+            s = (Y * D + X) * 4; o = ((D - 1 - Y) * D + X) * 4;
+            im.data[o] = r[0]; im.data[o + 1] = r[1]; im.data[o + 2] = r[2]; im.data[o + 3] = Math.round(maskData[s + ch] * 200 / 255);
+          }
+          g.putImageData(im, 0, 0); return cv;
+        }
+        tl.imgOne = image(tl.imgOne, 0); tl.imgOwn = image(tl.imgOwn, 1);
       }
       function tileConfig() {
-        var n = st.n, us = centres(n), d = evenD(n), i, area = 0, F;
+        var n = st.n, us = centres(n), d = evenD(n), i, area = 0, F = COVF;
         NB.patchGrid(patch, us, us, fg); fillSet(tset, fg, us, us, n, n, d, d);
         for (i = 0; i < tset.n; i++) area += tset.lu[i] * tset.lvp[i] * tset.du[i] * tset.dv[i];
         tl.s1 = st.gain * Math.sqrt(area / tset.n);
-        F = Math.min(512, Math.max(192, 8 * n)); coverW(F); maskSize(F);
+        coverW(F);
         tl.own = coverCount(tset, st.gain, tl.s1, 0, F, cntA); tl.one = coverCount(tset, st.gain, tl.s1, 1, F, cntB);
-        for (i = 0; i < F * F; i++) { maskData[i * 4] = cntB[i] ? 0 : 255; maskData[i * 4 + 1] = cntA[i] ? 0 : 255; maskData[i * 4 + 2] = 0; maskData[i * 4 + 3] = 255; }
-        maskTex.needsUpdate = true;
-        tl.imgOwn = maskImage(F, cntA); tl.imgOne = maskImage(F, cntB);
+        maskBuild(F, COVD);
         rdUnc.el.lastChild.innerHTML = pct(tl.one.unc) + ' <i>·</i> ' + pct(tl.own.unc);
         rdPile.el.lastChild.innerHTML = pct(tl.one.pile) + ' <i>·</i> ' + pct(tl.own.pile);
         hudDirty = true;
@@ -944,10 +968,13 @@
          back at a step whose frame time is above both KN_BUDGET and 3x that of the first step (what a frame costs
          anyway on this machine: on a slow one the fixed cost alone can pass 50 ms), or at the last step
          (1024^2 = 1,048,576 Gaussians): that step is held a little longer, then it starts again from the first.
+         The holds run on the clock (performance.now), not on the kit's dt: that stops at 50 ms a frame, so slow
+         frames would stretch them (a 1.4 s hold took 11 s at 400 ms a frame).
          The ceiling is the field's buffer: 60 bytes a Gaussian (five 3-float attributes), 63 MB at the top,
-         allocated only while this scene is on and freed when it is left. */
+         allocated only while this scene is on stage: freed when the scene is left, and when the stage leaves the
+         screen (see `onStage`); knTick makes it again when the knob is back on screen. */
       var small = field, big = null;
-      var kn = { li: 0, t: 0, k: 0, iv: [], last: 0, ft: {}, ev: {}, lim: null, cur: 0, top: false, plotT: 0 };
+      var kn = { li: 0, t: 0, k: 0, iv: [], last: 0, ft: {}, ev: {}, lim: null, cur: 0, top: false, plotT: 0, redo: false };
       function knBig(on) {
         if (on && !big) {
           var top = KN_LEVELS[KN_LEVELS.length - 1];
@@ -957,7 +984,7 @@
         if (big) {
           scene.remove(big.mesh); big.mesh.geometry.dispose();
           var u = big.mesh.userData.ktSplat; [u.plain, u.depth, u.core, u.accum].forEach(function (m) { m.dispose(); });
-          big = null;
+          big = null; small.mesh.visible = !!st.show.field;       // knBig(true) had hidden it
         }
         field = small;
       }
@@ -973,8 +1000,10 @@
       function knCap() { var f0 = kn.ft[KN_LEVELS[0]]; return Math.max(KN_BUDGET, f0 != null ? 3 * f0 : 0); }
       function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length & 1 ? s[m] : 0.5 * (s[m - 1] + s[m]); }
       function knTick(dt) {
+        if (kn.redo) { kn.redo = false; knSet(kn.cur); return; }     // back on screen after `onStage` freed the field
         var now = performance.now(), iv = kn.last ? now - kn.last : 0, ft = null;
-        kn.last = now; kn.t += dt; kn.k++;
+        // the step's clock: the time since the last frame, as measured (a frame of more than a second counts as one)
+        kn.last = now; kn.t += iv > 0 ? Math.min(iv, 1000) / 1000 : dt; kn.k++;
         if (kn.k > 2 && iv > 0 && iv < 4000) { kn.iv.push(iv); if (kn.iv.length > 120) kn.iv.shift(); }
         if (kn.iv.length >= 3) { ft = median(kn.iv); kn.ft[kn.cur] = ft; }
         if (!st.touchedN && kn.iv.length >= 6) {
@@ -1629,7 +1658,7 @@
         var s = st.show, on = function (o, v) { o.visible = !!v; };
         // restart what runs on its own: the size alternation, the stitching, the camera's path, the knob
         tl.auto = true; tl.goal = 0; tl.b = 0; tl.key = ''; tl.mode = 'own'; segSz.set('own');
-        sx.n = 0; ad.fresh = true; kn.li = 0; kn.top = false; kn.lim = null; kn.ft = {}; kn.last = 0;
+        sx.n = 0; ad.fresh = true; kn.li = 0; kn.top = false; kn.lim = null; kn.ft = {}; kn.last = 0; kn.redo = false;
         if (sc.sweep) knSet(KN_LEVELS[0]);
         on(tgtDots, s.fit); on(tgtHid, s.fit); on(resid.obj, s.fit); on(residHid, s.fit);
         on(ovMesh, s.tile || s.adapt); ovMat.uniforms.uGap.value = s.tile ? 1 : 0; ovMat.uniforms.uTint.value = s.adapt ? 1 : 0;
@@ -1814,6 +1843,18 @@
         if (s.nbr) { st.sparkT -= dt; if (st.sparkT <= 0) { drawSpark(); st.sparkT = sc.wig ? 0.3 : 1e9; } }
         if (hudDirty) { hudDirty = false; drawHud(); }
       });
+      /* Off screen the kit pauses the loop; the module then lets go of what only the stage on screen needs: the knob's
+         big buffer (63 MB, and its copy on the GPU) and the coverage grid of scenes scale and fill (about 10 MB).
+         Leaving chapter 03 by a jump (keys, the rail, the slide master hiding the next steps) changes no scene, so
+         setScene alone would keep them for the rest of the talk. Both come back on demand: knTick re-evaluates the
+         level it shows (kn.redo), tileUpdate measures again (tl.key). */
+      var onStage = new IntersectionObserver(function (es) {
+        if (es[es.length - 1].isIntersecting) return;
+        kn.last = 0;                                   // the knob's clock: time off screen is not a frame
+        if (big) { knBig(false); kn.redo = true; }
+        if (cw.w) { cw.w = cntA = cntB = cw.net = null; cw.F = 0; tl.key = ''; }
+      });
+      onStage.observe(root);
       // anything that changes the estimate redraws the convergence plot (throttled while the surface is moving)
       function resetSpark() { if (st.sparkT > 1) st.sparkT = 0; }
       slN.input.addEventListener('input', resetSpark); uvc.cv.addEventListener('pointermove', resetSpark);
@@ -1887,7 +1928,7 @@
           if (!env.embed) root.classList.toggle('kt-compact', w < 560);
           hudPlace(); if (st.sc.sweep) kn.plotT = 0;
         },
-        destroy: function () { R.renderer.dispose(); }
+        destroy: function () { onStage.disconnect(); R.renderer.dispose(); }
       };
     }
   });

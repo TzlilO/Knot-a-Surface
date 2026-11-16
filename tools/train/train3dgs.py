@@ -72,9 +72,10 @@ def check(gs, data):
     if not pts: bad.append('no points3D.txt in %s' % sp)
     reads = [f + ('.bin' if f + '.bin' in have else '.txt') for f in ('cameras', 'images')] + [pts or '-']
     facts.append('sparse/0: graphdeco will read %s' % ', '.join(reads))
-    if any(r.endswith(('.bin', '.ply')) for r in reads):
-        warn.append('graphdeco reads .bin files and points3D.ply before the .txt ones; tools/dtu/pipeline.py read the .txt. '
-                    'Remove them to train on exactly that model (the exporter checks the frame either way)')
+    if pts == 'points3D.ply': facts.append('points3D.ply: graphdeco writes it from points3D.txt on its first run; the copy on Y1ue/DTU holds the same points in another order')
+    if any(r.endswith('.bin') for r in reads[:2]):
+        warn.append('graphdeco reads cameras.bin / images.bin before the .txt files tools/dtu/pipeline.py read. Remove the .bin files '
+                    'to train on exactly that model (the exporter checks the frame against pipeline122.js either way)')
     model = []
     if os.path.exists(os.path.join(sp, 'cameras.txt')):
         kinds = sorted({l.split()[1] for l in open(os.path.join(sp, 'cameras.txt')) if l.strip() and not l.startswith('#')})
@@ -167,7 +168,7 @@ def main():
     ap.add_argument('--data', required=True, help='the scan folder: images/ and sparse/0/ (Y1ue/DTU on Hugging Face, DTU/scan122)')
     ap.add_argument('--out', required=True, help='the run folder (graphdeco\'s -m)')
     ap.add_argument('--iterations', type=int, default=30000, help='default 30000, graphdeco\'s own')
-    ap.add_argument('--save', default=','.join(map(str, SAVE)), help='iterations to keep the Gaussians at; 0 = the initialisation (default %(default)s)')
+    ap.add_argument('--save', default=','.join(map(str, SAVE)), help='iterations to keep the Gaussians at; 0 = the initialisation; the last is always kept (default %(default)s)')
     ap.add_argument('--all-views', action='store_true', help='train on every photograph (default: every 8th held out, graphdeco\'s --eval)')
     ap.add_argument('--keep-alpha', action='store_true', help='train on the RGBA photographs as they are (graphdeco then masks its render with alpha)')
     ap.add_argument('--dry-run', action='store_true', help='check the checkout, the packages and the data, print the plan, train nothing')
@@ -175,7 +176,7 @@ def main():
     gs, data, out = (os.path.abspath(os.path.expanduser(p)) for p in (a.gs, a.data, a.out))
     try: save = sorted({int(v) for v in a.save.split(',') if v.strip()})
     except ValueError: ap.error('--save takes comma-separated iterations')
-    late = [s for s in save if s > a.iterations]; save = [s for s in save if s >= 0 and s <= a.iterations]
+    late = [s for s in save if s > a.iterations]; save = sorted({s for s in save if 0 <= s <= a.iterations} | {a.iterations})   # the last, as graphdeco's train.py
     rgb = None if a.keep_alpha else os.path.join(out, 'images_rgb')
     gargs = ['-s', data, '-m', out, '--iterations', str(a.iterations)] + ([] if a.all_views else ['--eval']) + (['--images', rgb] if rgb else []) + extra
     names, facts, warn, bad = check(gs, data)
@@ -184,7 +185,11 @@ def main():
 
     say('graphdeco    %s: %s' % (gs, ('HEAD %s, %s' % (head[:7], 'the pinned commit' if head == PIN else 'NOT the pinned %s' % PIN[:7])) if head else 'not a git checkout: version unknown'))
     if dirty: say('             local changes: %s' % '; '.join(l.strip() for l in dirty.splitlines()))
-    for l in (subs or '').splitlines(): say('             submodule %s' % l.strip())
+    for l in (subs or '').splitlines():
+        say('             submodule %s' % l.strip())
+        if l[:1] in ('-', '+') and 'SIBR' not in l:
+            warn.append('submodule %s %s' % (l.split()[1], 'is not checked out: its package must come from elsewhere' if l[0] == '-'
+                                             else 'is not at the commit the checkout pins (git submodule update)'))
     say('data         %s' % data)
     for f in facts: say('             %s' % f)
     say('photographs  %s' % ('RGB copies in %s (alpha dropped)' % rgb if rgb else 'as they are: graphdeco masks its render with their alpha'))

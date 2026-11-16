@@ -30,8 +30,9 @@ probability growing with opacity x (s1 s2 + s2 s3 + s3 s1), the Gaussian's mean 
 (Efraimidis-Spirakis keys log(u) / w, u from numpy's PCG64 seeded with [seed, iteration]). --rule uniform draws
 uniformly. Kept Gaussians stay in the checkpoint's order. Same input, seed and numpy: the same bytes.
 
-STORAGE (the file decodes itself at load, like talk/dtu-data.js): centres inside a box of 10 x 5 x 10 units around
-the owl (pipeline.py's box for the SfM points) as 16-bit integers (steps of 0.012 mm), the rest as float32; sigmas as
+STORAGE (the file decodes itself at load, like talk/dtu-data.js): centres as 16-bit integers over a box per snapshot
+(pipeline.py's box for the SfM points, 10 x 5 x 10 units around the owl, where the steps are 0.012 mm, stretched to
+hold all but the outermost 0.2 % of the Gaussians on each side of each axis), those outside it as float32; sigmas as
 8-bit logarithms over the snapshot's range; quaternions as their three smallest components at 8 bits each plus 2 bits
 naming the one left out; colour and opacity as bytes. About 16.3 bytes per Gaussian, 21.7 in base64.
 
@@ -163,34 +164,42 @@ def unpack12(s, n):
     q = np.empty(len(by) // 3 * 2, np.int64); q[0::2] = by[0::3] | ((by[1::3] & 15) << 8); q[1::2] = (by[1::3] >> 4) | (by[2::3] << 4)
     return q[:n * 3].reshape(-1, 3)
 
-def sfm_check(pipe, X, k, R, T):
-    """Map the SfM points X (COLMAP frame, any order) and match them one to one with the copy in pipeline122.js:
-    12-bit integers over a box for the near ones (the deviation is reported in 12-bit steps; rounding alone gives at
-    most 0.5), float32 for the rest (deviation in scene units)."""
+def sfm_check(pipe, X, k, R, T, tol=0.01):
+    """Map the SfM points X (COLMAP frame, any order) and pair them one to one with the copy in pipeline122.js: there
+    12-bit integers over a box for the near ones, float32 for the rest. A near point must lie within half a 12-bit step
+    (pipeline.py's rounding) plus tol of its partner; the deviation is reported in steps. A point within tol of a
+    rounding boundary may pair with the cell on either side, whichever is still free; all others take their own."""
     s = pipe['sfm']; lo, hi = np.array(s['box'][0], float), np.array(s['box'][1], float); nn = s['near']; step = (hi - lo) / 4095
     P = k * X @ R.T + T; near = np.all((P >= lo) & (P <= hi), 1)
     out = dict(points=len(X), stored=s['count'], near=int(near.sum()), stored_near=nn)
     if len(X) != s['count'] or near.sum() != nn: return dict(out, ok=False)
-    Q = unpack12(s['P'], nn); key = lambda a: (a[:, 0] * 4096 + a[:, 1]) * 4096 + a[:, 2]
-    f = (P[near] - lo) / step; r = np.rint(f).astype(np.int64); stored = np.sort(key(Q)); match = key(r)
-    for i in np.nonzero(~np.isin(match, stored))[0]:   # a point within a hair of a rounding boundary: try the neighbours
-        nb = r[i] + np.array(np.meshgrid([-1, 0, 1], [-1, 0, 1], [-1, 0, 1])).reshape(3, -1).T
-        dev = np.abs(f[i] - nb).max(1); ok = np.isin(key(nb), stored)
-        if ok.any(): j = np.argmin(np.where(ok, dev, np.inf)); match[i] = key(nb[j:j + 1])[0]
-    same = bool(np.array_equal(np.sort(match), stored))
-    mq = np.stack([match // 4096 ** 2, match // 4096 % 4096, match % 4096], 1)
+    key = lambda a: int((a[0] * 4096 + a[1]) * 4096 + a[2])
+    left = {}
+    for q in unpack12(s['P'], nn).tolist(): left[key(q)] = left.get(key(q), 0) + 1
+    f = (P[near] - lo) / step; cell = np.rint(f).astype(np.int64)
+    other = np.where(np.abs(f - cell) > 0.5 - tol, cell + np.where(f > cell, 1, -1), cell); amb = (other != cell).any(1)
+    for q in cell[~amb].tolist(): left[key(q)] = left.get(key(q), 0) - 1
+    for i in np.nonzero(amb)[0]:
+        cands = sorted({(a, b, c) for a in (cell[i, 0], other[i, 0]) for b in (cell[i, 1], other[i, 1]) for c in (cell[i, 2], other[i, 2])},
+                       key=lambda c: np.abs(f[i] - c).max())
+        for c in cands:
+            if left.get(key(c), 0) > 0: left[key(c)] -= 1; cell[i] = c; break
+    paired = all(v == 0 for v in left.values())
     F = np.frombuffer(base64.b64decode(s['far']), '<f4').reshape(-1, 3).astype(np.float64); Pf = P[~near]
     d = np.abs(Pf[:, None, :] - F[None, :, :]).max(2) if len(F) else np.zeros((0, 0))
-    far_dev = float(d.min(1).max()) if len(F) else 0.0; far_one = len(F) == 0 or len(np.unique(d.argmin(1))) == len(F)
-    out.update(near_steps=float(np.abs(f - mq).max()), far_units=far_dev)
-    out['ok'] = bool(same and far_one and out['near_steps'] < 0.51 and far_dev < 1e-4)
+    a, b = np.nonzero(d < 1e-4); o = np.argsort(d[a, b], kind='stable'); ua, ub = set(), set()      # one to one: the file has exact duplicates
+    for i, j in zip(a[o].tolist(), b[o].tolist()):
+        if i not in ua and j not in ub: ua.add(i); ub.add(j)
+    far_dev = float(d.min(1).max()) if len(F) else 0.0; far_one = len(ua) == len(F)
+    out.update(near_steps=float(np.abs(f - cell).max()), far_units=far_dev, near_at_boundary=int(amb.sum()))
+    out['ok'] = bool(paired and far_one and out['near_steps'] <= 0.5 + tol and far_dev < 1e-4)
     return out
 
 
 # ------------------------------------------------------------------ one snapshot
 def owl_frame(G, k, R, T, qR):
-    with np.errstate(over='ignore', invalid='ignore'):
-        P = k * G['x'] @ R.T + T; n = np.linalg.norm(G['rot'], axis=1); S = np.exp(G['sc']) * k
+    with np.errstate(over='ignore', invalid='ignore'):                           # exp in float32, as graphdeco and the page compute it
+        P = k * G['x'] @ R.T + T; n = np.linalg.norm(G['rot'], axis=1); S = np.exp(G['sc'].astype(np.float32)).astype(np.float64) * k
         q = qmul(qR, G['rot'] / np.where(n > 0, n, 1)[:, None]); q /= np.linalg.norm(q, axis=1)[:, None]
     ok = (np.isfinite(P).all(1) & np.isfinite(S).all(1) & np.isfinite(q).all(1) & (n > 0)
           & np.isfinite(G['op']) & np.isfinite(G['dc']).all(1))
@@ -207,7 +216,10 @@ def choose(w, budget, seed, it, rule):
 def b64(a, dt=None): return base64.b64encode(np.ascontiguousarray(a if dt is None else np.asarray(a).astype(dt)).tobytes()).decode('ascii')
 
 def encode(it, ntotal, P, S, q, C, a):
-    lo, hi = BOX; near = np.all((P >= lo) & (P <= hi), 1); o = np.r_[np.nonzero(near)[0], np.nonzero(~near)[0]]
+    lo, hi = BOX
+    if len(P):                                     # pipeline.py's box, stretched to all but the outermost 0.2 % on each side of each axis
+        lo = np.floor(np.minimum(lo, np.quantile(P, 0.002, axis=0)) * 1e3) / 1e3; hi = np.ceil(np.maximum(hi, np.quantile(P, 0.998, axis=0)) * 1e3) / 1e3
+    near = np.all((P >= lo) & (P <= hi), 1); o = np.r_[np.nonzero(near)[0], np.nonzero(~near)[0]]
     P, S, q, C, a = P[o], S[o], q[o], C[o], a[o]; n, m = len(P), int(near.sum())
     pq = np.clip(np.rint((P[:m] - lo) / (hi - lo) * 65535), 0, 65535)
     ls = np.log(np.maximum(S, 1e-300)); slo = math.floor(max(ls.min(), FLOOR) * 1e4) / 1e4 if n else 0.0
@@ -218,7 +230,7 @@ def encode(it, ntotal, P, S, q, C, a):
     qq = np.clip(np.rint((q[keep].reshape(n, 3) * math.sqrt(2) + 1) * 127.5), 0, 255)
     ib = np.zeros(-(-n // 4) * 4, np.uint8); ib[:n] = big; ib = ib.reshape(-1, 4); ib = ib[:, 0] | ib[:, 1] << 2 | ib[:, 2] << 4 | ib[:, 3] << 6
     A = np.rint(a * 255)
-    return dict(iter=int(it), ntotal=int(ntotal), n=n, near=m, box=BOX.tolist(), slog=[slo, shi],
+    return dict(iter=int(it), ntotal=int(ntotal), n=n, near=m, box=[lo.tolist(), hi.tolist()], slog=[slo, shi],
                 P=b64(pq, '<u2'), F=b64(P[m:], '<f4'), S=b64(sq, np.uint8), Q=b64(qq, np.uint8), I=b64(ib, np.uint8),
                 C=b64(C, np.uint8), A=b64(A, np.uint8))
 
@@ -237,7 +249,7 @@ def read_log(run):
 
 def note(run, which, a, nlog):
     if run:
-        impl = '%s at %s%s%s' % (run.get('implementation', 'graphdeco-inria/gaussian-splatting'), (run.get('commit') or 'an unknown commit')[:7],
+        impl = '%s at %s%s%s' % (run.get('implementation', 'graphdeco-inria/gaussian-splatting'), (run.get('commit') or '')[:7] or 'an unknown commit',
                                  '' if run.get('matches_pin') else ' (NOT the pinned 54c035f)', ' with local changes' if run.get('local_changes') else '')
         tv, te = run.get('train_views'), run.get('test_views') or []
         views = ('%s of the %s photographs, every 8th held out' % (tv, tv + len(te) if tv else '?') if te else 'all %s photographs' % (tv or '?'))
@@ -337,7 +349,7 @@ def main():
     miss = [i for i in its if i not in found]
     if miss or not its: raise SystemExit('no snapshot for iteration %s in %s' % (miss or 'any', pc))
     snaps = []
-    say('%8s %9s %7s %7s %6s %14s %8s %7s' % ('iter', 'ntotal', 'kept', 'far', 'bad', 'sigma mm', 'opacity', 'KB'))
+    say('%8s %9s %7s %6s %5s %9s %16s %8s %6s' % ('iter', 'ntotal', 'kept', 'far', 'bad', 'step mm', 'sigma mm', 'opacity', 'KB'))
     for it in its:
         G = read_gaussians(found[it]); N = len(G['x'])
         if it == 0 and X is not None:
@@ -348,8 +360,8 @@ def main():
         w = al[good] * (S[good, 0] * S[good, 1] + S[good, 1] * S[good, 2] + S[good, 2] * S[good, 0])
         idx = good[choose(w, a.budget, a.seed, it, a.rule)]
         z = encode(it, N, P[idx], S[idx], q[idx], C[idx], al[idx]); snaps.append(z)
-        say('%8d %9d %7d %7d %6d %6.3f..%-7.2f %8.3f %7.0f' % (it, N, z['n'], z['n'] - z['near'], N - len(good), S[idx].min() * U, S[idx].max() * U,
-                                                            al[idx].mean(), sum(len(z[c]) for c in 'PFSQICA') / 1e3))
+        say('%8d %9d %7d %6d %5d %9.4f %16s %8.3f %6.0f' % (it, N, z['n'], z['n'] - z['near'], N - len(good), max(np.subtract(*z['box'][::-1])) / 65535 * U,
+                                                           '%.3g..%.4g' % (S[idx].min() * U, S[idx].max() * U), al[idx].mean(), sum(len(z[c]) for c in 'PFSQICA') / 1e3))
 
     # ---- write
     lg, which = read_log(run_dir)
