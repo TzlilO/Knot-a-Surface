@@ -149,8 +149,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
   loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
-  shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list). Fixed sub-steps,
-  seeded, every number on screen measured; only the launch direction of `flight` is chosen.
+  shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list), `moment` (the
+  camera closes in and time runs 20x slower over the last 10 cm above the list: the seven "moments of contact" a list
+  admits, 3/2/1 sigma shells, summed density 0.1/0.3/0.5, nearest mean, MEASURED on a timeline, against the spline's
+  one root of |S(u,v) - c| = r). The list's Gaussians are drawn soft and see-through (thickness 25-40 % of the
+  in-plane axes, tilted up to 46 degrees off the surface, opacity 0.34-0.64). Fixed sub-steps, seeded, every number on
+  screen measured; only the launch direction of `flight` and the camera path and slow motion of `moment` are
+  scripted. Sound effects are synthesized from the simulation's own quantities (knock from the impulse, hiss from
+  the Gaussians inside the ball, pluck and wobble from the springs, crack, shards, whoosh, a click per contact
+  definition), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
+  own sound switch. The talk's 07b steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
+  registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
 - Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
   as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the

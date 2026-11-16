@@ -613,14 +613,14 @@
 </section>
 
 <!-- ============================================================ 07b CONTACT -->
-<section class="chapter" data-sim="touch" data-rail="07b" data-title="Can’t touch this" data-min40="2" data-min20="1">
+<section class="chapter" data-sim="touch" data-rail="07b" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx>
       <div class="num">07<small>b</small></div><div class="kick">A list against charts · contact</div>
       <h2>Can’t touch this</h2>
       <p>A game, a physics engine and an editor all begin with the same question: where is the surface, and which way does it face? A list of Gaussians has no answer. A spline does.</p>
-      <div class="time">≈ 2 min</div>
+      <div class="time">≈ 2½ min</div>
       <p class="credit">♪ Original loop · synthesized in the browser as the page loads</p>
     </article>
     <article class="step nav" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx>
@@ -628,6 +628,14 @@
       <h2>Drop a ball on a list: <em class="c-err">nothing to hit</em></h2>
       <p>A list of Gaussians is a density, not a boundary. With no rule, the ball falls straight through. Treat every Gaussian as a loose particle and the ball knocks them away, because nothing holds them together.</p>
       <p class="aside">A real pipeline first picks a density threshold or extracts a mesh: a separate algorithm with its own errors. The list is emulated from the same bowl; it is not a trained 3DGS model.</p>
+    </article>
+    <article class="step nav" data-scene="moment" data-depth="deep" data-audio="touch" data-audio-len="30" data-sfx>
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>When does it touch? A list gives <em class="c-err">seven answers</em></h2>
+      <p>Slow the last centimetres down and measure every way a list can say “contact”: the ball reaches the 3, 2 or 1 sigma shell of the nearest Gaussian, the summed density at its lowest point crosses 0.1, 0.3 or 0.5, it reaches the nearest centre. Here the seven answers spread over 24 ms and 6 cm of the fall.</p>
+      <p>The spline gives one: the root of <span data-tex="|\mathbf{S}(u,v)-\mathbf{c}|=r"></span>, with <span data-tex="\mathbf{S}(u,v)"></span> the closest point, found to a residual at rounding level.</p>
+      <p class="aside">Only the camera and the slow motion are scripted (time runs 20× slower from 10 cm above the surface). Each answer clicks; the spline’s is the knock. The spread is this emulated list’s, not a measured property of trained 3DGS models.</p>
+      <span class="do">Press drop again</span>
     </article>
     <article class="step nav" data-scene="solid" data-audio="touch" data-audio-len="30" data-sfx>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
