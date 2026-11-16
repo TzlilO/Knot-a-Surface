@@ -176,6 +176,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   = `KnotTalk.dtuTrain[122]` {note, unit, log {iter, loss, psnr}, snaps [{iter, ntotal, n, p, s, q, c, a}]}, in
   the owl's frame recovered from `talk/dtu/pipeline122.js`'s cameras; it writes nothing unless all 21,760 SfM
   points land on that file's copies. Never put synthetic test output in `talk/dtu/`.
+  Rule for every long optimisation job in this repo (GPU or not): it must judge itself and stop. A wall-clock
+  budget and an iteration cap; divergence detection (NaN / Inf at once, without saving the bad state; a sustained
+  loss blow-up, ignoring spikes the method causes on purpose); convergence detection on a held-out measure (a
+  plateau with a patience, only once the schedule allows it) and a "not learning" check early on; resource and
+  stall watchdogs; SIGINT / SIGTERM handled. Every threshold is a flag with a documented default, the best state
+  is saved, and the reason it stopped is recorded and carried into what is exported.
 - Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
   as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the

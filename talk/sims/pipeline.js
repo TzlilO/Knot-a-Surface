@@ -23,7 +23,8 @@
      train       with talk/dtu/train122.js loaded: the snapshots of a real 3DGS run, one after another (never interpolated:
                  Gaussians are cloned, split and pruned between them), with the Gaussians in each checkpoint, those kept in
                  the file, and the logged loss and PSNR. Contract (arrays decoded):
-                   KnotTalk.dtuTrain[122] = { note, unit: 'owl frame, 1 unit = 80 mm', log: { iter: [], loss: [], psnr: [] },
+                   KnotTalk.dtuTrain[122] = { note, stop?: { reason, iter, best_psnr, best_iter } (optional: why the run ended early),
+                     unit: 'owl frame, 1 unit = 80 mm', log: { iter: [], loss: [], psnr: [] },
                      snaps: [{ iter, ntotal, n, p: Float32Array(3n) centres, s: Float32Array(3n) per-axis sigma (owl units),
                                q: Float32Array(4n) unit quaternions (w, x, y, z), c: Uint8Array(3n) sRGB, a: Uint8Array(n) opacity 0..255 }] }
                  Without that file the run is PENDING, said so on screen, and the stage shows the stand-in: the 3DGS
@@ -602,7 +603,7 @@
         onInput: function (v) { st.nInit = v; writeInit(); } });
       only(slN.el, 'initspline');
       var rowT = only(ui.el('div', 'kt-row pl-btns'), 'initspline levels'); panel.appendChild(rowT);
-      var tgN = ui.toggle(rowT, { label: 'control net', value: true, onChange: function (v) { st.nets = v; netFor(); } });
+      ui.toggle(rowT, { label: 'control net', value: true, onChange: function (v) { st.nets = v; netFor(); } });
       var tgP = ui.toggle(rowT, { label: 'sparse points', value: true, onChange: function (v) { st.pts = v; sfm.visible = v && st.scene === 'initspline'; need = true; } });
       only(tgP.el, 'initspline');
       /* levels */
@@ -616,6 +617,7 @@
       if (TR) {
         rdIt = row('iteration', 'train'); rdTot = row('Gaussians in the checkpoint', 'train', 'splat'); rdKept = row('kept in the file, drawn', 'train', 'splat');
         rdLoss = row('training loss', 'train'); rdPs = row('PSNR', 'train', 'ok');
+        if (TR.stop) row('the run stopped', 'train').set(stopText(TR.stop));   // optional in the file: why and where the run ended
         slS = ui.slider(panel, { label: 'snapshot', min: 0, max: TR.snaps.length - 1, step: 1, value: 0,
           fmt: function (v) { return fmt(TR.snaps[v].iter); }, onInput: function (v) { trn.auto = false; snapGo(v); } });
         only(slS.el, 'train');
@@ -681,6 +683,13 @@
         return o;
       }
       function snapGo(k) { trn.want = k; trn.t = 0; if (slS) slS.set(k); }
+      function stopText(s) {                       // e.g. "at 9,500 · converged: plateau · best 31.2 dB at 8,000"; each part only when the file has it
+        var t = [];
+        if (finite(s.iter)) t.push('at ' + fmt(s.iter));
+        if (s.reason) t.push(String(s.reason));
+        if (finite(s.best_psnr)) t.push('best ' + s.best_psnr.toFixed(1) + ' dB' + (finite(s.best_iter) ? ' at ' + fmt(s.best_iter) : ''));
+        return t.join(' · ') || 'yes';
+      }
       function paintSnap() {
         var s = TR.snaps[trn.i], lg = logAt(s.iter);
         rdIt.set(fmt(s.iter)); rdTot.set(fmt(s.ntotal)); rdKept.set(fmt(s.n));
@@ -758,11 +767,16 @@
         plotT.textContent = 'the run: training loss and PSNR';
         var L = TR.log || {}, I = L.iter || [], maxIt = 1, j, x0 = 26, x1 = w - 26, top = 12, H = h - 13;
         TR.snaps.forEach(function (s) { maxIt = Math.max(maxIt, s.iter); }); I.forEach(function (v) { maxIt = Math.max(maxIt, v); });
+        var SI = TR.stop && finite(TR.stop.iter) ? TR.stop.iter : null; if (SI != null) maxIt = Math.max(maxIt, SI);
         function X(it) { return x0 + Math.log10(1 + it) / Math.log10(1 + maxIt) * (x1 - x0); }
         var ls = [], ps = [];
         for (j = 0; j < I.length; j++) { if (L.loss && finite(L.loss[j]) && L.loss[j] > 0) ls.push([I[j], L.loss[j]]); if (L.psnr && finite(L.psnr[j])) ps.push([I[j], L.psnr[j]]); }
         g.strokeStyle = 'rgba(143,164,192,.18)'; g.lineWidth = 1;
         TR.snaps.forEach(function (s, k) { var x = X(s.iter); g.strokeStyle = k === trn.i ? C.text : 'rgba(143,164,192,.25)'; g.beginPath(); g.moveTo(x, top - 2); g.lineTo(x, H); g.stroke(); });
+        if (SI != null) {                          // where the run stopped (the file's stop record)
+          var xs = X(SI); g.save(); g.setLineDash([3, 3]); g.strokeStyle = C.text; g.beginPath(); g.moveTo(xs, top - 2); g.lineTo(xs, H); g.stroke(); g.restore();
+          g.fillStyle = C.dim; g.textAlign = xs > (x0 + x1) / 2 ? 'right' : 'left'; g.fillText('stop', xs + (xs > (x0 + x1) / 2 ? -3 : 3), H - 3); g.textAlign = 'left';
+        }
         if (ls.length > 1) {
           var a = Infinity, b = -Infinity; ls.forEach(function (p) { a = Math.min(a, Math.log10(p[1])); b = Math.max(b, Math.log10(p[1])); }); if (b - a < 1e-6) { a -= 0.5; b += 0.5; }
           g.strokeStyle = C.err; g.lineWidth = 1.3; g.beginPath();

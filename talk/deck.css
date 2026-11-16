@@ -268,7 +268,8 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 :where([data-theme="light"] body>section) .flip div{border:0;border-radius:1.2rem;background:rgba(255,255,255,.55);
   box-shadow:var(--glass-edge),0 12px 30px -22px rgba(88,56,24,.4)}
 :where([data-theme="light"] body>section) .flip div b{font:700 .72rem/1 var(--f-ui);letter-spacing:.02em;text-transform:none}
-:where([data-theme="light"] body>section) .flip .new{background:rgba(var(--surf-rgb),.07);box-shadow:var(--glass-edge),inset 0 0 0 1px rgba(var(--surf-rgb),.3)}
+:where([data-theme="light"] body>section) .flip .new{background:rgba(255,255,255,.78);
+  box-shadow:inset 0 0 0 1.5px rgba(var(--surf-rgb),.5),0 14px 34px -20px rgba(var(--surf-rgb),.45)}
 
 /* a small two-way table */
 :where([data-theme="light"] body>section) .step table.cmp{font-size:.84rem}
@@ -324,6 +325,9 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   :where([data-theme="light"] body>section) .opener .num{font-size:4.2rem}
   :where([data-theme="light"] body>section) .opener h2{font-size:2.2rem}
   :where([data-theme="light"] body>section) .opener p{font-size:1.04rem}
-  :where([data-theme="light"] body>section) .legend div,:where([data-theme="light"] body>section) .props div{border-radius:1.3rem}
+  :where([data-theme="light"] body>section) .legend div,:where([data-theme="light"] body>section) .props div{border-radius:1.3rem;padding:1rem .95rem 1.1rem}
+}
+@media (max-width:560px){
+  :where([data-theme="light"] body>section) .props{grid-template-columns:minmax(0,1fr)}   /* a card holds its title on one line */
 }
 @media (prefers-reduced-motion:reduce){.room i{animation:none}}
