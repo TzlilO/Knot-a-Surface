@@ -117,12 +117,21 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename, blob)` -> promise, defined
   only if absent and looked up at click time (a host page may replace it). Tests: `api.meshStats()`,
   `meshFile(fmt)`, `meshSeek(t)`.
-  The owl's `animate(t, paint)` (`owlLife` in `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as
-  control-point edits, and `paint` wipes a MATERIAL in (scene `paint`): one entry of `MATS`, a rule that writes control
-  colours and optionally control opacities (`s.a`) and motion (`move`), with its properties in `p` and the ones the
-  simulator may turn in `knobs` (one slider each; `tune()` repaints); `animate(t, paint, material, from)` wipes one
-  material in over another; the picker fills itself from `MATS`. To add or
-  tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
+  The owl's `animate(t, paint, material, from, target, fromTarget)` (`owlLife` in
+  `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as control-point edits of the owl alone, and
+  `paint` wipes a MATERIAL in (scene `paint`) over a TARGET, from the top of what is painted to its foot: one entry
+  of `MATS`, a rule that writes control colours and optionally control opacities (`s.a`) and motion (`move`, tied to
+  `s.h`, the height above where the painted part stands), with its properties in `p` and the ones the simulator may
+  turn in `knobs` (`tune()` repaints); the picker fills itself from `MATS`. `TARGETS` = a second control `object ·
+  owl · selection` (`api.setTarget`; defaults target `object`, material `glass`): `object` = every control point of
+  the object's chart (owl and books, never the table); `owl` = `talk/dtu/owlmask122.js` (`KnotTalk.dtuMasks[122]`,
+  loads before `talk/scenes.js`; without it a hand-drawn height line), segmented OFFLINE by `python3 -I
+  tools/dtu/owlmask.py` (height seeds, a linear classifier on the scan's DINOv3 features, a minimum cut along the
+  concave crease where the owl rests on the book; feathered over two control points), never trained; `selection` =
+  the Hands selection (`c.sel`, `c.selRev`), feathered alike: the module shows the atlas in its select mode
+  (`hands.show(on, 'select')`, wand / brush / erase on the atlas or the object; needs `talk/hands.js` on the page) and
+  a page without the features file fetches it then (`def.features(cb)`). The landing page's teaser paints the owl
+  (`TEASE_ON`). To add or tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
   `edit(k)`. Opacity: `gl.splats(n, {alpha: true})` gives a field an opacity per Gaussian; while its
   `ktSplat.thin` is set, `gl.draw` draws the solid Gaussians as before and the see-through ones as two more layers
   (far side, near side) blended over them. Other fields and modules are untouched. Scene `hands` (lab page only) hosts
@@ -135,7 +144,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   touch handlers of its own. A chart marked `ground` (the table) is never touched and can be put away (`c.off`).
   The features are REAL DINOv3 ViT-S/16 features of the scan's photographs, baked by `python3 -I tools/dtu/features.py
   <data-dir> 122 <model.onnx>` (weights not in the repo; see `tools/dtu/README.md`) in the format of `lab/features/`;
-  they tell parts apart (head, body, books, table), not the eyes from the face. Only the lab page loads them. Its views are the splat shader's render modes (`uMode` in
+  they tell parts apart (head, body, books, table), not the eyes from the face. The lab page loads them; the talk fetches them only when the paint scene's `selection` target is picked. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`

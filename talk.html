@@ -551,9 +551,10 @@
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Same owl, <em class="c-ctrl">new material</em></h2>
       <p>Colour, opacity and shape all live on the same control points, so a new material is an edit of those and nothing else.</p>
-      <p><b>Snowy owl</b>: readers of Harry Potter will know her as Hedwig. <b>Alien jelly</b>: green, see‑through, and it wobbles. <b>Clear glass</b>: almost nothing face‑on, a mirror at the rim. Each has its own properties to turn, such as opacity, gloss, stiffness or the refractive index.</p>
-      <p class="aside">Each material is a rule over the photograph’s colours and the surface normal: for the snowy owl, white where the stone is bright and dark bars in the carving’s grooves; for the jelly, a third opaque where you look straight into it and more towards the rim, so the books and the owl’s own far side show through it; for the glass, opacity and brightness follow how much light a surface of that refractive index reflects at each angle (Schlick’s approximation of Fresnel). Highlights are painted on and do not follow the camera. Nothing is drawn by hand or generated.</p>
-      <span class="do">Pick a material, turn its knobs</span>
+      <p><b>Clear glass</b>: almost nothing face‑on, a mirror at the rim. <b>Snowy owl</b>: readers of Harry Potter will know her as Hedwig. <b>Alien jelly</b>: green, see‑through, and it wobbles. Each has its own properties to turn, such as opacity, gloss, stiffness or the refractive index.</p>
+      <p>It goes on the whole <b>object</b>, the owl and its books, on the <b>owl</b> alone, or on a <b>selection</b> you make on the atlas of control points, by colour, height, normals or DINOv3 features.</p>
+      <p class="aside">Each material is a rule over the photograph’s colours and the surface normal: for the glass, opacity and brightness follow how much light a surface of that refractive index reflects at each angle (Schlick’s approximation of Fresnel); for the snowy owl, white where the stone is bright and dark bars in the carving’s grooves; for the jelly, a third opaque where you look straight into it and more towards the rim, so what lies behind it, and its own far side, show through. Highlights are painted on and do not follow the camera. Nothing is drawn by hand or generated. The owl was told apart from its books offline, per control point, from DINOv3 features of the scan’s photographs (a pretrained model) and the crease where the owl rests on the book; a selection gets the same soft edge.</p>
+      <span class="do">Pick a material and where it goes, turn its knobs</span>
     </article>
   </div>
 </section>
@@ -721,10 +722,12 @@
 <script src="talk/nurbs.js"></script>
 <script src="talk/kit.js"></script>
 <script src="talk/gl.js"></script>
+<script src="talk/hands.js"></script>
 <script src="talk/ink.js"></script>
 <script src="talk/face-data.js"></script>
 <script src="talk/dtu-data.js"></script>
 <script src="talk/dtu/scan55.js"></script>
+<script src="talk/dtu/owlmask122.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/meshlist.js"></script>
 <script src="talk/meshio.js"></script>
