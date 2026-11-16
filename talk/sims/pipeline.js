@@ -85,8 +85,8 @@
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var pr = function () { return R.renderer.getPixelRatio(); };
       var st = { scene: '', sc: SCENES.photos, t: 0, k: 0, play: true, w: 2, h: 2, split: false, rects: null, narrow: false,
-                 rayJ: -1, rayT: 9, nets: true, pts: true, opa: 'init', nInit: small ? 10000 : 20000 };
-      st.free = [-1, 1, -1, 1]; st.inset = { x: 12, y: 0, w: 2, h: 2 };
+                 rayJ: -1, rayT: 9, nets: true, pts: true, opa: 'init', wide: true, nInit: small ? 10000 : 20000 };
+      st.frees = [[-1, 1, -1, 1]]; st.inset = { x: 12, y: 0, w: 2, h: 2 };
       var need = true;                             // something changed: draw the next frame (otherwise a still stage is not drawn again)
 
       /* ================= the rig: 64 frusta from the file's poses and pinhole ================= */
@@ -382,16 +382,19 @@
         INIT = { sig: sig, near: near, med: (sorted[(n - 1) >> 1] + sorted[n >> 1]) / 2, ms: performance.now() - t0 };
         return INIT;
       }
-      function gsInit() {                          // fill the 3DGS field with the initialisation
-        if (GS.what === 'init') return;
-        var I = initGauss(), s = GS.src, i, v;
-        for (i = 0; i < NP; i++) {
-          s.C[i * 3] = SF.P[i * 3]; s.C[i * 3 + 1] = SF.P[i * 3 + 1]; s.C[i * 3 + 2] = SF.P[i * 3 + 2];
-          v = I.sig[i] * I.sig[i];
-          s.A[i * 3] = v; s.A[i * 3 + 1] = 0; s.A[i * 3 + 2] = 0; s.B[i * 3] = v; s.B[i * 3 + 1] = 0; s.B[i * 3 + 2] = v;
-          s.K[i * 4] = SF.C[i * 3] / 255; s.K[i * 4 + 1] = SF.C[i * 3 + 1] / 255; s.K[i * 4 + 2] = SF.C[i * 3 + 2] / 255; s.K[i * 4 + 3] = 0.1;
-        }
-        GS.n = NP; GS.what = 'init'; need = true; cloudOk = false;
+      function initInto(F, j, i) {                 // the initial Gaussian of sparse point i into slot j of field F
+        var s = F.src, v = INIT.sig[i] * INIT.sig[i];
+        s.C[j * 3] = SF.P[i * 3]; s.C[j * 3 + 1] = SF.P[i * 3 + 1]; s.C[j * 3 + 2] = SF.P[i * 3 + 2];
+        s.A[j * 3] = v; s.A[j * 3 + 1] = 0; s.A[j * 3 + 2] = 0; s.B[j * 3] = v; s.B[j * 3 + 1] = 0; s.B[j * 3 + 2] = v;
+        s.K[j * 4] = SF.C[i * 3] / 255; s.K[j * 4 + 1] = SF.C[i * 3 + 1] / 255; s.K[j * 4 + 2] = SF.C[i * 3 + 2] / 255; s.K[j * 4 + 3] = 0.1;
+      }
+      function shown(i) { return st.wide || INIT.sig[i] * MM <= 10; }   // the init3dgs toggle can leave out the Gaussians wider than 1 cm
+      function gsInit(all) {                       // fill the 3DGS field with the initialisation (all of it, or as the toggle says)
+        var whole = all || st.wide, key = whole ? 'init' : 'init<1cm', n = 0, i;
+        if (GS.what === key) return;
+        initGauss();
+        for (i = 0; i < NP; i++) if (whole || shown(i)) initInto(GS, n++, i);
+        GS.n = n; GS.what = key; need = true; cloudOk = false;
       }
       function gsSnap(k) {                         // fill it with snapshot k of the real run: covariance = R diag(s^2) R^T
         var S = TR.snaps[k], s = GS.src, i, w, x, y, z, l, sx, sy, sz;
@@ -555,18 +558,13 @@
          them), copied from the cloud. The rest of the cloud, in front and behind, is cut away */
       function probeFill() {
         var p = probe.list[probe.i];
-        if (LOC.what === 'loc' + p) return;
+        if (LOC.what === 'loc' + p + GS.what) return;
         var I = initGauss(), P = SF.P, s = I.sig[p], R2 = LOCR * LOCR * s * s, cx = P[p * 3], cy = P[p * 3 + 1], cz = P[p * 3 + 2], hit = [], i, d, dx, dy, dz;
-        for (i = 0; i < NP; i++) { dx = P[i * 3] - cx; dy = P[i * 3 + 1] - cy; dz = P[i * 3 + 2] - cz; d = dx * dx + dy * dy + dz * dz; if (d < R2) hit.push([d, i]); }
+        for (i = 0; i < NP; i++) { dx = P[i * 3] - cx; dy = P[i * 3 + 1] - cy; dz = P[i * 3 + 2] - cz; d = dx * dx + dy * dy + dz * dz; if (d < R2 && shown(i)) hit.push([d, i]); }
         var cut = hit.length > LOCCAP;
         if (cut) { hit.sort(function (a, b) { return a[0] - b[0]; }); hit.length = LOCCAP; }
-        var A = GS.src, B = LOC.src;
-        hit.forEach(function (h, j) {
-          var q = h[1];
-          B.C.set(A.C.subarray(q * 3, q * 3 + 3), j * 3); B.A.set(A.A.subarray(q * 3, q * 3 + 3), j * 3);
-          B.B.set(A.B.subarray(q * 3, q * 3 + 3), j * 3); B.K.set(A.K.subarray(q * 4, q * 4 + 4), j * 4);
-        });
-        LOC.n = hit.length; LOC.what = 'loc' + p; probe.count = hit.length; probe.R = cut ? Math.sqrt(hit[LOCCAP - 1][0]) : LOCR * s;   // the radius shown
+        hit.forEach(function (h, j) { initInto(LOC, j, h[1]); });
+        LOC.n = hit.length; LOC.what = 'loc' + p + GS.what; probe.count = hit.length; probe.R = cut ? Math.sqrt(hit[LOCCAP - 1][0]) : LOCR * s;   // the radius shown
       }
 
       /* ================= chrome ================= */
@@ -590,10 +588,12 @@
       var rowBtn = only(ui.el('div', 'kt-row pl-btns'), 'photos sfm'); panel.appendChild(rowBtn);
       ui.button(rowBtn, { label: 'replay', onClick: function () { st.k = 0; st.play = true; setRays(-1); } });
       /* init3dgs */
-      var rdG = row('Gaussians', 'init3dgs', 'splat'), rdS = row('σ, median', 'init3dgs'), rdWide = row('σ above 1 cm', 'init3dgs', '', true), rdO = row('opacity', 'init3dgs'), rdNu = row('numbers stored, colour included', 'init3dgs', '', true);
+      var rdG = row('Gaussians', 'init3dgs', 'splat'), rdS = row('σ, median', 'init3dgs'), rdWide = row('σ above 1 cm', 'init3dgs', '', true), rdO = row('opacity at init', 'init3dgs'), rdNu = row('numbers stored, colour included', 'init3dgs', '', true);
       var segO = ui.seg(panel, { label: 'opacity', value: 'init', options: [{ v: 'init', label: '0.1 (init)' }, { v: 'one', label: '1' }],
         onChange: function (v) { st.opa = v; gsMat.uniforms.uOpa.value = v === 'one' ? 1 : -1; need = true; cloudOk = false; } });
       only(segO.el, 'init3dgs');
+      var rowW = only(ui.el('div', 'kt-row pl-btns'), 'init3dgs'); panel.appendChild(rowW);
+      ui.toggle(rowW, { label: 'σ above 1 cm', value: true, onChange: function (v) { st.wide = v; gsInit(); paintInit(); } });
       /* initspline */
       var rdCP = row('control points', 'initspline', 'ctrl'), rdFit = row('fitted to', 'initspline'), rdTo = row('to those points', 'initspline', 'err'),
           rdTd = row('to the dense surface', 'initspline', 'err'), rdRf = row('same net, dense points', 'initspline', '', true), rdNs = row('numbers stored, shape only', 'initspline', '', true);
@@ -647,6 +647,12 @@
         rdNu.set(fmt(NP) + ' × ' + NUM + ' = ' + fmt(NP * NUM));
         if (rdRun) rdRun.set('pending: no snapshots loaded');
       })();
+      function paintInit() {                       // the init3dgs numbers: all measured from the kNN
+        var nw = 0, i; for (i = 0; i < NP; i++) if (INIT.sig[i] * MM > 10) nw++;
+        rdS.set(f2(INIT.med * MM) + ' mm');
+        rdWide.set(fmt(nw) + ' Gaussians' + (GS.n < NP ? ', left out' : ''));
+        rdG.set(GS.n < NP ? fmt(GS.n) + ' of ' + fmt(NP) : fmt(NP));
+      }
       function paintK() {
         var k = Math.max(0, Math.min(NC, Math.ceil(st.k - 1e-9))), m = medErr(k);
         rdK.set(k + ' / ' + NC); rdN.set(fmt(cum[k]) + ' / ' + fmt(NP)); rdE.set(isFinite(m) ? f2(m) + ' px' : '–');
@@ -810,11 +816,14 @@
       }
       function aspect() { var q = st.split ? st.rects[0] : null; return q ? q[2] / q[3] : st.w / Math.max(1, st.h); }
       var vcache = {};
-      function view(name) {                        // fitted once per view, stage shape and free rectangle (a copy: callers change it)
-        var F = st.free, key = name + '|' + aspect().toFixed(3) + '|' + (st.split ? 1 : 0) + '|' + F.map(function (x) { return x.toFixed(3); }).join(','), v = vcache[key];
+      function view(name) {                        // fitted once per view, stage shape and free rectangles (a copy: callers change it)
+        var key = name + '|' + aspect().toFixed(3) + '|' + (st.split ? 1 : 0) + '|' + st.frees.map(function (F) { return F.map(function (x) { return x.toFixed(3); }).join(','); }).join(';'), v = vcache[key];
         if (!v) {
-          if (name === 'rig') { v = { th: 0.62, ph: 0.98, tx: RIGC[0], ty: RIGC[1] - 0.6, tz: RIGC[2] }; v.r = fitView(RIGPTS, v, aspect(), 0.86, F); }
-          else { v = { th: 0.30, ph: 1.24, tx: TGT[0], ty: TGT[1] + 0.05, tz: TGT[2] }; v.r = fitView(OWLPTS, v, aspect(), st.split ? 0.84 : 0.74, F); }
+          st.frees.forEach(function (F) {          // the rectangle in which the object comes out largest
+            var c = name === 'rig' ? { th: 0.62, ph: 0.98, tx: RIGC[0], ty: RIGC[1] - 0.6, tz: RIGC[2] } : { th: 0.30, ph: 1.24, tx: TGT[0], ty: TGT[1] + 0.05, tz: TGT[2] };
+            c.r = fitView(name === 'rig' ? RIGPTS : OWLPTS, c, aspect(), name === 'rig' ? 0.9 : 0.84, F);
+            if (!v || c.r < v.r) v = c;
+          });
           vcache[key] = v;
         }
         return Object.assign({}, v);
@@ -850,11 +859,7 @@
         gsMat.uniforms.uOpa.value = id === 'init3dgs' && st.opa === 'one' ? 1 : -1;
         inset.style.display = mark.style.display = 'none';
         if (id === 'photos' || id === 'sfm') { st.k = 0; st.play = true; setRays(-1); st.kShown = -1; }
-        if (id === 'init3dgs' || (id === 'train' && !TR)) {
-          gsInit(); rdS.set(f2(INIT.med * MM) + ' mm'); probe.i = 0; probe.t = 0;
-          var nw = 0, i; for (i = 0; i < NP; i++) if (INIT.sig[i] * MM > 10) nw++;
-          rdWide.set(fmt(nw) + ' Gaussians');
-        }
+        if (id === 'init3dgs' || (id === 'train' && !TR)) { gsInit(id !== 'init3dgs'); probe.i = 0; probe.t = 0; paintInit(); }
         if (id === 'initspline') writeInit();
         if (id === 'levels' || st.split) { var L = levels(); L.auto = true; L.t = 0; levelGo(0); L.f = 1; L.dirty = true; L.fromFlat = 0; }
         if (id === 'train' && TR) { trn.auto = true; trn.t = 0; trn.want = -1; trn.i = 0; gsSnap(0); paintSnap(); if (slS) slS.set(0); }
@@ -894,21 +899,32 @@
           tagL.style.cssText = wide ? 'left:10px;bottom:' + (st.narrow ? 12 : 164) + 'px;max-width:' + (w / 2 - 20) + 'px' : 'left:10px;top:' + (h / 2 - 10) + 'px;transform:translateY(-100%);max-width:' + (w - 20) + 'px';
           tagR.style.cssText = wide ? 'left:' + (w / 2 + 10) + 'px;bottom:12px;max-width:' + (w / 2 - 20) + 'px' : 'left:10px;bottom:10px;max-width:' + (w - 20) + 'px';
         } else st.rects = null;
-        /* what covers the stage: the caption at the top (with the level's words), the panel, the tags. The views are
-           fitted into the rest (st.free, NDC of the frame or of one half of a split), and the magnifier goes bottom left
-           on a wide stage, under the caption on a narrow one, with the owl framed to its right */
-        var capB = cap.offsetTop + cap.offsetHeight, pv = panel.offsetParent ? panel : null;
+        /* what covers the stage: the caption top left (with the level's words), the panel, the plot, the magnifier, the
+           tags of a split. The views are fitted into what is left (st.frees: one or two rectangles, NDC of the frame or
+           of one half; view() keeps the one where the object comes out largest). The magnifier goes under the panel on
+           a wide stage, under the caption on a narrow one (the owl then framed to its right) */
+        var capB = cap.offsetTop + cap.offsetHeight, pv = panel.offsetParent ? panel : null, pB = pv ? pv.offsetTop + pv.offsetHeight : 0;
         var iw = Math.round(Math.min(w * (st.narrow ? 0.42 : 0.3), 300)), ih = Math.round(iw * 0.78);
-        st.inset = { x: 12, y: st.narrow ? capB + 8 : h - ih - 12, w: iw, h: ih };
-        var top = 0, bot = h, left = 0, H = h;
+        st.inset = st.narrow ? { x: 12, y: capB + 8, w: iw, h: ih } : { x: w - iw - 12, y: h - ih - 12, w: iw, h: ih };
+        var H = st.split && !wide ? h / 2 : h, R = [];   // free rectangles [left, right, top, bottom], CSS px of the frame or of one half
         if (st.split) {
-          if (wide) { top = Math.max(capB, pv ? pv.offsetTop + pv.offsetHeight : 0) + 8; bot = h - tagR.offsetHeight - 20; }
-          else { H = h / 2; top = capB + 8; bot = H - Math.max(tagL.offsetHeight, tagR.offsetHeight) - 18; }
-        } else if (st.narrow) {
-          top = capB + 8; bot = (pv ? pv.offsetTop : h) - 8;
-          if (st.scene === 'init3dgs') left = st.inset.x + st.inset.w + 6;
+          if (wide) R.push([0, w / 2, Math.max(capB, pB) + 8, h - tagR.offsetHeight - 20]);
+          else {
+            var tb = H - Math.max(tagL.offsetHeight, tagR.offsetHeight) - 18;
+            if (tb - capB - 8 < 0.3 * H) { tagL.style.visibility = tagR.style.visibility = 'hidden'; tb = H - 10; }   // no room for the tags: the caption says which half is which
+            R.push([0, w, capB + 8, tb]);
+          }
+        } else if (st.narrow) R.push([st.scene === 'init3dgs' ? st.inset.x + st.inset.w + 6 : 0, w, capB + 8, (pv ? pv.offsetTop : h) - 8]);
+        else {                                     // the panel top right, the caption top left, the plot bottom left, the magnifier under the panel
+          var bot = h - 8, pl = plot.offsetParent ? plot : null;
+          if (pl) bot = Math.min(bot, pl.offsetTop - 8);
+          R.push([0, pv ? pv.offsetLeft - 8 : w, capB + 8, bot]);
+          R.push([0, w, Math.max(capB, pB) + 8, st.scene === 'init3dgs' ? Math.min(bot, st.inset.y - 8) : bot]);
         }
-        st.free = bot - top > 0.3 * H ? [-1 + 2 * left / w, 1, 1 - 2 * bot / H, 1 - 2 * top / H] : [-1, 1, -1, 1];
+        var ww = st.split && wide ? w / 2 : w;
+        st.frees = R.filter(function (r) { return r[3] - r[2] > 0.3 * H && r[1] - r[0] > 0.3 * ww; })
+                    .map(function (r) { return [-1 + 2 * r[0] / ww, -1 + 2 * r[1] / ww, 1 - 2 * r[3] / H, 1 - 2 * r[2] / H]; });
+        if (!st.frees.length) st.frees = [[-1, 1, -1, 1]];
         plotDirty = true;
       }
       env.loop(function (t, dt) {
@@ -1019,7 +1035,7 @@
       '.kt-sim-pipeline .pl-pend b{color:var(--err);font-weight:600;letter-spacing:.08em;text-transform:uppercase}' +
       '.kt-sim-pipeline .pl-note{position:absolute;z-index:4;right:12px;bottom:12px;max-width:min(46%,420px);pointer-events:none;font:500 10px/1.45 var(--f-mono);color:var(--mute);text-align:right}' +
       '.kt-sim-pipeline .pl-inset{position:absolute;z-index:3;pointer-events:none;border:1px solid rgba(var(--splat-rgb),.65);border-radius:6px}' +
-      '.kt-sim-pipeline .pl-inset span{position:absolute;left:7px;top:6px;right:6px;font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
+      '.kt-sim-pipeline .pl-inset span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:rgba(7,9,15,.74);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
       '.kt-sim-pipeline .pl-inset b{color:var(--text)}.kt-sim-pipeline .pl-inset em{font-style:normal;color:var(--splat)}' +
       '.kt-sim-pipeline .pl-mark{position:absolute;z-index:3;width:22px;height:22px;margin:-11px 0 0 -11px;border:1.5px solid var(--splat);border-radius:50%;pointer-events:none}' +
       '.kt-sim-pipeline.kt-embed .kt-hint{display:none}' +
@@ -1032,7 +1048,7 @@
       '.kt-sim-pipeline.pl-narrow.kt-compact .kt-caption{max-width:calc(100% - 110px)}' +
       '.kt-sim-pipeline.pl-narrow:not(.kt-compact) .kt-panel{top:auto;bottom:12px;right:12px;min-width:0;width:min(230px,calc(100% - 24px))}' +
       '.kt-sim-pipeline.pl-narrow.pl-split:not(.kt-open) .kt-panel{display:none}' +
-      '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset span{font-size:9px;left:6px;top:5px}';
+      '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset span{font-size:9px;left:4px;top:4px;padding:2px 4px}';
     document.head.appendChild(css);
   }
 })();

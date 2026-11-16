@@ -102,13 +102,24 @@
   };
   KT.ui = ui;
 
-  /* the talk's colour code — one meaning per hue, everywhere */
-  KT.color = {
-    surf: '#4fc3f7',   // the continuous surface (what we optimise)
-    ctrl: '#ffa726',   // control points & knots (the learnable parameters)
-    splat: '#ce93d8',  // Gaussians (derived, never free)
-    err: '#ef5350',    // error, floaters, free primitives
-    ok: '#69f0ae',     // good news
+  /* the page's theme: 'light' when <html data-theme="light"> (talk.html), else 'dark' (the lab pages, the landing page).
+     Decided once, when this file runs: modules read KT.color when they are created. */
+  KT.theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  /* the talk's colour code — one meaning per hue, everywhere — in the page's theme (the same values as kit.css's tokens).
+     bg = what a module draws on: the dark stage, or on a light page the white glass card (over the warm page). */
+  KT.color = KT.theme === 'light' ? {
+    surf: '#0068d9',   // the continuous surface (what we optimise)
+    ctrl: '#c25e00',   // control points & knots (the learnable parameters)
+    splat: '#9b3fcf',  // Gaussians (derived, never free)
+    err: '#d93025',    // error, floaters, free primitives
+    ok: '#16843a',     // good news
+    text: '#1d1d1f', dim: '#636366', mute: '#7c7c80', line: '#dcd5cc', bg: '#fbf8f5'
+  } : {
+    surf: '#4fc3f7',
+    ctrl: '#ffa726',
+    splat: '#ce93d8',
+    err: '#ef5350',
+    ok: '#69f0ae',
     text: '#dde5f0', dim: '#8fa4c0', mute: '#5c6f8a', line: '#1b2a42', bg: '#07090f'
   };
   KT.clamp = function (x, a, b) { return x < a ? a : x > b ? b : x; };

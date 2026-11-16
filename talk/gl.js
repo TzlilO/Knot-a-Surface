@@ -6,11 +6,16 @@
   var gl = KT.gl = {};
 
   /* renderer bound to a module root; returns { renderer, canvas, resize(w,h) } */
-  /* clear: omit for the dark instrument background, or 'transparent' to let the page show through */
+  /* clear: omit for the theme's stage: on a dark page the dark instrument background (0x07090f, opaque), on a light page
+     (KT.theme) a see-through canvas, so the glass card behind it shows; 'transparent' = see-through on any page;
+     'opaque' = the theme's KT.color.bg, opaque; or a colour (0xrrggbb or '#rrggbb'), opaque.
+     A see-through canvas holds premultiplied colour: normal blending composites right over the page, additive
+     blending only ever brightens it (a glow vanishes on a light page). */
   gl.renderer = function (root, camera, clear) {
+    if (clear == null || clear === '') clear = KT.theme === 'light' ? 'transparent' : 0x07090f;
     var see = clear === 'transparent';
     var r = new T.WebGLRenderer({ antialias: true, alpha: see, powerPreference: 'high-performance' });
-    r.setClearColor(see ? 0x000000 : 0x07090f, see ? 0 : 1);
+    r.setClearColor(see ? 0x000000 : clear === 'opaque' ? KT.color.bg : clear, see ? 0 : 1);
     r.domElement.className = 'kt-canvas';
     root.insertBefore(r.domElement, root.firstChild);
     function resize(w, h) {
@@ -439,7 +444,7 @@
     o = o || {};
     var r = o.radius || 0.02, hl = r * 8, hr = r * 3.1, c = new T.Color(color);
     var lit = new T.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.3) });
-    var cap = new T.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.2) });
+    var cap = new T.MeshBasicMaterial({ color: c.clone().multiplyScalar(KT.theme === 'light' ? 0.5 : 0.2) });
     var ghost = gl.hidden(color, o.ghost == null ? 0.3 : o.ghost);
     var sg = new T.CylinderGeometry(r, r, 1, 16).translate(0, 0.5, 0);
     var hg = new T.ConeGeometry(hr, hl, 24).translate(0, hl / 2, 0);     // groups: 0 = side, 2 = base cap
@@ -478,10 +483,13 @@
     g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('normal', new T.BufferAttribute(nor, 3));
     g.setAttribute('uv', new T.BufferAttribute(uv, 2)); g.setIndex(idx);
     function v3s() { var l = [], i; for (i = 0; i < 9; i++) l.push(new T.Vector3()); return l; }
+    // the sheet's own colours, top and underside: deep blue on the dark stage, a light blue on a light page's glass
+    var light = KT.theme === 'light';
     var mat = new T.ShaderMaterial({
       side: T.DoubleSide, transparent: true, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
       uniforms: { uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
-                  uTop: { value: new T.Vector3(0.050, 0.150, 0.225) }, uUnder: { value: new T.Vector3(0.030, 0.062, 0.100) },
+                  uTop: { value: light ? new T.Vector3(0.400, 0.470, 0.540) : new T.Vector3(0.050, 0.150, 0.225) },
+                  uUnder: { value: light ? new T.Vector3(0.440, 0.470, 0.520) : new T.Vector3(0.030, 0.062, 0.100) },
                   uRim: { value: new T.Vector3().fromArray(gl.rgb(KT.color.surf)) }, uBg: { value: new T.Vector3().fromArray(gl.rgb(KT.color.bg)) },
                   uFog: { value: new T.Vector2(4, 14) }, uAlpha: { value: o.alpha == null ? 0.94 : o.alpha },
                   uCell: { value: new T.Vector4(0, 0, 0, 4) }, uCellCol: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) },

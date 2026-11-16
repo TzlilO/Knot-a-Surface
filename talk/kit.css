@@ -13,6 +13,23 @@
   --f-ui:'Inter',ui-sans-serif,system-ui,sans-serif;
   --f-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
 }
+/* the light theme: a page that sets <html data-theme="light"> (talk.html) gets the opening's warm paper and liquid glass
+   everywhere. Same meanings, the opening's hues (blue surface, orange control points, purple Gaussians, red error),
+   each darkened until it reads on the warm page and on white glass: surface, Gaussians, error and ok reach 4.5:1 on a
+   glass card (4.2-4.7:1 on the bare page); orange stops at 4.05:1 on glass (3.8:1 on the page), where a darker one
+   turns brown. talk/kit.js mirrors these values in KnotTalk.color. Pages without the attribute keep the dark set. */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f6f1ea; --bg2:#fffaf4; --bg3:#ffffff;
+  --panel:rgba(255,255,255,.52); --line:rgba(60,45,30,.10); --line2:rgba(60,45,30,.16);
+  --text:#1d1d1f; --dim:#636366; --mute:#7c7c80;
+  --surf:#0068d9; --ctrl:#c25e00; --splat:#9b3fcf; --err:#d93025; --ok:#16843a;
+  --surf-rgb:0,104,217; --ctrl-rgb:194,94,0; --splat-rgb:155,63,207; --err-rgb:217,48,37; --ok-rgb:22,132,58;
+  --glass-edge:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.4),inset 0 0 0 1px rgba(255,255,255,.45);
+  --glass-drop:0 24px 60px -28px rgba(88,56,24,.32),0 2px 8px -2px rgba(88,56,24,.08);
+  --ease:cubic-bezier(.22,1,.36,1);
+  --f-display:var(--f-ui); --f-serif:var(--f-ui);                  /* the opening's type: Inter throughout */
+}
 
 /* ---------- a mounted simulation ---------- */
 .kt-sim{position:relative;overflow:hidden;background:var(--bg);color:var(--text);
@@ -124,3 +141,33 @@ body.kt-labpage{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:
   .kt-gear{min-height:40px;padding:0 12px}
   .kt-lab-scene,.kt-lab-back{min-height:40px;display:flex;align-items:center}
 }
+
+/* ---------- the light theme's controls: liquid glass capsules (the opening's look, for every module on the page) ----------
+   Written last and behind :where(), so they weigh what the base rules above weigh: they win over those by order, and a
+   module's own stylesheet (injected later, usually a class more specific) still wins over them. */
+:where(:root[data-theme="light"]) .kt-sim{background:transparent}
+:where(:root[data-theme="light"]) .kt-panel{background:rgba(255,255,255,.62);border:0;border-radius:1.4rem;
+  backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
+  box-shadow:var(--glass-edge),0 14px 34px -18px rgba(88,56,24,.35);padding:.7rem .9rem;gap:.55rem;min-width:0}
+:where(:root[data-theme="light"]) .kt-bottom{bottom:1rem;gap:.6rem 1.1rem;justify-content:center}
+:where(:root[data-theme="light"]) .kt-panel-title{font:600 .62rem/1 var(--f-ui);letter-spacing:.08em;color:var(--mute)}
+:where(:root[data-theme="light"]) .kt-lab{font:500 .78rem/1.2 var(--f-ui);color:var(--dim)}
+:where(:root[data-theme="light"]) .kt-val{font:600 .82rem/1.2 var(--f-ui);color:var(--text)}
+:where(:root[data-theme="light"]) .kt-readout .kt-val{font-variant-numeric:tabular-nums}
+:where(:root[data-theme="light"]) .kt-seg-box{margin:0;border:0;padding:3px;border-radius:999px;background:rgba(118,118,128,.14)}
+:where(:root[data-theme="light"]) .kt-seg-btn{font:600 .8rem/1 var(--f-ui);color:var(--text);padding:.5rem .95rem;border-radius:999px;transition:background .3s var(--ease),box-shadow .3s}
+:where(:root[data-theme="light"]) .kt-seg-btn+.kt-seg-btn{border:0}
+:where(:root[data-theme="light"]) .kt-seg-btn:hover{background:rgba(255,255,255,.5);color:var(--text)}
+:where(:root[data-theme="light"]) .kt-seg-btn.on{color:var(--text);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+:where(:root[data-theme="light"]) .kt-toggle,:where(:root[data-theme="light"]) .kt-btn{font:600 .8rem/1 var(--f-ui);color:var(--text);padding:.55rem .95rem;border:0;border-radius:999px;background:rgba(118,118,128,.14)}
+:where(:root[data-theme="light"]) .kt-toggle:hover,:where(:root[data-theme="light"]) .kt-btn:hover{background:rgba(118,118,128,.22);color:var(--text)}
+:where(:root[data-theme="light"]) .kt-toggle.on{color:#fff;background:var(--tint,var(--surf))}
+:where(:root[data-theme="light"]) .kt-btn-go{color:#fff;background:var(--tint,var(--surf))}
+:where(:root[data-theme="light"]) .kt-btn-go:hover{color:#fff;background:var(--tint,var(--surf));filter:brightness(1.08)}
+:where(:root[data-theme="light"]) .kt-slider{gap:.7rem}
+:where(:root[data-theme="light"]) .kt-slider input{min-width:7rem;height:1.6rem;accent-color:var(--tint,var(--surf))}
+:where(:root[data-theme="light"]) .kt-slider .kt-val{min-width:3.4em;text-align:start}
+:where(:root[data-theme="light"]) .kt-gear{color:var(--text);background:rgba(255,255,255,.7);border:0;border-radius:999px;box-shadow:var(--glass-edge)}
+:where(:root[data-theme="light"]) .kt-sim button:focus-visible,:where(:root[data-theme="light"]) .kt-sim input:focus-visible{outline:2px solid var(--surf);outline-offset:2px}
+:where(:root[data-theme="light"]) .kt-caption{font:500 .74rem/1.45 var(--f-ui);letter-spacing:0;color:var(--dim)}
+:where(:root[data-theme="light"]) .kt-hint{font:600 .62rem/1 var(--f-ui);letter-spacing:.08em;color:var(--mute)}
