@@ -43,8 +43,11 @@
 .prelude .step p b{color:var(--text);font-weight:600}
 .prelude .step p.fine{margin-top:.9rem;font-size:.86rem;line-height:1.5;color:var(--mute)}
 .prelude .try{margin-top:1.6rem;font:600 .82rem/1.2 var(--f-ui);color:var(--c,var(--explicit))}
-.prelude .p-read{position:absolute;z-index:4;top:1.2rem;left:1.4rem;font:500 .86rem/1.3 var(--f-ui);color:var(--dim);pointer-events:none}
-.prelude .p-read b{display:block;font:800 1.9rem/1.1 var(--f-ui);letter-spacing:-.02em;color:var(--text);font-variant-numeric:tabular-nums}
+/* a quiet number in the corner of a stage: the 3D step's count (.p-read) and the opening modules' readouts (.he-read,
+   built by talk/he/sims.js; the Hebrew deck styles them in talk/he/he.css, which this page does not load). Inset far
+   enough that the first letter clears the card's rounded corner */
+.prelude .p-read,.he-read{position:absolute;z-index:4;top:1.2rem;left:1.4rem;font:500 .86rem/1.3 var(--f-ui);color:var(--dim);pointer-events:none}
+.prelude .p-read b,.he-read b{display:block;font:800 1.9rem/1.1 var(--f-ui);letter-spacing:-.02em;color:var(--text);font-variant-numeric:tabular-nums}
 
 /* ---------- the two title screens: the opening's and the talk's cover, text left, a glass card right ---------- */
 .prelude .p-hero{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:2.4rem;
@@ -101,5 +104,5 @@ body.lightroom .rail,body.lightroom .hud,body.lightroom .keys{--bg:#f6f1ea;--bg2
   .prelude .wide .step{padding:3.6rem 1.2rem}
   .prelude .trio{grid-template-columns:minmax(0,1fr)}
   .prelude .glass{border-radius:1.5rem}
-  .prelude .p-read b{font-size:1.4rem}
+  .prelude .p-read b,.he-read b{font-size:1.4rem}
 }
