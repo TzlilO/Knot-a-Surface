@@ -8,7 +8,11 @@ photographs**. It was not trained and it is not a result of the thesis method; n
 pip install numpy scipy scikit-image Pillow
 python3 -I tools/dtu/fit.py <data-dir> 122          # writes talk/dtu-data.js (about two minutes, no GPU)
 python3 -I tools/dtu/fit.py <data-dir> 122 --cache /tmp/dtu-cache -o /tmp/try.js   # keep the fusion between runs
+python3 -I tools/dtu/fit.py <data-dir> 55 --register scans    # another scan: writes talk/dtu/scan55.js
 ```
+
+`--register scans` writes `talk/dtu/scan<N>.js`, which adds itself to `KnotTalk.dtuScans[N]` instead of setting
+`KnotTalk.dtu` (that stays the owl), and carries its own `views` and `tour`. See "More scans" below.
 
 `-I` because the input is downloaded data: keep it in a directory of its own, away from any code.
 
@@ -95,6 +99,50 @@ median and the 95th percentile describe the surface it does cover.
 would feed a net of roughly 500 x 700. 288 x 392 (0.8 to 0.9 mm) is what a 1.5 MB data file holds at
 12 base64 characters per control point; `--nu` / `--nv` raise it.
 
+## More scans
+
+Same script, same standard, `--register scans`. Nothing is tuned per scan except what `SCANS` in `fit.py` lists;
+a scan without an entry takes everything from its own data: the fusion volume from its depth, the scale so
+that it stands 3.55 scene units tall, the net from the sheet's size (as many columns per row as the sheet is
+wide per tall, at most 112,896 nodes = what 1.5 MB holds), the table chart around its footprint. From the
+second scan on, the object is separated from what it stands on by its silhouettes (a fused point belongs to the
+object if it lies inside the mask in every view), not by its height above the table.
+
+| scan | object | net (object + table) | control points | fit error: rms / 95th pct / median, mm | observed: nodes / area | within 1 mm of the chart | file |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 122 | owl on books | 288 x 392 + 104 x 80 | 121,216 | 0.21 / 0.068 / 0.012 | 93.6 % / 83.6 % | 99.6 % | `talk/dtu-data.js`, 1.41 MB |
+| 55 | rabbit | 320 x 352 + 111 x 80 | 121,520 | 1.54 / 0.070 / 0.015 | 96.2 % / 91.2 % | 99.4 % | `talk/dtu/scan55.js`, 1.41 MB |
+
+Scan 55, by hand: `top_mm=250`. Its photographs crop the ears, so only stubs of them were measured; the chart
+ends level, 250 mm above the table, below them. Its rms comes from 0.5 % of the measured points, 20 to 29 mm
+from the sheet: the throat under the muzzle, which the sheet bridges. One scene unit is 71 mm; 49 views.
+
+### Scans that were tried and are NOT shipped
+
+One sheet around an axis stands for a compact object whose measured surface can be seen from that axis. These
+scans are not that, and each failed in a way the numbers show. The bar was the owl's: at least about 80 % of
+the chart's area observed.
+
+| scan | object | what happened | observed area | fit error rms / 95th pct, mm |
+| --- | --- | --- | --- | --- |
+| 106 | two birds | the sheet bridges the gap between the two bodies and their legs | 54.0 % | 3.2 / 6.3 |
+| 118 | child in a pair of hands | the sheet stretches from the fingertips across the hollow to the child | 47.9 % | 4.4 / 11.8 |
+| 105 | plush toy | arms and ears stick out; membranes span from limb to limb | 7.1 % | 6.4 / 15.8 |
+| 69 | three snowmen | three bodies and thin arms; the sheet is mostly bridge | 2.7 % | 4.4 / 9.7 |
+| 97 | cans and bags | separate objects at different depths; long bridges between them | 44.5 % | 1.4 / 1.9 |
+| 110 | seated figure | script stops: only 28 % of the heights measured straight in front of the axis | - | - |
+| 40 | concrete blocks | script stops: 43 % (an arch with a hole through it) | - | - |
+| 37 | tools on a block | script stops: 59 % (flat, thin parts) | - | - |
+| 24 | model building | script stops: 27 % (a facade wider than the frame) | - | - |
+| 63 | fruit | script stops: 49 % (separate fruits, an axis through the gaps between them) | - | - |
+
+"Script stops" is the check in `axis_and_wedge`: fewer than `--edge` of the heights hold measurements in the
+direction the cameras look from, so there is no front to wrap a sheet around. With these, every scan of the repo
+has been tried except 65, 83 and 114, which were excluded on purpose.
+
+What would bring them in is an atlas of several charts per object, or leaving the unobserved nodes of a chart
+out when it is drawn (the `seen` mask is in every file for that); neither is done here.
+
 ## The file it writes
 
 `KnotTalk.dtu = { scan, label, source, note, unit_mm, stats, cams, target, charts }`, a classic script that
@@ -102,3 +150,10 @@ decodes itself on load. Per chart: `P` (Float32Array, control points in scene un
 over the chart's bounding box, or as four numbers for the flat table), `C` (Float32Array, control colours 0..1
 in display space; stored as bytes), `seen` (Uint8Array, 1 = measured, 0 = inpainted; stored as bits). Row j,
 column i sits at `j * nu + i`; `S_u x S_v` points out of the object.
+
+A file written with `--register scans` holds the same object under `KnotTalk.dtuScans[N]`, plus
+`views: { wide, close, a, b }` (each `{ th, ph, r, tx, ty, tz }`, the shape `talk/scenes.js` uses) and
+`tour: ['wide', 'close', 'a', 'b']`. The views are computed from the scan's own cameras: azimuths within 85 %
+of the widest camera azimuth, elevations between the lowest and the highest camera ring, distances from the
+object's size. To show one in a page: load its file, then `KnotTalk.dtu = Object.assign({}, KnotTalk.dtuScans[N])`
+before `talk/scenes.js`, and take `views` / `tour` from the data instead of the owl's.

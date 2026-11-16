@@ -494,8 +494,8 @@
        table  — the fitted table plane, as far as the photographs show it.
      `seen` on a chart (Uint8Array, one per control point) is 1 where the surface was measured and 0 where a
      small hole was inpainted. photo: true — the colours already hold the light of the photographs. */
-  function scan() {
-    var D = KT.dtu, C = [];
+  function scan(D) {
+    var C = [];
     D.charts.forEach(function (d) {
       var P = d.P, K = d.C, nu = d.nu, o = d.plane ? { nu: nu, nv: d.nv, tu: 5, tv: 4 }
                                                : { nu: nu, nv: d.nv, tu: 9, tv: 12, cu: 4, cv: 4, closed: true };
@@ -504,10 +504,11 @@
     var T = D.target, ty = T[1], tz = T[2];
     return {
       charts: C, photo: true,
-      /* every view lies inside the dome of real cameras (azimuth -60..60 degrees, 16..70 degrees above the table) */
-      views: { wide: { th: 0.30, ph: 1.22, r: 8.6, tx: 0, ty: ty, tz: tz }, close: { th: -0.15, ph: 1.20, r: 3.3, tx: 0.15, ty: ty * 1.5, tz: 0.2 },
+      /* every view lies inside the dome of real cameras (azimuth -60..60 degrees, 16..70 degrees above the table);
+         a scan baked with `--register scans` brings its own */
+      views: D.views || { wide: { th: 0.30, ph: 1.22, r: 8.6, tx: 0, ty: ty, tz: tz }, close: { th: -0.15, ph: 1.20, r: 3.3, tx: 0.15, ty: ty * 1.5, tz: 0.2 },
                a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz } },
-      tour: ['wide', 'close', 'a', 'b'],
+      tour: D.tour || ['wide', 'close', 'a', 'b'],
       rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
       /* the owl cocks its head: every control point above the shoulders, tilted about an axis that points at
          the cameras, so no part of the sheet's open back turns into view. The numbers are this object's
@@ -534,6 +535,12 @@
     breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, build: breakfast }
   };
   /* the real object, when its data file was loaded before this one. `note` is what a caption may say about it */
-  if (KT.dtu) KT.scenes.scan = { label: KT.dtu.label || 'Scan', suite: 'DTU scan ' + KT.dtu.scan, photo: true,
-                                 note: 'fitted offline, not trained', build: scan };
+  var NOTE = 'fitted offline, not trained';
+  if (KT.dtu) KT.scenes.scan = { label: KT.dtu.label || 'Scan', suite: 'DTU scan ' + KT.dtu.scan, photo: true, note: NOTE,
+                                 build: function () { return scan(KT.dtu); } };
+  /* further scans (talk/dtu/scan<N>.js), offered by the lab page's scene picker only */
+  Object.keys(KT.dtuScans || {}).forEach(function (n) {
+    var D = KT.dtuScans[n];
+    KT.scenes['scan' + n] = { label: D.label, suite: 'DTU scan ' + n, photo: true, note: NOTE, build: function () { return scan(D); } };
+  });
 })();

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Fit a DTU scan with two cubic B-spline charts and bake it for the talk (talk/dtu-data.js).
+"""Fit a DTU scan with two cubic B-spline charts and bake it for the talk.
 
-    python3 -I tools/dtu/fit.py <data-dir> <scan> [-o talk/dtu-data.js] [--cache DIR]
+    python3 -I tools/dtu/fit.py <data-dir> 122                       -> talk/dtu-data.js      (KnotTalk.dtu, the talk's subject)
+    python3 -I tools/dtu/fit.py <data-dir> <scan> --register scans   -> talk/dtu/scan<N>.js   (KnotTalk.dtuScans[N], with views)
+    options: [-o FILE] [--cache DIR] [--nu N --nv N] [--edge 0.6] [--name chart] [--label Caption]
 
 <data-dir>/scan<N>/ must hold, in the layout of the Hugging Face dataset repo Y1ue/DTU:
     cameras.npz                  IDR convention: world_mat_i = K [R|t] for the 1600x1200 frames, scale_mat_i
@@ -13,7 +15,8 @@
 What it does (README.md next to this file has the reasons):
   1. frame     table plane by RANSAC on the off-object depth -> +y up, millimetres
   2. fuse      depth maps -> one truncated signed distance volume (0.5 mm voxels) -> surface points with normals.
-               Only what two or more views measured is kept; nothing is closed or extrapolated.
+               Only what two or more views measured is kept; nothing is closed or extrapolated. The object is
+               what lies inside its silhouette in every view.
   3. chart     ONE chart for the object: a rectangle of nodes over everything that was measured. Its four edges
                are the foot on the table, the two azimuths (around an axis through the object) where the
                measurements thin out, and the highest measured direction at each azimuth. The nodes start on a
@@ -25,6 +28,10 @@ What it does (README.md next to this file has the reasons):
                fitted surface + the scan's own depth map); the four best views are blended
   6. table     a second, flat chart on the fitted table plane, coloured the same way, as far as it was seen
   7. measure   fit error against the fused surface points, observed / inpainted shares -> stdout and the .js
+
+One sheet around an axis stands for a compact object whose measured surface can be seen from that axis. A scan
+with limbs, several bodies or a through hole makes the sheet bridge gaps nothing was measured in; the printed
+observed share (by area) says so, and such a scan should not be shipped.
 
 Needs numpy, scipy (>= 1.8), scikit-image, Pillow. No GPU. About three minutes on four cores, 3 GB of memory."""
 import argparse, base64, json, os, sys, time

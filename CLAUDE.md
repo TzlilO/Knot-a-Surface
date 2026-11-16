@@ -65,7 +65,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   DTU object (scan 122, an owl) baked offline by `python3 -I tools/dtu/fit.py <data-dir> 122` into
   `talk/dtu-data.js` (`KnotTalk.dtu`, must load before `talk/scenes.js`; without it the barn stands in).
   It is an offline fit to the dataset's depth maps and photographs: never call it trained or a result of
-  the method. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
+  the method. Further scans baked with `--register scans` land in `talk/dtu/scan<N>.js` (`KnotTalk.dtuScans`) and
+  become scenes `scan<N>` in the lab page's picker only; one sheet around an axis suits a compact single body, and
+  `tools/dtu/README.md` lists the scans that failed. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
   points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
