@@ -238,7 +238,7 @@
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Only the <em class="c-surf">curve</em> stays</h2>
       <p>Take away the cameras, the photos and the Gaussians, and one curve is left: the thing the bound model optimises. Next: what a curve like this is made of.</p>
-      <p class="aside">The curve that stays is this toy’s true curve, written as a 14‑point cubic spline; the trained curve eases onto it.</p>
+      <p class="aside">The curve that stays is this toy’s true curve, written as a 14‑point cubic spline; the bound model’s curve, wherever its training stands, eases onto it (scripted).</p>
     </article>
   </div>
 </section>
@@ -353,7 +353,7 @@
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Sample the chart, <em>tile the surface</em></h2>
       <p>Lay a grid over the (u, v) square and drop one planoid per sample. Sized to its own cell, each Gaussian reaches its neighbours: no part of the surface is left uncovered at any sample count we tried, from 6² to 160².</p>
-      <p>One size for all, with the same total area, leaves 4–9 % of the surface uncovered (<b class="c-err">red</b>) along the stretched rim, and piles up in the middle: at 14², 18 % of the surface three deep, against 4 % sized to the cells.</p>
+      <p>One size for all, with the same total area, leaves about 4–8 % of the surface uncovered (<b class="c-err">red</b>) along the stretched rim, and piles up in the middle: at 14², 18 % of the surface three deep, against 4 % sized to the cells.</p>
       <p class="aside">Uncovered: the share of the surface’s area that no 1σ outline encloses, tested on a fine (u, v) grid. Each planoid is flat, so on a curved surface it is exact only at its centre; the gap shrinks as the samples get denser.</p>
     </article>
     <article class="step nav" data-scene="stitch" data-replay>
@@ -529,7 +529,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>A mesh from a list <em>has to search</em></h2>
       <p>First the same Gaussians the way 3DGS stores them: an unordered list. To mesh it, every Gaussian has to find its nearest neighbours, fit a plane through them and triangulate there; a triangle stays where its corners agree.</p>
-      <p>The board counts the cost: millions of distances, and still <b class="c-err">bridges</b> between parts of the surface that only lie close together, non‑manifold edges and holes.</p>
+      <p>The board counts the cost: some 70 distances per Gaussian, millions at the talk’s budget, and still <b class="c-err">bridges</b> between parts of the surface that only lie close together, non‑manifold edges and holes.</p>
       <p class="aside">The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained. Every count and time on the board is measured in this page.</p>
     </article>
     <article class="step nav" data-scene="stitch" data-depth="deep" data-replay>
