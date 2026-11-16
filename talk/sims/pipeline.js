@@ -788,17 +788,21 @@
          (NDC: the part of the stage nothing covers), with the target moved so that their projection is centred in it
          (v.tx, v.ty, v.tz change; returns the distance) */
       function fitView(pts, v, aspect, m, F) {
-        var lo, hi, it, r = 10, ok, i, pass, b, fx = (F[0] + F[1]) / 2, fy = (F[2] + F[3]) / 2, hx = m * (F[1] - F[0]) / 2, hy = m * (F[3] - F[2]) / 2;
+        var lo, hi, it, r = 10, pass, b, fx = (F[0] + F[1]) / 2, fy = (F[2] + F[3]) / 2, hx = m * (F[1] - F[0]) / 2, hy = m * (F[3] - F[2]) / 2;
         fitCam.aspect = aspect; fitCam.updateProjectionMatrix();
-        for (pass = 0; pass < 3; pass++) {
-          lo = 0.5; hi = 150;
-          for (it = 0; it < 26; it++) {
-            r = (lo + hi) / 2; ok = true; place(v, r);
-            for (i = 0; i < pts.length && ok; i++) { V3.set(pts[i][0], pts[i][1], pts[i][2]).project(fitCam); if (V3.z > 1 || Math.abs(V3.x - fx) > hx || Math.abs(V3.y - fy) > hy) ok = false; }
-            if (ok) hi = r; else lo = r;
+        function bounds(r) {                       // the projected bounds of the points from distance r (null if one is behind the eye)
+          place(v, r);
+          var q = [Infinity, -Infinity, Infinity, -Infinity], i;
+          for (i = 0; i < pts.length; i++) {
+            V3.set(pts[i][0], pts[i][1], pts[i][2]).project(fitCam); if (V3.z > 1) return null;
+            q[0] = Math.min(q[0], V3.x); q[1] = Math.max(q[1], V3.x); q[2] = Math.min(q[2], V3.y); q[3] = Math.max(q[3], V3.y);
           }
-          r = hi; place(v, r); b = [Infinity, -Infinity, Infinity, -Infinity];
-          for (i = 0; i < pts.length; i++) { V3.set(pts[i][0], pts[i][1], pts[i][2]).project(fitCam); b[0] = Math.min(b[0], V3.x); b[1] = Math.max(b[1], V3.x); b[2] = Math.min(b[2], V3.y); b[3] = Math.max(b[3], V3.y); }
+          return q;
+        }
+        for (pass = 0; pass < 3; pass++) {         // the size decides the distance; then the target moves so the points are centred in F
+          lo = 0.5; hi = 150;
+          for (it = 0; it < 26; it++) { r = (lo + hi) / 2; b = bounds(r); if (b && b[1] - b[0] <= 2 * hx && b[3] - b[2] <= 2 * hy) hi = r; else lo = r; }
+          r = hi; b = bounds(r); if (!b) break;
           var e = fitCam.matrixWorld.elements, ty = Math.tan(fitCam.fov / 2 * Math.PI / 180) * r, tx = ty * aspect, cx = ((b[0] + b[1]) / 2 - fx) * tx, cy = ((b[2] + b[3]) / 2 - fy) * ty;
           v.tx += e[0] * cx + e[4] * cy; v.ty += e[1] * cx + e[5] * cy; v.tz += e[2] * cx + e[6] * cy;     // shift along the camera's right and up
         }
