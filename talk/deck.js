@@ -162,7 +162,7 @@
   window.addEventListener('resize', onScroll);
 
   function go(n, instant) {
-    if (n && n.offsetParent === null) n = near(n, 1);   // a part that is off: where it would be, the next step shown
+    if (n && n.offsetParent === null) n = nearest(n, 1);   // a part that is off: where it would be, the next step shown
     if (!n) return;
     var r = n.getBoundingClientRect(), top;
     if (n.classList.contains('cover') || r.height > window.innerHeight * 0.92) top = window.scrollY + r.top;
@@ -171,10 +171,11 @@
     window.scrollTo({ top: Math.max(0, top), behavior: instant ? 'auto' : 'smooth' });
   }
   function stepBy(d) {
-    var v = visibleNav(), i = v.indexOf(cur);
+    var c = cur && cur.offsetParent === null ? nearest(cur, -1) : cur;   // the active step was just switched off: from its predecessor
+    var v = visibleNav(), i = v.indexOf(c);
     if (i < 0) i = 0;
-    if (cur && !cur.classList.contains('cover')) {    // taller than the screen: show the rest of it first
-      var r = cur.getBoundingClientRect(), vh = window.innerHeight;
+    if (c && !c.classList.contains('cover')) {        // taller than the screen: show the rest of it first
+      var r = c.getBoundingClientRect(), vh = window.innerHeight;
       if (d > 0 && r.bottom > vh + 12) { window.scrollBy({ top: Math.min(r.bottom - vh + 8, vh * 0.8), behavior: 'smooth' }); return; }
       if (d < 0 && r.top < -12) { window.scrollBy({ top: -Math.min(-r.top + 8, vh * 0.8), behavior: 'smooth' }); return; }
     }
@@ -187,37 +188,87 @@
   var clock = { t0: 0, el: $('.clock') }, cutBtns = $$('.cut button');
   function cut() { return document.body.classList.contains('cut-20') ? 20 : 40; }
   /* the planned length of a cut, from the chapter budgets: the buttons and the clock show it, so they stay true
-     whatever the chapters add up to */
-  function total(m) { var key = m === 20 ? 'min20' : 'min40'; return chapters.reduce(function (t, c) { return t + (+c.dataset[key] || 0); }, 0); }
-  cutBtns.forEach(function (b) { b.textContent = Math.round(total(+b.dataset.cut)) + '′'; });
+     whatever the chapters add up to, and whatever is switched off (see "parts" below) */
+  function total(m) { return chapters.reduce(function (t, c) { return t + budget(c, m); }, 0); }
   function setCut(m) {
     document.body.classList.toggle('cut-20', m === 20);
     cutBtns.forEach(function (b) { b.classList.toggle('on', +b.dataset.cut === m); });
     try { localStorage.setItem('kt-cut', m); } catch (e) {}
-    if (cur && cur.offsetParent === null) {            // the active step was a deep-dive: fall back to its predecessor
-      var i = cur._i; while (i > 0 && allNav[i].offsetParent === null) i--;
-      go(allNav[i], true);
-    } else if (cur) go(cur, true);
-    onScroll(); tick();
+    layout(); settle(); onScroll(); tick();
+    emit('kt-cut', { cut: m });
   }
   cutBtns.forEach(function (b) { b.addEventListener('click', function () { setCut(+b.dataset.cut); }); });
-  function startClock() { clock.t0 = Date.now(); tick(); }
-  clock.el.addEventListener('click', function () { if (clock.t0) { clock.t0 = 0; tick(); } else startClock(); });
+  function startClock() { clock.t0 = Date.now(); tick(); emit('kt-clock', { t0: clock.t0 }); }
+  function toggleClock() { if (clock.t0) { clock.t0 = 0; tick(); emit('kt-clock', { t0: 0 }); } else startClock(); }
+  clock.el.addEventListener('click', toggleClock);
   function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   /* planned time at the active step: chapter budgets (data-min40 / data-min20), linear inside a chapter */
   function plan() {
-    var key = cut() === 20 ? 'min20' : 'min40', t = 0, done = false;
+    var m = cut(), t = 0, done = false;
     chapters.forEach(function (c) {
       if (done) return;
-      var m = +c.dataset[key] || 0;
       if (cur && (c === cur || c.contains(cur))) {
-        var navs = $$('.nav', c).filter(function (n) { return n.offsetParent !== null; });
+        var navs = navsOf(c).filter(function (n) { return shown(n, m); });
         var i = Math.max(0, navs.indexOf(cur));
-        t += m * (navs.length ? (i + 1) / navs.length : 1); done = true;
-      } else t += m;
+        t += budget(c, m) * (navs.length ? (i + 1) / navs.length : 1); done = true;
+      } else t += budget(c, m);
     });
     return t * 60;
   }
+
+  /* ================= parts: what is on =================
+     A step is on screen when the cut shows it (the short cut hides data-depth="deep" steps) AND it is on. Every
+     step is on unless talk.html marks it, or its section, data-off (off until the presenter turns it on); the
+     presenter's overrides, set in the slide master (talk/master.js), win over those defaults and are all it saves.
+     A step that is off leaves the flow as a deep step does in the short cut: display:none (deck.css), so it is
+     neither navigable nor counted by the clock and the cut totals. A section with nothing left on screen goes,
+     with its sticky stage and its rail entry, and the light wrapper goes when none of its sections is left.
+     A section's budget is shared evenly by the steps the cut shows, so what is off comes off the totals.
+     A step's key is its section's rail label and its title: a saved choice survives edits elsewhere in the page. */
+  var over = {}, byKey = {}, prelude = $('.prelude');
+  function navsOf(sec) { return sec._navs || (sec._navs = sec.matches('.nav') ? [sec] : $$('.nav', sec)); }
+  function textOf(e) {
+    var c = e.cloneNode(true);
+    $$('[data-tex]', c).forEach(function (t) { t.textContent = t.dataset.tex; });      // the TeX, not KaTeX's rendering
+    return c.textContent.replace(/\s+/g, ' ').trim();
+  }
+  allNav.forEach(function (n) {                    // a title: the step's heading, else its thesis line, else its label
+    var h = $('h1, h2', n) || $('.thesis, .qa', n) || $('.lvl, .tag, .kick', n), t = h ? textOf(h) : '';
+    n._title = t || (n._sec.dataset.title || 'Step') + ' · ' + (navsOf(n._sec).indexOf(n) + 1);
+    var base = (n._sec.dataset.rail || '') + ' · ' + n._title, k = base, j = 1;
+    while (byKey[k]) k = base + ' #' + (++j);
+    n._key = k; byKey[k] = n;
+  });
+  function defaultOn(n) { return !n.hasAttribute('data-off') && !n._sec.hasAttribute('data-off'); }
+  function isOn(n) { return Object.prototype.hasOwnProperty.call(over, n._key) ? over[n._key] : defaultOn(n); }
+  function inCut(n, m) { return m !== 20 || !n.matches('.step[data-depth="deep"]'); }
+  function shown(n, m) { return isOn(n) && inCut(n, m || cut()); }
+  function minutes(sec, m) { return +sec.dataset[m === 20 ? 'min20' : 'min40'] || 0; }
+  function inCutOf(sec, m) { return navsOf(sec).filter(function (x) { return inCut(x, m); }); }
+  function share(n, m) { var c = inCutOf(n._sec, m); return inCut(n, m) && c.length ? minutes(n._sec, m) / c.length : 0; }
+  function budget(sec, m) { var c = inCutOf(sec, m); return c.length ? minutes(sec, m) * c.filter(isOn).length / c.length : 0; }
+  function set(n, on) { if (!!on === defaultOn(n)) delete over[n._key]; else over[n._key] = !!on; }
+  function layout() {
+    var m = cut();
+    allNav.forEach(function (n) { var on = isOn(n); n.classList.toggle('kt-on', on); n.classList.toggle('kt-off', !on); });
+    chapters.forEach(function (sec) {
+      var navs = navsOf(sec), gone = !navs.some(function (n) { return shown(n, m); });
+      sec.classList.toggle('kt-on', navs.some(isOn));             // a data-off section that something of is on
+      sec.classList.toggle('kt-gone', gone); sec._rail.classList.toggle('kt-gone', gone);
+    });
+    if (prelude) prelude.classList.toggle('kt-gone', !$$('section[data-rail]', prelude).some(function (s) { return !s.classList.contains('kt-gone'); }));
+    cutBtns.forEach(function (b) { b.textContent = Math.round(total(+b.dataset.cut)) + '′'; });
+  }
+  /* the nearest step on screen from n, looking in direction d first (1 forward, -1 back), then the other way */
+  function nearest(n, d) {
+    for (var k = 0; k < 2; k++, d = -d)
+      for (var i = n._i; i >= 0 && i < allNav.length; i += d) if (allNav[i].offsetParent !== null) return allNav[i];
+    return null;
+  }
+  /* after the flow changed: keep the active step on the reading line; one that has just gone (a deep-dive in the
+     short cut, a part switched off) falls back to its predecessor */
+  function settle() { if (cur) go(cur.offsetParent === null ? nearest(cur, -1) : cur, true); }
+  function refresh() { layout(); settle(); onScroll(); tick(); emit('kt-parts', { over: Object.assign({}, over) }); }
   function tick() {
     var p = plan();
     if (!clock.t0) { clock.el.className = 'clock'; clock.el.innerHTML = 'T · start clock · plan ' + mmss(p); return; }
@@ -243,7 +294,7 @@
     else if (k === 'End') { e.preventDefault(); var v = visibleNav(); go(v[v.length - 1]); }
     else if (k === 'f' || k === 'F') setFocus(!document.body.classList.contains('focus'));
     else if (k === 'Escape') { setFocus(false); keys.classList.remove('on'); }
-    else if (k === 't' || k === 'T') { if (clock.t0) clock.t0 = 0; else startClock(); tick(); }
+    else if (k === 't' || k === 'T') toggleClock();
     else if (k === 'm' || k === 'M') snd.btn.click();
     else if (k === '?') keys.classList.toggle('on');
     else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-8 = that chapter, 9 = takeaways
@@ -353,15 +404,43 @@
   var ex = $('#ex-dtu'); if (ex) dtuChart(ex);
   ex = $('#ex-bench'); if (ex) benchChart(ex);
 
+  /* ================= the handle: talk/master.js (the slide master) and tests =================
+     events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh) */
+  KT.deck = {
+    steps: allNav, sections: chapters, navs: navsOf,                   // every step (.nav) and every data-rail section, in order
+    key: function (n) { return n._key; }, title: function (n) { return n._title; },
+    section: function (n) { return n._sec; }, byKey: function (k) { return byKey[k] || null; },
+    current: function () { return cur; }, cut: cut, setCut: setCut,
+    defaultOn: defaultOn, isOn: isOn, inCut: inCut, shown: shown,      // shown(n, m): on, and in cut m (default: the current one)
+    minutes: minutes, share: share, budget: budget, total: total, plan: plan,
+    clock: function () { return clock.t0; }, toggleClock: toggleClock,
+    go: go, step: stepBy, activate: activate,
+    set: set,                                                          // set(step, on): one override; refresh() after a batch
+    overrides: function () { return Object.assign({}, over); },
+    setOverrides: function (o) {                                       // replace them all (unknown keys are dropped)
+      over = {};
+      for (var k in o || {}) if (byKey[k] && typeof o[k] === 'boolean') set(byKey[k], o[k]);
+      refresh();
+    },
+    refresh: refresh
+  };
+
   /* ================= boot ================= */
   var saved = 40;
   try { saved = +localStorage.getItem('kt-cut') === 20 ? 20 : 40; } catch (e) {}
   document.body.classList.toggle('cut-20', saved === 20);
   cutBtns.forEach(function (b) { b.classList.toggle('on', +b.dataset.cut === saved); });
+  // the slide master's saved choices (talk/master.js writes them, step key -> on): read here, before the first frame
+  (function () {
+    try { var o = JSON.parse(localStorage.getItem('kt-parts') || '{}'), k; for (k in o) if (byKey[k] && typeof o[k] === 'boolean') set(byKey[k], o[k]); }
+    catch (e) { /* no storage: the page's own defaults */ }
+  })();
+  layout();
   var m = /^#s(\d+)$/.exec(location.hash);
-  if (m && allNav[+m[1]] && allNav[+m[1]].offsetParent !== null) {
+  if (m && allNav[+m[1]]) {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-    requestAnimationFrame(function () { go(allNav[+m[1]], true); onScroll(); });
+    // a step that is off by now gives way to its predecessor
+    requestAnimationFrame(function () { var n = allNav[+m[1]]; go(n.offsetParent === null ? nearest(n, -1) : n, true); onScroll(); });
   }
   onScroll(); tick();
 })();

@@ -1,7 +1,12 @@
 /* Knot-a-Surface talk — module `planoid`: "Calculus makes the splat".
-   One B-spline patch. Pick a point (u,v) and watch a Gaussian fall out of the surface's own
-   calculus: position = S(u,v), orientation = tangent frame, scale = |S_u| du x |S_v| dv.
-   Then fill the chart and turn the resolution knob — the learnable parameters never change.
+   One B-spline patch: a 6 x 6 net fitted by least squares to the terrain of chapter 05 (talk/terrain.js; scene
+   `net` shows the conjugate-gradient fit run from a flat net). Pick a point (u,v) and watch a Gaussian fall out of
+   the surface's own calculus: position = S(u,v), orientation = tangent frame, scale = |S_u| du x |S_v| dv.
+   Then fill the chart — every Gaussian's 1-sigma outline drawn crisp, one size for all against each sized to its
+   own cell, with the uncovered share measured (`scale`, `fill`) — stitch the samples into a mesh with a sliding
+   2 x 2 window (`stitch`), turn the resolution knob from 64 to 1,048,576 Gaussians with the frame time measured
+   (`knob`), and warp a fixed budget towards what a second camera sees (`adaptive`). The learnable parameters
+   never change.
 
    Reading the picture in 3D:
      - the surface is a lit sheet (darker underneath), it casts a soft shadow on the floor, and distance
@@ -218,7 +223,7 @@
       function cgAim(c) {
         mulA(c.p, c.Ap); var pAp = dotN(c.p, c.Ap);
         c.al = pAp > 0 ? c.rz / pAp : 0; c.from.set(c.Z); c.tau = 0;
-        c.slice = 0.05 + 0.62 * Math.pow(0.78, c.it);             // how long this step is shown taking, in seconds
+        c.slice = 0.05 + 0.9 * Math.pow(0.7, c.it);               // how long this step is shown taking, in seconds (about 4.3 s in all)
         if (!(pAp > 0) || c.rz <= 1e-18 * c.rz0) c.done = true;
       }
       function cgLand(c) {
@@ -418,8 +423,8 @@
         }
       })();
       var tgtGeo = new T.BufferGeometry(); tgtGeo.setAttribute('position', new T.BufferAttribute(tgtPos, 3));
-      var tgtDots = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.042, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.85 })), 2);
-      var tgtHid = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.042, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.22,
+      var tgtDots = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.055, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.95 })), 2);
+      var tgtHid = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.055, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.3,
         depthFunc: T.GreaterDepth, depthWrite: false })), 3);
       var resid = G.lines(TD * TD * 2, C.err, 0.85); own(resid.obj, 2);
       var residHid = ghostLines(resid, 0.25, 3);
@@ -467,7 +472,7 @@
       triGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
       triGeo.setAttribute('normal', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
       triGeo.setDrawRange(0, 0);
-      var tri = own(new T.Mesh(triGeo, new T.MeshLambertMaterial({ color: 0x1d6d93, emissive: 0x07202e, side: T.DoubleSide,
+      var tri = own(new T.Mesh(triGeo, new T.MeshLambertMaterial({ color: 0x2f8fbf, emissive: 0x0c3448, side: T.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })), 1);
       var triEdge = G.lines(SQ * 10, C.surf, 0.9); own(triEdge.obj, 2);
       var triNew = G.lines(10, '#ffffff', 1); own(triNew.obj, 3);
@@ -910,6 +915,7 @@
         triNew.obj.visible = !done;
         outlineSet(sset, st.gain, 0, 0, sx.passed);
         rdTri.set((q * 2).toLocaleString('en-US') + ' / ' + (sx.Q * 2).toLocaleString('en-US'));
+        rdG.set((sx.V - sx.passed).toLocaleString('en-US') + ' / ' + sx.V.toLocaleString('en-US'));     // still drawn, of the lattice
         uvDirty = true; hudDirty = true;
       }
 
@@ -1854,6 +1860,8 @@
           fitR = Math.max(1, 1.32 / (w / h));               // back off on narrow stages so the patch stays in frame
           var ins = Math.round(KT.clamp(Math.min(w * 0.22, h * 0.3), 108, 200));
           st.ins = ins; root.style.setProperty('--kt-ins', ins + 'px'); root.classList.toggle('kt-ins-small', ins < 150);
+          // a narrow stage folds the panel behind the kit's `controls` button — on the lab page too, not only in the deck
+          if (!env.embed) root.classList.toggle('kt-compact', w < 560);
           hudPlace(); if (st.sc.sweep) kn.plotT = 0;
         },
         destroy: function () { R.renderer.dispose(); }

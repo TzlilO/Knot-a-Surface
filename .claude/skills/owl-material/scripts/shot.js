@@ -3,6 +3,7 @@
 // `steps` frames of 33 ms are run; only the last two are really drawn (software WebGL rasterises every frame it
 // is handed, so drawing them all takes minutes). `js` runs in the page before the first step, e.g.
 //   "KnotTalk.mounted[0].api.setMaterial('jelly')"
+//   "var A = KnotTalk.mounted[0].api; A.setTarget('owl'); A.setMaterial('jelly')"     (targets: object, owl, selection)
 // The paint wipe takes 3.5 s (106 steps). Console errors and page errors are printed; no output = clean.
 const { chromium } = require('/opt/node-tools/node_modules/playwright');
 const path = require('path');

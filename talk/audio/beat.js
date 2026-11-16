@@ -5,10 +5,10 @@
    12 bars of 4/4 at 96 BPM are exactly 30 s, the length the steps loop (data-audio-len="30"). The last beat is a
    breath: everything has died away before the bar line, so the seam is silence into the downbeat (first and last
    samples are 0) and stays clean although talk/deck.js restarts the track by hand when it ends.
-   Synthesized sample by sample when this script runs (a few tens of ms, no Web Audio), so the URL is in place
+   Synthesized sample by sample when this script runs (once, about 0.1 s; no Web Audio), so the URL is in place
    before talk/deck.js first asks for it; encoded as a 16-bit mono WAV at 22.05 kHz (1.3 MB) and registered as a
    blob: URL in KnotTalk.tracks.touch, unless talk/audio/tracks.js names a file for `touch`. Peaks at -12 dBFS,
-   to sit under the chapter's own sound effects (talk/sims/touch.js); M or the ♪ button mutes both.
+   to sit under the chapter's own sound effects (talk/sims/touch.js); M or the ♪ button mutes it (talk/deck.js).
    The score is the tables below, the balance is GAIN. Under node, require() it for render() / wav(); nothing
    is registered there. */
 (function (root) {

@@ -12,7 +12,9 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, TAU = 6.283185307;
-  var SUN = (function () { var v = [0.35, 0.86, 0.36], l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; })();
+  /* the folder this file was loaded from: a scan's own files lie beside it, in dtu/ (see features() in scan(), below) */
+  var HERE = (document.currentScript && document.currentScript.src || '').replace(/[^\/]*$/, '');
+  var SUN =(function () { var v = [0.35, 0.86, 0.36], l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; })();
   /* chart identity colours for the 'charts' view. Deliberately NOT the talk's semantic hues
      (cyan surface, amber control, violet Gaussians, red error) so the amber control net stays readable. */
   var HEX = ['#4db6ac', '#f06292', '#9ccc65', '#7986cb', '#bcaaa4', '#78909c', '#a5d6a7', '#b0bec5'];
@@ -635,13 +637,14 @@
       for (m = 0; m < n; m++) if (W[m] > 0.01) { if (B[m * 3 + 1] < lo) lo = B[m * 3 + 1]; if (B[m * 3 + 1] > hi) hi = B[m * 3 + 1]; }
       t.lo = lo; t.hi = hi; return t;
     }
-    var TG = { object: extent({ w: new Float32Array(n).fill(1), v: 0 }), owl: extent({ w: MO, v: 0 }), selection: { w: new Float32Array(n), v: 0, rev: NaN } };
+    var TG = { object: extent({ w: new Float32Array(n).fill(1), v: 0, cov: 'all' }), owl: extent({ w: MO, v: 0, cov: 'owl' }),
+               selection: { w: new Float32Array(n), v: 0, rev: NaN, cov: '' } };
     TG.object.base = Y0; TG.owl.base = FEET;
     function target(name) {
       var t = TG[name] || TG.object;
       if (t === TG.selection) {                    // the Hands layer's selection, feathered again whenever it changed
         var S = c.sel && c.sel.length === n ? c.sel : null, rev = S ? c.selRev || 0 : -1;
-        if (t.rev !== rev) { t.rev = rev; if (S) feather(S, nu, nv, t.w); else t.w.fill(0); extent(t); t.base = t.lo; t.v++; }
+        if (t.rev !== rev) { t.rev = rev; if (S) feather(S, nu, nv, t.w); else t.w.fill(0); extent(t); t.base = t.lo; t.v++; t.cov = 'sel' + t.v; }
       }
       return t;
     }
@@ -650,16 +653,21 @@
       s.h = t ? Math.max(0, s.y - t.base) : 0; s.H = t ? Math.max(0, t.hi - t.base) : 0;
       return s;
     }
-    /* the colours (and opacities) of a material on every control point of the object, before any target: worked out the
-       first time it is asked for, and again after one of its knobs was turned. -> { K, A (or null), rev } */
+    /* the colours (and opacities) of a material, before any target, on the control points a target `t` covers: worked out
+       the first time they are asked for (each control point once), and again after one of the material's knobs was
+       turned. -> { K, A (or null), rev } */
     var baked = {};
-    function bake(name) {
-      var m = MATS[name], bk = baked[name], rgb;
-      if (bk && bk.rev === m.rev) return bk;
-      bk = baked[name] = bk || { K: new Float32Array(K0), A: null }; bk.rev = m.rev;
-      if (!m.colour) return bk;
-      var K1 = bk.K, A1 = bk.A; if (A1) A1.fill(1);
-      for (i = 0; i < n; i++) {
+    function bake(name, t) {
+      var m = MATS[name], bk = baked[name], rgb, W = t.w;
+      if (!bk || bk.rev !== m.rev) {
+        bk = baked[name] = bk || { K: new Float32Array(K0), A: null, F: new Uint8Array(n) };
+        bk.rev = m.rev; bk.covs = {}; bk.F.fill(0); if (bk.A) bk.A.fill(1);
+      }
+      if (!m.colour || bk.covs.all || bk.covs[t.cov]) return bk;
+      bk.covs[t.cov] = true;
+      var K1 = bk.K, A1 = bk.A, F = bk.F;
+      for (i = 0; i < n; i++) if (W[i] > 0 && !F[i]) {
+        F[i] = 1;
         o = i * 3; s.a = 1; m.colour(sample(i, null), m.p); rgb = [s.r, s.g, s.b];
         if (BK[i] && m.beak) for (k = 0; k < 3; k++) rgb[k] += (m.beak[k] * (0.6 + 0.4 * SH[i]) - rgb[k]) * BK[i];
         K1[o] = rgb[0]; K1[o + 1] = rgb[1]; K1[o + 2] = rgb[2];
@@ -683,8 +691,8 @@
     }
     function animate(t, paint, material, from, target1, target0) {
       var mat = MATS[material] || MATS.snowy, old = MATS[from] || MATS.stone;
-      to = bake(MATS[material] ? material : 'snowy'); src = bake(MATS[from] ? from : 'stone');
       TB = target(target1); TA = target(target0);
+      to = bake(MATS[material] ? material : 'snowy', TB); src = bake(MATS[from] ? from : 'stone', TA);
       var ky = material + to.rev + ':' + target1 + TB.v + '<' + from + src.rev + ':' + target0 + TA.v; if (ky !== key) { key = ky; painted = -1; }
       // the wipe runs over what is painted, before or after: from its top to its foot
       var lo = 1e9, hi = -1e9;
@@ -732,6 +740,24 @@
     return animate;
   }
 
+  /* the baked features of a scan's chart, as the Hands layer reads them, or null when their file is not loaded */
+  function featOf(D, name) {
+    var F = KT.dtuFeatures && KT.dtuFeatures[D.scan], fc = F && F.charts[name];
+    return fc ? { dim: F.dim, scale: F.scale, lo: F.lo, hi: F.hi, nu: fc.nu, nv: fc.nv, step: fc.step || 1, data: fc.data } : null;
+  }
+  /* a page that did not load a scan's features file (the talk does not: it is large) fetches it once, from beside this
+     file, the first time something wants it; done() runs when it is in (never, when it is not there) */
+  var FETCHING = {};
+  function wantFeatures(n, done) {
+    if (KT.dtuFeatures && KT.dtuFeatures[n]) return done();
+    if (!HERE) return;
+    if (FETCHING[n]) return FETCHING[n].push(done);
+    var s = document.createElement('script'); FETCHING[n] = [done];
+    s.onload = function () { var q = FETCHING[n]; FETCHING[n] = null; if (KT.dtuFeatures && KT.dtuFeatures[n]) q.forEach(function (f) { f(); }); };
+    s.onerror = function () { FETCHING[n] = null; };
+    s.src = HERE + 'dtu/features' + n + '.js'; document.head.appendChild(s);
+  }
+
   function scan(D) {
     var C = [];
     D.charts.forEach(function (d) {
@@ -740,8 +766,7 @@
       var c = chart(C, d.name, o, function (s, t, i, j) { var k = (j * nu + i) * 3; return [P[k], P[k + 1], P[k + 2], K[k], K[k + 1], K[k + 2]]; });
       c.seen = d.seen; c.ground = !!d.plane;                      // the table is ground: tools leave it alone, and it can be put away
       // features of a pretrained model baked onto the control points, when their file (talk/dtu/features<N>.js) is loaded
-      var F = KT.dtuFeatures && KT.dtuFeatures[D.scan], fc = F && F.charts[d.name];
-      c.feat = fc ? { dim: F.dim, scale: F.scale, lo: F.lo, hi: F.hi, nu: fc.nu, nv: fc.nv, step: fc.step || 1, data: fc.data } : null;
+      c.feat = featOf(D, d.name);
     });
     var T = D.target, ty = T[1], tz = T[2], M = KT.dtuMasks && KT.dtuMasks[D.scan];
     return {
@@ -759,6 +784,9 @@
       animate: D.scan === 122 ? owlLife(C[0], M && M.chart === C[0].name && M.nu === C[0].patch.nu && M.nv === C[0].patch.nv ? M.mask : null) : null,
       materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label, view: MATS[k].view, knobs: MATS[k].knobs || [], p: MATS[k].p }; }) : null,
       targets: D.scan === 122 ? TARGETS.slice() : null,
+      /* the DINOv3 features for the Hands atlas, on a page that did not load them: fetched the first time they are wanted
+         (the selection target asks), then put on the charts; cb() runs once they are there */
+      features: function (cb) { wantFeatures(D.scan, function () { C.forEach(function (c) { if (!c.feat) c.feat = featOf(D, c.name); }); if (cb) cb(); }); },
       /* turn a knob of a material: its value changes for every owl on the page, and they repaint */
       tune: function (v, k, x) { var m = MATS[v]; if (m && m.p && m.p[k] !== x) { m.p[k] = x; m.rev++; } }
     };

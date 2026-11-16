@@ -511,7 +511,8 @@
           dot: new T.Points(kgeo, new T.PointsMaterial({ color: C.text, size: 5, sizeAttenuation: false, depthTest: false })) };
         [mesh.tri, mesh.wire, mesh.fresh, mesh.win, mesh.dot].forEach(function (o) { o.frustumCulled = false; scene.add(o); });
         mesh.win.renderOrder = mesh.dot.renderOrder = 6; root.classList.add('mf-mesh');
-        mesh.L = ML.emulate(parts, 7); mesh.job = ML.mesher(mesh.L);     // the list: the same samples as a 3DGS list holds them, and its mesher
+        // the list (the same samples as a 3DGS list would hold them, emulated over a few frames, then meshed) and the lattice's audit
+        mesh.L = null; mesh.job = null; mesh.ejob = ML.emulator(parts, 7); mesh.ajob = ML.auditor(lat.tri, lat.nTri, lat);
         showPhase(was ? was.phase : 'list');
         paintIO();
       }
@@ -538,7 +539,7 @@
         if (!M) return;
         M.phase = p; M.t = 0; M.rt = 0; M.hold = 0; M.done = false;
         if (segH) segH.set(p);
-        if (L) writeList(); else writeLattice();
+        if (!L) writeLattice(); else if (M.L) writeList(); else field.setCount(0);
         [M.tri, M.wire, M.fresh, M.win, M.dot].forEach(function (o) { o.visible = !L; });
         (M.lobj || []).forEach(function (o) { o.visible = L; });
         rdM.el.firstChild.textContent = L ? 'triangles made' : 'triangles stitched';
@@ -556,13 +557,15 @@
         var M = mesh;
         M.age += dt;
         if (M.due && M.age >= M.due) { buildMesh(); return; }        // a new budget, and the slider has rested
-        if (!M.latA) { M.latA = ML.audit(M.lat.tri, M.lat.nTri, M.lat); paintBoard(); }          // the lattice, graded like the list
-        else if (!M.job.done) { M.job.step(SLICE); if (M.job.done) listReady(); paintBoard(); }
+        // one piece of work per frame, SLICE ms at most: emulate the list, grade the lattice, mesh the list (graded alike)
+        if (!M.L) { if (M.ejob.step(SLICE)) { M.L = M.ejob.list; M.job = ML.mesher(M.L); if (M.phase === 'list') writeList(); } paintBoard(); }
+        else if (!M.latA) { if (M.ajob.step(SLICE)) M.latA = M.ajob.stats; paintBoard(); }
+        else if (!M.job.done) { if (M.job.step(SLICE)) listReady(); paintBoard(); }
         if (M.phase === 'list') stepList(dt); else stepLattice(dt);
       }
       function stepList(dt) {
-        var M = mesh, J = M.job, n = M.L.n;
-        if (!J.done) { field.setCount(n); rdG.set(n.toLocaleString('en-US')); rdM.set(Math.round(J.progress * 100) + ' %'); return; }
+        var M = mesh, J = M.job, n = M.L ? M.L.n : 0;
+        if (!J || !J.done) { field.setCount(n); rdG.set(n.toLocaleString('en-US')); rdM.set(J ? Math.round(J.progress * 100) + ' %' : '…'); return; }
         M.rt += dt;
         var f = Math.min(1, M.rt / LIST_T), q = Math.min(J.nTri, Math.floor(f * f * J.nTri)), gone = f >= 1 ? n : q ? J.tri[(q - 1) * 3] + 1 : 0;
         M.ltri.geometry.setDrawRange(0, q * 3);
@@ -595,7 +598,7 @@
       /* the board: one column per store, the numbers as they are measured */
       function paintBoard() {
         if (!mesh || !ML) { board.innerHTML = ''; return; }
-        var M = mesh, J = M.job, A = J.done ? J.stats : null, B = M.latA;
+        var M = mesh, J = M.job, A = J && J.done ? J.stats : null, B = M.latA, E = J ? J.ms : {};
         function num(x) { return x.toLocaleString('en-US'); }
         function big(x) { return x >= 1e6 ? (x / 1e6).toFixed(1) + ' M' : x >= 1e4 ? Math.round(x / 1e3) + ' k' : num(x); }
         function ms(x) { return x < 1 ? '&lt; 1 ms' : num(Math.round(x)) + ' ms'; }
@@ -603,8 +606,9 @@
         function row(name, k) { return '<tr><th>' + name + '</th>' + td(A && A[k], 1) + td(B && B[k], 1) + '</tr>'; }
         board.innerHTML = '<b>the same ' + num(M.V) + ' Gaussians, meshed two ways</b><table>' +
           '<thead><tr><th></th><th' + (M.phase === 'list' ? ' class="on"' : '') + '>a list <i>emulated</i></th><th' + (M.phase === 'list' ? '' : ' class="on"') + '>the lattice</th></tr></thead><tbody>' +
-          '<tr><th>neighbour search</th><td>' + (J.phase === 'index' ? '…' : big(J.tests) + ' distances · ' + ms(J.ms.index + J.ms.search)) + '</td><td class="ok">none</td></tr>' +
-          '<tr><th>triangulation</th><td>' + (A ? ms(J.ms.mesh) : Math.round(J.progress * 100) + ' %') + '</td><td>' + ms(M.lat.ms) + '</td></tr>' +
+          '<tr><th>neighbour search</th><td>' + (!J ? 'emulating the list · ' + Math.round(M.ejob.progress * 100) + ' %' : J.phase === 'index' ? '…' :
+            big(J.tests) + ' distances · ' + ms((E.index || 0) + (E.search || 0))) + '</td><td class="ok">none</td></tr>' +
+          '<tr><th>triangulation</th><td>' + (A ? ms((E.normal || 0) + (E.fan || 0) + (E.vote || 0)) : J ? Math.round(J.progress * 100) + ' %' : '…') + '</td><td>' + ms(M.lat.ms) + '</td></tr>' +
           '<tr><th>triangles</th>' + td(A && A.triangles) + td(B && B.triangles) + '</tr>' +
           row('bridges', 'bridges') + row('non-manifold edges', 'nonManifold') + row('holes', 'holes') +
           '</tbody></table><span class="mf-key"><i></i>bridge or non-manifold edge <i class="f"></i>edge of a hole · times measured here</span>';
@@ -744,9 +748,12 @@
       function selecting() { return !!(hands && st.sc.paint && st.target === 'selection' && def && def.targets); }
       function showHands() {
         if (!hands) return;
-        var sel = selecting(); hands.show(!!st.sc.hands || sel, sel ? 'select' : 'hands');
+        var sel = selecting(), on = !!st.sc.hands || sel;
+        hands.show(on, sel ? 'select' : 'hands'); root.classList.toggle('mf-handson', on);
         hint.textContent = sel ? 'select on the atlas or on the object: the material follows the selection' : st.sc.hint || '';
         need = true;
+        // a page without the scan's DINOv3 features (the talk) fetches them the first time a selection is wanted; the atlas offers them then
+        if (sel && def.features && !def.featAsked) { def.featAsked = true; def.features(showHands); }
       }
       /* one slider per property the chosen material lets the simulator turn */
       function showKnobs() {
@@ -913,6 +920,15 @@
           '.kt-sim-manifold .mf-board>b{margin-bottom:3px}.kt-sim-manifold .mf-board th,.kt-sim-manifold .mf-board td{padding:1px 0 1px 9px}' +
           '.kt-sim-manifold .mf-board thead th{font-size:8.5px;letter-spacing:.03em}.kt-sim-manifold .mf-key{display:none}}' +
           '.kt-sim-manifold .mf-knobs{border-top:1px solid var(--line);margin-top:6px;padding-top:4px}' +
+          // with the tool layer's panel on a narrow stage, this panel keeps to the upper half (it scrolls), that one to the lower
+          '.kt-sim-manifold.kt-compact.kt-open.mf-handson .kt-tr{max-height:calc(50% - 48px);overflow:auto}' +
+          '@media (max-width:640px){.kt-sim-manifold.mf-handson .kt-tr{max-height:calc(50% - 24px);overflow:auto}}' +
+          '.kt-sim-manifold.mf-handson .kt-tr>*{flex-shrink:0}' +          // its rows keep their height: the panel scrolls, they never overlap
+          // on a narrow stage the paint scene's own controls come first: the material, where it goes, its knobs
+          '.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.kt-panel-title{order:-2}' +
+          '.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.mf-mat,.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.mf-target,.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.mf-knobs{order:-1}' +
+          '@media (max-width:640px){.kt-sim-manifold.mf-paint .kt-tr>.kt-panel-title{order:-2}' +
+          '.kt-sim-manifold.mf-paint .kt-tr>.mf-mat,.kt-sim-manifold.mf-paint .kt-tr>.mf-target,.kt-sim-manifold.mf-paint .kt-tr>.mf-knobs{order:-1}}' +
           '.kt-sim-manifold .mf-tog{flex-wrap:wrap}' +
 
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
@@ -955,6 +971,7 @@
                    list: J && { done: J.done, progress: J.progress, tests: J.tests, ms: J.ms, cell: J.cell, audit: lean(J.stats) } };
         },
         meshFile: function (fmt) { return mesh && IO ? meshFile(fmt) : null; },
+        meshSeek: function (t) { if (mesh) { mesh.t = mesh.rt = t; } },                  // for tests: jump the running animation to t seconds
         resize: function (w, h) {
           R.resize(w, h); need = true; size.w = w; size.h = h;
           R.renderer.getDrawingBufferSize(field.uniforms.uRes.value);

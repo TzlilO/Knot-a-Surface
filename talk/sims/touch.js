@@ -146,9 +146,9 @@
       var sr = ctx.sampleRate, n = Math.floor(sr * 2.5), rn = KT.rng(99), x, i;
       noise = ctx.createBuffer(1, n, sr); x = noise.getChannelData(0);
       for (i = 0; i < n; i++) x[i] = rn() * 2 - 1;
-      bus = ctx.createGain(); bus.gain.value = 0.42;                          // a room, not a game: everything is quiet
-      var lp = biq('lowpass', 6000, 0.5), cp = ctx.createDynamicsCompressor();  // no harsh highs; a pile-up is held down
-      cp.threshold.value = -22; cp.knee.value = 10; cp.ratio.value = 4; cp.attack.value = 0.003; cp.release.value = 0.25;
+      bus = ctx.createGain(); bus.gain.value = 0.22;                          // a room, not a game: the hardest knock peaks near -14 dBFS
+      var lp = biq('lowpass', 5000, 0.5), cp = ctx.createDynamicsCompressor();  // no harsh highs; a pile-up is held down
+      cp.threshold.value = -18; cp.knee.value = 8; cp.ratio.value = 4; cp.attack.value = 0.003; cp.release.value = 0.25;
       bus.connect(lp); lp.connect(cp); cp.connect(ctx.destination);
     }
     function arm() {
@@ -198,18 +198,19 @@
     }
 
     /* a bounce on the spline: the bowl's first modes, struck. J (N·s) sets loudness, brightness and, a little, pitch;
-       tone shifts it with the place on the bowl; st > 1 is slow motion (lower, longer) */
+       tone shifts it with the place on the bowl; st > 1 is slow motion (lower, longer). The fundamental sits above the
+       bass line of the chapter's music (talk/audio/beat.js), and the upper modes and the click carry over its drums. */
     function knock(J, tone, pan, st) {
       if (!ok()) return;
-      var h = Math.min(J / 12, 1), a = 0.07 + 0.43 * Math.pow(h, 0.85), w = Math.pow(st || 1, 0.2), br = 0.35 + 0.65 * h;
-      var v = voice('knock', a, 0.16 * w, pan); if (!v) return;
-      var t = v.t, f = 150 * Math.pow(Math.max(J, 0.3) / 4, 0.12) * (tone || 1) / w;
-      [[1, 1, 0.16], [2.32, 0.42 * br, 0.075], [4.1, 0.2 * br, 0.04], [6.3, 0.09 * br, 0.022]].forEach(function (md, i) {
+      var h = Math.min(J / 12, 1), a = 0.06 + 0.3 * Math.pow(h, 0.85), w = Math.pow(st || 1, 0.2), br = 0.45 + 0.55 * h;
+      var v = voice('knock', a, 0.1 * w, pan); if (!v) return;
+      var t = v.t, f = 230 * Math.pow(Math.max(J, 0.3) / 4, 0.1) * (tone || 1) / w;
+      [[1, 1, 0.1], [2.32, 0.62 * br, 0.055], [4.1, 0.36 * br, 0.032], [6.3, 0.18 * br, 0.018]].forEach(function (md, i) {
         var o = osc(v, f * md[0], t, md[2] * w * 7 + 0.02);
-        if (!i) { o.frequency.setValueAtTime(f * 1.25, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.03 * w); }
+        if (!i) { o.frequency.setValueAtTime(f * 1.2, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.025 * w); }
         chain(o, amp(t, a * md[1], 0.0015, md[2] * w), v.out);
       });
-      chain(hiss(v, t, 0.05 * w), biq('bandpass', 1500 + 1500 * br, 0.8), amp(t, a * 0.45 * br, 0.0008, 0.006 * w), v.out);   // the contact itself
+      chain(hiss(v, t, 0.05 * w), biq('bandpass', 1800 + 1400 * br, 0.9), amp(t, a * 0.8 * br, 0.0008, 0.006 * w), v.out);   // the contact itself
     }
     /* the surface breaks: r = impulse asked / toughness; np pieces */
     function crack(r, np, pan) {
@@ -253,13 +254,15 @@
       for (i = 0; i < m; i++) L.push([0.085 * rr(), 900 + 1700 * rr(), 0.00035 + 0.0008 * rr(), A * (0.35 + 0.65 * rr())]);
       chain(play(v, grains(L, 0.1), v.t), biq('lowpass', 3400, 0.5), v.out);
     }
-    /* a contact begins on the elastic surface: sp = approach speed (m/s), k = spring stiffness (N/m) */
+    /* a contact begins on the elastic surface: sp = approach speed (m/s), k = spring stiffness (N/m); the pitch goes
+       as the square root of the stiffness, as a spring's frequency does (FSPR at 160 N/m) */
     function pluck(sp, k, pan) {
       if (!ok()) return;
-      var h = KT.clamp(sp / 8, 0, 1), a = 0.05 + 0.3 * Math.pow(h, 0.8), F = 150 * Math.sqrt(k / 160), v = voice('wobble', a, 0.14, pan); if (!v) return;
-      var t = v.t, o = osc(v, F * 1.8, t, 1.0);
-      o.frequency.exponentialRampToValueAtTime(F, t + 0.11); chain(o, amp(t, a, 0.003, 0.14), v.out);
-      chain(osc(v, 68, t, 0.4), amp(t, a * 0.7, 0.002, 0.05), v.out);
+      var h = KT.clamp(sp / 8, 0, 1), a = 0.035 + 0.13 * Math.pow(h, 0.8), F = FSPR * Math.sqrt(k / 160), v = voice('wobble', a, 0.16, pan); if (!v) return;
+      var t = v.t, o = osc(v, F * 1.6, t, 1.1), o2 = osc(v, F * 3.2, t, 0.6);
+      o.frequency.exponentialRampToValueAtTime(F, t + 0.11); chain(o, amp(t, a, 0.003, 0.16), v.out);
+      o2.frequency.exponentialRampToValueAtTime(F * 2, t + 0.11); chain(o2, amp(t, a * 0.3, 0.003, 0.07), v.out);
+      chain(osc(v, 95, t, 0.3), amp(t, a * 0.4, 0.002, 0.04), v.out);                // the push of the ball into it
     }
     /* the ball leaves the bowl at sp m/s */
     function whoosh(sp, pan) {
@@ -271,11 +274,12 @@
       chain(hiss(v, t, 1.3), bp, g, v.out);
       chain(hiss(v, t, 1.0), biq('lowpass', 300, 0.7), amp(t, A * 0.5, 0.06, 0.2), v.out);
     }
-    /* moment: candidate i says "contact" */
+    /* moment: candidate i says "contact": a dry click, a little lower for each later definition (a click, not a note:
+       the chapter's music has its own) */
     function tick(i, pan) {
       if (!ok()) return;
-      var v = voice('tick', 0.09, 0.03, pan); if (!v) return;
-      chain(osc(v, 1500 * Math.pow(0.9, i), v.t, 0.25), amp(v.t, 0.09, 0.001, 0.03), v.out);
+      var f = 3000 * Math.pow(0.92, i), v = voice('tick', 0.16, 0.003, pan); if (!v) return;
+      chain(play(v, grains([[0, f, 0.0024, 0.16], [0, f * 1.47, 0.0011, 0.1]], 0.03), v.t), v.out);
     }
     function hush() { if (!ctx) return; var t = ctx.currentTime; live.forEach(function (v) { cut(v, t); }); live = []; }
 
@@ -293,7 +297,7 @@
         } else {
           s = ctx.createBufferSource(); s.buffer = noise; s.loop = true; s.start(t, rr() * 2); c.srcs.push(s);
           if (kind === 'roll') { f = biq('lowpass', 160, 0.9); chain(s, f, biq('highpass', 45, 0.7), g); }
-          else { f = biq('bandpass', 2000, 0.55); chain(s, f, biq('lowpass', 4600, 0.5), g); }
+          else { f = biq('bandpass', 1700, 0.55); chain(s, f, biq('lowpass', 3800, 0.5), g); }
           c.p.f = f.frequency;
         }
         c.srcs[0].onended = function () { try { g.disconnect(); } catch (e) {} };
@@ -504,6 +508,8 @@
       // moment: where the ball's lowest point was when each definition said "contact" (red: the list; cyan: the spline), on its vertical
       var mkL = G.lines(2 * CANDS.length, C.err, 0.95), mkS = G.lines(2, C.surf, 1), mkG = G.lines(2, C.text, 0.3);
       [mkL, mkS, mkG].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 14; scene.add(l.obj); });
+      var low = new T.Mesh(new T.SphereGeometry(0.011, 12, 8), new T.MeshBasicMaterial({ color: C.text, depthTest: false, transparent: true }));   // the ball's lowest point
+      low.renderOrder = 31; scene.add(low); ballMesh.renderOrder = 4;                   // (drawn after the list, for when it is see-through)
 
       /* ---------- state ---------- */
       var ball = { p: [0, 0, 0], v: [0, 0, 0], on: false, rest: false };
@@ -979,7 +985,7 @@
         x = au.rest ? au.restV / au.rest : 0;                                         // rolling: the share of the frame in resting contact, at its speed
         chRoll.set(au.rest && au.simT ? 0.11 * Math.pow(KT.clamp(x / 2.5, 0, 1), 1.2) * Math.min(1, au.rest / au.simT) : 0, 110 + 70 * x);
         x = au.calls ? au.inside / au.calls : 0;                                       // sinking through a list with no rule
-        chHiss.set(x > 0 ? 0.16 * Math.pow(KT.clamp(x / 140, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.35, 1.2) : 0, (1400 + 110 * speed()) / Math.pow(stretch, 0.3));
+        chHiss.set(x > 0 ? 0.16 * Math.pow(KT.clamp(x / 140, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.35, 1.2) : 0, (1200 + 90 * speed()) / Math.pow(stretch, 0.3));
         if (au.hits && au.first) { SFX.scatter(au.jl, au.hits, pan); au.first = false; au.lastN = prt.n; au.ratT = SFX.now(); }   // the ball meets loose particles
         else if (!au.first) {                                                         // and every Gaussian knocked loose since rattles
           x = prt.n - au.lastN; if (x < 0) x = 0; au.lastN = prt.n; au.rat += x;
@@ -992,9 +998,9 @@
             q = (j * NC + i) * 3; e2 += MV[q] * MV[q] + MV[q + 1] * MV[q + 1] + MV[q + 2] * MV[q + 2];
             w = SINW[i] * SINW[j]; vm += w * MV[q + 1]; ws += w;
           }
-          x = Math.sqrt(e2 / ((NC - 2) * (NC - 2)));                                  // rms speed of the control points, m/s
+          x = Math.sqrt(e2 / ((NC - 2) * (NC - 2)));                                  // rms speed of the control points, m/s: loudness ~ their kinetic energy
           au.env = Math.max(x, au.env * Math.exp(-dt / 0.15));
-          chWob.set(0.26 * Math.pow(KT.clamp(au.env / 0.6, 0, 1), 0.9), 150 * Math.sqrt(mat.stiff / 160) * (1 + 0.06 * KT.clamp(vm / ws / 0.35, -1, 1)));
+          chWob.set(au.env > 0.08 ? 0.14 * Math.pow(KT.clamp(au.env / 1.4, 0, 1), 2) : 0, 150 * Math.sqrt(mat.stiff / 160) * (1 + 0.05 * KT.clamp(vm / ws / 0.6, -1, 1)));
         } else { chWob.set(0); au.env = 0; }
         if (au.launch) SFX.whoosh(au.launch, pan);                                    // out of the bowl
         au.tick.forEach(function (i) { SFX.tick(i, pan); });                          // moment: a definition says "contact"
@@ -1034,8 +1040,11 @@
       /* ---------- what is drawn about the contact ---------- */
       function overlays() {
         var m = st.sc.model, onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
-        var soft = m === 'elastic' || m === 'flight', k, i, o, q;
+        var soft = m === 'elastic' || m === 'flight', k, i, o, q, bm = ballMesh.material, see = m === 'moment';
         ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
+        if (bm.transparent !== see) { bm.transparent = see; bm.opacity = see ? 0.3 : 1; bm.depthWrite = !see; bm.needsUpdate = true; }   // close up: see under the ball
+        dot.scale.setScalar(see ? 0.35 : 1);
+        low.visible = see && ball.on; low.position.set(ball.p[0], ball.p[1] - BR, ball.p[2]);
         if (onSpline) closest(ball.p, cp);
         var near = onSpline && cp.d < BR + 0.75 && (soft || !cp.edge || cp.d < BR * 1.6), since = run.t - hit.t;
         iso.obj.visible = dot.visible = arrow.obj.visible = drop.obj.visible = near;
@@ -1211,7 +1220,7 @@
         if (m === 'moment') {                                       // SCRIPTED: in to the spot as the ball is let go, low enough to see under it
           var k = KT.ease((run.t - 0.1) / 1.1), sp = mo.spot, yb = KT.clamp((ball.p[1] - sp[1] - 0.35) / 0.35, 0, 1);
           // 30 degrees above the horizon at the closest: inside the bowl, above its wall, with the gap under the ball in sight
-          return { tx: sp[0], ty: sp[1] + 0.12 + 0.28 * yb + 0.25 * (1 - k), tz: sp[2], r: (4.4 - 2.95 * k) * f, th: mo.side * (0.32 + 0.3 * (1 - k)), ph: 0.9 + 0.15 * k };
+          return { tx: sp[0], ty: sp[1] + 0.1 + 0.28 * yb + 0.25 * (1 - k), tz: sp[2], r: (4.4 - 2.7 * k) * f, th: mo.side * (0.32 + 0.3 * (1 - k)), ph: 0.9 + 0.15 * k };
         }
         if (m === 'solid') return { tx: x, ty: 0.55, tz: 0, r: 7.4 * f, th: 0.45, ph: 0.82 };
         if (m === 'brittle') return { tx: x, ty: -0.1, tz: 0, r: 8.6 * f, th: 0.45, ph: 1.0 };

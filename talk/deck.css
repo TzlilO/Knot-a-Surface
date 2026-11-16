@@ -62,6 +62,10 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 .step:first-child{min-height:100vh}
 .step:last-child{min-height:100vh}
 body.cut-20 .step[data-depth="deep"]{display:none}
+/* parts switched off leave the flow the same way (deck.js "parts": kt-on / kt-off on steps, kt-gone on a section with
+   nothing left, its rail entry and an empty .prelude). data-off = off until the presenter turns it on in the slide
+   master (talk/master.js); the [data-off] rules hold before deck.js runs */
+.nav.kt-off,section.kt-gone,.prelude.kt-gone,.rail a.kt-gone,section[data-off]:not(.kt-on),.nav[data-off]:not(.kt-on){display:none!important}
 
 .lvl{display:inline-flex;align-items:center;gap:.5rem;margin-bottom:1.1rem;font:600 .6rem/1 var(--f-mono);letter-spacing:.16em;
   text-transform:uppercase;color:var(--mute)}
