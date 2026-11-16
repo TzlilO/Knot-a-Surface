@@ -84,7 +84,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; lit translucent
   sheet, solid depth-tested vectors via `gl.vector` / `gl.sheet` / `gl.hidden`, a face-on tangent-plane
   inset, and a scale stage that measures the size from the lattice cell's 4 or 8 neighbours against the
-  derivative formula),
+  derivative formula; its 6 x 6 net is fitted live by least squares (conjugate gradients, area-weighted) to the
+  terrain of chapter 05, `talk/terrain.js` = `KnotTalk.terrain`, shared with `refine` and loaded before both;
+  `scale` / `fill` draw every Gaussian's 1σ outline and MEASURE the uncovered share of the surface, one size for
+  all against each sized to its own cell; `stitch` = the 2 x 2 window over a 12 x 12 lattice; `knob` sweeps 64 to
+  1,048,576 Gaussians with the frame time measured, turning back at 50 ms (or 3x a slow first frame); `adaptive` =
+  1,024 Gaussians on a spring net pulled towards what a second camera sees, the shares measured),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
   draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
   `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets),

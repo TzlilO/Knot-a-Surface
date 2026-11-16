@@ -126,7 +126,8 @@
      written here sample by sample (damped sines: the ticks of a rattle, the ring of a shard). Nothing is loaded.
      The context is made on the first key or pointer press anywhere and resumed on later ones; nothing starts
      while KnotTalk.muted is true (read at play time). One-shot voices: at most VOICES at once; a newcomer
-     quieter than every voice still sounding is dropped, a louder one replaces the quietest. Sustained voices
+     quieter than every voice still sounding is dropped, a louder one replaces the quietest; two of one kind start
+     at least 30 ms apart (clicks 15 ms), so frames that come in a burst cannot pile them into one loud hit. Sustained voices
      (roll, hiss, wobble): one each per mount, renewed every frame, and if no frame renews them (the module is
      paused off screen, the tab is hidden) they fade out within HOLD seconds and stop by themselves. */
   var SFX = (function () {
@@ -148,7 +149,7 @@
       var sr = ctx.sampleRate, n = Math.floor(sr * 2.5), rn = KT.rng(99), x, i;
       noise = ctx.createBuffer(1, n, sr); x = noise.getChannelData(0);
       for (i = 0; i < n; i++) x[i] = rn() * 2 - 1;
-      bus = ctx.createGain(); bus.gain.value = 0.22;                          // a room, not a game: the hardest knock peaks near -14 dBFS
+      bus = ctx.createGain(); bus.gain.value = 0.22;                          // a room, not a game: a hard knock peaks near -16 dBFS, the crack -12
       var lp = biq('lowpass', 5000, 0.5), cp = ctx.createDynamicsCompressor();  // no harsh highs; a pile-up is held down
       cp.threshold.value = -18; cp.knee.value = 8; cp.ratio.value = 4; cp.attack.value = 0.003; cp.release.value = 0.25;
       bus.connect(lp); lp.connect(cp); cp.connect(ctx.destination);
@@ -1122,20 +1123,25 @@
         tlm.classList.toggle('on', on);
         if (!on) return;
         for (i = 0; i < CANDS.length; i++) if (Tt[i] != null) { idx.push(i); lo = Math.min(lo, Tt[i]); hi = Math.max(hi, Tt[i]); }
-        if (!idx.length) { if (tl.key) { tlm.innerHTML = ''; tl.key = ''; tl.cur = null; } return; }
-        var llo = lo, lhi = hi;
-        if (r) { lo = Math.min(lo, r.t); hi = Math.max(hi, r.t); }
-        var key = idx.join(',') + (r ? ',r' : '') + ',' + tl.w, W = tl.w, L0 = tl.x0, R1 = W - 12, pad = Math.max(0.0015, 0.1 * (hi - lo));
-        function X(t) { return L0 + (t - tl.a) / (tl.b - tl.a) * (R1 - L0); }
+        var W = tl.w, L0 = tl.x0, R1 = W - 12;
         function ln(x1, x2, y1, y2, col, wd, op) { return '<line x1="' + x1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y1="' + y1 + '" y2="' + y2 + '" stroke="' + col + '"' + (wd ? ' stroke-width="' + wd + '"' : '') + (op ? ' stroke-opacity="' + op + '"' : '') + '/>'; }
         function tx(x, y, col, s, anc) { return '<text x="' + x.toFixed(1) + '" y="' + y + '" fill="' + col + '"' + (anc ? ' text-anchor="' + anc + '"' : '') + '>' + s + '</text>'; }
+        var rows = '<svg width="' + W + '" height="84" viewBox="0 0 ' + W + ' 84">' + ln(L0, R1, 70, 70, C.mute, 0, 0.6) + tx(0, 82, C.mute, 'ms') +
+                   tx(0, 35, C.splat, 'list') + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, 'spline') + ln(L0, R1, 54, 54, C.line, 1);
+        if (!idx.length) {                                          // nothing has said "contact" yet: the empty rows, at their full height
+          if (tl.key !== 'none,' + W) { tl.key = 'none,' + W; tlm.innerHTML = rows + '</svg>'; tl.cur = null; }
+          return;
+        }
+        var llo = lo, lhi = hi;
+        if (r) { lo = Math.min(lo, r.t); hi = Math.max(hi, r.t); }
+        var key = idx.join(',') + (r ? ',r' : '') + ',' + W, pad = Math.max(0.0015, 0.1 * (hi - lo));
+        function X(t) { return L0 + (t - tl.a) / (tl.b - tl.a) * (R1 - L0); }
         if (key !== tl.key) {
           tl.key = key; tl.a = lo - pad; tl.b = hi + pad;
           var span = (tl.b - tl.a) * 1000, steps = [0.5, 1, 2, 5, 10, 20, 50, 100], sv = 100, k, x, ends = [-99, -99];
           for (k = 0; k < steps.length; k++) if (span / steps[k] <= Math.max(3, Math.floor((R1 - L0) / 48))) { sv = steps[k]; break; }
-          var s = '<svg width="' + W + '" height="84" viewBox="0 0 ' + W + ' 84">' + ln(L0, R1, 70, 70, C.mute, 0, 0.6);
+          var s = rows;
           for (k = Math.ceil(tl.a * 1000 / sv) * sv; k <= tl.b * 1000 + 1e-9; k += sv) { x = X(k / 1000); s += ln(x, x, 67, 73, C.mute) + tx(x, 82, C.mute, +k.toFixed(1), 'middle'); }
-          s += tx(0, 82, C.mute, 'ms') + tx(0, 35, C.splat, 'list') + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, 'spline') + ln(L0, R1, 54, 54, C.line, 1);
           idx.slice().sort(function (p, q) { return Tt[p] - Tt[q]; }).forEach(function (c) {
             var x = X(Tt[c]), lab = CANDS[c].lab, w = lab.length * 6 + 6, row = x - w / 2 > ends[0] ? 0 : x - w / 2 > ends[1] ? 1 : ends[0] <= ends[1] ? 0 : 1;
             ends[row] = x + w / 2;
@@ -1254,6 +1260,8 @@
 
       env.loop(function (t, dt) {
         var n = 0, m = st.sc.model, v, g = orbit.goal, k, mom = m === 'moment', cap = mom ? 400 : 40;
+        // moment: the panel of numbers covers the bottom of the stage (half of it on a phone); measured before this frame writes to it
+        var cover = mom && size.h > 1 ? Math.min(0.7, (tag.offsetHeight + 10) / size.h) : 0;
         st.clock += dt; st.acc += dt; st.frames = (st.frames || 0) + 1;
         if (mom) while (n < cap && st.acc >= HM / mo.slow) { st.acc -= HM / mo.slow; substepMoment(); n++; }   // a sub-step costs HM / slow of real time
         else while (st.acc >= H && n < cap) { substep(); st.acc -= H; n++; }
@@ -1269,6 +1277,8 @@
           if (!orbit.touched) { orbit.to(v); g.th = v.th + 0.16 * Math.sin(st.clock * 0.23); }
           orbit.update(dt, 2.4);
         }
+        if (mom && size.h > 1) cam.setViewOffset(size.w, size.h, 0, Math.max(0, cover - 0.24) * 0.75 * size.h, size.w, size.h);   // the picture moves up: the contact stays above the panel
+        else if (cam.view && cam.view.enabled) cam.clearViewOffset();
         if (surf.broken) writeFragments(); else if (m === 'elastic' || m === 'flight') derive();
         paint(); overlays(); words(); timeline();
         fL.draw(cam, R.renderer);

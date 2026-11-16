@@ -279,6 +279,7 @@
         rdIt.set(!c ? '—' : c.user ? 'stopped: a point was moved' : c.done ? 'converged · ' + c.it + ' CG steps' : 'CG step ' + (c.it + 1));
         hudDirty = true;
       }
+      function fmtFps(ms) { var f = 1000 / ms; return (f < 9.95 ? f.toFixed(1) : Math.round(f)) + ' fps'; }
       function fmtMs(ms) { return ms == null ? '—' : ms < 10 ? ms.toFixed(1) + ' ms' : Math.round(ms) + ' ms'; }
       function pctW(x) { return x == null ? '—' : (x * 100).toFixed(x < 0.1 ? 1 : 0) + ' %'; }
       /* the numbers under the caption, for the scene on stage */
@@ -298,7 +299,7 @@
         } else if (sc.sweep) {
           var ft = kn.ft[kn.cur];
           h = '<span class="big s">' + (kn.cur * kn.cur).toLocaleString('en-US') + '</span> Gaussians from <span class="big c">' + (NU * NV * PER_CP) + '</span> stored numbers' +
-              '<br>frame time ' + (ft == null ? 'measuring…' : '<b>' + ft.toFixed(1) + ' ms</b> (' + Math.round(1000 / ft) + ' fps)') + ' · re-evaluated in <b>' + fmtMs(kn.ev[kn.cur]) + '</b>';
+              '<br>frame time ' + (ft == null ? 'measuring…' : '<b>' + ft.toFixed(1) + ' ms</b> (' + fmtFps(ft) + ')') + ' · re-evaluated in <b>' + fmtMs(kn.ev[kn.cur]) + '</b>';
         } else if (s.adapt && ad.stat) {
           a = ad.stat;
           var eq = a.sIn && a.uIn ? Math.round(a.n * (a.uIn / a.sIn) * (a.uIn / a.sIn)) : null;
@@ -987,7 +988,7 @@
         kn.plotT -= dt;
         if (kn.plotT <= 0) {
           kn.plotT = 0.25;
-          rdFt.set(ft == null ? 'measuring…' : ft.toFixed(1) + ' ms · ' + Math.round(1000 / ft) + ' fps');
+          rdFt.set(ft == null ? 'measuring…' : ft.toFixed(1) + ' ms · ' + fmtFps(ft));
           rdLim.set(!kn.lim ? '—' : (kn.lim.n * kn.lim.n).toLocaleString('en-US') + (kn.lim.why === 'frame' ? ' · frame > ' + Math.round(kn.lim.cap) + ' ms' : ' · buffer full'));
           drawKnob(ft); hudDirty = true;
         }

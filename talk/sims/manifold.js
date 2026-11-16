@@ -57,7 +57,7 @@
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
       { id: 'scene', label: 'The object' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
-      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'mesh', label: 'Stitch a mesh' },
+      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'mesh', label: 'List vs lattice' }, { id: 'stitch', label: 'Stitch a mesh' },
       { id: 'edit', label: 'Edit' }, { id: 'paint', label: 'Materials' }, { id: 'hands', label: 'Hands' }
     ],
     create: function (env) {

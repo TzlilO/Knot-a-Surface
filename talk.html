@@ -289,19 +289,20 @@
 </section>
 
 <!-- ============================================================ 03 PLANOID -->
-<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="7" data-min20="3.75">
+<section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="8" data-min20="4.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="net">
       <div class="num">03</div><div class="kick">The core idea</div>
       <h2>Calculus makes the splat</h2>
       <p>A Gaussian needs a position, an orientation and a size. The surface already knows all three.</p>
-      <div class="time">≈ 7 min</div>
+      <div class="time">≈ 8 min</div>
     </article>
     <article class="step nav" data-scene="net">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Two parameters make a <em class="c-surf">surface</em></h2>
       <p>Blend along <span data-tex="u"></span>, then along <span data-tex="v"></span>. A net of 36 control points sweeps out a smooth sheet — a tensor product of the curve you just met.</p>
+      <p>Here the 36 heights are fitted to a terrain by least squares: conjugate gradients pull a flat net onto it in 25 steps, from 14 % to 5.7 % RMS error of the relief. Six points a side hold the rolling ground and blur the crater, where the <b class="c-err">red</b> misses gather. Chapter 05 starts from that crater.</p>
       <div class="eq" data-tex="\mathbf{S}(u,v)=\sum_{i}\sum_{j} N_{i,p}(u)\,N_{j,q}(v)\,\mathbf{P}_{ij}"></div>
     </article>
     <article class="step nav" data-scene="probe">
@@ -328,11 +329,18 @@
     <article class="step nav" data-scene="scale">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Size is the distance to the <em>next sample</em></h2>
-      <p>Stretch each axis by how far the surface travels across one sampling cell, and keep it paper‑thin along the normal. A flat Gaussian on the surface: a <b class="c-splat">planoid</b>.</p>
-      <p>That distance is a statement about neighbours. Measure the same size from the cell’s four neighbours in the (u, v) lattice, half the chord between opposite ones, and it agrees with the derivative to about 4 % at 9² samples and 0.2 % at 40². The gap falls as 1/n²; the derivative needs no neighbours at all.</p>
-      <p class="aside">In these demos σ is about 0.7 of the cell, so neighbours overlap. Fitting all eight neighbours gives the same area plus the shear between S<sub>u</sub> and S<sub>v</sub>, which this two‑length formula leaves out.</p>
-      <span class="do">Switch 4 / 8 neighbours, then move the samples slider</span>
+      <p>Stretch each axis by how far the surface travels across one sampling cell, and keep it paper‑thin along the normal. A flat Gaussian on the surface: a <b class="c-splat">planoid</b>. Each thin ring is one Gaussian’s 1σ edge.</p>
+      <p>That is what the scaling buys. Give all 81 Gaussians one size, the mean cell, and the stretched rim opens up: 5.3 % of the surface is left uncovered (<b class="c-err">red</b>) while 17 % is piled three deep. Each sized to its own cell: nothing uncovered, 3.7 % three deep.</p>
+      <p class="aside">σ is three quarters of the cell here, so neighbours overlap.</p>
+      <span class="do">Switch one size / own cell</span>
       <div class="eq" data-tex="\mathbf{s}=\big(\lVert\mathbf{S}_u\rVert\Delta u,\;\lVert\mathbf{S}_v^{\perp}\rVert\Delta v,\;\epsilon\big)\qquad \boldsymbol{\Sigma}=\mathbf{R}\,\mathrm{diag}(\mathbf{s})^2\,\mathbf{R}^{\top}"></div>
+    </article>
+    <article class="step nav" data-scene="scale" data-depth="deep">
+      <div class="lvl l3"><i><b></b></i>Math</div>
+      <h2>The neighbours <em>agree</em></h2>
+      <p>The size is a statement about neighbours. Measured from the cell’s four neighbours in the (u, v) lattice, half the chord between opposite ones, it agrees with the derivative to about 8 % at 9² samples and 0.4 % at 40². The gap falls as 1/n²; the derivative needs no neighbours at all.</p>
+      <p class="aside">Fitting all eight neighbours gives the same area plus the shear between S<sub>u</sub> and S<sub>v</sub>, which this two‑length formula leaves out.</p>
+      <span class="do">Switch 4 / 8 neighbours, then move the samples slider</span>
     </article>
     <article class="step nav" data-scene="derive">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -344,16 +352,30 @@
     <article class="step nav" data-scene="fill">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Sample the chart, <em>tile the surface</em></h2>
-      <p>Lay a grid over the (u, v) square and drop one planoid per sample. Because each one is sized to its own cell, neighbours overlap instead of leaving gaps — whatever the density.</p>
-      <p class="aside">Each planoid is flat, so on a curved surface it is exact only at its centre; the gap shrinks as the samples get denser.</p>
+      <p>Lay a grid over the (u, v) square and drop one planoid per sample. Sized to its own cell, each Gaussian reaches its neighbours: no part of the surface is left uncovered at any sample count we tried, from 6² to 160².</p>
+      <p>One size for all, with the same total area, leaves 4–9 % of the surface uncovered (<b class="c-err">red</b>) along the stretched rim, and piles up in the middle: at 14², 18 % of the surface three deep, against 4 % sized to the cells.</p>
+      <p class="aside">Uncovered: the share of the surface’s area that no 1σ outline encloses, tested on a fine (u, v) grid. Each planoid is flat, so on a curved surface it is exact only at its centre; the gap shrinks as the samples get denser.</p>
+    </article>
+    <article class="step nav" data-scene="stitch" data-replay>
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A mesh from a <em class="c-surf">sliding window</em></h2>
+      <p>The samples sit on a lattice, so each one already knows its neighbours. A 2 × 2 window slides over the 12 × 12 lattice and stitches two triangles at every stop: 121 stops, 242 triangles, nothing searched. The Gaussians it has passed are retired.</p>
+      <p class="aside">Chapter 06 runs the same window over the scanned owl.</p>
     </article>
     <article class="step nav" data-scene="knob">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>The <em>resolution knob</em></h2>
-      <p>From 36 Gaussians to 22,500 and back. The learnable parameters do not move: 576, the whole time.</p>
-      <p>A trained 3DGS model cannot do this — its Gaussian count is baked in. Here, how finely the surface is drawn is a rendering decision: <b>re‑evaluate, don’t retrain</b>.</p>
-      <p class="aside">More samples draw the spline more faithfully. They cannot add detail the control net does not hold — that takes a knot.</p>
-      <span class="do">Take the samples slider</span>
+      <p>From 64 Gaussians to 1,048,576, four times as many at every step. The 576 stored numbers do not move: every Gaussian is evaluated from them on demand, as densely as we ask.</p>
+      <p>What stops the sweep is drawing, and the frame time is measured on screen: it turns back when a frame takes longer than 50 ms, or at a million, the largest buffer this page sets aside. A trained 3DGS model cannot do this — its Gaussian count is baked in. Here, how finely the surface is drawn is a rendering decision: <b>re‑evaluate, don’t retrain</b>.</p>
+      <p class="aside">On a machine whose first frame is already slow, the limit is three times that frame. More samples draw the spline more faithfully; they cannot add detail the control net does not hold — that takes a knot.</p>
+      <span class="do">Take the Gaussians slider</span>
+    </article>
+    <article class="step nav" data-scene="adaptive">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>A fixed budget, <em class="c-splat">spent where a camera looks</em></h2>
+      <p>The samples need not be even. Keep 1,024 Gaussians and pull the lattice, like a net of springs, towards what a second camera sees, weighted by how large each piece of surface appears in its picture.</p>
+      <p>About two thirds of the Gaussians end up in its view, which covers 14–32 % of the surface as it flies. There a cell is 1.4–1.9 % of the patch’s width across, against 2.6–3.0 % on an even lattice: an even lattice would need about 2,500–3,200 Gaussians for that spacing everywhere.</p>
+      <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 06 spreads one budget over whole scenes the same way.</p>
     </article>
     <article class="step nav" data-scene="features" data-depth="deep">
       <div class="lvl l3"><i><b></b></i>Math</div>
@@ -412,7 +434,7 @@
     <article class="step nav" data-scene="coarse">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Start <em>coarse</em></h2>
-      <p>A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
+      <p>The terrain of chapter 03, now seen from above as a map. A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
       <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">cyan</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
     </article>
     <article class="step nav" data-scene="insert" data-replay>
