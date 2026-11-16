@@ -55,11 +55,6 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400}
   align-items:end;gap:.9rem 2rem;padding:1rem 1.2rem;background:var(--panel);border:1px solid var(--line);border-radius:14px;
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .strip .lab{display:block;font:600 .56rem/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin-bottom:.55rem}
-.chips{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
-.chips button{font:600 .66rem/1 var(--f-mono);color:var(--dim);background:transparent;border:0;padding:.6rem .75rem;cursor:pointer}
-.chips button+button{border-left:1px solid var(--line2)}
-.chips button:hover{color:var(--text)}
-.chips button.on{color:var(--bg);background:var(--text)}
 .strip input[type=range]{display:block;width:100%;height:1.4rem;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
 .strip input::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:var(--line2)}
 .strip input::-moz-range-track{height:3px;border-radius:2px;background:var(--line2)}
@@ -110,10 +105,6 @@ p.sub{margin:0;max-width:38rem;font-size:1.02rem;color:var(--dim);text-wrap:pret
 .lab-card.wide{grid-column:span 6;flex-direction:row;align-items:center;gap:1.6rem}
 .lab-card:nth-last-child(-n+2){grid-column:span 3}
 .lab-card.wide svg{width:38%;margin:0;flex:none}
-.scene-links{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:1rem}
-.scene-links a{font:600 .64rem/1 var(--f-mono);letter-spacing:.06em;color:var(--text);padding:.55rem .7rem;border:1px solid var(--line2);border-radius:8px}
-.scene-links a small{color:var(--mute);font-size:1em;margin-left:.4rem}
-.scene-links a:hover{border-color:var(--surf);color:var(--surf)}
 
 .archive{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 2.5rem;margin-top:2rem}
 .archive a{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1rem;align-items:baseline;padding:.95rem 0;border-top:1px solid var(--line)}
@@ -134,7 +125,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   .hero p.lede{font-size:.98rem}
   .standin{display:none}
   .strip{left:.8rem;right:.8rem;bottom:.8rem;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem 1rem;padding:.8rem .9rem}
-  .strip .pick,.strip .knob{grid-column:1 / -1}
+  .strip .knob{grid-column:1 / -1}
   .num b{font-size:1.05rem}.num small{white-space:normal}
   section.block{padding:4.2rem 0 .5rem}
   .moves,.labs{grid-template-columns:minmax(0,1fr)}
@@ -147,7 +138,6 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
 .bar,.strip,.cta{touch-action:manipulation}
 .strip input[type=range]{touch-action:none}
 @media (pointer:coarse){
-  .chips button{min-height:40px}
   .bar nav a{min-height:40px;display:inline-flex;align-items:center}
   .strip input[type=range]{height:40px}
   .strip input::-webkit-slider-thumb{width:22px;height:22px;margin-top:-9.5px}
@@ -170,22 +160,17 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
 <!-- ============================================================ HERO: a live scene -->
 <section class="hero" id="top">
   <div id="hero-sim"></div>
-  <div class="standin"><b id="scene-name">Barn</b><br><span id="scene-suite">Tanks and Temples style</span> · procedural stand‑in<br>drag to orbit</div>
+  <div class="standin"><b id="scene-name">Owl</b><br><span id="scene-suite">DTU scan 122</span> · fitted offline, not trained<br>drag to orbit</div>
   <div class="hero-text">
     <div class="kick">NURBS‑grounded Gaussian splatting</div>
     <h1>A scene is a handful of <em>splines.</em></h1>
     <p class="lede">Knot‑a‑Surface optimises spline surfaces and <b>derives every Gaussian from them</b>. The scene behind this text is doing it right now — nothing is stored per Gaussian.</p>
     <div class="cta">
       <a class="btn main" href="talk.html">Start the talk →</a>
-      <a class="btn" href="talk/sims/manifold.html">Open this scene in the lab</a>
+      <a class="btn" href="talk/sims/manifold.html">Open the lab</a>
     </div>
   </div>
   <div class="strip">
-    <div class="pick"><span class="lab">Scene</span>
-      <div class="chips" id="chips" role="group" aria-label="Scene">
-        <button type="button" data-scene="barn" class="on">Barn</button><button type="button" data-scene="truck">Truck</button><button type="button" data-scene="bust">Bust</button><button type="button" data-scene="garden">Garden</button>
-      </div>
-    </div>
     <label class="knob"><span class="lab">Gaussians on screen — turn it up</span>
       <input type="range" id="budget" min="8000" max="200000" step="2000" value="90000" aria-label="Gaussian budget"></label>
     <div class="num g"><b id="n-g">—</b><small>Gaussians drawn</small></div>
@@ -276,8 +261,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
       <div>
         <span class="tool">WebGL · full power</span>
         <h3><a href="talk/sims/manifold.html">A manifold of splines →</a></h3>
-        <p>Benchmark‑style scenes built only from spline charts, a fixed Gaussian budget that follows the camera, and control points you can pull. The scenes are procedural stand‑ins modelled after the datasets’ captures.</p>
-        <div class="scene-links" id="scene-links"></div>
+        <p>Real scanned objects (two DTU scans, fitted offline to the dataset’s depth maps and photographs) stored only as spline charts, a fixed Gaussian budget that follows the camera, and control points you can pull.</p>
       </div>
     </div>
     <a class="lab-card" href="talk/sims/flatland.html">
@@ -350,6 +334,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
 <script src="talk/kit.js"></script>
 <script src="talk/gl.js"></script>
 <script src="talk/face-data.js"></script>
+<script src="talk/dtu-data.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/sims/manifold.js"></script>
 <script>
@@ -360,20 +345,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
   function n(v) { return Math.round(v).toLocaleString('en-US'); }
   function big(v) { return v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + ' M' : n(v); }
 
-  // links to each scene of the full-power lab
-  var ids = { barn: 'barn', truck: 'truck', bust: 'bust', garden: 'garden', studio: 'studio' };
-  Object.keys(KT.scenes).forEach(function (k) {
-    if (KT.scenes[k].hidden) return;
-    var a = document.createElement('a'); a.href = 'talk/sims/manifold.html#' + ids[k];
-    a.innerHTML = KT.scenes[k].label + '<small>' + KT.scenes[k].suite.replace(' style', '') + '</small>';
-    $('scene-links').appendChild(a);
-  });
-
   // the hero is the finale module, mounted without its own chrome
   var budget = $('budget'), sim = null;
   if (small) budget.value = 30000;
   try {
-    sim = KT.mount('manifold', $('hero-sim'), { embed: true, bare: true, scene: 'hero', budget: +budget.value,
+    sim = KT.mount('manifold', $('hero-sim'), { embed: true, bare: true, scene: 'teaser', budget: +budget.value,
       onStats: function (s) {
         $('n-g').textContent = n(s.drawn);
         $('n-p').textContent = n(s.params);
@@ -383,13 +359,6 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;justify-content:space-be
       } });
   } catch (e) { /* no WebGL: the page still reads, on the gradient backdrop */ }
   budget.addEventListener('input', function () { if (sim) sim.api.setBudget(+budget.value); });
-  [].forEach.call(document.querySelectorAll('#chips button'), function (b) {
-    b.addEventListener('click', function () {
-      [].forEach.call(document.querySelectorAll('#chips button'), function (x) { x.classList.toggle('on', x === b); });
-      if (sim) sim.api.load(b.dataset.scene);
-    });
-  });
-
   var bar = document.querySelector('.bar');
   function onScroll() { bar.classList.toggle('solid', window.scrollY > window.innerHeight * 0.6); }
   window.addEventListener('scroll', onScroll, { passive: true }); onScroll();

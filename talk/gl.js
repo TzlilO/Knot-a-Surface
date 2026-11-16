@@ -106,8 +106,20 @@
     'attribute vec3 iCenter; attribute vec3 iU; attribute vec3 iV; attribute vec3 iColor; attribute vec3 iAux;',
     'uniform float uGain;',
     'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vAux; varying float vZ;',
+    '#ifdef LAYERS',                                             // a field with per-Gaussian opacity (gl.splats, opts.alpha)
+    'attribute float iAlpha; uniform float uLayer; varying float vA;',
+    '#endif',
     'void main(){',
     '  vQ = position.xy; vCol = iColor; vAux = iAux; vN = normalize(cross(iU, iV));',
+    '#ifdef LAYERS',
+    // gl.draw draws such a field in layers: 0 the opaque Gaussians, 1 the see-through ones that face away from
+    // the eye, 2 the see-through ones that face it (-1: all of them at once, the plain render)
+    '  vA = iAlpha;',
+    '  if (uLayer > -0.5) {',
+    '    bool thin = iAlpha < 0.999, near = dot(cross(iU, iV), cameraPosition - iCenter) > 0.0;',
+    '    if (uLayer < 0.5 ? thin : (!thin || (uLayer < 1.5) == near)) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }',
+    '  }',
+    '#endif',
     '  vec3 p = iCenter + (iU * position.x + iV * position.y) * uGain; vW = p;',
     '  vec4 e = viewMatrix * vec4(p, 1.0); vZ = -e.z;',
     '#ifdef PUSH',                                               // gl.draw, pass 1: one sigma behind the surface
@@ -118,7 +130,11 @@
   /* uMode picks what a Gaussian shows: 0 appearance, 1 depth, 2 normal, 3 the Gaussian itself (drawn
      smaller, so each one reads), 4 its aux colour (the chart it belongs to). With uSplit = (bands,
      roll, slant) the mode is chosen per pixel instead: slanted screen bands, one mode each, shifted
-     by roll (a fraction of the width) — every mode of the same frame, side by side. */
+     by roll (a fraction of the width) — every mode of the same frame, side by side. uBand (when its x
+     is not negative) = (mode, mode, mode, how many of them): the bands show those modes in turn, over
+     and over; otherwise band k shows mode k.
+     uFade 0..1 dissolves whatever is shown into appearance: at 1 every band is the plain picture, so
+     the split can be switched off (or on) without a jump. */
   var FRAG = [
     'precision highp float;',
     '#if defined(DEPTH) || defined(ACCUM)',                       // gl.draw cuts at weight 0.236 where the dither cut near 0.42:
@@ -127,8 +143,11 @@
     '#define SHARP 1.0',
     '#endif',
     'uniform vec3 uLight; uniform float uRim; uniform float uFlat;',
-    'uniform float uMode; uniform vec3 uSplit; uniform vec2 uRes; uniform vec2 uDepth; uniform vec3 uTint;',
+    'uniform float uMode; uniform vec3 uSplit; uniform vec2 uRes; uniform vec2 uDepth; uniform vec3 uTint; uniform vec4 uBand; uniform float uFade;',
     'varying vec2 vQ; varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vAux; varying float vZ;',
+    '#ifdef OUT2',                                               // a second target: (opacity x weight) beside (colour x weight, weight)
+    'varying float vA; layout(location = 1) out highp vec4 oAlpha;',
+    '#endif',
     'vec3 ramp(float t){',                                         // near = light and warm, far = dark
     '  vec3 a = vec3(0.99, 0.95, 0.72), b = vec3(0.98, 0.55, 0.38), c = vec3(0.70, 0.21, 0.48), d = vec3(0.26, 0.09, 0.44), e = vec3(0.09, 0.06, 0.24);',
     '  t *= 4.0;',
@@ -137,8 +156,10 @@
     'void main(){',
     '  float m = uMode;',
     '  if (uSplit.x > 0.5) m = floor(fract((gl_FragCoord.x + uSplit.z * (uRes.y - gl_FragCoord.y)) / uRes.x - uSplit.y) * uSplit.x);',
+    '  if (uSplit.x > 0.5 && uBand.x > -0.5) { m = mod(m, uBand.w); m = m < 0.5 ? uBand.x : m < 1.5 ? uBand.y : uBand.z; }',
     '  bool own = m > 2.5 && m < 3.5;',
-    '  float q2 = dot(vQ, vQ), K = (own ? 3.6 : 1.0) * SHARP, g0 = exp(-0.5 * q2 * (own ? 3.6 : 1.0));',
+    '  float ow = own ? 1.0 - uFade : 0.0, kk = mix(1.0, 3.6, ow);',      // a single Gaussian grows back to its full footprint as it fades
+    '  float q2 = dot(vQ, vQ), K = kk * SHARP, g0 = exp(-0.5 * q2 * kk);',
     '#if defined(DEPTH) || defined(ACCUM)',
     // band-limit each Gaussian to the pixel grid: widen it by half a pixel (measured in its own units, from
     // the screen derivatives) and lower it so its total stays the same. A Gaussian much smaller than a pixel,
@@ -157,7 +178,7 @@
     '#elif defined(ACCUM)',
     '  float w = max(g - 0.1 * lp, 0.0) / 0.9;',                  // weight: falls to zero before the edge of the quad
     '  if (w <= 0.0) discard;',
-    '  if (own) w *= 0.15;',                                      // single Gaussians keep their soft profile (see the resolve)
+    '  w *= mix(1.0, 0.15, ow);',                                 // single Gaussians keep their soft profile (see the resolve)
     '#elif defined(BLEND)',
     '  a = g;',
     '#else',
@@ -166,12 +187,17 @@
     '  vec3 nn = normalize(vN);',                                  // a planoid has two faces: light the one we see
     '  if (dot(nn, cameraPosition - vW) < 0.0) nn = -nn;',
     '  float d = max(dot(nn, uLight), 0.0);',
-    '  vec3 c = (own ? uTint : m > 3.5 ? vAux : vCol) * mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat);',
-    '  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.12, 0.75, g0), own ? 1.0 : uRim);',
+    '  float lit = mix(0.40 + 0.16 * nn.y + 0.66 * d, 1.0, uFlat), rimv = 0.55 + 0.45 * smoothstep(0.12, 0.75, g0);',
+    '  vec3 c = (own ? uTint : m > 3.5 ? vAux : vCol) * lit;',
+    '  c *= mix(1.0, rimv, own ? 1.0 : uRim);',
     '  if (m > 0.5 && m < 1.5) c = ramp(clamp(log(vZ / uDepth.x) / log(uDepth.y / uDepth.x), 0.0, 1.0));',
     '  else if (m > 1.5 && m < 2.5) c = nn * 0.5 + 0.5;',
+    '  if (uFade > 0.0) c = mix(c, vCol * lit * mix(1.0, rimv, uRim), uFade);',
     '#if defined(ACCUM)',
     '  gl_FragColor = vec4(c * w, w);',
+    '#ifdef OUT2',
+    '  oAlpha = vec4(vA * w, 0.0, 0.0, w);',
+    '#endif',
     '#elif defined(BLEND)',
     '  gl_FragColor = vec4(c, a * 0.92);',
     '#else',
@@ -179,9 +205,11 @@
     '#endif',
     '}'].join('\n');
 
-  /* opts.blend: true alpha-blended Gaussians (smooth, unsorted — for a handful of showcase splats) */
+  /* opts.blend: true alpha-blended Gaussians (smooth, unsorted — for a handful of showcase splats).
+     opts.alpha: the field carries an opacity per Gaussian (`alpha`, 1 = solid; S_u x S_v must point out of the
+     object). While `mesh.userData.ktSplat.thin` is true, gl.draw draws the see-through ones as two more layers. */
   gl.splats = function (capacity, opts) {
-    var blend = !!(opts && opts.blend);
+    var blend = !!(opts && opts.blend), lay = opts && opts.alpha ? '#define LAYERS\n' : '';
     var base = new T.PlaneGeometry(2 * EXT, 2 * EXT);
     var g = new T.InstancedBufferGeometry();
     g.index = base.index; g.setAttribute('position', base.getAttribute('position'));
@@ -191,31 +219,35 @@
       at.setUsage(T.DynamicDrawUsage); g.setAttribute(n, at); A[n] = at;
     });
     g.instanceCount = 0;
-    var U = { uGain: { value: 1 }, uRim: { value: 0.6 }, uFlat: { value: 0 },
+    if (lay) { A.iAlpha = new T.InstancedBufferAttribute(new Float32Array(capacity).fill(1), 1); A.iAlpha.setUsage(T.DynamicDrawUsage); g.setAttribute('iAlpha', A.iAlpha); }
+    var U = { uGain: { value: 1 }, uRim: { value: 0.6 }, uFlat: { value: 0 }, uLayer: { value: -1 },
               uLight: { value: new T.Vector3(0.35, 0.86, 0.36).normalize() },
               uMode: { value: 0 }, uSplit: { value: new T.Vector3(0, 0, 0) }, uRes: { value: new T.Vector2(1, 1) },
+              uBand: { value: new T.Vector4(-1, 0, 0, 0) }, uFade: { value: 0 },
               uDepth: { value: new T.Vector2(1, 10) }, uTint: { value: new T.Vector3().fromArray(gl.rgb(KT.color.splat)) } };
     function variant(def, o) {            // the same shader and the same uniforms, compiled for another pass
-      return new T.ShaderMaterial(Object.assign({ vertexShader: def + VERT, fragmentShader: def + FRAG, side: T.DoubleSide, uniforms: U }, o));
+      return new T.ShaderMaterial(Object.assign({ vertexShader: lay + def + VERT, fragmentShader: lay + def + FRAG, side: T.DoubleSide, uniforms: U }, o));
     }
+    var sum = { transparent: true, depthWrite: false, blending: T.CustomBlending, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.OneFactor, blendDstAlpha: T.OneFactor };
     var mat = variant(blend ? '#define BLEND\n' : '', { transparent: blend, depthWrite: !blend, depthTest: !blend });
     var mesh = new T.Mesh(g, mat); mesh.frustumCulled = false;
     if (!blend) mesh.userData.ktSplat = {     // what gl.draw swaps in
       plain: mat,
       depth: variant('#define DEPTH\n#define PUSH\n', { colorWrite: false }),
       core: variant('#define DEPTH\n', { colorWrite: false }),
-      accum: variant('#define ACCUM\n', { transparent: true, depthWrite: false, blending: T.CustomBlending,
-                                          blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.OneFactor, blendDstAlpha: T.OneFactor })
+      accum: variant('#define ACCUM\n', sum),
+      accum2: lay ? variant('#define ACCUM\n#define OUT2\n', sum) : null, thin: false
     };
     return {
       mesh: mesh, capacity: capacity, uniforms: mat.uniforms,
-      center: A.iCenter.array, axU: A.iU.array, axV: A.iV.array, color: A.iColor.array, aux: A.iAux.array,
+      center: A.iCenter.array, axU: A.iU.array, axV: A.iV.array, color: A.iColor.array, aux: A.iAux.array, alpha: lay ? A.iAlpha.array : null,
       setCount: function (n) { g.instanceCount = Math.min(n, capacity); },
       /* upload the first n instances (all of them when n is omitted) */
       commit: function (n) {
         [A.iCenter, A.iU, A.iV, A.iColor, A.iAux].forEach(function (at) {
           at.updateRange.offset = 0; at.updateRange.count = n == null ? -1 : Math.min(n, capacity) * 3; at.needsUpdate = true;
         });
+        if (lay) { A.iAlpha.updateRange.offset = 0; A.iAlpha.updateRange.count = n == null ? -1 : Math.min(n, capacity); A.iAlpha.needsUpdate = true; }
       }
     };
   };
@@ -229,7 +261,12 @@
        4  on screen, depth only: the cores again, where they are, so that the rest of the scene, rendered
           last and as usual, still hides behind the surface or draws over it.
      The current viewport and scissor are respected. Without float render targets (or with no splats in the
-     scene) it is a plain render: the dithered look. */
+     scene) it is a plain render: the dithered look.
+     See-through Gaussians (a field made with opts.alpha, while its ktSplat.thin is set): steps 1 to 4 are done for
+     the solid ones only; then twice more, for the see-through ones that face away and for those that face the
+     eye, steps 1 to 3 into a target that also sums (opacity x weight), blended over the screen with that
+     opacity. They hide behind the solid surface, show it through themselves, and write no depth: the rest of
+     the scene is drawn over them. */
   var _v4 = null, _c = null;
   function smooth(R) {
     if (R.smooth !== undefined) return R.smooth;
@@ -252,7 +289,23 @@
     });
     var quad = new T.Mesh(tri, mat); quad.frustumCulled = false;
     var sc = new T.Scene(); sc.add(quad);
-    return (R.smooth = { rt: rt, mat: mat, scene: sc, cam: new T.Camera(), size: new T.Vector2() });
+    return (R.smooth = { rt: rt, mat: mat, quad: quad, scene: sc, cam: new T.Camera(), size: new T.Vector2() });
+  }
+  function layered(S) {                    // the second target and its resolve, made the first time they are needed
+    if (S.rt2) return;
+    S.rt2 = new T.WebGLMultipleRenderTargets(4, 4, 2, { type: T.HalfFloatType, minFilter: T.NearestFilter, magFilter: T.NearestFilter, stencilBuffer: false });
+    S.mat2 = new T.ShaderMaterial({
+      transparent: true, depthTest: false, depthWrite: false,
+      uniforms: { tAcc: { value: S.rt2.texture[0] }, tAlpha: { value: S.rt2.texture[1] }, uSize: S.mat.uniforms.uSize, uThin: { value: 0 } },
+      vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: [
+        'uniform sampler2D tAcc; uniform sampler2D tAlpha; uniform vec2 uSize; uniform float uThin;',
+        'void main(){',
+        '  vec4 s = texture2D(tAcc, gl_FragCoord.xy / uSize);',
+        '  if (s.a < 0.02) discard;',
+        '  gl_FragColor = vec4(s.rgb / s.a, smoothstep(0.02, 0.15, s.a) * mix(1.0, texture2D(tAlpha, gl_FragCoord.xy / uSize).r / s.a, uThin));',
+        '}'].join('\n')
+    });
   }
   gl.draw = function (R, scene, camera) {
     var r = R.renderer, S = smooth(R), list = [], i;
@@ -269,13 +322,39 @@
     r.getClearColor(_c);
     list.forEach(function (o) { o.layers.set(31); });
     camera.layers.set(31); scene.background = null; r.autoClear = false;
+    var thin = list.filter(function (o) { return o.userData.ktSplat.thin && o.userData.ktSplat.accum2; });
+    if (thin.length) {
+      layered(S); rt = S.rt2;
+      if (rt.width !== size.x || rt.height !== size.y) rt.setSize(size.x, size.y);
+      rt.viewport.copy(S.rt.viewport); rt.scissor.copy(S.rt.scissor); rt.scissorTest = S.rt.scissorTest;
+      S.quad.material = S.mat2;
+    }
+    function layer(v) { thin.forEach(function (o) { o.material.uniforms.uLayer.value = v; }); }
+    function sums() { list.forEach(function (o) { o.material = o.userData.ktSplat[thin.indexOf(o) < 0 ? 'accum' : 'accum2']; }); }
+    layer(0);
     r.setRenderTarget(rt); r.setClearColor(0x000000, 0); r.clear(true, true, false);
     use('depth'); r.render(scene, camera);                                    // 1
-    use('accum'); r.render(scene, camera);                                    // 2
+    sums(); r.render(scene, camera);                                          // 2
     r.setRenderTarget(target); r.setClearColor(_c, alpha);
     if (auto) r.clear();
+    if (thin.length) S.mat2.uniforms.uThin.value = 0;
     r.render(S.scene, S.cam);                                                 // 3
     use('core'); r.render(scene, camera);                                     // 4
+    if (thin.length) {
+      var rest = list.filter(function (o) { return thin.indexOf(o) < 0; });
+      rest.forEach(function (o) { o.visible = false; });
+      S.mat2.uniforms.uThin.value = 1;
+      [1, 2].forEach(function (v) {                                           // far side, then near side
+        use('depth'); layer(v);
+        r.setRenderTarget(rt); r.setClearColor(0x000000, 0); r.clear(true, false, false);   // the depth of the solid surface stays
+        r.render(scene, camera);
+        sums(); r.render(scene, camera);
+        r.setRenderTarget(target); r.setClearColor(_c, alpha);
+        r.render(S.scene, S.cam);
+      });
+      layer(-1); rest.forEach(function (o) { o.visible = true; });
+      S.quad.material = S.mat;
+    }
     camera.layers.mask = mask; scene.background = bg;
     r.render(scene, camera);                                                  // everything that is not a splat
     r.autoClear = auto;

@@ -402,9 +402,11 @@
     </article>
     <article class="step nav" data-scene="paint" data-replay>
       <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>Same owl, <em class="c-ctrl">new plumage</em></h2>
-      <p>Appearance lives on the same control points as shape, so a repaint is an edit of control colours and nothing else. Stone turns into a snowy owl, from the head down. Readers of Harry Potter will know her as Hedwig.</p>
-      <p class="aside">The new colours are computed from the photographs’ by a rule: white where the stone is bright, dark bars where the carving has grooves, yellow eyes, a dark beak. Nothing is painted by hand or generated.</p>
+      <h2>Same owl, <em class="c-ctrl">new material</em></h2>
+      <p>Colour, opacity and shape all live on the same control points, so a new material is an edit of those and nothing else.</p>
+      <p><b>Snowy owl</b>: readers of Harry Potter will know her as Hedwig. <b>Alien jelly</b>: green, see‑through, and it wobbles. Each has its own properties to turn: albedo and barring, or opacity, gloss and stiffness.</p>
+      <p class="aside">Each material is a rule over the photograph’s colours and the surface normal: for the snowy owl, white where the stone is bright and dark bars in the carving’s grooves; for the jelly, a third opaque where you look straight into it and more towards the rim, so the books and the owl’s own far side show through it. Highlights are painted on and do not follow the camera. Nothing is drawn by hand or generated.</p>
+      <span class="do">Pick a material, turn its knobs</span>
     </article>
   </div>
 </section>
@@ -428,7 +430,7 @@
     <article class="step nav" data-scene="neighbours">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Neighbours: <em>search</em>, or <em>read</em></h2>
-      <p>To find what lies next to a Gaussian, a list needs a spatial index, built first and rebuilt whenever Gaussians move. And distance alone cannot tell a wheel from the street it stands on: the <b class="c-err">red</b> neighbours belong to another surface.</p>
+      <p>To find what lies next to a Gaussian, a list needs a spatial index, built first and rebuilt whenever Gaussians move. And distance alone cannot tell the books from the table they stand on: the <b class="c-err">red</b> neighbours belong to another surface.</p>
       <p>On a chart the neighbours are the next addresses, <span data-tex="(i\pm1,\,j\pm1)"></span>. Nothing is searched, and they are neighbours along the surface.</p>
       <span class="do">Move over the scene</span>
     </article>
@@ -441,7 +443,7 @@
     <article class="step nav" data-scene="segments" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Parts: <em>cluster</em>, or <em>look up</em></h2>
-      <p>Clustering the list by position cuts the wall in two and fuses the truck with the street. On charts the part is the chart, and any finer cut is a 2D image operation in (u, v).</p>
+      <p>Clustering the list by position cuts the table in two and hands one half to the owl. On charts the part is the chart, and any finer cut is a 2D image operation in (u, v).</p>
     </article>
     <article class="step nav" data-scene="segments">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -530,7 +532,7 @@
         <p class="note"><a href="surface-prior.html" target="_blank" rel="noopener">Open the Surface‑Prior bench →</a></p>
       </div>
     </div>
-    <p class="scope"><b>Scope.</b> The DTU figures are the paper’s. The proxy bench is a procedural stand‑in with emulated baselines — useful for behaviour, not a leaderboard. The simulations in this talk are illustrations whose numbers are computed live from what is on screen. The owl of section 06 is a real DTU scan, fitted offline to the dataset’s depth maps and photographs and not reconstructed by this method; the truck of section 07 is a procedural stand‑in. <b>Not measured yet:</b> image quality (PSNR / SSIM / LPIPS), training and rendering time, and ablations.</p>
+    <p class="scope"><b>Scope.</b> The DTU figures are the paper’s. The proxy bench is a procedural stand‑in with emulated baselines — useful for behaviour, not a leaderboard. The simulations in this talk are illustrations whose numbers are computed live from what is on screen. The owl of sections 06 and 07 is a real DTU scan, fitted offline to the dataset’s depth maps and photographs and not reconstructed by this method. <b>Not measured yet:</b> image quality (PSNR / SSIM / LPIPS), training and rendering time, and ablations.</p>
   </article>
 </section>
 
