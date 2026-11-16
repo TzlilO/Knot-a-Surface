@@ -494,30 +494,42 @@
        table  — the fitted table plane, as far as the photographs show it.
      `seen` on a chart (Uint8Array, one per control point) is 1 where the surface was measured and 0 where a
      small hole was inpainted. photo: true — the colours already hold the light of the photographs. */
-  /* The owl of scan 122, alive: animate(t, paint, material) writes control points and control colours and
-     returns the charts whose shape changed. Everything is an edit of the chart's own net. Regions are in the
+  /* The owl of scan 122, alive: animate(t, paint, material, from, target, fromTarget) writes control points and control
+     colours and returns the charts whose shape changed. Everything is an edit of the chart's own net. Regions are in the
      object's frame (scene units, 1 = 80 mm), read off the fitted surface:
        breathing — the chest moves out and back along the horizontal direction away from the body's axis;
        head      — every point above the shoulders tilts about an axis that points at the cameras (so the
                    sheet's open back never turns into view), now and then;
        blinking  — a lid colour closes over each eye socket from above;
-       paint     — 0..1 wipes a MATERIAL down from the head.
-     A material is one entry of MATS. Its colours are a rule, evaluated once per control point of the owl;
+       paint     — 0..1 wipes a MATERIAL down over its TARGET, from the top of what is painted to its foot.
+     Breathing, head and blink are the owl's own: they stay on the owl's control points, whatever is painted.
+     TARGETS (TARGETS below) say where a material goes, as a weight 0..1 per control point of the object's chart (the
+     owl and the books are one sheet; the table is a chart of its own and is never painted):
+       object    — every control point of the object: the owl and the books, all that is stone;
+       owl       — the owl alone. Its mask (talk/dtu/owlmask122.js) was segmented OFFLINE from the DINOv3 features of
+                   the scan's photographs and the geometry of the net (tools/dtu/owlmask.py); its edge is feathered over
+                   two control points. Without that file: a line by hand between the owl and the books;
+       selection — the control points selected on the Hands atlas (talk/hands.js, c.sel), feathered the same way.
+     A material is one entry of MATS. Its colours are a rule, evaluated once per control point of the object;
      nothing is painted by hand or generated. The rule sees a sample s:
        s.x, s.y, s.z     where the point is (its position in the scan);
-       s.nx, s.ny, s.nz  the unit normal of the control net there, pointing out of the owl (the cameras are at +z);
+       s.nx, s.ny, s.nz  the unit normal of the control net there, pointing out of the object (the cameras are at +z);
        s.sh              0..1, how bright the photograph is there: the carving's relief (grooves are dark);
        s.head            whether the point is above the shoulders;
      and writes s.r, s.g, s.b. Optional: `eye(d, lx, ly)` -> [r, g, b] inside an eye socket (d = 0 centre .. 1
      rim, lx / ly = -1..1 across it), `beak` and `lid` colours; `colour` may also set s.a, an opacity (1 = solid:
      the renderer then shows what is behind, and the far side of the owl, through it; eyes and beak stay
-     solid); and `move(s, t)` may add to s.x, s.y, s.z every frame: a material that is not rigid. Opacity and
-     motion are scaled in by the wipe. `view` names the camera the material is shown from (default: the
-     step's own): a see-through one wants `through`, where the books lie behind the owl.
+     solid); and `move(s, t)` may add to s.x, s.y, s.z every frame: a material that is not rigid. In `move` only,
+     s.h is the height of the point above where the painted part stands (the table for `object`, the feet for
+     `owl`, the lowest selected point for `selection`) and s.H the height of the painted part: tie the motion to
+     s.h and what is painted stays standing. Opacity and motion are scaled in by the wipe and by the target's
+     weight. `view` names the camera the material is shown from (default: the step's own): a see-through one
+     wants `through`, where the books lie behind the owl.
      KNOBS: `p` holds the material's own properties (opacity, gloss, stiffness, ...) at their defaults, and
      `knobs` says which of them the simulator may turn and how far: [{ k, label, min, max, step }]. `colour` and
      `move` get p as their last argument. Turning a knob that `colour` reads repaints the owl (tune(), below).
-     animate(t, paint, material, from) wipes `material` in over `from` (default: `stone`, the photograph). */
+     animate(t, paint, material, from, target, fromTarget) wipes `material` on `target` in over `from` on
+     `fromTarget` (defaults: `stone`, the photograph, and `object`). */
   var MATS = {
     stone: { label: 'stone' },                                    // the photograph's own colours: nothing is changed
     snowy: { label: 'snowy owl', beak: [0.09, 0.085, 0.08], lid: [0.80, 0.79, 0.76],
@@ -543,10 +555,11 @@
         s.a = Math.min(1, p.opacity * (1 + 0.76 * f) + 1.4 * hl);
       },
       eye: function (d, lx, ly) { return Math.hypot(lx + 0.32, ly - 0.34) < 0.24 ? [0.95, 1, 0.95] : d < 0.82 ? [0.01, 0.06, 0.02] : [0.45, 1, 0.35]; },
-      // it wobbles: a sway that grows with the height above the feet, and a ripple climbing the body. Like a
-      // mass on a spring, a stiffer jelly moves less (1 / stiffness) and faster (the square root of it)
+      // it wobbles: a sway that grows with the height above where it stands (s.h: the table, or the owl's feet), and a
+      // ripple climbing the body. Like a mass on a spring, a stiffer jelly moves less (1 / stiffness) and faster (the
+      // square root of it)
       move: function (s, t, p) {
-        var q = Math.sqrt(p.stiffness), h = Math.max(0, s.y - 1.45), a = 0.045 / p.stiffness * Math.pow(h, 1.5) * (0.65 + 0.35 * Math.sin(0.9 * t));
+        var q = Math.sqrt(p.stiffness), h = s.h, a = 0.045 / p.stiffness * Math.pow(h, 1.5) * (0.65 + 0.35 * Math.sin(0.9 * t));
         var rp = 0.016 / p.stiffness * Math.sin(9 * s.y - 7 * q * t);
         s.x += a * Math.sin(5.0 * q * t) + rp * s.nx; s.z += 0.7 * a * Math.sin(4.3 * q * t + 1.3) + rp * s.nz; s.y -= 0.012 / p.stiffness * h * (0.5 + 0.5 * Math.sin(10 * q * t));
       } }
@@ -570,13 +583,28 @@
     },
     eye: function (d, lx, ly) { return Math.hypot(lx + 0.3, ly - 0.32) < 0.22 ? [1, 1, 1] : d < 0.8 ? [0.04, 0.10, 0.22] : [0.75, 0.88, 1]; } };
   Object.keys(MATS).forEach(function (k) { MATS[k].rev = 0; });
+  /* where a material may go; `selection` needs the Hands layer (talk/hands.js), which the host offers or not */
+  var TARGETS = [{ v: 'object', label: 'object' }, { v: 'owl', label: 'owl' }, { v: 'selection', label: 'selection' }];
+  var FEET = 1.45;                           // the owl stands on the book at this height: its motion is measured from here
   function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
-  function owlLife(c) {
+  /* a 0..1 weight per control point with a soft edge: two 3 x 3 box blurs over the lattice, edges clamped (the way
+     talk/dtu/owlmask122.js feathers the owl when it loads) */
+  function feather(src, nu, nv, out) {
+    var T = new Float32Array(src.length), i, j, a, q, v, pass;
+    out.set(src);
+    for (pass = 0; pass < 2; pass++) {
+      for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { for (v = 0, a = -1; a <= 1; a++) v += out[j * nu + Math.min(nu - 1, Math.max(0, i + a))]; T[j * nu + i] = v / 3; }
+      for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { for (v = 0, q = -1; q <= 1; q++) v += T[Math.min(nv - 1, Math.max(0, j + q)) * nu + i]; out[j * nu + i] = v / 3; }
+    }
+    return out;
+  }
+  function owlLife(c, OWL) {
     var P = c.patch.P, K = c.patch.C, B = c.base, K0 = new Float32Array(K), n = B.length / 3, nu = c.patch.nu, nv = c.patch.nv;
     var EYES = [[0.127, 3.214], [0.470, 3.262]], RE = 0.092, BEAK = [0.335, 3.02];
-    var body = [], bw = [], eyes = [], M = new Float32Array(n), N = new Float32Array(n * 3), SH = new Float32Array(n), BK = new Float32Array(n);
+    var life = [], LW = new Float32Array(n * 2), eyes = [], N = new Float32Array(n * 3), SH = new Float32Array(n), BK = new Float32Array(n);
     var AL = new Float32Array(n).fill(1);                          // the opacity of every control point, as the renderer reads it (c.alpha)
-    var i, j, o, x, y, z, e, d, w, lid = [[0, 0, 0, 0], [0, 0, 0, 0]], s = {};
+    var MO = new Float32Array(n), masked = !!(OWL && OWL.length === n), Y0 = 1e9, Y1 = -1e9;
+    var i, j, k, o, q, x, y, z, e, d, w, lid = [[0, 0, 0, 0], [0, 0, 0, 0]], s = {};
     c.baseC = K0;
     for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {            // normals of the net: (next - previous) along u, cross, along v
       var a = (j * nu + Math.max(0, i - 1)) * 3, b = (j * nu + Math.min(nu - 1, i + 1)) * 3, g = (Math.max(0, j - 1) * nu + i) * 3, h = (Math.min(nv - 1, j + 1) * nu + i) * 3;
@@ -586,9 +614,12 @@
     }
     for (i = 0; i < n; i++) {
       o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
-      // where the owl ends and the books begin: a line that rises towards the open page on its left
-      M[i] = ss(0, 0.07, y - (x < 0.3 ? 1.56 + 0.25 * x : 1.635 + 1.2 * (x - 0.3)));
-      if (M[i] || y > 1.7) { body.push(i); bw.push(ss(1.75, 2.2, y) * (1 - ss(2.6, 2.95, y)), ss(2.3, 2.85, y)); }
+      // the owl alone: the mask segmented offline where its file is loaded, else a line by hand that rises towards the open page
+      MO[i] = masked ? OWL[i] : ss(0, 0.07, y - (x < 0.3 ? 1.56 + 0.25 * x : 1.635 + 1.2 * (x - 0.3)));
+      if (y < Y0) Y0 = y; if (y > Y1) Y1 = y;
+      // the owl's life, on the owl only: breathing (the chest) and the head
+      var lb = ss(1.75, 2.2, y) * (1 - ss(2.6, 2.95, y)) * MO[i], lh = ss(2.3, 2.85, y) * MO[i];
+      if (lb || lh) { life.push(i); LW[i * 2] = lb; LW[i * 2 + 1] = lh; }
       SH[i] = Math.min(1, (0.30 * K0[o] + 0.59 * K0[o + 1] + 0.11 * K0[o + 2]) / 0.30);
       d = Math.hypot((x - BEAK[0]) / 0.055, (y - BEAK[1]) / 0.09); BK[i] = d < 1.2 && z > 0.3 ? 1 - ss(0.8, 1.2, d) : 0;
       for (e = 0; e < 2; e++) {
@@ -598,21 +629,41 @@
       }
     }
     lid.forEach(function (l) { l[0] /= l[3]; l[1] /= l[3]; l[2] /= l[3]; });
-    function sample(i) { var o = i * 3; s.x = B[o]; s.y = B[o + 1]; s.z = B[o + 2]; s.nx = N[o]; s.ny = N[o + 1]; s.nz = N[o + 2]; s.sh = SH[i]; s.head = B[o + 1] > 2.85; return s; }
-    /* the colours (and opacities) of a material on every control point of the owl: worked out the first time it
-       is asked for, and again after one of its knobs was turned. -> { K, A (or null), rev } */
+    /* the targets: a weight per control point, how low and how high it reaches, and the height it stands on */
+    function extent(t) {
+      var W = t.w, lo = 1e9, hi = -1e9, m;
+      for (m = 0; m < n; m++) if (W[m] > 0.01) { if (B[m * 3 + 1] < lo) lo = B[m * 3 + 1]; if (B[m * 3 + 1] > hi) hi = B[m * 3 + 1]; }
+      t.lo = lo; t.hi = hi; return t;
+    }
+    var TG = { object: extent({ w: new Float32Array(n).fill(1), v: 0 }), owl: extent({ w: MO, v: 0 }), selection: { w: new Float32Array(n), v: 0, rev: NaN } };
+    TG.object.base = Y0; TG.owl.base = FEET;
+    function target(name) {
+      var t = TG[name] || TG.object;
+      if (t === TG.selection) {                    // the Hands layer's selection, feathered again whenever it changed
+        var S = c.sel && c.sel.length === n ? c.sel : null, rev = S ? c.selRev || 0 : -1;
+        if (t.rev !== rev) { t.rev = rev; if (S) feather(S, nu, nv, t.w); else t.w.fill(0); extent(t); t.base = t.lo; t.v++; }
+      }
+      return t;
+    }
+    function sample(i, t) {
+      var o = i * 3; s.x = B[o]; s.y = B[o + 1]; s.z = B[o + 2]; s.nx = N[o]; s.ny = N[o + 1]; s.nz = N[o + 2]; s.sh = SH[i]; s.head = B[o + 1] > 2.85;
+      s.h = t ? Math.max(0, s.y - t.base) : 0; s.H = t ? Math.max(0, t.hi - t.base) : 0;
+      return s;
+    }
+    /* the colours (and opacities) of a material on every control point of the object, before any target: worked out the
+       first time it is asked for, and again after one of its knobs was turned. -> { K, A (or null), rev } */
     var baked = {};
     function bake(name) {
-      var m = MATS[name], bk = baked[name], q, k, rgb;
+      var m = MATS[name], bk = baked[name], rgb;
       if (bk && bk.rev === m.rev) return bk;
       bk = baked[name] = bk || { K: new Float32Array(K0), A: null }; bk.rev = m.rev;
       if (!m.colour) return bk;
       var K1 = bk.K, A1 = bk.A; if (A1) A1.fill(1);
-      for (i = 0; i < n; i++) if (M[i]) {
-        o = i * 3; s.a = 1; m.colour(sample(i), m.p); rgb = [s.r, s.g, s.b];
+      for (i = 0; i < n; i++) {
+        o = i * 3; s.a = 1; m.colour(sample(i, null), m.p); rgb = [s.r, s.g, s.b];
         if (BK[i] && m.beak) for (k = 0; k < 3; k++) rgb[k] += (m.beak[k] * (0.6 + 0.4 * SH[i]) - rgb[k]) * BK[i];
-        for (k = 0; k < 3; k++) K1[o + k] = K0[o + k] + (rgb[k] - K0[o + k]) * M[i];        // feathered into the books at the owl's edge
-        if (s.a < 1) { A1 = A1 || (bk.A = new Float32Array(n).fill(1)); A1[i] = 1 + (s.a + (1 - s.a) * BK[i] - 1) * M[i]; }
+        K1[o] = rgb[0]; K1[o + 1] = rgb[1]; K1[o + 2] = rgb[2];
+        if (s.a < 1) { A1 = A1 || (bk.A = new Float32Array(n).fill(1)); A1[i] = s.a + (1 - s.a) * BK[i]; }
       }
       if (m.eye) for (q = 0; q < eyes.length; q += 3) {
         o = eyes[q] * 3; e = EYES[eyes[q + 1]]; x = (B[o] - e[0]) / RE; y = eyes[q + 2];
@@ -621,49 +672,64 @@
       }
       return bk;
     }
-    var painted = -1, shut = -1, key = '', to = null, src = null;
-    function colour(i, front) {                    // one control point: `from` above the wipe's front, `material` below it
-      var o = i * 3, m = ss(front, front + 0.25, B[o + 1]), F = src.K, T2 = to.K;
-      K[o] = F[o] + (T2[o] - F[o]) * m; K[o + 1] = F[o + 1] + (T2[o + 1] - F[o + 1]) * m; K[o + 2] = F[o + 2] + (T2[o + 2] - F[o + 2]) * m;
-      if (to.A || src.A) { var a0 = src.A ? src.A[i] : 1; AL[i] = a0 + ((to.A ? to.A[i] : 1) - a0) * m; }
+    var painted = -1, shut = -1, key = '', to = null, src = null, TA = null, TB = null, moved = false;
+    /* one control point: `from` on its target above the wipe's front, `material` on its target below it; a target's
+       weight blends the material with the photograph's own colour */
+    function colour(i, front) {
+      var o = i * 3, m = ss(front, front + 0.25, B[o + 1]), wa = TA.w[i], wb = TB.w[i], F = src.K, T2 = to.K, f0, t0;
+      for (k = 0; k < 3; k++) { f0 = K0[o + k] + (F[o + k] - K0[o + k]) * wa; t0 = K0[o + k] + (T2[o + k] - K0[o + k]) * wb; K[o + k] = f0 + (t0 - f0) * m; }
+      if (to.A || src.A) { f0 = src.A ? 1 + (src.A[i] - 1) * wa : 1; t0 = to.A ? 1 + (to.A[i] - 1) * wb : 1; AL[i] = f0 + (t0 - f0) * m; }
       return m;
     }
-    return function (t, paint, material, from) {
-      var mat = MATS[material] || MATS.snowy, old = MATS[from] || MATS.stone, k;
+    function animate(t, paint, material, from, target1, target0) {
+      var mat = MATS[material] || MATS.snowy, old = MATS[from] || MATS.stone;
       to = bake(MATS[material] ? material : 'snowy'); src = bake(MATS[from] ? from : 'stone');
-      k = material + to.rev + '<' + from + src.rev; if (k !== key) { key = k; painted = -1; }
+      TB = target(target1); TA = target(target0);
+      var ky = material + to.rev + ':' + target1 + TB.v + '<' + from + src.rev + ':' + target0 + TA.v; if (ky !== key) { key = ky; painted = -1; }
+      // the wipe runs over what is painted, before or after: from its top to its foot
+      var lo = 1e9, hi = -1e9;
+      [[mat, TB], [old, TA]].forEach(function (l) { if (l[0].colour && l[1].hi >= l[1].lo) { lo = Math.min(lo, l[1].lo); hi = Math.max(hi, l[1].hi); } });
+      if (hi < lo) { lo = Y0; hi = Y1; }
+      var front = hi - (hi - lo + 0.25) * paint;
       var breath = 0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 3.4), tc = t % 9, tb = t % 3.7;
       var tilt = 0.3 * ss(4, 4.7, tc) * (1 - ss(7, 7.7, tc)), blink = ss(3.0, 3.09, tb) * (1 - ss(3.12, 3.26, tb));
-      var ca = Math.cos(tilt), sa = Math.sin(tilt), q, a, cw, sw, front = 3.7 - 2.7 * paint;
-      var soft = (paint > 0 && mat.move) || (paint < 1 && old.move);
-      for (q = 0; q < body.length; q++) {
-        i = body[q]; o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
-        if (soft && M[i]) {                        // what is not rigid moves: the new material below the front, the old one above it
-          w = M[i] * ss(front, front + 0.25, y);
-          if (mat.move && w) { sample(i); mat.move(s, t, mat.p); x += (s.x - B[o]) * w; y += (s.y - B[o + 1]) * w; z += (s.z - B[o + 2]) * w; }
-          if (old.move && (w = M[i] - w) > 0) { sample(i); old.move(s, t, old.p); x += (s.x - B[o]) * w; y += (s.y - B[o + 1]) * w; z += (s.z - B[o + 2]) * w; }
+      var ca = Math.cos(tilt), sa = Math.sin(tilt), cw, sw, m;
+      // what is not rigid moves: the new material below the front, the old one above it, each on its own target.
+      // Then every control point is written (and once more after the motion ends, to put them back); else the owl's life only
+      var soft = (paint > 0 && !!mat.move) || (paint < 1 && !!old.move), every = soft || moved, cnt = every ? n : life.length;
+      moved = soft;
+      for (q = 0; q < cnt; q++) {
+        i = every ? q : life[q]; o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
+        if (soft) {
+          m = ss(front, front + 0.25, y);
+          if (mat.move && (w = TB.w[i] * m) > 0) { sample(i, TB); mat.move(s, t, mat.p); x += (s.x - B[o]) * w; y += (s.y - B[o + 1]) * w; z += (s.z - B[o + 2]) * w; }
+          if (old.move && (w = TA.w[i] * (1 - m)) > 0) { sample(i, TA); old.move(s, t, old.p); x += (s.x - B[o]) * w; y += (s.y - B[o + 1]) * w; z += (s.z - B[o + 2]) * w; }
         }
-        w = bw[q * 2];
+        w = LW[i * 2];
         if (w) { var dx = B[o] - (-0.08 + 0.26 * (B[o + 1] - 1.7)), dz = B[o + 2] - 0.18, dl = 0.045 * breath * w / (Math.hypot(dx, dz) || 1); x += dx * dl; z += dz * dl; }
-        w = bw[q * 2 + 1];
+        w = LW[i * 2 + 1];
         if (w) {
           y += 0.012 * breath * w;
-          if (tilt) { if (w < 1) { a = tilt * w; cw = Math.cos(a); sw = Math.sin(a); } else { cw = ca; sw = sa; }
+          if (tilt) { if (w < 1) { cw = Math.cos(tilt * w); sw = Math.sin(tilt * w); } else { cw = ca; sw = sa; }
             dx = x - 0.24; var dy = y - 2.45; x = 0.24 + dx * cw - dy * sw; y = 2.45 + dx * sw + dy * cw; }
         }
         P[o] = x; P[o + 1] = y; P[o + 2] = z;
       }
-      if (paint !== painted) for (painted = paint, shut = -1, i = 0; i < n; i++) if (M[i]) colour(i, front);
+      if (paint !== painted) for (painted = paint, shut = -1, i = 0; i < n; i++) colour(i, front);
       c.alpha = (to.A && paint > 0) || (src.A && paint < 1) ? AL : null;       // see-through somewhere, right now
       if (blink !== shut) for (shut = blink, q = 0; q < eyes.length; q += 3) {      // the lid comes down from above
-        i = eyes[q]; o = i * 3; var m = colour(i, front);
+        i = eyes[q]; o = i * 3; m = colour(i, front);
         if (eyes[q + 2] > 1 - 2 * blink) {
-          var l = lid[eyes[q + 1]], L0 = old.lid || l, L1 = mat.lid || l;
-          K[o] = L0[0] + (L1[0] - L0[0]) * m; K[o + 1] = L0[1] + (L1[1] - L0[1]) * m; K[o + 2] = L0[2] + (L1[2] - L0[2]) * m;
+          var l = lid[eyes[q + 1]], L0 = old.lid || l, L1 = mat.lid || l, wa = TA.w[i], wb = TB.w[i];
+          for (k = 0; k < 3; k++) { var f0 = l[k] + (L0[k] - l[k]) * wa, t0 = l[k] + (L1[k] - l[k]) * wb; K[o + k] = f0 + (t0 - f0) * m; }
         }
       }
       return [c];
-    };
+    }
+    /* for tests and captions: whether the owl's mask is the one segmented offline, and a target's weights */
+    animate.masked = masked;
+    animate.weights = function (name) { return target(name).w; };
+    return animate;
   }
 
   function scan(D) {
@@ -677,7 +743,7 @@
       var F = KT.dtuFeatures && KT.dtuFeatures[D.scan], fc = F && F.charts[d.name];
       c.feat = fc ? { dim: F.dim, scale: F.scale, lo: F.lo, hi: F.hi, nu: fc.nu, nv: fc.nv, step: fc.step || 1, data: fc.data } : null;
     });
-    var T = D.target, ty = T[1], tz = T[2];
+    var T = D.target, ty = T[1], tz = T[2], M = KT.dtuMasks && KT.dtuMasks[D.scan];
     return {
       charts: C, photo: true,
       /* every view lies inside the dome of real cameras (azimuth -60..60 degrees, 16..70 degrees above the table);
@@ -688,11 +754,42 @@
                near: { th: 0.30, ph: 1.2, r: 5.8, tx: 0.05, ty: 2.2, tz: 0.2 } },             // the owl and its books fill the frame, from the front
       tour: D.tour || ['wide', 'close', 'a', 'b'],
       rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
-      /* scan 122 only: the owl alive and repainted (owlLife); another scan has neither */
-      animate: D.scan === 122 ? owlLife(C[0]) : null,
+      /* scan 122 only: the owl alive and repainted (owlLife), on a target; another scan has none of it. The owl's mask
+         (talk/dtu/owlmask122.js, segmented offline) is used where it is loaded and was made for this chart */
+      animate: D.scan === 122 ? owlLife(C[0], M && M.chart === C[0].name && M.nu === C[0].patch.nu && M.nv === C[0].patch.nv ? M.mask : null) : null,
       materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label, view: MATS[k].view, knobs: MATS[k].knobs || [], p: MATS[k].p }; }) : null,
+      targets: D.scan === 122 ? TARGETS.slice() : null,
       /* turn a knob of a material: its value changes for every owl on the page, and they repaint */
       tune: function (v, k, x) { var m = MATS[v]; if (m && m.p && m.p[k] !== x) { m.p[k] = x; m.rev++; } }
+    };
+  }
+
+  /* ================= DUO — the talk's cover: the owl and the rabbit side by side =================
+     Both real DTU scans (talk/dtu-data.js, talk/dtu/scan55.js), their objects only, without the tables. The owl
+     stays in its own frame, so that its life (owlLife) still finds its eyes and shoulders. The rabbit is brought
+     into the owl's units (its 71 mm to the owl's 80 mm a unit, so the two stand at their true relative sizes),
+     turned a little towards the owl and set beside it. `box` = the centre and half extents of the pair, for framing.
+     Registered only when both data files are loaded. */
+  function duo() {
+    var A = KT.dtu, B = KT.dtuScans[55], a = scan(A), b = scan(B), k = B.unit_mm / A.unit_mm, yaw = -0.2, DX = 2.95, DZ = -0.35;
+    var cy = Math.cos(yaw), sy = Math.sin(yaw), lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    function place(p) { var x = p[0] * k, z = p[2] * k; return [DX + cy * x + sy * z, p[1] * k, DZ - sy * x + cy * z]; }
+    var objs = a.charts.filter(function (c) { return !c.ground; }), rab = b.charts.filter(function (c) { return !c.ground; });
+    rab.forEach(function (c, i) {
+      var P = c.patch.P, j, q;
+      for (j = 0; j < P.length; j += 3) { q = place([P[j], P[j + 1], P[j + 2]]); P[j] = q[0]; P[j + 1] = q[1]; P[j + 2] = q[2]; }
+      c.base.set(P); c.hex = HEX[(objs.length + i) % HEX.length];
+    });
+    var C = objs.concat(rab);
+    C.forEach(function (c) { var P = c.patch.P, j, q; for (j = 0; j < P.length; j += 3) for (q = 0; q < 3; q++) { lo[q] = Math.min(lo[q], P[j + q]); hi[q] = Math.max(hi[q], P[j + q]); } });
+    var T = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+    return {
+      charts: C, photo: true, animate: a.animate,
+      box: { c: T, h: [(hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2] },
+      views: { wide: { th: 0.12, ph: 1.24, r: 9.6, tx: T[0], ty: T[1], tz: T[2] }, close: { th: 0.05, ph: 1.2, r: 5.2, tx: T[0] - 0.4, ty: 2.4, tz: T[2] },
+               a: { th: -0.3, ph: 1.18, r: 8.8, tx: T[0], ty: T[1], tz: T[2] }, b: { th: 0.42, ph: 1.1, r: 8.8, tx: T[0], ty: T[1], tz: T[2] } },
+      tour: ['wide', 'a', 'b'],
+      rig: { cams: a.rig.cams.concat(b.rig.cams.map(place)), target: T }
     };
   }
 
@@ -714,4 +811,6 @@
     var D = KT.dtuScans[n];
     KT.scenes['scan' + n] = { label: D.label, suite: 'DTU scan ' + n, photo: true, note: NOTE, build: function () { return scan(D); } };
   });
+  /* the cover's pair: not offered in the lab page's scene picker */
+  if (KT.dtu && KT.dtuScans && KT.dtuScans[55]) KT.scenes.duo = { label: 'Owl and rabbit', suite: 'DTU scans 122 and 55', photo: true, hidden: true, note: NOTE, build: duo };
 })();

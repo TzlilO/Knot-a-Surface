@@ -201,6 +201,81 @@ explained, scale, lo, hi, charts: { name: { nu, nv, data } }`, with `step` and `
 are the STORED grid's size, `net` the control net's, and stored node (a, b) is control point (a * step, b * step).
 Re-run it whenever the scan's control nets change.
 
+## From photographs to the chart: the pipeline chapter's data (`pipeline.py`)
+
+`pipeline.py` writes `talk/dtu/pipeline122.js` (`KnotTalk.dtuPipeline[122]`, 592 KB): the steps from the scan's
+photographs to the owl's chart, in the scene frame and units of `talk/dtu-data.js`. It runs fit.py's own frame,
+fusion and chart fit (the chart it gets is byte for byte the one in `talk/dtu-data.js`, or it stops) and records
+what fit.py holds along the way. Nothing in it is trained, by the thesis method or otherwise.
+
+```bash
+python3 -I tools/dtu/pipeline.py <data-dir> 122 [--check DIR]   # about two minutes; needs sparse/0/points3D.txt too
+```
+
+| part | what | size |
+| --- | --- | --- |
+| `cameras` | 64 cameras: centre (as `cams` in `talk/dtu-data.js`), rotation (world -> camera, OpenCV axes), and the photographs' pinhole intrinsics (fx 2892.33, fy 2883.18, cx 777, cy 581, 1554 x 1162, the same for all 64) | 9 KB |
+| `sfm` | the dataset's own sparse points, 21,760: position, colour, track length, mean reprojection error, first and second camera of the track, per-camera counts | 337 KB |
+| `init` | a 12 x 16 chart fitted to those sparse points only | 6 KB |
+| `levels` | the owl chart at the start and at the end of each of fit.py's levels: 36 x 49, 36 x 49, 72 x 98, 144 x 196 | 235 KB |
+
+**Cameras.** The photographs' poses (`images.txt`) and the depth maps' cameras (`cameras.npz`) agree to
+2e-6 in rotation and 0.002 mm in position. Every observation of the SfM points, reprojected through the cameras as
+written in the file, gives a median error of 0.460 px, COLMAP's own figure (largest difference 0.009 px): frame,
+rotations and intrinsics are consistent.
+
+**SfM.** `DTU/scan122/sparse/0/points3D.txt` of `Y1ue/DTU`. That repo's `DTU/README.md`: "We generate the SFM point
+cloud with COLMAP given GT camera poses (cameras.npz)". COLMAP matched features and triangulated points; the
+cameras are the dataset's calibrated ones and were not estimated. Mean reprojection error 0.46 px median, 1.67 px
+95th percentile, 3.93 px at most; track length 4 median, 66 at most (1,421 tracks see one photograph twice).
+20,479 points lie more than 3 mm above the table, 1,106 on it; 17,313 are in the owl chart's reach, and those lie
+0.31 mm (median) and 1.63 mm (95th percentile) from the shipped chart (rms 5.2 mm: a few strays). `first` and
+`second` are the smallest and the second smallest camera index in a point's track (COLMAP's IMAGE_ID minus 1): a
+point can be triangulated once its second camera is there. 195 points lie outside a box of 10 x 5 x 10 scene units
+around the owl and are stored as float32; the rest as 12-bit positions over that box (steps of 0.2 mm or finer).
+
+**Init.** A cubic chart of 12 x 16 control points fitted by least squares to the 17,313 SfM points in the owl
+chart's reach (fit.py's azimuth range, above 3 mm, below its top edge, within 250 mm of its axis), each at the
+(u, v) of fit.py's layout; second differences of the net as a light smoothness term (weight 1e-3, so the net is
+defined where the cloud is empty), Tukey weights against outliers (16,799 inliers). No depth map shapes it; the
+axis, azimuth range and rows are fit.py's, and those came from the depth maps.
+
+| init, 12 x 16 | rms | 95th pct | median |
+| --- | --- | --- | --- |
+| to the SfM points it was fitted to (all / inliers), mm | 5.42 / 1.36 | 3.54 / 2.87 | 0.74 / 0.72 |
+| to the dense measured surface (303,155 points), mm | 2.64 | 5.98 | 1.09 |
+| the same fit made to 40,000 dense points instead, mm | 2.00 | 4.14 | 0.98 |
+
+The last row is what a net this coarse can do at all: the sparse points cost 0.6 mm of rms. At 36 x 49 the same
+SfM-only fit reaches 1.67 mm rms, 0.48 mm median.
+
+**Levels.** fit.py's chart fit is a coarse-to-fine sequence of node grids, not iterations of an optimiser: the
+layout (a rectangle of directions laid on the envelope, the outermost measured point in each direction from the
+axis), then at 36 x 49, 72 x 98, 144 x 196 and 288 x 392 relaxation sweeps, arc-length passes and a projection
+of every node, onto the envelope at the first two sizes and onto the measured surface from 144 x 196 on. The file
+holds the nodes at the start and at the end of each level, written as the control net of the cubic spline that
+passes through them (plain interpolation: the 0.6 mm limiter fit.py applies to its shipped net would move the
+36 x 49 surfaces up to 8.5 mm off fit.py's own nodes, and measures worse at every level). Distances from the same
+303,155 measured points, on the nets as stored (12 bits per coordinate):
+
+| | net | rms, mm | 95th pct, mm | median, mm | within 1 mm | nodes on measured |
+| --- | --- | --- | --- | --- | --- | --- |
+| layout | 36 x 49 | 0.847 | 1.594 | 0.381 | 85.7 % | 0 % |
+| level 1 | 36 x 49 | 1.002 | 2.021 | 0.399 | 82.2 % | 0 % |
+| level 2 | 72 x 98 | 0.707 | 1.188 | 0.319 | 92.4 % | 0 % |
+| level 3 | 144 x 196 | 0.148 | 0.172 | 0.029 | 99.5 % | 98.8 % |
+| level 4 (numbers only) | 288 x 392 | 0.222 | 0.076 | 0.014 | 99.3 % | 96.5 % |
+| shipped (`talk/dtu-data.js`) | 288 x 392 | 0.206 | 0.068 | 0.012 | 99.6 % | 93.6 % |
+
+Two things are not monotone, and both are real. Level 1 is a little further from the measured surface than the
+layout: its sweeps spread the nodes evenly, which is what the finer levels need, not closeness. And the rms rises
+from level 3 to level 4: it is carried by the few measured points the sheet does not reach (beyond 2 mm: 0.04 % at
+level 3, 0.23 % at level 4), while the median and the 95th percentile keep falling (the rms of the points within
+2 mm: 0.141, 0.122 and 0.083 mm for level 3, level 4 and the shipped net).
+
+**Photographs.** Not included. The dataset's official page (roboimagedata.compute.dtu.dk) could not be reached
+from the session that made the file, so its terms of use for showing the images were not checked.
+
 ## The file it writes
 
 `KnotTalk.dtu = { scan, label, source, note, unit_mm, stats, cams, target, charts }`, a classic script that

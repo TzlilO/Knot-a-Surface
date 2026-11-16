@@ -8,8 +8,42 @@
   var NS = 'http://www.w3.org/2000/svg';
 
   /* world box is x in [0,2], y in [0,1] (y up) */
-  /* ten control points: a cubic then has seven spans, so one basis function (4 spans) is visibly local */
-  var FREE = [[0.10, 0.34], [0.28, 0.86], [0.48, 0.16], [0.68, 0.80], [0.88, 0.24], [1.10, 0.84], [1.30, 0.18], [1.50, 0.82], [1.70, 0.26], [1.90, 0.62]];
+
+  /* ---------- the strip: chapter 01's curve, handed over ----------
+     Chapter 01 (talk/sims/flatland.js) ends on one curve, its scene `handoff`; this module's first scene, `ducks`,
+     starts from the same curve, in the same place and style, and the scenes that take a single curve apart
+     (drag, blend, local, degree, knots, recursion) keep it. HANDOFF is a literal copy of HANDOFF in flatland.js,
+     in flatland's world units (x -1.4 .. 1.4, y up): chapter 01's true curve as a clamped uniform cubic B-spline
+     with 14 control points (a least-squares fit, worst distance 0.0024), and the y range of that spline. Keep the
+     two equal:  node -e "console.log(JSON.stringify(require('./talk/sims/flatland.js').HANDOFF))"
+     Fourteen control points: a cubic then has eleven spans, so one basis function (4 spans) is visibly local. */
+  var HANDOFF = { P: [[-1.4, -0.1384], [-1.3152, -0.1294], [-1.1455, -0.0923], [-0.8909, -0.0342], [-0.6364, -0.0306],
+                      [-0.3818, -0.0413], [-0.1273, -0.0405], [0.1273, 0.126], [0.3818, 0.9771], [0.6364, 0.2414],
+                      [0.8909, 0.1131], [1.1455, 0.034], [1.3152, -0.0116], [1.4, -0.0192]], y0: -0.1384, y1: 0.7137 };
+  /* in this module's world box the strip spans x 0.1 .. 1.9 and the middle of its y range sits at y 0.5 */
+  var HK = 0.9 / 1.4, HYC = (HANDOFF.y0 + HANDOFF.y1) / 2;
+  var STRIP = HANDOFF.P.map(function (q) { return [1 + q[0] * HK, 0.5 + (q[1] - HYC) * HK]; });
+  /* HANDOFF LAYOUT, the same rule as in flatland.js, so that chapter 01's last picture and chapter 02's first one
+     coincide on stages of the same size: the curve's x range (flatland -1.4 .. 1.4) spans the middle 76 % of the
+     stage width; y uses the same scale; the middle of the curve's y range sits at the vertical centre of the stage.
+     Should that make the curve taller than 40 % of the stage height, the height sets the scale instead (still
+     centred). handoffScale = that scale in px per flatland unit; in this module's units it is handoffScale / HK,
+     with the world box centred on the stage.
+     HANDOFF STYLE, also as in flatland.js: the curve as a lit tube in the surface colour. Core width
+     w = clamp(0.02 s, 2.5, 6) px (s = handoffScale); round caps and joins. Under the core a soft glow of nine strokes
+     in the surface colour, 8 / 7 / 6 / 5.1 / 4.3 / 3.6 / 3 / 2.4 / 1.9 w wide at alpha .018 / .022 / .028 / .034 /
+     .042 / .052 / .064 / .08 / .11 (HO_GLOW: plain strokes, no blur filter, so Canvas and SVG draw it alike);
+     over the core a highlight 0.4 w wide in #dcf6ff at alpha .9. */
+  var HO_W = 0.76, HO_H = 0.40, HO_HI = '#dcf6ff';
+  var HO_GLOW = [[8, 0.018], [7, 0.022], [6, 0.028], [5.1, 0.034], [4.3, 0.042], [3.6, 0.052], [3, 0.064], [2.4, 0.08], [1.9, 0.11]];
+  var HX = HANDOFF.P[HANDOFF.P.length - 1][0] - HANDOFF.P[0][0];     // 2.8: the curve's x range (from end point to end point)
+  function handoffScale(W, H) { return Math.min(HO_W * W / HX, HO_H * H / (HANDOFF.y1 - HANDOFF.y0)); }
+  /* `ducks` first shows the strip alone, exactly as chapter 01 left it; then the draughtsman's marks arrive
+     (seconds since the scene started showing): the weights one by one, the dashed polygon that ties them, the
+     drafting grid, the caption and panel; only then does the idle motion start. */
+  var INTRO = { hold: 1.3, weight: 0.45, stagger: 0.05, poly: [1.5, 2.3], grid: [1.7, 2.7], ui: [1.8, 2.6], move: [2.5, 3.7] };
+  function phase(t, a) { return KT.ease((t - a[0]) / (a[1] - a[0])); }
+
   var S2 = Math.SQRT1_2, CX = 1, CY = 0.5, R = 0.38;
   var CIRCLE = {
     P: [[CX + R, CY], [CX + R, CY + R], [CX, CY + R], [CX - R, CY + R], [CX - R, CY],
@@ -78,7 +112,7 @@
   var SWEEP = [12, 16, 22, 30, 42, 58, 80, 110, 150, 210];
 
   var SCENES = {
-    ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4 },
+    ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4, strip: 1 },
     letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
                  hint: 'drag any amber point' },
     script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
@@ -120,8 +154,8 @@
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
 
-      var st = { P: [], w: [], U: [], p: 3, sel: 3, u: 0.37, scene: 'ducks', sc: SCENES.ducks,
-                 bh: 0, ghost: null, userU: false, touched: false, t: 0, cycleT: 0, circle: false };
+      var st = { P: [], w: [], U: [], p: 3, sel: 3, u: 0.37, scene: null, sc: SCENES.ducks,
+                 bh: 0, ghost: null, userU: false, touched: false, t: 0, cycleT: 0, circle: false, intro: 0 };
       var W = 0, H = 0, dirty = true, drag = null, L = {};
 
       /* ---------- controls ---------- */
@@ -163,8 +197,8 @@
           st.P = CIRCLE.P.map(function (q) { return q.slice(); });
           st.w = CIRCLE.w.slice(); st.U = CIRCLE.U.slice(); st.p = 2;
         } else {
-          st.P = FREE.map(function (q) { return q.slice(); });
-          st.w = FREE.map(function () { return 1; }); st.p = 3;
+          st.P = STRIP.map(function (q) { return q.slice(); });
+          st.w = STRIP.map(function () { return 1; }); st.p = 3;
           st.U = NB.clampedKnots(st.P.length, st.p);
         }
         st.base = st.P.map(function (q) { return q.slice(); });
@@ -284,6 +318,12 @@
         var s = Math.min((W - 2 * padX) / 2, (topH - topPad - 26) / 1);
         L.s = s; L.ox = (W - 2 * s) / 2; L.oy = topPad + (topH - topPad - 26 - s) / 2;
         if (st.sc.fit && W > 640) L.ox = Math.min(L.ox, Math.max(padX, W - 2 * s - 250));   // keep the drawing clear of the panel
+        if (!st.multi && !st.f) {
+          // the single-curve scenes: with no plot open the world box sits where HANDOFF LAYOUT puts the strip (box
+          // centred, hs px per unit); as the basis plot opens it eases into the layout above
+          var hs = handoffScale(W, H) / HK, k = KT.ease(st.bh / 0.32);
+          L.s = KT.lerp(hs, L.s, k); L.ox = KT.lerp(W / 2 - hs, L.ox, k); L.oy = KT.lerp(H / 2 - hs / 2, L.oy, k);
+        }
         L.bx0 = padX + 8; L.bx1 = W - padX - 8; L.by0 = topH + 6; L.by1 = H - 44; L.bh = bh;
       }
       function px(q) { return [L.ox + q[0] * L.s, L.oy + (1 - q[1]) * L.s]; }
@@ -379,13 +419,27 @@
         return h;
       }
 
+      /* the curve in HANDOFF STYLE at v = 1 (the glow strokes all reuse one path through <use>); as v goes to 0 it
+         becomes the plain 3.2 px line the analysis scenes draw */
+      function tube(d, v, dim) {
+        var w = KT.lerp(3.2, KT.clamp(0.02 * handoffScale(W, H), 2.5, 6), v), id = uid + 's', h;
+        h = '<defs><path id="' + id + '" d="' + d + '"/></defs><g fill="none" stroke-linecap="round" stroke-linejoin="round">';
+        HO_GLOW.forEach(function (g) {
+          h += '<use href="#' + id + '" stroke="' + C.surf + '" stroke-opacity="' + (g[1] * v * dim).toFixed(4) + '" stroke-width="' + (w * g[0]).toFixed(2) + '"/>';
+        });
+        return h + '<use href="#' + id + '" stroke="' + C.surf + '" stroke-opacity="' + dim + '" stroke-width="' + w.toFixed(2) + '"/>' +
+               '<use href="#' + id + '" stroke="' + HO_HI + '" stroke-opacity="' + (0.9 * v * dim).toFixed(4) + '" stroke-width="' + (0.4 * w).toFixed(2) + '"/></g>';
+      }
+      /* how far weight i of the strip has arrived (the intro of `ducks`) */
+      function weightIn(i) { return st.sc.strip ? KT.ease((st.intro - INTRO.hold - INTRO.stagger * i) / INTRO.weight) : 1; }
+
       function draw() {
         layout();
         var sc = st.sc, p = st.p, m = st.P.length, U = st.U, i, q, h = '', a;
-        var showBasis = L.bh > 30;
+        var showBasis = L.bh > 30, gridA = sc.strip ? phase(st.intro, INTRO.grid) : 1;
 
         // drafting grid behind the curve
-        h += '<g stroke="' + C.line + '" stroke-width="1" opacity=".55">';
+        h += '<g stroke="' + C.line + '" stroke-width="1" opacity="' + (0.55 * gridA).toFixed(3) + '">';
         for (i = 0; i <= 8; i++) { a = L.ox + i * L.s / 4; h += '<path d="M' + f(a) + ' ' + f(L.oy) + 'V' + f(L.oy + L.s) + '"/>'; }
         for (i = 0; i <= 4; i++) { a = L.oy + i * L.s / 4; h += '<path d="M' + f(L.ox) + ' ' + f(a) + 'H' + f(L.ox + 2 * L.s) + '"/>'; }
         h += '</g>';
@@ -396,14 +450,17 @@
 
         // control polygon
         var poly = st.P.map(function (c, j) { q = px(c); return (j ? 'L' : 'M') + f(q[0]) + ' ' + f(q[1]); }).join('');
-        h += '<path d="' + poly + '" fill="none" stroke="' + C.ctrl + '" stroke-width="1.2" stroke-dasharray="3 5" opacity=".6"/>';
+        var polyA = sc.strip ? phase(st.intro, INTRO.poly) : 1;
+        if (polyA > 0) h += '<path d="' + poly + '" fill="none" stroke="' + C.ctrl + '" stroke-width="1.2" stroke-dasharray="3 5" opacity="' + (0.6 * polyA).toFixed(3) + '"/>';
 
         // ghost of the curve before the edit (local support)
         if (sc.local && st.ghost) h += '<path d="' + st.ghost + '" fill="none" stroke="' + C.dim + '" stroke-width="1.5" stroke-dasharray="2 6"/>';
 
-        // the curve
-        var dim = sc.local ? 0.3 : 1;
-        h += '<path d="' + curvePath(0, 1, 220) + '" fill="none" stroke="' + C.surf + '" stroke-width="3.2" stroke-linecap="round" opacity="' + dim + '"/>';
+        // the curve. While no basis plot is open (ducks, drag) it is the strip in chapter 01's hand-off style, drawn
+        // at the same 241 parameters as flatland draws it; as the plot opens it calms down to the plain line
+        var dim = sc.local ? 0.3 : 1, vivid = 1 - KT.ease(st.bh / 0.32);
+        if (vivid > 0.001) h += tube(curvePath(0, 1, 240), vivid, dim);
+        else h += '<path d="' + curvePath(0, 1, 220) + '" fill="none" stroke="' + C.surf + '" stroke-width="3.2" stroke-linecap="round" opacity="' + dim + '"/>';
         if (sc.local) {
           var ua = U[st.sel], ub = U[st.sel + p + 1];
           h += '<path d="' + curvePath(ua, ub, 120) + '" fill="none" stroke="' + C.surf + '" stroke-width="5" stroke-linecap="round"/>';
@@ -432,8 +489,22 @@
           h += '<circle cx="' + f(sq[0]) + '" cy="' + f(sq[1]) + '" r="7" fill="' + C.text + '" stroke="' + C.bg + '" stroke-width="2"/>';
         }
 
+        // the strip's weights (scenes without a basis plot): lit amber beads with a soft amber halo, set down one by one
+        // during the intro of `ducks`
+        var beads = !sc.basis;
+        if (beads) {
+          h += '<defs><radialGradient id="' + uid + 'w" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="#ffe3bd"/>' +
+               '<stop offset=".45" stop-color="#ffbe5c"/><stop offset="1" stop-color="' + C.ctrl + '"/></radialGradient></defs>';
+          for (i = 0; i < m; i++) {
+            a = weightIn(i); if (a <= 0) continue;
+            // a bead settles from a little larger; smaller on small stages (the touch target is KT.HIT either way)
+            q = px(st.P[i]); var rb = KT.clamp(0.033 * L.s, 5, 7.5) * (1.45 - 0.45 * a);
+            h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb * 1.8) + '" fill="' + C.ctrl + '" opacity="' + (0.2 * a).toFixed(3) + '"/>' +
+                 '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb) + '" fill="url(#' + uid + 'w)" stroke="' + C.bg + '" stroke-width="2" opacity="' + a.toFixed(3) + '"/>';
+          }
+        }
         // control points
-        for (i = 0; i < m; i++) {
+        for (i = 0; i < m && !beads; i++) {
           q = px(st.P[i]);
           var rr = 7 + (act[i] != null ? 13 * act[i] : 0) + (sc.circle ? 5 * (st.w[i] - 1) : 0);
           rr = KT.clamp(rr, 4, 26);
@@ -532,7 +603,10 @@
           });
           return best;
         }
-        for (i = 0; i < st.P.length; i++) { q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; } }
+        for (i = 0; i < st.P.length; i++) {
+          if (weightIn(i) < 0.5) continue;       // a weight not yet set down (the strip's intro) cannot be grabbed
+          q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; }
+        }
         if (best) return best;
         if (L.bh > 30) {
           if (st.sc.ticks && y > L.by1 - (touch ? 20 : 6) && y < L.by1 + (touch ? 36 : 30)) {
@@ -583,6 +657,8 @@
       /* ---------- scenes ---------- */
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
+        // the deck selects `ducks` on mount and again on entry: a second call must not restart the strip's intro
+        if (id === st.scene && sc.strip && !st.touched) return;
         st.scene = id; st.sc = sc; st.touched = false; st.userU = false; st.t = 0; st.cycleT = 0;
         if (!!sc.circle !== st.circle) load(!!sc.circle);
         else if (sc.circle) load(true);
@@ -603,13 +679,31 @@
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
         st.ghost = null; dirty = true;
         if (sc.local) { st.bhSnap = true; }
+        intro(!!sc.strip);
       }
+      /* the strip's intro: start it (the strip alone, as chapter 01 left it) or skip it */
+      function intro(on) { st.intro = on ? 0 : 1e3; quiet(on ? 0 : 1); }
+      /* the caption, hint, panel and the kit's controls button arrive with the marks */
+      function quiet(a) {
+        root.style.setProperty('--bs-ui', a.toFixed(3));
+        root.classList.toggle('bs-quiet', a < 0.5);
+      }
+      /* Arriving from chapter 01 must always start on chapter 01's last picture: whenever the stage leaves the
+         screen while `ducks` is shown and untouched, the intro is re-armed (and drawn at once, so the stage is
+         ready before it is seen again). */
+      var seen = new IntersectionObserver(function (es) {
+        if (es[es.length - 1].isIntersecting || !st.sc.strip || st.touched || drag) return;
+        st.t = 0; st.P = st.base.map(function (q) { return q.slice(); }); intro(true);
+        if (W && H) { draw(); dirty = false; }
+      });
+      seen.observe(root);
 
       env.loop(function (t, dt) {
         var sc = st.sc, target = sc.basis ? (sc.pyramid ? 0.56 : 0.32) : sc.fit ? 0.3 : 0;
         if (Math.abs(st.bh - target) > 0.001) { st.bh += (target - st.bh) * (1 - Math.exp(-7 * dt)); dirty = true; }
         else if (st.bh !== target) { st.bh = target; dirty = true; }
         st.t += dt;
+        if (sc.strip && st.intro < INTRO.move[1]) { st.intro += dt; quiet(phase(st.intro, INTRO.ui)); dirty = true; }
         if (st.f && !st.touched) {               // refine both together, hold, start over
           var k = KT.clamp((st.t % 11) / 7.5, 0, 1), n = Math.round(14 * Math.pow(150 / 14, k)), mm2 = Math.round(20 * Math.pow(900 / 20, k));
           if (n !== st.f.n || mm2 !== st.f.m) { st.f.n = n; st.f.m = mm2; slN.set(n); slM.set(Math.log(mm2 / 16) / Math.log(75)); refit(true); }
@@ -633,8 +727,8 @@
         }
         if (!st.touched && !drag) {
           if (sc.wiggle != null) {             // idle motion so the stage is alive before anyone touches it
-            var i = sc.wiggle, b = st.base[i];
-            st.P[i] = [b[0] + 0.07 * Math.sin(st.t * 1.1), KT.clamp(b[1] + 0.16 * Math.sin(st.t * 1.7), 0, 1)];
+            var i = sc.wiggle, b = st.base[i], amp = sc.strip ? phase(st.intro, INTRO.move) : 1;   // the strip holds still through its intro
+            st.P[i] = [b[0] + amp * 0.07 * Math.sin(st.t * 1.1), KT.clamp(b[1] + amp * 0.16 * Math.sin(st.t * 1.7), 0, 1)];
             dirty = true;
           }
           if (sc.cycle) {
@@ -658,14 +752,21 @@
       if (!document.getElementById('kt-basis-css')) {
         var css = document.createElement('style'); css.id = 'kt-basis-css';
         css.textContent = '.kt-sim-basis .kt-t{font:600 11px/1 var(--f-mono);letter-spacing:.04em}' +
-          '.kt-sim-basis.kt-embed .kt-panel{min-width:176px}';
+          '.kt-sim-basis.kt-embed .kt-panel{min-width:176px}' +
+          /* the strip's intro (scene `ducks`): the module's chrome fades in with the marks (--bs-ui, set every frame) */
+          '.kt-sim-basis .kt-caption,.kt-sim-basis .kt-hint,.kt-sim-basis .kt-panel,.kt-sim-basis .kt-gear{opacity:var(--bs-ui,1)}' +
+          '.kt-sim-basis.bs-quiet .kt-caption,.kt-sim-basis.bs-quiet .kt-hint,.kt-sim-basis.bs-quiet .kt-panel,.kt-sim-basis.bs-quiet .kt-gear{pointer-events:none}';
         document.head.appendChild(css);
       }
 
       load(false); setScene('ducks');
       return {
         setScene: setScene,
-        resize: function (w, h) { W = w; H = h; svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); st.ghost = null; dirty = true; }
+        // drawn at once, so a stage that is about to scroll in already shows its picture
+        resize: function (w, h) { W = w; H = h; svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); st.ghost = null; draw(); dirty = true; },
+        destroy: function () { seen.disconnect(); },
+        /* for tests: the scene, how far the strip's intro is, and the strip on screen */
+        state: function () { return { scene: st.scene, intro: st.intro, bh: st.bh, touched: st.touched, scale: handoffScale(W, H), L: { s: L.s, ox: L.ox, oy: L.oy }, P: st.P.map(function (q) { return px(q); }) }; }
       };
     }
   });

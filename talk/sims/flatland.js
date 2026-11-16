@@ -9,7 +9,9 @@
      BOUND (ours)       one cubic B-spline; every Gaussian is DERIVED from it
                         (mean = S(u), covariance = tangent frame, colour = basis-blended features).
 
-   Nothing below is scripted: the picture is whatever the optimizer does.
+   Nothing below is scripted: the picture is whatever the optimizer does. The one exception is the closing beat,
+   scene `handoff`: training stops, everything but the bound curve fades out, and that curve eases onto a fixed
+   spline fit of the true curve (HANDOFF), the curve chapter 02 (sims/basis.js) starts from.
 
    File layout: (1) pure section — scene, renderer, analytic gradients, Adam, metrics. It has no
    DOM access and loads under node (`require('./flatland.js')`) for gradient / convergence tests.
@@ -89,6 +91,48 @@
     }
     return Math.sqrt(best);
   }
+
+  /* ---------- the hand-off curve ----------
+     Chapter 01 ends (scene `handoff`) with one curve left on the stage, and chapter 02 (talk/sims/basis.js,
+     scene `ducks`) starts from the same curve, in the same place and style. It is the true curve above, written
+     as a clamped uniform cubic B-spline with 14 control points: least squares on the GT_N points of y = h(x),
+     parametrized by x (u = (x + L) / 2L), both end points pinned to the ends of the curve. Computed once, with
+     no randomness; its worst distance to the true curve is 0.0024 (half a pixel on a laptop-sized stage).
+     y0 / y1 = the y range of that spline. Everything is rounded to 4 decimals because basis.js carries a literal
+     copy (its HANDOFF): keep the two equal.
+       node -e "console.log(JSON.stringify(require('./talk/sims/flatland.js').HANDOFF))"                      */
+  var HANDOFF = (function () {
+    var n = 14, p = 3, U = NURBS.clampedKnots(n, p), N = new Float64Array(p + 1), A = [], B = [], P = [];
+    var i, j, k, sp, u, f, t, x, y, y0 = Infinity, y1 = -Infinity, q;
+    function r4(v) { return Math.round(v * 1e4) / 1e4; }
+    for (i = 0; i < n; i++) { A.push(new Float64Array(n)); B.push([0, 0]); }
+    for (k = 0; k < GT_N; k++) {
+      u = k / (GT_N - 1); sp = NURBS.findSpan(n, p, u, U); NURBS.basisFuns(sp, u, p, U, N);
+      for (i = 0; i <= p; i++) {
+        B[sp - p + i][0] += N[i] * GT_X[k]; B[sp - p + i][1] += N[i] * GT_Y[k];
+        for (j = 0; j <= p; j++) A[sp - p + i][sp - p + j] += N[i] * N[j];
+      }
+    }
+    A[0].fill(0); A[0][0] = 1; B[0] = [GT_X[0], GT_Y[0]];                            // pinned ends
+    A[n - 1].fill(0); A[n - 1][n - 1] = 1; B[n - 1] = [GT_X[GT_N - 1], GT_Y[GT_N - 1]];
+    for (i = 0; i < n; i++) {                                                          // Gaussian elimination, partial pivoting
+      for (k = i + 1, j = i; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[j][i])) j = k;
+      t = A[i]; A[i] = A[j]; A[j] = t; t = B[i]; B[i] = B[j]; B[j] = t;
+      for (k = i + 1; k < n; k++) {
+        f = A[k][i] / A[i][i]; if (!f) continue;
+        for (j = i; j < n; j++) A[k][j] -= f * A[i][j];
+        B[k][0] -= f * B[i][0]; B[k][1] -= f * B[i][1];
+      }
+    }
+    for (i = n - 1; i >= 0; i--) {
+      x = B[i][0]; y = B[i][1];
+      for (j = i + 1; j < n; j++) { x -= A[i][j] * P[j][0]; y -= A[i][j] * P[j][1]; }
+      P[i] = [x / A[i][i], y / A[i][i]];
+    }
+    P = P.map(function (c) { return [r4(c[0]), r4(c[1])]; });
+    for (k = 0; k <= 2000; k++) { q = NURBS.curvePoint(P, null, p, U, k / 2000); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+    return { P: P, y0: r4(y0), y1: r4(y1) };
+  })();
 
   /* ---------- 1D pinhole camera on the arc ---------- */
   function makeCamera(theta, cam) {
@@ -586,7 +630,7 @@
   function setNovel(E, theta) { makeCamera(theta, E.novel); renderGT(E.novel, E.novelTgt); }
 
   var core = {
-    CFG: CFG, FREE_P: FREE_P, GT_N: GT_N, GT_X: GT_X, GT_Y: GT_Y,
+    CFG: CFG, FREE_P: FREE_P, GT_N: GT_N, GT_X: GT_X, GT_Y: GT_Y, HANDOFF: HANDOFF,
     sigmoid: sigmoid, gtHeight: gtHeight, gtColor: gtColor, distToCurve: distToCurve,
     makeCamera: makeCamera, trainAngles: trainAngles, defaultNovelAngle: defaultNovelAngle, renderGT: renderGT,
     makeGaussians: makeGaussians, renderCam: renderCam, derive: derive, lossGrad: lossGrad, trainStep: trainStep,
@@ -610,8 +654,30 @@
     novel:  { model: 'free',  reset: false, k: null,   sel: 'novel', pulse: true,  hl: true,  rays: false },
     rays:   { model: 'free',  reset: true,  k: 'min',  sel: 'auto',  pulse: false, hl: true,  rays: true },
     bound:  { model: 'bound', reset: true,  k: 'user', sel: 'novel', pulse: false, hl: false, rays: false },
-    versus: { model: 'both',  reset: true,  k: 'user', sel: 'novel', pulse: false, hl: false, rays: false }
+    versus: { model: 'both',  reset: true,  k: 'user', sel: 'novel', pulse: false, hl: false, rays: false },
+    /* the closing beat: the picture of the scene before it, then only the bound curve stays (see `drawHandoff`) */
+    handoff: { model: 'both', reset: false, k: null,   sel: null,    pulse: false, hl: false, rays: false, handoff: true }
   };
+
+  /* ---------- the hand-off: chapter 01's last picture is chapter 02's first ----------
+     HANDOFF LAYOUT, the same rule in talk/sims/basis.js (scene `ducks`), so the two pictures coincide on stages
+     of the same size: the curve's x range, -1.4 .. 1.4, spans the middle 76 % of the stage width; y uses the same
+     scale; the middle of the curve's y range (HANDOFF.y0 .. y1) sits at the vertical centre of the stage. Should
+     that make the curve taller than 40 % of the stage height, the height sets the scale instead (still centred).
+     HANDOFF STYLE, also shared: the curve as a lit tube in the surface colour. Core width w = clamp(0.02 s, 2.5, 6)
+     px, s = px per world unit of that layout; round caps and joins. Under the core a soft glow of nine strokes in
+     the surface colour, 8 / 7 / 6 / 5.1 / 4.3 / 3.6 / 3 / 2.4 / 1.9 w wide at alpha .018 / .022 / .028 / .034 /
+     .042 / .052 / .064 / .08 / .11 (HO_GLOW: plain strokes, no blur filter, so Canvas and SVG draw it alike); over
+     the core a highlight 0.4 w wide in #dcf6ff at alpha .9. */
+  var HO_W = 0.76, HO_H = 0.40, HO_HI = '#dcf6ff';
+  var HO_GLOW = [[8, 0.018], [7, 0.022], [6, 0.028], [5.1, 0.034], [4.3, 0.042], [3.6, 0.052], [3, 0.064], [2.4, 0.08], [1.9, 0.11]];
+  var HO_FADE = 1.5, HO_MOVE = [0.3, 1.8];      // s: everything else fades over [0, 1.5]; the curve moves over [0.3, 1.8]
+  function handoffFrame(W, H) {                 // screen point of world (x, y) = (ox + s x, oy - s y)
+    var s = Math.min(HO_W * W / (2 * CFG.L), HO_H * H / (HANDOFF.y1 - HANDOFF.y0));
+    return { s: s, ox: W / 2, oy: H / 2 + s * (HANDOFF.y0 + HANDOFF.y1) / 2 };
+  }
+  function handoffWidth(s) { return clamp(0.02 * s, 2.5, 6); }
+  function smoother(t) { t = clamp(t, 0, 1); return t * t * t * (t * (6 * t - 15) + 10); }
 
   function rgba(hex, a) {
     var n = parseInt(hex.slice(1), 16);
@@ -667,7 +733,13 @@
       '.kt-sim-flatland.fl-compact .fl-num{font-size:13px}',
       '.kt-sim-flatland.fl-compact .fl-metrics .kt-readout{display:none}',
       '.kt-sim-flatland.fl-compact:not(.kt-compact) .fl-ctl{left:8px;right:8px;bottom:8px;padding:6px 8px;gap:5px 8px;justify-content:center;width:auto}',
-      '.kt-sim-flatland.fl-compact .fl-ctl .kt-slider{width:150px}'
+      '.kt-sim-flatland.fl-compact .fl-ctl .kt-slider{width:150px}',
+      /* scene `handoff`: the module's own chrome fades with the picture (--fl-keep, set every frame) and stops taking input */
+      '.kt-sim-flatland.fl-handoff .fl-cap,.kt-sim-flatland.fl-handoff .fl-metrics,.kt-sim-flatland.fl-handoff .fl-ctl,' +
+        '.kt-sim-flatland.fl-handoff .kt-gear{opacity:var(--fl-keep,1);pointer-events:none}',
+      '.kt-sim-flatland.fl-handoff .fl-handle{pointer-events:none}',
+      '.kt-sim-flatland.fl-gone .fl-cap,.kt-sim-flatland.fl-gone .fl-metrics,.kt-sim-flatland.fl-gone .fl-ctl,' +
+        '.kt-sim-flatland.fl-gone .kt-gear{visibility:hidden}'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -682,7 +754,8 @@
       { id: 'novel', label: 'A new viewpoint' },
       { id: 'rays', label: 'Depth ambiguity' },
       { id: 'bound', label: 'Bound to a curve' },
-      { id: 'versus', label: 'Free vs. bound' }
+      { id: 'versus', label: 'Free vs. bound' },
+      { id: 'handoff', label: 'Only the curve' }
     ],
 
     create: function (env) {
@@ -707,10 +780,16 @@
       var arcCam = [], arcGT = [], ARC = { free: new Float64Array(ARC_N), bound: new Float64Array(ARC_N) }, arcStep = -1;
       var probe = null, probeStep = -1, slideTrain = NaN;
       var drawTab = null;                // basis table for drawing the bound curve
+      /* scene `handoff`: t = seconds since it started (time-based, paused off screen like every loop), keep = how
+         much of everything else is still drawn, k = how far the curve has come (pane -> hand-off frame, plain ->
+         hand-off style). from = the bound curve's control points when it started; goal = the hand-off curve at the
+         same 241 parameters that drawTab uses. */
+      var HO = { on: false, t: 0, keep: 1, k: 0, done: false, back: null, from: new Float64Array(2 * CFG.M), goal: new Float64Array(2 * 241) };
       (function () {
-        var us = [], i;
+        var us = [], i, q, Uh = NURBS.clampedKnots(HANDOFF.P.length, 3);
         for (i = 0; i <= 240; i++) us.push(i / 240);
         drawTab = NURBS.axisTable(NURBS.clampedKnots(CFG.M, 3), CFG.M, 3, us);
+        for (i = 0; i <= 240; i++) { q = NURBS.curvePoint(HANDOFF.P, null, 3, Uh, us[i]); HO.goal[2 * i] = q[0]; HO.goal[2 * i + 1] = q[1]; }
         for (i = 0; i < ARC_N; i++) { arcCam.push(makeCamera(-CFG.thNovel + 2 * CFG.thNovel * i / (ARC_N - 1))); arcGT.push(null); }
       })();
 
@@ -770,7 +849,7 @@
       var downAt = null;
       function onDown(e) { downAt = [e.clientX, e.clientY]; }
       function onUp(e) {
-        if (!downAt || Math.abs(e.clientX - downAt[0]) + Math.abs(e.clientY - downAt[1]) > 8) { downAt = null; return; }
+        if (HO.on || !downAt || Math.abs(e.clientX - downAt[0]) + Math.abs(e.clientY - downAt[1]) > 8) { downAt = null; return; }
         downAt = null;
         var r = rootEl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, best = -1, bd = 26 * 26, vi, k, v, d;
         for (vi = 0; vi < views.length; vi++) for (k = 0; k < E.K; k++) {
@@ -805,6 +884,7 @@
         bound: function () { return '<b>Bound Gaussians</b><br>One cubic B-spline, ' + CFG.M + ' control points. Every splat is derived from the curve — none can leave it.'; },
         versus: function () { return '<b>Same photos, same start, same steps</b><br>Only the parametrization differs.'; }
       };
+      CAPS.handoff = CAPS.versus;                  // it fades out with the picture it belongs to
       function paintCaption() {
         var f = CAPS[scene] || CAPS.free;
         cap.innerHTML = f() +
@@ -813,17 +893,29 @@
       }
 
       function setScene(id) {
-        var S = SCENES[id];
-        if (!S || id === scene) return;            // idempotent: re-selecting a scene never restarts it
+        var S = SCENES[id], back;
+        // idempotent: re-selecting a scene never restarts it. The hand-off is the exception: picked again, it replays.
+        if (!S || (id === scene && !S.handoff)) return;
+        // stepping back out of the hand-off to the scene it started from carries on with the same run (no reset)
+        back = HO.on && id === HO.back;
+        if (S.handoff) HO.back = scene === 'handoff' ? HO.back : scene;
         scene = id;
-        model = S.model; segModel.set(model); showRows();
+        model = S.handoff && (model === 'bound' || model === 'both') ? model : S.model; segModel.set(model); showRows();
         pulse = S.pulse; hl = S.hl; raysOn = S.rays; selUser = false;
         if (S.k === 'min') K = K_MIN; else if (S.k === 'user') K = userK;
-        if (S.reset) reset();
-        sel = S.sel === 'train' ? trainSel() : S.sel === 'auto' ? 0 : 'novel';
+        if (S.reset && !back) reset();
+        if (S.sel) sel = S.sel === 'train' ? trainSel() : S.sel === 'auto' ? 0 : 'novel';
         if (typeof sel === 'number' && sel >= E.K) sel = E.K - 1;
-        setRun(true);
+        setRun(!S.handoff);                         // the hand-off stops training: the curve it carries away is fixed
+        handoff(!!S.handoff);
         paintCaption(); layout(); dirty = true;
+      }
+      /* start (or restart) / end the hand-off */
+      function handoff(on) {
+        HO.on = on; HO.t = 0; HO.keep = 1; HO.k = 0; HO.done = false;
+        if (on) for (var j = 0; j < 2 * CFG.M; j++) HO.from[j] = E.bound.th[j];
+        rootEl.classList.toggle('fl-handoff', on); rootEl.classList.remove('fl-gone');
+        rootEl.style.setProperty('--fl-keep', '1');
       }
 
       /* ---------- layout ---------- */
@@ -1045,6 +1137,7 @@
         ctx.beginPath();
         for (j = 0; j < M; j++) { x = v.ox + th[2 * j] * v.s; y = v.oy - th[2 * j + 1] * v.s; if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
         ctx.lineWidth = 1; ctx.strokeStyle = rgba(COL.ctrl, 0.45); ctx.stroke();
+        if (HO.on) return;                   // the hand-off draws the curve itself, on top of everything (drawHandoff)
         // the curve S(u)
         ctx.beginPath();
         for (i = 0; i < T.n; i++) {
@@ -1238,20 +1331,49 @@
         }
         ctx.textBaseline = 'alphabetic';
       }
+      /* scene `handoff`: the bound curve, from its place in the BOUND pane (k = 0) to the hand-off curve in the
+         hand-off frame (k = 1), sample by sample at the same parameter u; its style goes from the plain line to
+         the HANDOFF STYLE on the way. Drawn last and unclipped, at full opacity, while the rest fades. */
+      function drawHandoff() {
+        var F = handoffFrame(Wd, Hd), k = HO.k, th = HO.from, G = HO.goal, T = drawTab, v = null, i, r, j, N, x, y, ax, ay, w0, w;
+        for (i = 0; i < views.length; i++) if (views[i].kind === 'bound') v = views[i];
+        if (!v) v = F;                       // no BOUND pane (never in the deck): start in the hand-off frame
+        ctx.beginPath();
+        for (i = 0; i < T.n; i++) {
+          x = y = 0;
+          for (r = 0; r < 4; r++) { j = T.span[i] - 3 + r; N = T.N[i * 4 + r]; x += N * th[2 * j]; y += N * th[2 * j + 1]; }
+          ax = v.ox + x * v.s; ay = v.oy - y * v.s;
+          x = ax + (F.ox + G[2 * i] * F.s - ax) * k; y = ay + (F.oy - G[2 * i + 1] * F.s - ay) * k;
+          if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+        w0 = compact ? 1.3 : 1.6; w = w0 + (handoffWidth(F.s) - w0) * k;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        if (k > 0) for (i = 0; i < HO_GLOW.length; i++) {
+          ctx.lineWidth = w * HO_GLOW[i][0]; ctx.strokeStyle = rgba(COL.surf, (HO_GLOW[i][1] * k).toFixed(4)); ctx.stroke();
+        }
+        ctx.lineWidth = w; ctx.strokeStyle = COL.surf; ctx.stroke();
+        if (k > 0) { ctx.lineWidth = 0.4 * w; ctx.strokeStyle = rgba(HO_HI, (0.9 * k).toFixed(4)); ctx.stroke(); }
+        ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+      }
       function draw() {
         if (!E || !Wd || !stripBox) return;
         var off = renderStrips(), i, v, hx, hy;
         ctx.clearRect(0, 0, Wd, Hd);
-        for (i = 0; i < views.length; i++) drawView(views[i], off);
-        if (views.length > 1) {              // hairline between the two panes
-          v = views[1]; ctx.beginPath();
-          if (v.x > views[0].x) { ctx.moveTo(v.x + 0.5, v.y + 8); ctx.lineTo(v.x + 0.5, v.y + v.h - 8); }
-          else { ctx.moveTo(v.x + 16, v.y + 0.5); ctx.lineTo(v.x + v.w - 16, v.y + 0.5); }
-          ctx.lineWidth = 1; ctx.strokeStyle = COL.line; ctx.stroke();
+        ctx.globalAlpha = HO.on ? HO.keep : 1;
+        if (ctx.globalAlpha > 0.002) {
+          for (i = 0; i < views.length; i++) drawView(views[i], off);
+          if (views.length > 1) {            // hairline between the two panes
+            v = views[1]; ctx.beginPath();
+            if (v.x > views[0].x) { ctx.moveTo(v.x + 0.5, v.y + 8); ctx.lineTo(v.x + 0.5, v.y + v.h - 8); }
+            else { ctx.moveTo(v.x + 16, v.y + 0.5); ctx.lineTo(v.x + v.w - 16, v.y + 0.5); }
+            ctx.lineWidth = 1; ctx.strokeStyle = COL.line; ctx.stroke();
+          }
+          if (raysOn) drawRaysInfo();
+          drawLegend();
+          drawStrips();
         }
-        if (raysOn) drawRaysInfo();
-        drawLegend();
-        drawStrips();
+        ctx.globalAlpha = 1;
+        if (HO.on) drawHandoff();
         for (i = 0; i < views.length; i++) {
           v = views[i]; hx = v.ox + E.novel.px * v.s; hy = v.oy - E.novel.py * v.s;
           handles[i].style.transform = 'translate(' + hx.toFixed(1) + 'px,' + hy.toFixed(1) + 'px)';
@@ -1279,8 +1401,17 @@
         }
         if (arcStep !== E.free.step && (t - tArc > 0.35 || dirty)) { updateArc(); tArc = t; }
         if (raysOn && probeStep !== E.free.step && E.free.step >= 300 && (t - tProbe > 2 || !stepped)) { updateProbe(); tProbe = t; }
+        var redraw = dirty || !HO.on || !HO.done;
+        if (HO.on && !HO.done) {                 // the hand-off: time-based; once it has ended the picture holds still
+          HO.t += dt;
+          HO.keep = 1 - smoother(HO.t / HO_FADE);
+          HO.k = smoother((HO.t - HO_MOVE[0]) / (HO_MOVE[1] - HO_MOVE[0]));
+          HO.done = HO.t >= Math.max(HO_FADE, HO_MOVE[1]);
+          rootEl.style.setProperty('--fl-keep', HO.keep.toFixed(3));
+          rootEl.classList.toggle('fl-gone', HO.keep < 0.002);
+        }
         dirty = false;
-        draw();
+        if (redraw) draw();
       });
 
       /* ---------- boot ---------- */
@@ -1293,7 +1424,8 @@
         destroy: function () { cvs.cv.removeEventListener('pointerdown', onDown); cvs.cv.removeEventListener('pointerup', onUp); },
         /* for tests and for the deck's speaker notes: the live numbers */
         state: function () {
-          return { scene: scene, K: E.K, step: E.free.step, model: model, sel: sel,
+          return { scene: scene, K: E.K, step: E.free.step, model: model, sel: sel, running: running,
+                   handoff: HO.on ? { t: HO.t, keep: HO.keep, k: HO.k, done: HO.done, frame: handoffFrame(Wd, Hd) } : null,
                    free: { train: MET.free.train, novel: MET.free.novel, geo: MET.free.geo, floaters: MET.free.fl, params: E.free.th.length },
                    bound: { train: MET.bound.train, novel: MET.bound.novel, geo: MET.bound.geo, floaters: MET.bound.fl, params: E.bound.th.length },
                    probe: probe && { one: probe.one.length, all: probe.list.length, base: probe.base, medAlong: probe.medAlong, medAcross: probe.medAcross,

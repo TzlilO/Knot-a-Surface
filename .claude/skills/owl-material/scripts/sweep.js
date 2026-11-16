@@ -49,8 +49,9 @@ const ROOT = 'file://' + path.resolve(__dirname, '../../../..') + '/';
         await p.evaluate(j => { const s = document.querySelectorAll('.step')[j]; if (s.offsetParent) { s.scrollIntoView({ block: 'center' }); window.dispatchEvent(new Event('scroll')); } }, i);
         await step(p, 3); await p.waitForTimeout(30);
       }
-      const sum = await p.evaluate(() => ['min40', 'min20'].map(a => [...document.querySelectorAll('[data-' + a + ']')].reduce((t, e) => t + +e.dataset[a], 0)));
-      return k + ' steps, time budgets ' + sum.join(' / ') + (sum[0] === 40 && sum[1] === 20 ? '' : '  <-- must be 40 / 20');
+      // the talk (everything after the opening, .prelude) is budgeted to at most 40 / 20 minutes; the opening comes on top
+      const sum = await p.evaluate(() => ['min40', 'min20'].map(a => [...document.querySelectorAll('[data-' + a + ']')].reduce((t, e) => t + (e.closest('.prelude') ? 0 : +e.dataset[a]), 0)));
+      return k + ' steps, time budgets of the talk ' + sum.join(' / ') + (sum[0] <= 40 && sum[1] <= 20 ? '' : '  <-- must be at most 40 / 20');
     });
   }
   console.log(bad ? 'ERRORS: ' + bad : 'ALL CLEAN');

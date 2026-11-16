@@ -1,7 +1,11 @@
 /* Knot-a-Surface talk — scroll-driven deck engine.
    Steps (.step, plus the cover) are the unit of navigation: the one nearest the reading line is
    active, and its data-scene is pushed to the chapter's simulation. Keys: → / space next,
-   ← previous, F focus the stage, T pace clock, 0–8 chapters. */
+   ← previous, F focus the stage, T pace clock, 0 the Knot-a-Surface cover, 1–8 chapters, Home the opening.
+   The opening ("How does a computer see in 3D?") and the cover sit in a light wrapper, .prelude
+   (talk/prelude.css); while a step inside it is active, body.lightroom turns the fixed chrome light too.
+   Parts of the talk can be switched off (data-off in talk.html, or the slide master, talk/master.js): see "parts"
+   below. KnotTalk.deck is the handle the slide master (and tests) use. */
 (function () {
   'use strict';
   var KT = window.KnotTalk;
@@ -49,7 +53,12 @@
   });
   function mountSim(sec) {
     if (sec._sim || !KT.sims[sec.dataset.sim]) return;
-    sec._sim = KT.mount(sec.dataset.sim, $('.sim-mount', sec), { embed: true, scene: sec._cur || sec.dataset.scene });
+    // a section may add mount options as JSON in data-mount (no chrome, a transparent canvas, a smaller capacity...);
+    // the numbers a module reports are passed on as a `kt-stats` event on the section
+    var o = { embed: true, scene: sec._cur || sec.dataset.scene,
+              onStats: function (st) { sec.dispatchEvent(new CustomEvent('kt-stats', { detail: st })); } };
+    if (sec.dataset.mount) try { Object.assign(o, JSON.parse(sec.dataset.mount)); } catch (e) { /* malformed: mount as usual */ }
+    sec._sim = KT.mount(sec.dataset.sim, $('.sim-mount', sec), o);
     if (sec._cur) sec._sim.setScene(sec._cur);
   }
   var near = new IntersectionObserver(function (es) {
@@ -68,8 +77,9 @@
 
   /* ================= steps ================= */
   var allNav = $$('.nav'), cur = null, mobile = window.matchMedia('(max-width:900px)');
-  allNav.forEach(function (n, i) { n._i = i; });
+  allNav.forEach(function (n, i) { n._i = i; n._sec = n.closest('section[data-rail]') || n.closest('section') || n; });
   function visibleNav() { return allNav.filter(function (n) { return n.offsetParent !== null; }); }
+  function emit(type, detail) { document.dispatchEvent(new CustomEvent(type, { detail: detail })); }
 
   function activate(n) {
     if (n === cur) return;
@@ -82,17 +92,21 @@
       if (sec._link) sec._link.href = 'talk/sims/' + sec.dataset.sim + '.html#' + sc;
     }
     chapters.forEach(function (c) { c._rail.classList.toggle('on', c === sec || c.contains(n)); });
+    document.body.classList.toggle('lightroom', !!n.closest('.prelude'));
     $$('.stage-frame.is-current').forEach(function (f) { f.classList.remove('is-current'); });
     var fr = $('.stage-frame', sec); if (fr) fr.classList.add('is-current'); else setFocus(false);
     try { history.replaceState(null, '', '#s' + n._i); } catch (e) {}
     sound(n);
     tick();
+    emit('kt-step', { step: n });
   }
 
   /* ================= a step may carry a sound =================
      <article ... data-audio="name" data-audio-len="30">: while such a step is active the first seconds of the
      track loop, faded in and out. Names are resolved in KnotTalk.tracks (talk/audio/tracks.js); a name that is
      not listed there is silent, and the mute button and the credit line (.credit) stay hidden. M mutes.
+     <article ... data-sfx>: the step's simulation makes sound effects of its own (synthesized, e.g. chapter 07b);
+     the button shows there too, and the same mute reaches them through KnotTalk.muted.
      Browsers only start sound after a key or a click. */
   var snd = { a: null, src: '', len: 30, ok: false, want: false, mute: false, vol: 0, raf: 0, btn: $('.sound') };
   function sound(n) {
@@ -109,7 +123,9 @@
   }
   function paintSound() {
     document.body.classList.toggle('has-sound', snd.ok);
-    snd.btn.hidden = !(snd.ok && snd.want); snd.btn.classList.toggle('off', snd.mute);
+    // the button also shows on a step whose simulation makes its own sound (data-sfx); KT.muted silences that too
+    snd.btn.hidden = !((snd.ok && snd.want) || (cur && cur.hasAttribute('data-sfx'))); snd.btn.classList.toggle('off', snd.mute);
+    KT.muted = snd.mute;
   }
   function fade() {
     cancelAnimationFrame(snd.raf);
@@ -146,6 +162,7 @@
   window.addEventListener('resize', onScroll);
 
   function go(n, instant) {
+    if (n && n.offsetParent === null) n = near(n, 1);   // a part that is off: where it would be, the next step shown
     if (!n) return;
     var r = n.getBoundingClientRect(), top;
     if (n.classList.contains('cover') || r.height > window.innerHeight * 0.92) top = window.scrollY + r.top;
@@ -169,6 +186,10 @@
   /* ================= cut length + pace clock ================= */
   var clock = { t0: 0, el: $('.clock') }, cutBtns = $$('.cut button');
   function cut() { return document.body.classList.contains('cut-20') ? 20 : 40; }
+  /* the planned length of a cut, from the chapter budgets: the buttons and the clock show it, so they stay true
+     whatever the chapters add up to */
+  function total(m) { var key = m === 20 ? 'min20' : 'min40'; return chapters.reduce(function (t, c) { return t + (+c.dataset[key] || 0); }, 0); }
+  cutBtns.forEach(function (b) { b.textContent = Math.round(total(+b.dataset.cut)) + '′'; });
   function setCut(m) {
     document.body.classList.toggle('cut-20', m === 20);
     cutBtns.forEach(function (b) { b.classList.toggle('on', +b.dataset.cut === m); });
@@ -202,7 +223,7 @@
     if (!clock.t0) { clock.el.className = 'clock'; clock.el.innerHTML = 'T · start clock · plan ' + mmss(p); return; }
     var e = (Date.now() - clock.t0) / 1000;
     clock.el.className = 'clock ' + (e > p + 45 ? 'late' : 'ok');
-    clock.el.innerHTML = '<b>' + mmss(e) + '</b> · plan ' + mmss(p) + ' / ' + cut() + '′';
+    clock.el.innerHTML = '<b>' + mmss(e) + '</b> · plan ' + mmss(p) + ' / ' + Math.round(total(cut())) + '′';
   }
   setInterval(tick, 1000);
 
@@ -225,8 +246,8 @@
     else if (k === 't' || k === 'T') { if (clock.t0) clock.t0 = 0; else startClock(); tick(); }
     else if (k === 'm' || k === 'M') snd.btn.click();
     else if (k === '?') keys.classList.toggle('on');
-    else if (k >= '0' && k <= '9') {                 // 0 = cover, 1-8 = that chapter, 9 = takeaways
-      var c = k === '0' ? chapters[0] : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
+    else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-8 = that chapter, 9 = takeaways
+      var c = k === '0' ? ($('section.cover[data-rail]') || chapters[0]) : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
       go(firstNav(c));
     }
   });

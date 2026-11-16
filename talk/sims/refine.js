@@ -15,6 +15,8 @@
   'use strict';
   var NODE = typeof module !== 'undefined' && module.exports;
   var NB = NODE ? require('../nurbs.js') : root.KnotTalk.nurbs;
+  var targetRaw = NODE ? require('../terrain.js') : root.KnotTalk.terrain;   // talk/terrain.js (chapter 03 fits it too)
+  if (typeof targetRaw !== 'function') throw new Error('refine: load talk/terrain.js before talk/sims/refine.js');
   var P = 3, W = 4;                       // cubic everywhere
 
   /* =====================================================================================
@@ -23,29 +25,8 @@
      (y, downwards). The control net is Z[j * nu + i], i along u, j along v.
      ===================================================================================== */
 
-  /* ---------- the target: smooth rolling ground + one crater field ---------- */
-  function crater(x, y, cx, cy, R, w, rim, depth) {
-    var dx = x - cx, dy = y - cy, r = Math.sqrt(dx * dx + dy * dy), q = (r - R) / w, s = Math.max(0.62 * R, w);
-    return rim * Math.exp(-q * q) - depth * Math.exp(-(r * r) / (s * s));
-  }
-  function ridge(x, y, ax, ay, bx, by, w, amp) {
-    var ux = bx - ax, uy = by - ay, L2 = ux * ux + uy * uy;
-    var t = ((x - ax) * ux + (y - ay) * uy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
-    var dx = x - (ax + t * ux), dy = y - (ay + t * uy);
-    return amp * (1 - 0.55 * t) * Math.exp(-(dx * dx + dy * dy) / (w * w));
-  }
-  function targetRaw(x, y) {
-    // rolling ground: about a third of a wavelength across the map — a 5 x 5 net can hold it
-    var h = 0.20 * Math.sin(2.3 * x + 0.5) * Math.cos(1.7 * y - 0.3)
-          + 0.13 * Math.cos(1.4 * x - 2.1 * y + 0.9)
-          + 0.10 * (y - 0.5) * (x - 0.3);
-    // crater field: one rimmed crater, a secondary bowl on its flank, two spur ridges
-    h += crater(x, y, 0.655, 0.365, 0.104, 0.050, 0.21, 0.17);
-    h += crater(x, y, 0.560, 0.455, 0.046, 0.050, 0.060, 0.080);
-    h += ridge(x, y, 0.745, 0.290, 0.815, 0.225, 0.048, 0.095);
-    h += ridge(x, y, 0.735, 0.450, 0.780, 0.505, 0.048, 0.070);
-    return h;
-  }
+  /* ---------- the target: smooth rolling ground + one crater field ----------
+     targetRaw is talk/terrain.js (KnotTalk.terrain): one definition, shared with chapter 03's patch. */
   /* Sampled target at cell centres, normalised so the relief spans exactly [0, 1]. */
   function makeTarget(G) {
     var T = new Float64Array(G * G), lo = Infinity, hi = -Infinity, a, b, v;

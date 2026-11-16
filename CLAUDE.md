@@ -37,15 +37,31 @@ knot chart, surface-prior bench) ship as sibling pages.
 Independent of deck.html and of the build: plain static files, classic scripts (works from `file://`).
 - `talk.html` = all slide copy. A step is `<article class="step nav" data-scene="…">`; the step nearest
   the reading line is active and its `data-scene` is pushed to the chapter's simulation
-  (`<section class="chapter" data-sim="…">`). `data-depth="deep"` steps are hidden in the 20′ cut;
-  `data-min40`/`data-min20` on each section are the pace-clock budgets (must sum to 40 / 20).
+  (`<section class="chapter" data-sim="…">`). `data-depth="deep"` steps are hidden in the short cut;
+  `data-min40`/`data-min20` on each section are the pace-clock budgets: the talk after the opening must sum to at
+  most 40 / 20, the opening comes on top, and the cut buttons and the clock show the computed totals.
+  A section's `data-mount='{…}'` (JSON) is merged into the options its simulation is mounted with (`bare`,
+  `clear`, `scn`, `budget`, `cap`), and the section receives a `kt-stats` event with the module's stats.
+- The opening (`<div class="prelude">`, first in talk.html): the English version of talk-he.html, "How does a
+  computer see in 3D?" (explicit, implicit, Gaussians, the 3D breakfast scene, "Which one?"), then the talk's
+  cover, all in the Hebrew deck's light "liquid glass" look, scoped to `.prelude` by `talk/prelude.css` (it
+  re-points the kit's and deck's tokens; a sticky "room" of slow light behind it, clipped to `.prelude`; under the
+  cover the page fades into the talk's night). While a step inside it is active, deck.js sets `body.lightroom` and
+  the fixed chrome (rail, HUD, keys) turns light. `talk/prelude.js` = the 3D step's Gaussian slider and count
+  (fewer Gaussians on a phone). The cover (`section.cover`, rail "K", key 0) mounts `manifold` with scene
+  `cover`: the owl and the rabbit (hidden scene `duo`, DTU scans 122 and 55 side by side, the rabbit at the
+  owl's scale) on a 22 s loop: the picture, a dissolve into rolling bands (normals, Gaussians, visual) and back,
+  with a slow camera sway. Home goes to the opening.
 - `talk/kit.js` = `KnotTalk.register(name, {title, blurb, tool, scenes, create(env)})` registry,
   lifecycle (`env.loop` pauses offscreen), UI helpers, and the standalone lab shell
   (`KnotTalk.standalone(name)`, used by every `talk/sims/<name>.html`).
 - `talk/nurbs.js` = spline math (Cox–de Boor, derivatives, Boehm insertion, tensor patches; also
   `require()`-able under node). `talk/gl.js` = three.js helpers incl. `writePlanoids` (the derived
   Gaussian: centre + tangent axes from S_u, S_v and the sampling interval).
-- Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound), `basis` (SVG curve
+- Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound; its last scene `handoff`, SCRIPTED,
+  fades everything but the bound spline and eases it onto the toy's true curve written as a 14-point cubic B-spline,
+  and `basis` uses those same 14 control points (a literal copy) in every single-curve scene, so chapter 01 ends on
+  chapter 02's first picture; both share one layout rule and the bright cyan / amber look), `basis` (SVG curve
   playground; its `letters` / `script` scenes draw "Shalom Rafael" as one spline per letter and as
   three handwritten strokes, from the control polygons in `PRINT` / `HAND`; `morph` blends letters →
   handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with
@@ -54,7 +70,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   samples and shows the gap in red plus a measured gap-vs-control-points plot; `lens` draws the morph's
   curves ONLY as a fixed number of Gaussians that sit on them, spread evenly over the track inside a
   zoomable view window (2D, with an outside-view inset and a freeze toggle): Gaussians never go on empty
-  plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; also the cover's hero; lit translucent
+  plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; lit translucent
   sheet, solid depth-tested vectors via `gl.vector` / `gl.sheet` / `gl.hidden`, a face-on tangent-plane
   inset, and a scale stage that measures the size from the lattice cell's 4 or 8 neighbours against the
   derivative formula),
@@ -115,7 +131,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   old dithered look. A new 3D module must use it too.
 - Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
   (`talk/audio/tracks.js`, empty by default: no recording is in the repo) while the step is active; M mutes; the
-  `.credit` line of a step shows only when a track has loaded.
+  `.credit` line of a step shows only when a track has loaded. `data-sfx` marks a step whose simulation makes
+  its own synthesized sound effects (chapter 07b); the ♪ button shows there too and `KnotTalk.muted` carries
+  the mute to the module.
 - Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
   away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
   written still meets the budget (the far side of a closed chart gets zero weight).
@@ -142,7 +160,8 @@ A separate 5–10 minute RTL deck with its own light "liquid glass" look; not a 
   one short sentence per step.
 - `talk/he/sims.js` = three Canvas-2D modules registered with the kit: `he-shapes` (a doughnut as
   points / triangles / voxels), `he-field` (signed-distance probe + ray marching), `he-fit` (a real
-  optimiser fitting 2D Gaussians to a picture; normalised blend, Adam). The 3D step mounts `manifold`
+  optimiser fitting 2D Gaussians to a picture; normalised blend, Adam). Their labels are bilingual: Hebrew when
+  the page's `<html lang>` starts with `he`, English otherwise (talk.html's opening uses them). The 3D step mounts `manifold`
   bare with `clear:'transparent'` and the hidden `breakfast` scene from `talk/scenes.js`.
 
 ## lab.html — the interactive figure (studio renderer, DINOv3 features, editing)
