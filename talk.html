@@ -339,14 +339,14 @@
 </section>
 
 <!-- ============================================================ 06 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="5" data-min20="2.5">
+<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6" data-min20="3">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene">
       <div class="num">06</div><div class="kick">Scaling to scenes · full power</div>
       <h2>A manifold of splines</h2>
       <p>One patch is a bent rectangle. A real object needs a dense net, and a scene needs an atlas of them.</p>
-      <div class="time">≈ 5 min</div>
+      <div class="time">≈ 6 min</div>
     </article>
     <article class="step nav" data-scene="scene">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -386,11 +386,25 @@
       <p>The same budget, two ways. <b class="c-err">Off</b>: spread by surface area, and the close‑up is built from coarse scales. <b class="c-ok">On</b>: spent where the camera looks.</p>
       <p>Nothing was optimised between the two. Only the sampling changed.</p>
     </article>
+    <article class="step nav" data-scene="mesh" data-depth="deep" data-replay>
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A mesh, <em class="c-surf">stitched from the samples</em></h2>
+      <p>Each chart is sampled on a lattice, so every sample already knows its neighbours. A 2 × 2 window runs over the lattice and stitches two triangles at every stop; the Gaussian at each stitched point is removed.</p>
+      <p>No surface extraction, no marching cubes. The connectivity was there all along.</p>
+      <p class="aside">The table first, 2,080 samples, then the owl, 28,224. The triangles carry the samples’ own colours.</p>
+    </article>
     <article class="step nav" data-scene="edit">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Editable <em class="c-surf">by construction</em></h2>
-      <p>Take every control point above the shoulders and tilt it about one axis: the owl cocks its head. Thousands of Gaussians follow, still tiling, still on the surface. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
+      <p>The owl breathes, blinks, and now and then cocks its head. Each is an edit of the net: the chest’s control points move out and back, everything above the shoulders tilts about one axis, a lid colour closes over the eyes. Thousands of Gaussians follow, still tiling, still on the surface.</p>
+      <p class="aside">Scripted motion, to show what an edit is; nothing here is learned or simulated. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
       <span class="do">Turn on nets, drag an amber point</span>
+    </article>
+    <article class="step nav" data-scene="paint" data-replay>
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Same owl, <em class="c-ctrl">new plumage</em></h2>
+      <p>Appearance lives on the same control points as shape, so a repaint is an edit of control colours and nothing else. Stone turns into a snowy owl, from the head down. Readers of Harry Potter will know her as Hedwig.</p>
+      <p class="aside">The new colours are computed from the photographs’ by a rule: white where the stone is bright, dark bars where the carving has grooves, yellow eyes, a dark beak. Nothing is painted by hand or generated.</p>
     </article>
   </div>
 </section>
@@ -450,7 +464,7 @@
 </section>
 
 <!-- ============================================================ 07b CONTACT -->
-<section class="chapter" data-sim="touch" data-rail="07b" data-title="Can’t touch this" data-min40="3" data-min20="1.25">
+<section class="chapter" data-sim="touch" data-rail="07b" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30">
@@ -521,7 +535,7 @@
 </section>
 
 <!-- ============================================================ CLOSE -->
-<section class="wide" data-rail="Q" data-title="Takeaways" data-min40="2" data-min20="0.75">
+<section class="wide" data-rail="Q" data-title="Takeaways" data-min40="1.5" data-min20="0.5">
   <article class="step nav">
     <div class="lvl">Takeaway</div>
     <p class="thesis">The surface is not reconstructed. <em class="c-surf">It is the representation.</em></p>

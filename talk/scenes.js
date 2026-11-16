@@ -494,6 +494,64 @@
        table  — the fitted table plane, as far as the photographs show it.
      `seen` on a chart (Uint8Array, one per control point) is 1 where the surface was measured and 0 where a
      small hole was inpainted. photo: true — the colours already hold the light of the photographs. */
+  /* The owl of scan 122, alive: animate(t, paint) writes control points and control colours and returns the
+     charts whose shape changed. Everything is an edit of the chart's own net. Regions are in the object's
+     frame (scene units, 1 = 80 mm), read off the fitted surface:
+       breathing — the chest moves out and back along the horizontal direction away from the body's axis;
+       head      — every point above the shoulders tilts about an axis that points at the cameras (so the
+                   sheet's open back never turns into view), now and then;
+       blinking  — a lid colour closes over each eye socket from above;
+       paint     — 0..1 wipes new control colours down from the head: a snowy owl. They are computed from
+                   the photograph colours by a rule (white where the stone is bright, dark bars where the
+                   carving has grooves, yellow eyes, dark beak), nothing is painted by hand or generated. */
+  function owlLife(c) {
+    var P = c.patch.P, K = c.patch.C, B = c.base, K0 = new Float32Array(K), K1 = new Float32Array(K), n = B.length / 3;
+    var EYES = [[0.127, 3.214], [0.470, 3.262]], RE = 0.092, BEAK = [0.335, 3.02], WHITE = [0.90, 0.89, 0.86], BAR = [0.15, 0.12, 0.10];
+    var body = [], bw = [], eyes = [], M = new Float32Array(n), i, o, x, y, z, e, d, w, lid = [[0, 0, 0, 0], [0, 0, 0, 0]];
+    function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
+    c.baseC = K0;
+    for (i = 0; i < n; i++) {
+      o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2];
+      // where the owl ends and the books begin: a line that rises towards the open page on its left
+      M[i] = ss(0, 0.07, y - (x < 0.3 ? 1.56 + 0.25 * x : 1.635 + 1.2 * (x - 0.3)));
+      if (y > 1.7) { body.push(i); bw.push(ss(1.75, 2.2, y) * (1 - ss(2.6, 2.95, y)), ss(2.3, 2.85, y)); }
+      var L = 0.30 * K0[o] + 0.59 * K0[o + 1] + 0.11 * K0[o + 2], sh = Math.min(1, L / 0.30), t = y > 2.85 ? ss(0.06, 0.3, sh) : ss(0.2, 0.62, sh), k;
+      for (k = 0; k < 3; k++) K1[o + k] = BAR[k] + (WHITE[k] * (0.45 + 0.55 * sh) - BAR[k]) * t;
+      d = Math.hypot((x - BEAK[0]) / 0.055, (y - BEAK[1]) / 0.09);
+      if (d < 1.2 && z > 0.3) { w = 1 - ss(0.8, 1.2, d); for (k = 0; k < 3; k++) K1[o + k] += (0.09 * (0.6 + 0.4 * sh) - K1[o + k]) * w; }
+      for (e = 0; e < 2; e++) {
+        d = Math.hypot(x - EYES[e][0], y - EYES[e][1]) / RE; if (z < 0.2) continue;
+        if (d < 1) { eyes.push(i, e, (y - EYES[e][1]) / RE); k = d < 0.42 ? [0.02, 0.02, 0.02] : d < 0.86 ? [0.95, 0.70, 0.08] : [0.08, 0.07, 0.06]; K1[o] = k[0]; K1[o + 1] = k[1]; K1[o + 2] = k[2]; }
+        else if (d < 1.5) { lid[e][0] += K0[o]; lid[e][1] += K0[o + 1]; lid[e][2] += K0[o + 2]; lid[e][3]++; }   // the brow: the lid's colour in stone
+      }
+    }
+    lid.forEach(function (l) { l[0] /= l[3]; l[1] /= l[3]; l[2] /= l[3]; });
+    var painted = -1, shut = -1;
+    function colour(i, front) { var o = i * 3, m = M[i] * ss(front, front + 0.25, B[o + 1]); K[o] = K0[o] + (K1[o] - K0[o]) * m; K[o + 1] = K0[o + 1] + (K1[o + 1] - K0[o + 1]) * m; K[o + 2] = K0[o + 2] + (K1[o + 2] - K0[o + 2]) * m; return m; }
+    return function (t, paint) {
+      var breath = 0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 3.4), tc = t % 9, tb = t % 3.7;
+      var tilt = 0.3 * ss(4, 4.7, tc) * (1 - ss(7, 7.7, tc)), blink = ss(3.0, 3.09, tb) * (1 - ss(3.12, 3.26, tb));
+      var ca = Math.cos(tilt), sa = Math.sin(tilt), q, a, cw, sw, front = 3.7 - 2.7 * paint;
+      for (q = 0; q < body.length; q++) {
+        i = body[q]; o = i * 3; x = B[o]; y = B[o + 1]; z = B[o + 2]; w = bw[q * 2];
+        if (w) { var dx = x - (-0.08 + 0.26 * (y - 1.7)), dz = z - 0.18, dl = 0.045 * breath * w / (Math.hypot(dx, dz) || 1); x += dx * dl; z += dz * dl; }
+        w = bw[q * 2 + 1];
+        if (w) {
+          y += 0.012 * breath * w;
+          if (tilt) { if (w < 1) { a = tilt * w; cw = Math.cos(a); sw = Math.sin(a); } else { cw = ca; sw = sa; }
+            dx = x - 0.24; var dy = y - 2.45; x = 0.24 + dx * cw - dy * sw; y = 2.45 + dx * sw + dy * cw; }
+        }
+        P[o] = x; P[o + 1] = y; P[o + 2] = z;
+      }
+      if (paint !== painted) for (painted = paint, shut = -1, i = 0; i < n; i++) if (M[i]) colour(i, front);
+      if (blink !== shut) for (shut = blink, q = 0; q < eyes.length; q += 3) {      // the lid comes down from above
+        i = eyes[q]; o = i * 3; var m = colour(i, front);
+        if (eyes[q + 2] > 1 - 2 * blink) { var l = lid[eyes[q + 1]]; K[o] = l[0] + (0.80 - l[0]) * m; K[o + 1] = l[1] + (0.79 - l[1]) * m; K[o + 2] = l[2] + (0.76 - l[2]) * m; }
+      }
+      return [c];
+    };
+  }
+
   function scan(D) {
     var C = [];
     D.charts.forEach(function (d) {
@@ -510,18 +568,8 @@
                a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz } },
       tour: D.tour || ['wide', 'close', 'a', 'b'],
       rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
-      /* the owl cocks its head: every control point above the shoulders, tilted about an axis that points at
-         the cameras, so no part of the sheet's open back turns into view. The numbers are this object's
-         (scan 122); another scan has no edit */
-      edit: D.scan !== 122 ? null : function (k) {
-        var c = C[0], P = c.patch.P, B = c.base, i, w, a, x, y;
-        for (i = 0; i < P.length; i += 3) {
-          w = KT.clamp((B[i + 1] - 2.3) / 0.55, 0, 1); if (!w) continue;
-          a = 0.3 * k * w * w * (3 - 2 * w); x = B[i] - 0.24; y = B[i + 1] - 2.45;
-          P[i] = 0.24 + x * Math.cos(a) - y * Math.sin(a); P[i + 1] = 2.45 + x * Math.sin(a) + y * Math.cos(a);
-        }
-        return [c];
-      }
+      /* scan 122 only: the owl alive and repainted (owlLife); another scan has neither */
+      animate: D.scan === 122 ? owlLife(C[0]) : null
     };
   }
 

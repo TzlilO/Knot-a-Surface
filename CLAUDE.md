@@ -68,7 +68,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the method. Further scans baked with `--register scans` land in `talk/dtu/scan<N>.js` (`KnotTalk.dtuScans`) and
   become scenes `scan<N>` in the lab page's picker only; one sheet around an axis suits a compact single body, and
   `tools/dtu/README.md` lists the scans that failed. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
-  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Its views are the splat shader's render modes (`uMode` in
+  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` lays one even
+  lattice per chart, puts the Gaussians on its points and lets a running 2 x 2 window stitch two triangles per stop
+  (`buildMesh` / `stepMesh`; instances are written in reverse window order so `setCount` retires the stitched ones).
+  The owl's `animate(t, paint)` (`owlLife` in `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as
+  control-point edits, and `paint` wipes rule-based control colours in (scene `paint`, a snowy owl); a scene without
+  `animate` falls back to `edit(k)`. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
