@@ -44,10 +44,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `clear`, `scn`, `budget`, `cap`), and the section receives a `kt-stats` event with the module's stats.
 - The opening (`<div class="prelude">`, first in talk.html): the English version of talk-he.html, "How does a
   computer see in 3D?" (explicit, implicit, Gaussians, the 3D breakfast scene, "Which one?"), then the talk's
-  cover, all in the Hebrew deck's light "liquid glass" look, scoped to `.prelude` by `talk/prelude.css` (it
-  re-points the kit's and deck's tokens; a sticky "room" of slow light behind it, clipped to `.prelude`; under the
-  cover the page fades into the talk's night). While a step inside it is active, deck.js sets `body.lightroom` and
-  the fixed chrome (rail, HUD, keys) turns light. `talk/prelude.js` = the 3D step's Gaussian slider and count
+  cover, in the Hebrew deck's light "liquid glass" look, which the WHOLE talk shares: talk.html is `<html
+  data-theme="light">`; kit.css holds the light tokens and, at its end, the glass controls; kit.js sets
+  `KnotTalk.theme` and `KnotTalk.color` (same keys as the dark set, that theme's values, `bg` = the glass card);
+  deck.css ends with the theme layer (a page-wide `.room` of slow light, glass stages and pills, Inter headlines,
+  a headline's coloured word through its `c-*` class); `talk/prelude.css` keeps only the opening's own rules (its
+  scoped hues, title screens, trio, `.p-read` / `.he-read`). Pages without the attribute (lab pages, index.html,
+  talk-he.html) keep the dark set unchanged. On a light page `gl.renderer` clears see-through (pass `clear:
+  'opaque'` or a colour to change that). A module on the light talk takes every colour from `KnotTalk.color` (no hex
+  literals), clears 2D canvases with clearRect, avoids additive glows ('lighter', white shadowBlur vanish on paper),
+  and keeps `uRim` low (0-0.2) on light-coloured surfaces, whose rim shading otherwise draws a dark outline. On
+  screens up to 900 px wide the end of the talk gets 40 % of a screen of room so the last step can become active. `talk/prelude.js` = the 3D step's Gaussian slider and count
   (fewer Gaussians on a phone). The cover (`section.cover`, rail "K", key 0) mounts `manifold` with scene
   `cover`: the owl and the rabbit (hidden scene `duo`, DTU scans 122 and 55 side by side, the rabbit at the
   owl's scale) on a 22 s loop: the picture, a dissolve into rolling bands (normals, Gaussians, visual) and back,
@@ -210,8 +217,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
   away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
   written still meets the budget (the far side of a closed chart gets zero weight).
-- Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
-  Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
+- Colour code is semantic and fixed: surface, control points/knots, Gaussians, error = cyan / amber / violet /
+  red on a dark page and blue / orange / purple / red on the light talk, always through `KnotTalk.color` or the CSS
+  tokens (copy in talk.html names the light hues) (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the
   top of `talk/deck.js`; the DTU exhibit notes on screen when a row's mean differs from the printed mean.
 - Touch: ONE shared layer in `talk/kit.js` — `KnotTalk.touchGuard` (claims a touch that starts on a

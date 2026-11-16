@@ -8,9 +8,15 @@ scene of the talk's pipeline chapter (talk/sims/pipeline.js).
   point_cloud/iteration_<k>/point_cloud.ply   the Gaussians, graphdeco's vertex layout: x, y, z, nx, ny, nz,
                                               f_dc_0..2, f_rest_*, opacity, scale_0..2, rot_0..3 (log-scales, logit
                                               opacity, unnormalised quaternion w x y z, COLMAP frame)
-  log.csv, run.json                           the wrapper's log and the run's facts (implementation, GPU, date)
+  log.csv, run.json                           the wrapper's log and the run's facts (implementation, GPU, date, why and
+                                              where it stopped, which snapshots it left)
   cameras.json, input.ply                     graphdeco's own copies of the cameras and of the SfM points it started from
-A run of graphdeco's own train.py works too: no log then, and the note says what is unknown.
+A run of graphdeco's own train.py works too: no log then, and the note says what is unknown. A run that stopped early
+exports the same way: the snapshots it reached, its final and best ones, and its stop record (README, "When it stops").
+
+STOP. run.json's stop record goes into the file as an optional field, stop: {reason, iter, best_psnr, best_iter}, and
+into the note. When run.json lists the run's snapshots, only those are exported (one left on disk by an earlier run in
+the same folder, or a save cut off, is not).
 
 FRAME. The Gaussians live in the COLMAP frame of the dataset's sparse/0 model. tools/dtu/pipeline.py maps that frame
 into the owl's (talk/dtu-data.js: +y up, the table at y = 0, 1 unit = 80 mm): X_mm = X * s + c (scale_mat_0 of
@@ -242,26 +248,61 @@ def read_log(run):
     rows = [r for r in csv.DictReader(open(p, newline='')) if r.get('iteration')]
     which = 'test' if any(r.get('psnr_test') for r in rows) else 'train'
     out = dict(iter=[], loss=[], psnr=[])
-    for r in rows:
-        if not r.get('psnr_' + which) or not r.get('loss'): continue
+    for r in rows:                                          # rows without a PSNR, or with a NaN loss (where a run diverged), stay out
+        if not r.get('psnr_' + which) or not r.get('loss') or not (math.isfinite(float(r['loss'])) and math.isfinite(float(r['psnr_' + which]))): continue
         out['iter'].append(int(r['iteration'])); out['loss'].append(float('%.6g' % float(r['loss']))); out['psnr'].append(round(float(r['psnr_' + which]), 3))
     return out, which
 
-def note(run, which, a, nlog):
+def clean(s): return re.sub(r'\s+', ' ', re.sub(r'[<>&"]', ' ', str(s))).strip()      # the page shows the note as HTML
+
+def stop_record(run, run_dir):
+    """run.json's stop record, or None. A run whose process the stall watchdog's last resort ended (faulthandler's timer,
+    when the watchdog thread itself could not run) has none: then stall.txt says so, and run.json's progress says where."""
+    s = (run or {}).get('stop')
+    if s: return dict(s)
+    st = os.path.join(run_dir, 'stall.txt')
+    if run and not run.get('finished') and os.path.exists(st) and 'Timeout' in open(st, errors='replace').read():
+        g = run.get('progress') or {}
+        return dict(reason='stalled', iteration=g.get('iteration'), minutes=None, best_psnr=g.get('best_psnr'), best_iteration=g.get('best_iteration'),
+                    detail='the stall watchdog\'s last resort ended the process (no iteration for twice --stall-minutes; the stacks are in stall.txt); '
+                           'the iteration is that of the last row of the log')
+    return None
+
+def stop_field(s):
+    """The exported stop: {reason, iter, best_psnr, best_iter}, numbers where known, else null."""
+    num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+    it, bp, bi = num(s.get('iteration')), num(s.get('best_psnr')), num(s.get('best_iteration'))
+    return dict(reason=clean(s.get('reason') or 'unknown'), iter=None if it is None else int(it), best_psnr=None if bp is None else round(float(bp), 3),
+                best_iter=None if bi is None else int(bi))
+
+def note(run, which, a, nlog, stop=None, kinds=None):
+    held = ((run or {}).get('stops') or {}).get('psnr') or ('held-out' if which == 'test' else 'training')
     if run:
         impl = '%s at %s%s%s' % (run.get('implementation', 'graphdeco-inria/gaussian-splatting'), (run.get('commit') or '')[:7] or 'an unknown commit',
                                  '' if run.get('matches_pin') else ' (NOT the pinned 54c035f)', ' with local changes' if run.get('local_changes') else '')
         tv, te = run.get('train_views'), run.get('test_views') or []
         views = ('%s of the %s photographs, every 8th held out' % (tv, tv + len(te) if tv else '?') if te else 'all %s photographs' % (tv or '?'))
-        s = ('plain 3D Gaussian Splatting (Kerbl et al. 2023): %s, its default settings%s, %s iterations on %s (%s), on the dataset\'s COLMAP model; '
-             'trained on %s, %s' % (impl, (' plus ' + ' '.join(run['extra_args'])) if run.get('extra_args') else '', run.get('iterations', '?'), views,
+        n, at = run.get('iterations', '?'), (stop or {}).get('iteration')
+        early = isinstance(at, int) and isinstance(n, int) and at < n
+        s = ('plain 3D Gaussian Splatting (Kerbl et al. 2023): %s, its default settings%s, %s%s iterations on %s (%s), on the dataset\'s COLMAP model; '
+             'trained on %s, %s' % (impl, (' plus ' + ' '.join(run['extra_args'])) if run.get('extra_args') else '', 'up to ' if early else '', n, views,
                                      'alpha used as a loss mask' if run.get('keep_alpha') else 'RGB, alpha dropped', run.get('gpu', 'an unrecorded GPU'),
                                      (run.get('finished') or run.get('started') or 'an unrecorded date')[:10]))
-        s += '' if run.get('finished') and not run.get('error') else ' (the run did NOT finish)'
+        if stop:
+            m = stop.get('minutes')
+            s += ('. It stopped at iteration %s%s: %s (%s)' % (at if at is not None else '?', ' after %.1f min' % m if isinstance(m, (int, float)) else '',
+                                                              clean(stop.get('reason')), clean(stop.get('detail') or 'no detail recorded')))
+            if isinstance(stop.get('best_psnr'), (int, float)):
+                s += '; its best %s PSNR was %.2f dB, at iteration %s' % (held, stop['best_psnr'], stop.get('best_iteration', '?'))
+        elif not run.get('finished') or run.get('error'): s += ' (the run did NOT finish)'
     else:
         s = 'plain 3D Gaussian Splatting (Kerbl et al. 2023), presumably graphdeco-inria/gaussian-splatting: the run has no run.json, so implementation, version, settings, GPU and date are unknown'
     s += ('. Not the thesis method. Iteration 0 = the Gaussians made from the dataset\'s SfM points, before the first optimizer step; iteration k = '
-          'graphdeco\'s save at k (after k - 1 steps). Each snapshot keeps at most %d Gaussians, drawn %s (seed %d)'
+          'graphdeco\'s save at k (after k - 1 steps)')
+    for k, what in sorted((kinds or {}).items()):
+        if what == 'final': s += '; snapshot %d is the state where the run stopped' % k
+        if what == 'best': s += '; snapshot %d is its best %s state, kept in host memory while it trained' % (k, held)
+    s += ('. Each snapshot keeps at most %d Gaussians, drawn %s (seed %d)'
           % (a.budget, 'uniformly' if a.rule == 'uniform' else 'with probability growing with opacity x (s1 s2 + s2 s3 + s3 s1)', a.seed))
     if nlog: s += ('. log: loss = training loss (0.8 L1 + 0.2 D-SSIM) averaged over the iterations since the previous entry; psnr = mean PSNR of the '
                    + ('%d held-out photographs' % len(run['test_views']) if which == 'test' and run and run.get('test_views') else '%s photographs' % ('held-out' if which == 'test' else 'training')))
@@ -275,7 +316,8 @@ HEAD = """/* DTU scan %(scan)d: snapshots of ONE run of PLAIN 3D Gaussian Splatt
    and the dataset's COLMAP model, mapped into the owl's frame of talk/dtu-data.js (+y up, the table at y = 0, 1 unit =
    80 mm) the way tools/dtu/pipeline.py maps that model.
    %(note)s
-   KnotTalk.dtuTrain[%(scan)d] = { note, unit, log: { iter: [], loss: [], psnr: [] },
+   KnotTalk.dtuTrain[%(scan)d] = { note, stop (optional: why and where the run stopped): { reason, iter, best_psnr, best_iter },
+     unit, log: { iter: [], loss: [], psnr: [] },
      snaps: [{ iter, ntotal (Gaussians in the checkpoint), n (kept here), p: Float32Array(3n) centres,
                s: Float32Array(3n) sigma per axis (owl units), q: Float32Array(4n) unit quaternions (w, x, y, z),
                c: Uint8Array(3n) colour of the DC term (sRGB), a: Uint8Array(n) opacity 0..255 }] }
@@ -318,6 +360,9 @@ def main():
     run_dir = os.path.abspath(os.path.expanduser(a.run)); pj = os.path.join(run_dir, 'run.json')
     run = json.load(open(pj)) if os.path.exists(pj) else None
     if run is None: say('no run.json in %s: implementation, version, GPU and date will be unknown in the note' % run_dir)
+    stop = stop_record(run, run_dir)
+    if stop: say('stop: %s at iteration %s; best PSNR %s at iteration %s' % (stop.get('reason'), stop.get('iteration'), stop.get('best_psnr'), stop.get('best_iteration')))
+    elif run: say('run.json has no stop record: %s' % ('a run of the wrapper before its stop rules' if run.get('finished') else 'the run did NOT finish (killed, or crashed before it could record why)'))
 
     # ---- the frame
     scan, pipe = read_pipeline(a.pipeline or os.path.join(TALK, 'dtu', 'pipeline122.js')); U = pipe.get('unit_mm', 80)
@@ -345,7 +390,13 @@ def main():
     for d in (os.listdir(pc) if os.path.isdir(pc) else []):
         m = re.fullmatch(r'iteration_(\d+)', d)
         if m and os.path.exists(os.path.join(pc, d, 'point_cloud.ply')): found[int(m.group(1))] = os.path.join(pc, d, 'point_cloud.ply')
-    its = sorted(found) if not a.iters else [int(v) for v in a.iters.split(',')]
+    kinds = {int(z['iteration']): z.get('kind', '') for z in run['snapshots']} if run and isinstance(run.get('snapshots'), list) else None
+    if a.iters: its = [int(v) for v in a.iters.split(',')]
+    elif kinds is not None:                                 # the run's own list: not what an earlier run, or a save cut off, left in the folder
+        its = sorted(set(found) & set(kinds)); left, gone = sorted(set(found) - set(kinds)), sorted(set(kinds) - set(found))
+        if left: say('left out: iteration %s is on disk but not among run.json\'s snapshots (an earlier run\'s, or a save that did not finish)' % left)
+        if gone: say('missing: run.json lists iteration %s, which is not on disk' % gone)
+    else: its = sorted(found)
     miss = [i for i in its if i not in found]
     if miss or not its: raise SystemExit('no snapshot for iteration %s in %s' % (miss or 'any', pc))
     snaps = []
@@ -366,15 +417,17 @@ def main():
     # ---- write
     lg, which = read_log(run_dir)
     if not lg['iter']: say('no log.csv rows in %s: the file carries an empty log' % run_dir)
-    obj = dict(note=note(run, which, a, len(lg['iter'])), unit='owl frame, 1 unit = %g mm' % U, log=lg, snaps=snaps)
+    obj = dict(note=note(run, which, a, len(lg['iter']), stop, {k: v for k, v in (kinds or {}).items() if k in its}))
+    if stop: obj['stop'] = stop_field(stop)                 # optional, next to the note: files without it stay valid
+    obj.update(unit='owl frame, 1 unit = %g mm' % U, log=lg, snaps=snaps)
     wrap = lambda s, w=114: '\n   '.join(c.strip() for c in re.findall(r'.{1,%d}(?:\s|$)' % w, s.replace('*/', '* /')) if c.strip())
     js = HEAD % dict(scan=scan, note=wrap(obj['note'])) + json.dumps(obj, separators=(',', ':')) + ';\n' + TAIL
     out = os.path.abspath(a.out or os.path.join(TALK, 'dtu', 'train%d.js' % scan))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out + '.part', 'w') as fh: fh.write(js)
     os.replace(out + '.part', out)
-    say('wrote %s: %.2f MB, %d snapshots, %d Gaussians, log of %d rows (psnr: %s)'
-        % (out, len(js) / 1e6, len(snaps), sum(z['n'] for z in snaps), len(lg['iter']), which or '-'))
+    say('wrote %s: %.2f MB, %d snapshots, %d Gaussians, log of %d rows (psnr: %s)%s'
+        % (out, len(js) / 1e6, len(snaps), sum(z['n'] for z in snaps), len(lg['iter']), which or '-', '; stop: %s' % json.dumps(obj['stop']) if stop else ''))
     if len(js) > 8.5e6: say('note: more than 8 MB; --budget lowers it (about 21.7 bytes per kept Gaussian)')
 
 

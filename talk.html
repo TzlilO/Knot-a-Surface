@@ -38,7 +38,7 @@
 <!-- ============================================================ THE OPENING + THE COVER
      A light wrapper (talk/prelude.css): first the opening, "How does a computer see in 3D?" (the English version of
      the Hebrew deck, talk-he.html, with its three modules from talk/he/sims.js and the 3D scene), then the cover of the
-     talk. Under the cover the page fades into the dark talk. -->
+     talk. The whole talk shares its light look (talk/deck.css ends with the theme layer). -->
 <div class="prelude">
 
 <section class="p-hero p-open nav" data-sim="he-shapes" data-scene="hero" data-rail="◦" data-title="How a computer sees in 3D" data-min40="0.25" data-min20="0.25">
@@ -226,7 +226,7 @@
         <div class="old"><b>Everyone else</b>Given optimised Gaussians, how do we extract a surface?</div>
         <div class="new"><b>Knot‑a‑Surface</b>Given a smooth surface, how do we derive the Gaussians?</div>
       </div>
-      <p>Same photos, same loss. But now the only unknowns are the <b class="c-ctrl">amber control points</b> of one curve — 161 numbers instead of 576. The Gaussians ride on it.</p>
+      <p>Same photos, same loss. But now the only unknowns are the <b class="c-ctrl">orange control points</b> of one curve — 161 numbers instead of 576. The Gaussians ride on it.</p>
     </article>
     <article class="step nav" data-scene="versus">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -264,7 +264,7 @@
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Control points <em class="c-ctrl">steer</em>. The curve follows.</h2>
       <p>The curve doesn’t pass through its control points — it is pulled toward them. Fourteen points here describe a curve with no resolution limit: zoom in forever, it stays smooth.</p>
-      <span class="do">Drag any amber point</span>
+      <span class="do">Drag any orange point</span>
     </article>
     <article class="step nav" data-scene="blend">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -284,7 +284,7 @@
       <p><b>Degree</b> buys smoothness: a cubic has continuous curvature, so its normals turn smoothly, and that is what a splat needs to orient itself. <b>Knots</b> are where the polynomial pieces join. Slide one and resolution moves along the curve; crowd them and detail concentrates.</p>
       <p><b>Non‑uniform</b> knots put capacity where the shape needs it. That is the knot in <em>Knot‑a‑Surface</em>.</p>
       <p class="aside">Add a weight per control point and conics become exact: that is the R in NURBS. In everything that follows the weights stay at 1: plain B‑splines.</p>
-      <span class="do">Drag the amber triangles</span>
+      <span class="do">Drag the orange triangles</span>
     </article>
   </div>
 </section>
@@ -348,7 +348,7 @@
       <h2>Nothing here was <em class="c-splat">learned</em></h2>
       <p>Move the surface and the Gaussian is recomputed: new position, new tilt, new size. Rotation and scale are not parameters any more — they are consequences.</p>
       <p class="aside">An oriented ellipse sized to its sample is classic surfel splatting. What is new is that the surface underneath is the thing learned from photographs.</p>
-      <span class="do">Drag an amber control point</span>
+      <span class="do">Drag an orange control point</span>
     </article>
     <article class="step nav" data-scene="fill">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -436,12 +436,12 @@
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Start <em>coarse</em></h2>
       <p>The terrain of chapter 03, now seen from above as a map. A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
-      <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">cyan</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
+      <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">blue</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
     </article>
     <article class="step nav" data-scene="insert" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Layer A — <em class="c-ctrl">insert a knot</em></h2>
-      <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %. In the side view the cyan curve stays where it was when the knot lands; only a new amber control point appears.</p>
+      <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %. In the side view the blue curve stays where it was when the knot lands; only a new orange control point appears.</p>
       <p>Compare with 3DGS densification, which decides by accumulated view‑space gradients and spawns new, independent primitives.</p>
     </article>
     <article class="step nav" data-scene="insert" data-depth="deep">
@@ -565,7 +565,7 @@
     <article class="step nav" data-scene="nets" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Each chart carries its <em class="c-ctrl">own net</em></h2>
-      <p>Shape and appearance both live on the amber points. The owl’s net is 288 × 392, a control point every 0.8 mm or so, because every feather is relief. The table is flat: its 104 × 80 points are spent on colour alone. Parameters are paid where there is something to describe.</p>
+      <p>Shape and appearance both live on the orange points. The owl’s net is 288 × 392, a control point every 0.8 mm or so, because every feather is relief. The table is flat: its 104 × 80 points are spent on colour alone. Parameters are paid where there is something to describe.</p>
       <p class="aside">The nets are too dense to draw whole: every ninth line of the owl’s is shown, every third of the table’s.</p>
     </article>
     <article class="step nav" data-scene="budget">
@@ -600,7 +600,7 @@
       <h2>Editable <em class="c-surf">by construction</em></h2>
       <p>The owl breathes, blinks, and now and then cocks its head. Each is an edit of the net: the chest’s control points move out and back, everything above the shoulders tilts about one axis, a lid colour closes over the eyes. Thousands of Gaussians follow, still tiling, still on the surface.</p>
       <p class="aside">Scripted motion, to show what an edit is; nothing here is learned or simulated. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
-      <span class="do">Turn on nets, drag an amber point</span>
+      <span class="do">Turn on nets, drag an orange point</span>
     </article>
     <article class="step nav" data-scene="paint" data-replay>
       <div class="lvl l1"><i><b></b></i>Intuition</div>
