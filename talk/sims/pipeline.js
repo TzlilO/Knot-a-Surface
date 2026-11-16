@@ -84,7 +84,7 @@
       var TGT = KT.dtu && KT.dtu.target ? KT.dtu.target.slice() : [0, 1.75, 0.2];
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
       var pr = function () { return R.renderer.getPixelRatio(); };
-      var st = { scene: '', sc: SCENES.photos, t: 0, k: 0, kGo: NC, play: true, w: 2, h: 2, split: false, rects: null, narrow: false,
+      var st = { scene: '', sc: SCENES.photos, t: 0, k: 0, play: true, w: 2, h: 2, split: false, rects: null, narrow: false,
                  rayJ: -1, rayT: 9, nets: true, pts: true, opa: 'init', nInit: small ? 10000 : 20000 };
       st.free = [-1, 1, -1, 1]; st.inset = { x: 12, y: 0, w: 2, h: 2 };
       var need = true;                             // something changed: draw the next frame (otherwise a still stage is not drawn again)
@@ -394,7 +394,8 @@
         GS.n = NP; GS.what = 'init'; need = true; cloudOk = false;
       }
       function gsSnap(k) {                         // fill it with snapshot k of the real run: covariance = R diag(s^2) R^T
-        var S = TR.snaps[k], n = Math.min(S.n, GS.cap), s = GS.src, i, w, x, y, z, l, sx, sy, sz;
+        var S = TR.snaps[k], s = GS.src, i, w, x, y, z, l, sx, sy, sz;
+        var n = Math.min(S.n, GS.cap, S.p.length / 3, S.s.length / 3, S.q.length / 4, S.c.length / 3, S.a.length) | 0;   // never past an array's end
         for (i = 0; i < n; i++) {
           s.C[i * 3] = S.p[i * 3]; s.C[i * 3 + 1] = S.p[i * 3 + 1]; s.C[i * 3 + 2] = S.p[i * 3 + 2];
           w = S.q[i * 4]; x = S.q[i * 4 + 1]; y = S.q[i * 4 + 2]; z = S.q[i * 4 + 3]; l = Math.hypot(w, x, y, z) || 1; w /= l; x /= l; y /= l; z /= l;
@@ -686,6 +687,11 @@
         if (trn.want >= 0) { trn.i = trn.want; trn.want = -1; gsSnap(trn.i); paintSnap(); }     // a cut: one snapshot, then the next
         if (trn.auto) { trn.t += dt; if (trn.t > (trn.i === TR.snaps.length - 1 ? SNAP * 1.8 : SNAP)) snapGo((trn.i + 1) % TR.snaps.length); }
       }
+      function pendingCap() {                      // the halves sit side by side on a wide stage, one above the other on a tall one
+        var wide = st.w / st.h > 1.25;
+        return '<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>' + (wide ? 'left' : 'above') +
+               ', the 3DGS initialisation, untrained · ' + (wide ? 'right' : 'below') + ', a stand-in: the levels of the offline geometric fit, which is not training';
+      }
       function sideL() { return '<b>3DGS</b> · iteration 0 of a run that has not been made yet<br>the initialisation, untrained: ' + fmt(NP) + ' Gaussians, opacity 0.1'; }
       function sideR() {
         var L = levels(), s = L.S[L.i];
@@ -852,7 +858,7 @@
         // words
         var c = sc.cap;
         if (id === 'train') c = TR ? '<b>3DGS training</b> · one real 3DGS run on the same photographs and points<br>its snapshots, one after another: Gaussians are cloned, split and pruned between them, so they are not blended'
-                                   : '<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>left, the 3DGS initialisation, untrained · right, a stand-in: the levels of the offline geometric fit, which is not training';
+                                   : pendingCap();
         cap.innerHTML = c; cap.appendChild(what);           // the level's words flow under the caption
         pend.style.display = id === 'train' && !TR ? '' : 'none';
         pend.innerHTML = '<b>real 3DGS run: pending</b><br>it needs a GPU (tools/train); this step replays the run’s snapshots once they are exported to talk/dtu/train122.js';
@@ -973,7 +979,9 @@
       return {
         setScene: setScene, orbit: orbit, stats: stats,
         resize: function (w, h) {
-          R.resize(w, h); st.w = w; st.h = h; layout();
+          R.resize(w, h); st.w = w; st.h = h;
+          if (st.split) { cap.innerHTML = pendingCap(); cap.appendChild(what); }
+          layout();
           if (!orbit.touched) orbit.to(home(), true);
           plotDirty = true; need = true; cloudOk = false;   // a resized canvas is blank until drawn again
         },
