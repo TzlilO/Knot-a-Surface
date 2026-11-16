@@ -551,6 +551,24 @@
         s.x += a * Math.sin(5.0 * q * t) + rp * s.nx; s.z += 0.7 * a * Math.sin(4.3 * q * t + 1.3) + rp * s.nz; s.y -= 0.012 / p.stiffness * h * (0.5 + 0.5 * Math.sin(10 * q * t));
       } }
   };
+  /* crystal clear glass: almost nothing where you look straight through it, a mirror at the rim. How much of the
+     light a surface reflects at a given angle is Schlick's approximation of Fresnel, from the refractive index;
+     that reflectance is what makes glass visible, so it sets both the brightness and the opacity. On top: a soft
+     box up and to the left as a sharp highlight, a bright "window" on what faces upwards, and the carving's
+     grooves as faint lines, the way facets catch the light. All of it painted, none of it traced. */
+  MATS.glass = { label: 'clear glass', view: 'through', beak: [0.80, 0.90, 1.0], lid: [0.82, 0.90, 0.97],
+    p: { opacity: 0.07, index: 1.5, gloss: 1 },
+    knobs: [{ k: 'opacity', label: 'opacity', min: 0.02, max: 0.6, step: 0.01 }, { k: 'index', label: 'refractive index', min: 1.05, max: 2.4, step: 0.01 },
+            { k: 'gloss', label: 'gloss', min: 0, max: 2, step: 0.02 }],
+    colour: function (s, p) {
+      var c = Math.abs(s.nz), f0 = Math.pow((p.index - 1) / (p.index + 1), 2), F = f0 + (1 - f0) * Math.pow(1 - c, 5);
+      var hl = p.gloss * Math.pow(Math.max(0, -0.22 * s.nx + 0.44 * s.ny + 0.87 * c), 90);
+      var win = p.gloss * 0.22 * ss(0.25, 0.7, 2 * c * s.ny), line = 0.16 * (1 - s.sh) * (1 - s.sh);
+      var k = Math.min(1, 6 * F) * 0.55 + win;                       // how much reflected light there is to see
+      s.r = 0.62 + 0.38 * k + hl - line; s.g = 0.78 + 0.22 * k + hl - 0.6 * line; s.b = 0.90 + 0.10 * k + hl;
+      s.a = Math.min(1, p.opacity + (1 - p.opacity) * Math.min(1, 1.5 * F) + 0.6 * win + line + 1.6 * hl);
+    },
+    eye: function (d, lx, ly) { return Math.hypot(lx + 0.3, ly - 0.32) < 0.22 ? [1, 1, 1] : d < 0.8 ? [0.04, 0.10, 0.22] : [0.75, 0.88, 1]; } };
   Object.keys(MATS).forEach(function (k) { MATS[k].rev = 0; });
   function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
   function owlLife(c) {
