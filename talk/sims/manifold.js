@@ -2,8 +2,9 @@
    A whole scene as an atlas of B-spline charts — a spline manifold. Every Gaussian on screen is
    derived from one of the charts; a FIXED Gaussian budget is re-sampled over the (u,v) domains
    as the camera moves (view-adaptive sampling), and editing control points moves thousands of
-   Gaussians at once. Scenes come from talk/scenes.js: one real object (`scan`, a DTU scan fitted
-   offline), benchmark-style stand-ins (barn, truck, bust, garden) and the abstract still life. Any scene can be read as appearance, depth, normals,
+   Gaussians at once. Scenes come from talk/scenes.js: the real objects (`scan`, `scan<N>`: DTU scans
+   fitted offline). The hand-modelled stand-ins (barn, truck, bust, garden, studio) are no longer offered
+   here; the barn is only what a page without the scan data falls back to. Any scene can be read as appearance, depth, normals,
    single Gaussians or chart identity — or all five at once, in a rolling split screen.
    Tool: WebGL (three.js) instanced planoids + a 2D-canvas (u,v) atlas.
    Standalone: talk/sims/manifold.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js, scenes.js. */
@@ -21,7 +22,7 @@
   function wrap(x, m) { return ((x % m) + m) % m; }
 
   /* The talk runs on ONE subject: `scan`, a real DTU object (talk/dtu-data.js; without that file the barn
-     stands in). The hand-modelled scenes stay as tabs of the lab page. atlas: 1 shows the (u,v) tiles, tools: 1 the toggles. */
+     stands in). atlas: 1 shows the (u,v) tiles, tools: 1 the toggles. */
   var SCENES = {
     scene:  { scn: 'scan', view: 'splats', cam: 'wide', cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
     modes:  { scn: 'scan', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
@@ -29,16 +30,11 @@
     nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
     budget: { scn: 'scan', view: 'splats', tour: 1, atlas: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
     lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
-    barn:   { scn: 'barn', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'a building and its grounds' },
-    truck:  { scn: 'truck', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'same method, another capture' },
-    bust:   { scn: 'bust', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'a scanned object under a camera dome' },
-    garden: { scn: 'garden', view: 'splats', tour: 1, rig: 1, atlas: 1, cap: 'an object inside an unbounded surround' },
     /* the samples of each chart, stitched into triangles by a running 2 x 2 window */
     mesh:   { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, cap: 'tessellation · a 2 × 2 window stitches the samples into triangles' },
     edit:   { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, tools: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
     paint:  { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, paint: 1, cap: 'material edit · the same net, new control colours' },
-    studio: { scn: 'studio', view: 'splats', cam: 'wide', atlas: 1, cap: 'the abstract still life' },
     /* chrome-free, for pages that embed the scene as a backdrop (mount with { bare: true }) */
     hero:   { scn: 'barn', view: 'splats', tour: 1, cap: '' }
   };
@@ -46,14 +42,13 @@
   KT.register('manifold', {
     title: 'A manifold of splines',
     blurb: 'A scene stored only as spline charts. A fixed Gaussian budget is re-sampled across the charts as the camera moves, ' +
-           'and editing a control point moves the splats with it. The owl is a real DTU scan, fitted offline to its depth maps ' +
-           'and photographs (not trained); the barn, truck, bust and garden are procedural stand-ins, not the datasets.',
+           'and editing a control point moves the splats with it. The owl and the rabbit are real DTU scans, fitted offline to ' +
+           'the dataset’s depth maps and photographs. They were not trained.',
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
       { id: 'scene', label: 'The object' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
       { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'mesh', label: 'Stitch a mesh' },
-      { id: 'edit', label: 'Edit' }, { id: 'paint', label: 'Repaint' },
-      { id: 'barn', label: 'Barn' }, { id: 'truck', label: 'Truck' }, { id: 'bust', label: 'Bust' }, { id: 'garden', label: 'Garden' }, { id: 'studio', label: 'Still life' }
+      { id: 'edit', label: 'Edit' }, { id: 'paint', label: 'Materials' }
     ],
     create: function (env) {
       var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
@@ -76,7 +71,9 @@
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
       var badge = ui.el('div', 'kt-ab'); root.appendChild(badge);
       var panel = ui.panel(root, { pos: 'tr', title: 'scene · budget' });
-      var segS = ui.seg(panel, { value: 'barn', options: Object.keys(KT.scenes).filter(function (k) { return !KT.scenes[k].hidden; }).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
+      /* the picker offers the scanned objects; only a page without their data offers the hand-modelled scenes */
+      var pick = Object.keys(KT.scenes).filter(function (k) { return !KT.scenes[k].hidden; }), real = pick.filter(function (k) { return KT.scenes[k].photo; });
+      var segS = ui.seg(panel, { value: 'barn', options: (real.length ? real : pick).map(function (k) { return { v: k, label: KT.scenes[k].label.toLowerCase() }; }),
         onChange: function (v) {
           st.sc = Object.assign({}, st.sc, { scn: v, tour: 0, breathe: 0, ab: 0, cam: 'wide' });
           loadScene(v); syncMesh(); orbit.touched = false; orbit.to(view('wide'), true); paintCap();

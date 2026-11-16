@@ -37,7 +37,8 @@
       root.appendChild(tagL); root.appendChild(tagR); root.appendChild(bar);
 
       /* ---------- the scene, sampled once ---------- */
-      var def = KT.scenes.truck.build(), charts = def.charts, rnd = KT.rng(7);
+      /* the talk's one subject, the scanned owl (talk/dtu-data.js); a page without that file gets the hand-modelled truck */
+      var def = (KT.scenes.scan || KT.scenes.truck).build(), charts = def.charts, rnd = KT.rng(7);
       var ours = { pos: new Float32Array(N * 3), col: new Float32Array(N * 3), chart: new Uint8Array(N), n: 0 }, grids = [];
       var list = { pos: new Float32Array(N * 3), col: new Float32Array(N * 3), chart: new Uint8Array(N), n: 0 };
       var fR = G.splats(N), fL = G.splats(N); scene.add(fR.mesh); scene.add(fL.mesh);

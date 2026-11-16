@@ -9,7 +9,7 @@ Live: **https://tzlilo.github.io/Knot-a-Surface/**
 
 | URL | Page |
 | --- | --- |
-| `/` | Landing page — a live spline-chart scene (barn / truck / bust / garden), the idea in three moves, the talk and its lab modules |
+| `/` | Landing page — a live spline-chart scene (a procedural barn), the idea in three moves, the talk and its lab modules |
 | `/project-page.html` | Previous landing page — hero, embedded teaser, simulator cards, method, **measured results** |
 | `/terrain.html` | Sim v1 — Swarm Resolution-Knob simulator (drone swarm, fixed splat budget, commander toolkit) |
 | `/terrain-atlas.html` | Sim v2 — UV-atlas editing (segment, paint, sculpt in the chart) |
