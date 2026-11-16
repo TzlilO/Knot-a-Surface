@@ -13,6 +13,11 @@
   function $$(s, r) { return [].slice.call((r || document).querySelectorAll(s)); }
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   var NS = 'http://www.w3.org/2000/svg';
+  /* talk.html?master (or #master) is the slide master's presenter view (talk/master.js): the page shows its panel only
+     (master.css hides the rest under body.kt-presenter), so the deck here mounts no simulation and takes no step. Set
+     before anything below can run a frame. */
+  var presenter = /(?:^|&)master(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#master';
+  if (presenter) document.body.classList.add('kt-presenter');
 
   /* ================= evidence data — edit here =================
      DTU: Table 1 of the paper (Chamfer distance, mm, lower is better; PGSR = its best results).
@@ -64,7 +69,7 @@
   var near = new IntersectionObserver(function (es) {
     es.forEach(function (e) { if (e.isIntersecting) mountSim(e.target); });
   }, { rootMargin: '120% 0px' });
-  simSections.forEach(function (s) { near.observe(s); });
+  if (!presenter) simSections.forEach(function (s) { near.observe(s); });
 
   /* ================= chapter rail ================= */
   var chapters = $$('section[data-rail]'), rail = $('.rail');
@@ -153,7 +158,7 @@
         var r = n.getBoundingClientRect(), c = (small || r.height > window.innerHeight) ? KT.clamp(y, r.top, r.bottom) : (r.top + r.bottom) / 2;
         var d = Math.abs(c - y); if (d < bd) { bd = d; best = n; }
       });
-      if (best) activate(best);
+      if (best && !presenter) activate(best);
       var max = document.documentElement.scrollHeight - window.innerHeight;
       bar.style.transform = 'scaleX(' + (max > 0 ? window.scrollY / max : 0) + ')';
     });
@@ -407,6 +412,7 @@
   /* ================= the handle: talk/master.js (the slide master) and tests =================
      events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh) */
   KT.deck = {
+    presenter: presenter,                                              // this page is the presenter view (talk.html?master)
     steps: allNav, sections: chapters, navs: navsOf,                   // every step (.nav) and every data-rail section, in order
     key: function (n) { return n._key; }, title: function (n) { return n._title; },
     section: function (n) { return n._sec; }, byKey: function (k) { return byKey[k] || null; },

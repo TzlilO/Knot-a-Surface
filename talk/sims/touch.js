@@ -63,6 +63,7 @@
   var DRAG = 0.35;                             // air drag on a loose Gaussian, 1/s
   var TILT = 0.8;                              // the list: largest tilt of a Gaussian off the surface, radians
   var HM = H / 8, SLOW = 20;                   // moment: its sub-step, and how much slower time runs near contact (scripted)
+  var FSPR = 280;                              // sound: the springs' pitch at 160 N/m, Hz (it goes as the square root of the stiffness)
   var LIGHT = [0.35, 0.86, 0.36];
 
   var SCENES = {
@@ -296,7 +297,7 @@
           chain(o1, lp, g); chain(o2, amp(null, 0.22), lp); c.p.f = o1.frequency; c.p.f2 = o2.frequency;
         } else {
           s = ctx.createBufferSource(); s.buffer = noise; s.loop = true; s.start(t, rr() * 2); c.srcs.push(s);
-          if (kind === 'roll') { f = biq('lowpass', 160, 0.9); chain(s, f, biq('highpass', 45, 0.7), g); }
+          if (kind === 'roll') { f = biq('lowpass', 200, 0.9); chain(s, f, biq('highpass', 70, 0.7), g); }
           else { f = biq('bandpass', 1700, 0.55); chain(s, f, biq('lowpass', 3800, 0.5), g); }
           c.p.f = f.frequency;
         }
@@ -983,9 +984,9 @@
           SFX.shards(frag.list.map(function (q) { return { n: q.n, sp: Math.hypot(q.v[0], q.v[1], q.v[2]), rho: q.rho }; }), au.crack, pan);
         }
         x = au.rest ? au.restV / au.rest : 0;                                         // rolling: the share of the frame in resting contact, at its speed
-        chRoll.set(au.rest && au.simT ? 0.11 * Math.pow(KT.clamp(x / 2.5, 0, 1), 1.2) * Math.min(1, au.rest / au.simT) : 0, 110 + 70 * x);
+        chRoll.set(au.rest && au.simT ? 0.11 * Math.pow(KT.clamp(x / 2.5, 0, 1), 1.2) * Math.min(1, au.rest / au.simT) : 0, 200 + 130 * x);
         x = au.calls ? au.inside / au.calls : 0;                                       // sinking through a list with no rule
-        chHiss.set(x > 0 ? 0.16 * Math.pow(KT.clamp(x / 140, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.35, 1.2) : 0, (1200 + 90 * speed()) / Math.pow(stretch, 0.3));
+        chHiss.set(x > 0 ? 0.09 * Math.pow(KT.clamp(x / 140, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.35, 1.2) : 0, (1200 + 90 * speed()) / Math.pow(stretch, 0.3));
         if (au.hits && au.first) { SFX.scatter(au.jl, au.hits, pan); au.first = false; au.lastN = prt.n; au.ratT = SFX.now(); }   // the ball meets loose particles
         else if (!au.first) {                                                         // and every Gaussian knocked loose since rattles
           x = prt.n - au.lastN; if (x < 0) x = 0; au.lastN = prt.n; au.rat += x;
@@ -1000,7 +1001,7 @@
           }
           x = Math.sqrt(e2 / ((NC - 2) * (NC - 2)));                                  // rms speed of the control points, m/s: loudness ~ their kinetic energy
           au.env = Math.max(x, au.env * Math.exp(-dt / 0.15));
-          chWob.set(au.env > 0.08 ? 0.14 * Math.pow(KT.clamp(au.env / 1.4, 0, 1), 2) : 0, 150 * Math.sqrt(mat.stiff / 160) * (1 + 0.05 * KT.clamp(vm / ws / 0.6, -1, 1)));
+          chWob.set(au.env > 0.08 ? 0.14 * Math.pow(KT.clamp(au.env / 1.4, 0, 1), 2) : 0, FSPR * Math.sqrt(mat.stiff / 160) * (1 + 0.05 * KT.clamp(vm / ws / 0.6, -1, 1)));
         } else { chWob.set(0); au.env = 0; }
         if (au.launch) SFX.whoosh(au.launch, pan);                                    // out of the bowl
         au.tick.forEach(function (i) { SFX.tick(i, pan); });                          // moment: a definition says "contact"

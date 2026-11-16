@@ -24,7 +24,7 @@
   function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
 
   var STORE = 'kt-parts', TAG = 'knot-talk-master';
-  var presenter = /(?:^|&)master(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#master';
+  var presenter = !!D.presenter;                     // talk.html?master or #master: deck.js decides it, before its first frame
 
   /* ---------- saved choices: only the overrides of the page's defaults ---------- */
   function parse(v) { try { var o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch (e) { return {}; } }
