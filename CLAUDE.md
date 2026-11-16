@@ -104,9 +104,19 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the method. Further scans baked with `--register scans` land in `talk/dtu/scan<N>.js` (`KnotTalk.dtuScans`) and
   become scenes `scan<N>` in the lab page's picker only; one sheet around an axis suits a compact single body, and
   `tools/dtu/README.md` lists the scans that failed. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
-  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` lays one even
-  lattice per chart, puts the Gaussians on its points and lets a running 2 x 2 window stitch two triangles per stop
-  (`buildMesh` / `stepMesh`; instances are written in reverse window order so `setCount` retires the stitched ones).
+  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` meshes the same
+  Gaussians twice at the budget the slider sets, and a board compares them, every number measured in the page. The
+  list: `talk/meshlist.js` (`KnotTalk.meshList`, node-requirable) EMULATES an unstructured 3DGS list from the charts'
+  lattices (never call it trained) and meshes it as a list must: hash grid + 12-nearest search (distances counted),
+  PCA normal, local Delaunay star in the tangent plane, a triangle kept where 2 of 3 corners propose it; emulator,
+  mesher and auditor are jobs stepped a few ms per frame. The lattice: one even lattice per chart with as many points
+  as the budget (`sizeLattices`: area x gain, square cells), stitched by a running 2 x 2 window (instances in reverse
+  window order so `setCount` retires the stitched ones). One audit grades both (bridges, non-manifold edges, holes).
+  `mesh` plays the list, then the lattice; `stitch` starts at the lattice and keeps the mesh; a new budget rebuilds
+  once the slider rests. Export: `talk/meshio.js` (`KnotTalk.meshio`) writes the stitched lattice as PLY / GLB / OBJ
+  / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename, blob)` -> promise, defined
+  only if absent and looked up at click time (a host page may replace it). Tests: `api.meshStats()`,
+  `meshFile(fmt)`, `meshSeek(t)`.
   The owl's `animate(t, paint)` (`owlLife` in `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as
   control-point edits, and `paint` wipes a MATERIAL in (scene `paint`): one entry of `MATS`, a rule that writes control
   colours and optionally control opacities (`s.a`) and motion (`move`), with its properties in `p` and the ones the

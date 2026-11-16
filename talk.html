@@ -527,10 +527,18 @@
     </article>
     <article class="step nav" data-scene="mesh" data-depth="deep" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>A mesh, <em class="c-surf">stitched from the samples</em></h2>
-      <p>Each chart is sampled on a lattice, so every sample already knows its neighbours. A 2 × 2 window runs over the lattice and stitches two triangles at every stop; the Gaussian at each stitched point is removed.</p>
-      <p>No surface extraction, no marching cubes. The connectivity was there all along.</p>
-      <p class="aside">The table first, 2,080 samples, then the owl, 28,224. The triangles carry the samples’ own colours.</p>
+      <h2>A mesh from a list <em>has to search</em></h2>
+      <p>First the same Gaussians the way 3DGS stores them: an unordered list. To mesh it, every Gaussian has to find its nearest neighbours, fit a plane through them and triangulate there; a triangle stays where its corners agree.</p>
+      <p>The board counts the cost: millions of distances, and still <b class="c-err">bridges</b> between parts of the surface that only lie close together, non‑manifold edges and holes.</p>
+      <p class="aside">The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained. Every count and time on the board is measured in this page.</p>
+    </article>
+    <article class="step nav" data-scene="stitch" data-depth="deep" data-replay>
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>A mesh from the lattice is <em class="c-surf">stitched</em></h2>
+      <p>Each chart is sampled on a lattice, so every sample already knows its neighbours. A 2 × 2 window runs over it and stitches two triangles at every stop; the Gaussian at each stitched point is removed.</p>
+      <p>No search, and no bridges or holes inside a chart. The connectivity was there all along.</p>
+      <p class="aside">The lattice is as dense as the Gaussian budget: move the budget and it is stitched again. The triangles carry the samples’ own colours. The mesh downloads as PLY, GLB, OBJ or STL, in metres; the owl and the table stay two pieces, not sewn together.</p>
+      <span class="do">Move the budget, or download the mesh</span>
     </article>
     <article class="step nav" data-scene="edit">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -710,6 +718,8 @@
 <script src="talk/dtu-data.js"></script>
 <script src="talk/dtu/scan55.js"></script>
 <script src="talk/scenes.js"></script>
+<script src="talk/meshlist.js"></script>
+<script src="talk/meshio.js"></script>
 <script src="talk/terrain.js"></script>
 <script src="talk/sims/flatland.js"></script>
 <script src="talk/sims/basis.js"></script>
