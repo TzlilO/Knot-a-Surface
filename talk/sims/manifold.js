@@ -698,7 +698,7 @@
       return {
         setScene: setScene, orbit: orbit, camera: cam, points: function () { return ptPos; },   // for tests
         /* for host pages: switch the scene or the budget without the module's own panel */
-        load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); syncMesh(); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
+        load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); syncMesh(); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); if (hands) { hands.reset(); hands.show(!!st.sc.hands); } },
         setMaterial: pickMat,
         hands: function () { return hands; },                                             // for tests
         pickSurface: pickSurface,

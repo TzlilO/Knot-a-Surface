@@ -90,7 +90,10 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   baked features when `talk/dtu/features<N>.js` is loaded, masks) with wand / brush / erase selection and tint / hide /
   inflate / hold on the selection. The module gives it `pickSurface` (nearest Gaussian under the pointer -> chart and
   control point, from `instC` / `instK` filled in `emit`) and the orbit's `pick` / `hit` / `release` hooks; it adds no
-  touch handlers of its own. A chart marked `ground` (the table) is never touched and can be put away (`c.off`). Its views are the splat shader's render modes (`uMode` in
+  touch handlers of its own. A chart marked `ground` (the table) is never touched and can be put away (`c.off`).
+  The features are REAL DINOv3 ViT-S/16 features of the scan's photographs, baked by `python3 -I tools/dtu/features.py
+  <data-dir> 122 <model.onnx>` (weights not in the repo; see `tools/dtu/README.md`) in the format of `lab/features/`;
+  they tell parts apart (head, body, books, table), not the eyes from the face. Only the lab page loads them. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`

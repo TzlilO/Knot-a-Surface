@@ -143,6 +143,64 @@ has been tried except 65, 83 and 114, which were excluded on purpose.
 What would bring them in is an atlas of several charts per object, or leaving the unobserved nodes of a chart
 out when it is drawn (the `seen` mask is in every file for that); neither is done here.
 
+## Features of a pretrained model on the control points (`features.py`)
+
+`features.py` bakes DINOv3 ViT-S/16 features onto the control points of a fitted scan and writes
+`talk/dtu/features<N>.js` (`KnotTalk.dtuFeatures[N]`). The model is PRETRAINED (by Meta); it is run on the
+scan's own photographs and its features are lifted onto the charts offline. Nothing here is trained, and none
+of it is a result of the thesis method.
+
+```bash
+pip install onnxruntime
+python3 -I tools/dtu/features.py <data-dir> 122 <model.onnx>      # writes talk/dtu/features122.js, about 3 minutes
+```
+
+The weights are not in this repo. The file above was made with `onnx/model.onnx` + `onnx/model.onnx_data`
+(fp32, 86 MB) of the Hugging Face repo `onnx-community/dinov3-vits16-pretrain-lvd1689m-ONNX`, revision
+`48988dfe`, an ONNX export of `facebook/dinov3-vits16-pretrain-lvd1689m`; its card names the licence
+`dinov3-license` and the repo carries the text as `LICENSE.md` ("DINOv3 License", last updated August 14, 2025).
+
+1. The charts and the camera centres are read from the scan's data file; the pose of the scene in the
+   scanner's frame is the rigid fit between those centres and the ones in `cameras.npz` (residual 0.04 mm).
+2. Each of the 64 photographs is resized from 1554 x 1162 to 1024 x 768 (64 x 48 patches of 16 px, about 5.8 mm
+   on the object; ImageNet mean / std) and goes through the model once.
+3. Every stored control point has a node on the surface (the spline at its Greville site). The node is projected
+   into every photograph that sees it, by the rule the colour step uses: front-on (cosine above 0.2), in front
+   of the fitted surface (z-buffer), in agreement with the scan's depth map where that is valid. The patch
+   features, each of unit length, are read bilinearly between patch centres and averaged over the views with
+   weight cos^2 of the viewing angle. Nodes no view saw take their neighbours' value.
+4. One PCA over the stored nodes of both charts keeps 16 numbers per node; 27 nodes that stand out from their
+   5 x 5 neighbourhood (seen by one or two views, reading a patch of something else) take its median; then
+   8 bits per number.
+
+Both charts are stored at every second control point (`step: 2`): 144 x 196 for the owl, 52 x 40 for the table.
+The patches are seven times coarser than the control net, so nothing is lost by that.
+
+| scan 122 | |
+| --- | --- |
+| stored nodes | 30,304 (owl 28,224, table 2,080) |
+| views per node | owl 23.4, table 29.2 (mean) |
+| nodes no view saw (filled from neighbours) | 7.05 % (owl 6.41 %, table 15.62 %) |
+| variance kept by 16 components | 89.4 % (39.0, 9.8, 7.8, 6.3, 5.5, 5.0, 3.9, 2.2, 1.8, 1.5, 1.4, 1.3, 1.1, 1.0, 0.8, 0.8) |
+| `talk/dtu/features122.js` | 648 KB |
+
+What the features can tell apart, measured as cosine similarity in the stored 16 dimensions (the way the page
+computes it): parts. From a node on the chest feathers, 8.8 % of the owl's nodes are above 0.8, all in the
+body's rows of the chart (240 to 350); the two closed books (rows 0 to 120) stay below -0.15 and the table
+below -0.14. From a node at an eye, the whole face
+lights up (5.8 % above 0.8): the other eye reads 0.99, but so does the forehead between them (0.98). The eyes
+are NOT separable from the face. That is not the PCA or the resolution alone: with all 384 dimensions, and
+with the photographs at full size (1552 x 1152), the other eye reads 0.89 and the forehead 0.82.
+
+`--check DIR --seed name:i,j` writes the pictures these numbers come from (the chart's stored grid coloured by
+the first three components, and one similarity map per seed). `--cache DIR` keeps the patch features between
+runs as 16-bit floats; a run from the cache differs from a fresh one by one unit in under 0.1 % of the bytes.
+
+The file has the format of `lab/features/<scene>.js` (`tools/bake/distill.py`): `model, dim, views, res,
+explained, scale, lo, hi, charts: { name: { nu, nv, data } }`, with `step` and `net` added per chart: `nu, nv`
+are the STORED grid's size, `net` the control net's, and stored node (a, b) is control point (a * step, b * step).
+Re-run it whenever the scan's control nets change.
+
 ## The file it writes
 
 `KnotTalk.dtu = { scan, label, source, note, unit_mm, stats, cams, target, charts }`, a classic script that
