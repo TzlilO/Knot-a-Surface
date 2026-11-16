@@ -512,7 +512,8 @@
      rim, lx / ly = -1..1 across it), `beak` and `lid` colours; `colour` may also set s.a, an opacity (1 = solid:
      the renderer then shows what is behind, and the far side of the owl, through it; eyes and beak stay
      solid); and `move(s, t)` may add to s.x, s.y, s.z every frame: a material that is not rigid. Opacity and
-     motion are scaled in by the wipe. */
+     motion are scaled in by the wipe. `view` names the camera the material is shown from (default: the
+     step's own): a see-through one wants `through`, where the books lie behind the owl. */
   var MATS = {
     snowy: { label: 'snowy owl', beak: [0.09, 0.085, 0.08], lid: [0.80, 0.79, 0.76],
       // white where the stone is bright, dark bars where the carving has grooves (fewer of them on the head)
@@ -521,14 +522,15 @@
         s.r = 0.15 + (0.90 * w - 0.15) * t; s.g = 0.12 + (0.89 * w - 0.12) * t; s.b = 0.10 + (0.86 * w - 0.10) * t;
       },
       eye: function (d) { return d < 0.42 ? [0.02, 0.02, 0.02] : d < 0.86 ? [0.95, 0.70, 0.08] : [0.08, 0.07, 0.06]; } },
-    jelly: { label: 'alien jelly', beak: [0.03, 0.40, 0.12], lid: [0.12, 0.72, 0.22],
-      // a green gel you can see through: bright lime where it thins out towards the rim, the carving's relief
-      // smoothed over, and two painted highlights (a lamp up and to the left, a broad sheen from above), which are solid
+    jelly: { label: 'alien jelly', view: 'through', beak: [0.03, 0.40, 0.12], lid: [0.12, 0.72, 0.22],
+      // a green gel you can see through: a third opaque where you look straight into it, more where it thins out
+      // towards the rim (lime there), the carving's relief smoothed over, and two painted highlights (a lamp up
+      // and to the left, a broad sheen from above), which are solid
       colour: function (s) {
-        var f = Math.pow(1 - Math.max(0, Math.abs(s.nz)), 1.5), w = 0.6 + 0.4 * s.sh;
+        var f = Math.pow(1 - Math.max(0, Math.abs(s.nz)), 1.5), w = 0.65 + 0.35 * s.sh;
         var hl = 0.9 * Math.pow(Math.max(0, -0.22 * s.nx + 0.44 * s.ny + 0.87 * s.nz), 30) + 0.25 * Math.pow(Math.max(0, 0.7 * s.ny + 0.7 * s.nz), 10);
-        s.r = (0.03 + 0.62 * f) * w + hl; s.g = (0.55 + 0.45 * f) * w + hl; s.b = (0.14 + 0.22 * f) * w + hl;
-        s.a = Math.min(1, 0.5 + 0.2 * f + hl);
+        s.r = (0.10 + 0.60 * f) * w + hl; s.g = (0.80 + 0.20 * f) * w + hl; s.b = (0.22 + 0.20 * f) * w + hl;
+        s.a = Math.min(1, 0.34 + 0.26 * f + 1.4 * hl);
       },
       eye: function (d, lx, ly) { return Math.hypot(lx + 0.32, ly - 0.34) < 0.24 ? [0.95, 1, 0.95] : d < 0.82 ? [0.01, 0.06, 0.02] : [0.45, 1, 0.35]; },
       // it wobbles: a sway that grows with the height above the feet, and a ripple climbing the body
@@ -632,12 +634,13 @@
       /* every view lies inside the dome of real cameras (azimuth -60..60 degrees, 16..70 degrees above the table);
          a scan baked with `--register scans` brings its own */
       views: D.views || { wide: { th: 0.30, ph: 1.22, r: 8.6, tx: 0, ty: ty, tz: tz }, close: { th: -0.15, ph: 1.20, r: 3.3, tx: 0.15, ty: ty * 1.5, tz: 0.2 },
-               a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz } },
+               a: { th: -0.85, ph: 1.12, r: 6.8, tx: 0, ty: ty, tz: tz }, b: { th: 0.80, ph: 1.00, r: 6.8, tx: 0, ty: ty, tz: tz },
+               through: { th: -0.55, ph: 1.14, r: 5.0, tx: 0.1, ty: 2.3, tz: 0.2 } },      // close, three-quarter: the books behind the body
       tour: D.tour || ['wide', 'close', 'a', 'b'],
       rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
       /* scan 122 only: the owl alive and repainted (owlLife); another scan has neither */
       animate: D.scan === 122 ? owlLife(C[0]) : null,
-      materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label }; }) : null
+      materials: D.scan === 122 ? Object.keys(MATS).map(function (k) { return { v: k, label: MATS[k].label, view: MATS[k].view }; }) : null
     };
   }
 

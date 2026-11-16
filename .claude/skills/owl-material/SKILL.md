@@ -30,7 +30,7 @@ Add one entry to `MATS`. It is evaluated once per control point of the owl (not 
 cached, so it can be as elaborate as you like; only `move` runs every frame.
 
 ```js
-name: { label: 'shown in the picker', beak: [r, g, b], lid: [r, g, b],
+name: { label: 'shown in the picker', beak: [r, g, b], lid: [r, g, b], view: 'through',   // view: optional
   colour: function (s) { ...; s.r = ; s.g = ; s.b = ; /* optional */ s.a = ; },
   eye: function (d, lx, ly) { return [r, g, b]; },      // optional
   move: function (s, t) { s.x += ; s.y += ; s.z += ; }  // optional
@@ -56,6 +56,11 @@ What it can write:
   see-through layers: the solid scene shows through it, and so does the owl's own far side. Keep highlights
   solid (`s.a = min(1, base + highlight)`) or they wash out. The sheet is open at the back, so through the
   middle of the body you see the background, not a far wall.
+  Opacity only reads when something is behind the owl. From the step's wide camera there is nothing but dark
+  background, and a half-opaque material just looks like a darker solid one (the first jelly was sent back for
+  exactly this). So give a see-through material `view: 'through'` (a close three-quarter camera with the books
+  behind the body; cameras are the `views` of `scan()`), go as low as about 0.35 where you look straight into
+  it, and judge it from that camera, not from a close-up you set up by hand.
 - `eye(d, lx, ly)`: colour inside an eye socket; `d` = 0 centre .. 1 rim, `lx`, `ly` = -1..1 across it. Eyes
   and beak are always solid. Without `eye` the sockets take the body colour.
 - `lid`: the colour that closes over the eyes when the owl blinks. Pick the body colour around the eyes.

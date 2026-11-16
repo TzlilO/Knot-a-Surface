@@ -138,7 +138,7 @@
         if (segM) { segM.el.remove(); segM = null; }
         if (def.materials) {
           if (!def.materials.some(function (m) { return m.v === st.mat; })) st.mat = def.materials[0].v;
-          segM = ui.seg(panel, { value: st.mat, options: def.materials, onChange: function (v) { st.mat = v; st.paint = 0; } });
+          segM = ui.seg(panel, { value: st.mat, options: def.materials, onChange: pickMat });
           segM.el.classList.add('mf-mat');
         }
         [netL && netL.obj, pts, rigL && rigL.obj].forEach(function (o) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
@@ -241,7 +241,7 @@
               var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / dl * c.flip;
               // open charts: foreshortening. closed charts: the near side counts in full (flat planoids must
               // stay small all the way to the silhouette), the hidden far side keeps a thin share
-              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : st.cull && !c.alpha ? 0 : 0.3; }      // culled: the far side asks for nothing (a see-through chart shows it)
+              if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : c.alpha ? 0.6 : st.cull ? 0 : 0.3; }      // culled: the far side asks for nothing (a see-through chart shows it)
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
               w = c.carea[i] * cs / d2 * c.gain;
               if (cw < z0) z0 = cw; if (cw > z1) z1 = cw;
@@ -497,6 +497,12 @@
       R.canvas.addEventListener('pointerup', endCP); R.canvas.addEventListener('pointercancel', endCP);
 
       /* ---------- scenes ---------- */
+      /* a material is shown from the camera it names (a see-through one from where something lies behind it) */
+      function matView() {
+        var m = st.sc.paint && def.materials && def.materials.filter(function (k) { return k.v === st.mat; })[0];
+        return m && m.view && def.views[m.view] ? m.view : st.sc.cam || 'wide';
+      }
+      function pickMat(v) { st.mat = v; st.paint = 0; if (segM) segM.set(v); if (!orbit.touched) orbit.to(view(matView())); }
       function paintBadge() {
         badge.innerHTML = 'view-adaptive sampling <b class="' + (st.adaptive ? 'on' : 'off') + '">' + (st.adaptive ? 'ON' : 'OFF') + '</b>';
       }
@@ -518,7 +524,7 @@
         loadScene(sc.scn); showNets(); paintCap(); syncMesh(); st.paint = 0;
         hint.textContent = sc.hint || '';
         orbit.touched = false;
-        orbit.to(view(sc.cam || 'wide'), fresh);
+        orbit.to(view(matView()), fresh);
         need = true;
       }
 
@@ -540,7 +546,7 @@
           if (st.nets) updateNets();
           need = true;
         }
-        var home = def.views[sc.cam || 'wide'];
+        var home = def.views[matView()];
         if (!orbit.touched && !sc.tour && (sc.cam || 'wide') === 'wide') orbit.goal.th = home.th + 0.14 * Math.sin(t * 0.16);
         orbit.update(dt, sc.tour ? 1.5 : 3);
         var e = cam.matrixWorld.elements, key = (e[12] + e[13] * 3 + e[14] * 7 + e[8] * 11 + e[9] * 13).toFixed(3);
@@ -595,7 +601,7 @@
         setScene: setScene, orbit: orbit, camera: cam, points: function () { return ptPos; },   // for tests
         /* for host pages: switch the scene or the budget without the module's own panel */
         load: function (key) { st.sc = Object.assign({}, st.sc, { scn: key }); st.tourI = 0; st.tourT = 0; loadScene(key); syncMesh(); orbit.touched = false; orbit.to(view('wide'), true); paintCap(); },
-        setMaterial: function (v) { st.mat = v; st.paint = 0; if (segM) segM.set(v); },
+        setMaterial: pickMat,
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; },
         resize: function (w, h) {
           R.resize(w, h); need = true; size.w = w; size.h = h;
