@@ -48,6 +48,11 @@
    enough that the first letter clears the card's rounded corner */
 .prelude .p-read,.he-read{position:absolute;z-index:4;top:1.2rem;left:1.4rem;font:500 .86rem/1.3 var(--f-ui);color:var(--dim);pointer-events:none}
 .prelude .p-read b,.he-read b{display:block;font:800 1.9rem/1.1 var(--f-ui);letter-spacing:-.02em;color:var(--text);font-variant-numeric:tabular-nums}
+/* he-fit pins its target photo to the top-left corner of its picture, where the Hebrew deck (right to left) has no
+   readout: here the count goes top-right, and on a folded stage (a phone: the controls button holds that corner) under
+   the picture, bottom-left */
+.kt-sim-he-fit .he-read{left:auto;right:1.4rem;text-align:right}
+.kt-sim-he-fit.kt-compact .he-read{top:auto;bottom:1rem;left:1.4rem;right:auto;text-align:left}
 
 /* ---------- the two title screens: the opening's and the talk's cover, text left, a glass card right ---------- */
 .prelude .p-hero{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:2.4rem;

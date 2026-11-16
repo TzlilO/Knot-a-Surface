@@ -910,7 +910,7 @@
          the lattice says who the neighbours are, nothing is searched. Reading order in the chart — left to right,
          from the top row (v = 1, the near side in the default view) down — STITCH_T seconds for the (n-1)^2 stops
          after a STITCH_LEAD pause; the Gaussians the window has passed are retired (written in reverse order of
-         passing, so setCount drops them), as the full-scene mesh of chapter 06 does. Then it holds. */
+         passing, so setCount drops them), as the full-scene mesh of chapter 07 does. Then it holds. */
       function quadAt(n, k) { return { a: k % (n - 1), b: n - 2 - Math.floor(k / (n - 1)) }; }      // stop k: the window's lower-left sample
       var sset = footSet(OUTMAX * OUTMAX), sx = { n: 0, Q: 0, q: -1, V: 0, t0: 0, ver: -1, k: 0, passed: 0, P: null };
       function triAt(TP, TN, k, P, i0, i1, i2) {

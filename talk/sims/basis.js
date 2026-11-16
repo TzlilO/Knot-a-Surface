@@ -594,18 +594,19 @@
 
       /* ---------- interaction ---------- */
       function local(e) { var r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-      /* How far from control point i (screen positions Q) a finger still takes it: KT.HIT, but in a dense row only 0.4
-         of the way to the nearest other point, and never less than 4 px beyond what is drawn (rad). A finger that lands
-         there keeps the page from scrolling (KT.touchGuard below), so the reach must leave room between the points: on
-         a phone the strip's 14 weights sit 9-40 px apart in a near-straight row, and a fixed 26 px claimed a band some
-         50 px tall right across the stage; now a vertical swipe that starts between two weights scrolls the deck. */
+      /* In the deck, how far from control point i (screen positions Q) a finger still takes it: KT.HIT, but in a dense
+         row only 0.4 of the way to the nearest other point, and never less than 4 px beyond what is drawn (rad). A finger
+         that lands there keeps the page from scrolling (KT.touchGuard below), so the reach must leave room between the
+         points: on a phone the strip's 14 weights sit 9-40 px apart in a near-straight row, and a fixed 26 px claimed a
+         band some 50 px tall right across the stage; now a vertical swipe that starts between two weights scrolls the
+         deck. The lab page does not scroll: there a finger reaches 26 px, as the mouse does. */
       function reach(i, Q) {
         var nn = 1e9, j;
         for (j = 0; j < Q.length; j++) if (j !== i) nn = Math.min(nn, Math.hypot(Q[j][0] - Q[i][0], Q[j][1] - Q[i][1]));
         return Math.max((rad[i] || 7) + 4, Math.min(KT.HIT, 0.4 * nn));
       }
-      /* what a pointer at client-local (x, y) takes: a mouse, a control point within 26 px; a finger, within reach();
-         touch widens the knot targets */
+      /* what a pointer at client-local (x, y) takes: a mouse, a control point within 26 px; a finger in the deck, within
+         reach(); touch widens the knot targets */
       function hit(x, y, touch) {
         var best = null, bd = 26, i, q, d;
         if (st.f) return null;
@@ -622,7 +623,7 @@
         for (i = 0; i < Q.length; i++) {
           if (weightIn(i) < 0.5) continue;       // a weight not yet set down (the strip's intro) cannot be grabbed
           d = Math.hypot(Q[i][0] - x, Q[i][1] - y);
-          if (d < (touch ? reach(i, Q) : 26) && d < bp) { bp = d; best = { kind: 'pt', i: i }; }
+          if (d < (touch && env.embed ? reach(i, Q) : 26) && d < bp) { bp = d; best = { kind: 'pt', i: i }; }
         }
         if (best) return best;
         if (L.bh > 30) {
