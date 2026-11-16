@@ -27,21 +27,34 @@
   var EDGE = 0.24;           // |cos| between the view ray and the normal under which the tangent plane counts as edge-on
   var COL_U = C.surf, COL_V = '#6d8dff';            // two shades of the surface colour: S_u and S_v must not look alike
 
+  var OUTMAX = 48;           // up to this many samples per axis every Gaussian's 1-sigma outline is drawn
+  var KN_LEVELS = [8, 16, 32, 64, 128, 256, 512, 1024];   // the knob, x4 Gaussians per step
+  var KN_BUDGET = 50;        // ms: the knob turns back at a step whose frame time is above this and 3x the first step's
+  var STITCH_T = 10, STITCH_LEAD = 0.8;                   // the 2 x 2 window: seconds for the whole lattice, and a pause first
+
   var SCENES = {
-    net:      { show: 'net wire', cap: '<b>tensor product</b> · a net of control points sweeps out a surface',
+    net:      { show: 'net wire fit', fit: 1, cap: '<b>a spline fitted to a terrain</b> · 36 control heights, least squares',
                 hint: 'drag to orbit · drag an amber point to reshape' },
     probe:    { show: 'net wire probe uv', cap: '<b>position</b> · μ = S(u, v)', hint: 'drag the cross in the (u,v) chart' },
     tangents: { show: 'wire probe tan iso plane face uv', rock: 1,
                 cap: '<b>tangents</b> · S<sub>u</sub> and S<sub>v</sub>, in closed form — two directions that span the tangent plane' },
     normal:   { show: 'wire probe tan nor iso plane face uv', rock: 1,
                 cap: '<b>rotation</b> · R = [ Ŝ<sub>u</sub> · Ŝ<sub>v</sub><sup>⊥</sup> · n ]' },
-    scale:    { show: 'probe tan nor ell nbr face uv', n: 9, rock: 0.55, fixed: [0.28, 0.5],
+    scale:    { show: 'probe tan nor ell nbr face uv tile', n: 9, rock: 0.55, fixed: [0.28, 0.5],
                 cap: '<b>scale</b> · s = ( ‖S<sub>u</sub>‖Δu , ‖S<sub>v</sub><sup>⊥</sup>‖Δv , ε ) — the step to the neighbouring samples',
-                hint: 'drag in the (u,v) chart · switch 4 / 8 neighbours · take the samples slider' },
+                hint: 'drag in the (u,v) chart · switch 4 / 8 neighbours · one size / own cell' },
     derive:   { show: 'net probe tan nor ell nbr face', n: 9, wig: 1, fixed: [0.56, 0.44], rock: 0.4,
                 cap: '<b>nothing is learned per Gaussian</b> · move the surface, the splat and its neighbours re-derive' },
-    fill:     { show: 'wire field uv', n: 14, rim: 1, cap: '<b>fill the chart</b> · one Gaussian per (u,v) sample, sized to its cell' },
-    knob:     { show: 'field', sweep: 1, rim: 0.7, cap: '<b>the resolution knob</b> · re-evaluate, don’t retrain' },
+    fill:     { show: 'field uv tile', n: 14, rim: 1, cap: '<b>fill the chart</b> · one Gaussian per (u,v) sample · outline = 1σ',
+                hint: 'one size / own cell · take the samples and σ / cell sliders' },
+    stitch:   { show: 'field uv stitch', n: 12, rim: 1, view: { th: 0.72, ph: 0.86, r: 6.9 },
+                cap: '<b>stitch</b> · a 2 × 2 window over the (u,v) lattice: two triangles per stop',
+                hint: 'take the samples slider to run it again' },
+    knob:     { show: 'field', sweep: 1, rim: 0.7, cap: '<b>the resolution knob</b> · re-evaluate, don’t retrain',
+                hint: 'take the Gaussians slider' },
+    adaptive: { show: 'uv adapt', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
+                cap: '<b>adaptive sampling</b> · a fixed budget, warped towards what a camera sees',
+                hint: 'drag to orbit · we watch from the side' },
     features: { show: 'net field feat', n: 72, rim: 0.4, cap: '<b>control features</b> · colour and opacity ride the same basis' },
     hero:     { show: 'wire field feat', n: 64, rim: 0.5, hero: 1, cap: '' }
   };
@@ -126,7 +139,8 @@
       { id: 'net', label: 'Control net' }, { id: 'probe', label: 'Position' },
       { id: 'tangents', label: 'Tangents' }, { id: 'normal', label: 'Rotation' },
       { id: 'scale', label: 'Scale' }, { id: 'derive', label: 'Derived, not learned' },
-      { id: 'fill', label: 'Fill the chart' }, { id: 'knob', label: 'Resolution knob' },
+      { id: 'fill', label: 'Fill the chart' }, { id: 'stitch', label: 'Stitch a mesh' },
+      { id: 'knob', label: 'Resolution knob' }, { id: 'adaptive', label: 'Adaptive sampling' },
       { id: 'features', label: 'Control features' }
     ],
     create: function (env) {
@@ -141,20 +155,145 @@
       scene.add(new T.HemisphereLight(0xe6efff, 0x2a3650, 1.5));
       var sun = new T.DirectionalLight(0xffffff, 2.6); sun.position.copy(LIGHT); scene.add(sun);
 
-      /* ---------- the patch ---------- */
-      var patch = NB.makePatch({ nu: NU, nv: NV, p: 3 }), base = new Float32Array(NU * NV * 3);
+      /* ---------- the patch: the terrain of chapter 05 (talk/terrain.js), held by this 6 x 6 net ----------
+         The control points stand on a regular grid in x and z; only their heights are fitted. ground(x, z) is the
+         target: the terrain on [0,1]^2 laid over the patch's square, normalised so its relief spans HS (0.35 of the
+         width, the proportions chapter 05 uses). The fit is linear least squares over FG x FG samples at the cell
+         centres of (u, v): the height of S(u, v) against the terrain at the same (x, z). Scene `net` shows it run —
+         Jacobi-preconditioned conjugate gradients from a flat net, each step a glide along its search direction to
+         the minimum on that line; every other scene starts from the converged net (`base`). Six control points a
+         side hold the rolling ground and blur the crater: that is where chapter 05 starts. */
+      var TERR = typeof KT.terrain === 'function' ? KT.terrain : null;
+      var HS = 0.35 * SPAN, HB = -0.45, tLo = 0, tHi = 1;
+      if (TERR) (function () {
+        tLo = 1e9; tHi = -1e9;
+        for (var b = 0; b < 128; b++) for (var a = 0; a < 128; a++) { var h = TERR((a + 0.5) / 128, (b + 0.5) / 128); if (h < tLo) tLo = h; if (h > tHi) tHi = h; }
+      })();
+      function ground(x, z) {
+        if (TERR) return HB + HS * (TERR(x / SPAN + 0.5, z / SPAN + 0.5) - tLo) / (tHi - tLo);
+        x = x / SPAN * 2; z = z / SPAN * 2;          // without talk/terrain.js: the module's old analytic bump stands in
+        return Math.exp(-((x - 0.25) * (x - 0.25) + (z + 0.2) * (z + 0.2)) * 2.4) - 0.55 * Math.exp(-((x + 0.6) * (x + 0.6) + (z - 0.55) * (z - 0.55)) * 3) + 0.14 * x;
+      }
+      var patch = NB.makePatch({ nu: NU, nv: NV, p: 3 }), base = new Float32Array(NU * NV * 3), fitBase = new Float32Array(NU * NV * 3);
       (function () {
-        var A = [0.12, 0.47, 0.90], B = [1.0, 0.44, 0.26], D = [0.80, 0.58, 0.85], i, j, o, x, z, s, t;
+        var A = [0.12, 0.47, 0.90], B = [1.0, 0.44, 0.26], D = [0.80, 0.58, 0.85], i, j, o, s, t;
         for (j = 0; j < NV; j++) for (i = 0; i < NU; i++) {
-          o = (j * NU + i) * 3; s = i / (NU - 1); t = j / (NV - 1); x = s * 2 - 1; z = t * 2 - 1;
-          base[o] = x * SPAN / 2; base[o + 2] = z * SPAN / 2;
-          base[o + 1] = 1.0 * Math.exp(-((x - 0.25) * (x - 0.25) + (z + 0.2) * (z + 0.2)) * 2.4) -
-                        0.55 * Math.exp(-((x + 0.6) * (x + 0.6) + (z - 0.55) * (z - 0.55)) * 3.0) + 0.14 * x;
+          o = (j * NU + i) * 3; s = i / (NU - 1); t = j / (NV - 1);
+          base[o] = (s * 2 - 1) * SPAN / 2; base[o + 2] = (t * 2 - 1) * SPAN / 2;
           for (var c = 0; c < 3; c++) patch.C[o + c] = KT.lerp(KT.lerp(A[c], B[c], s), D[c], t * 0.75);
         }
         o = (2 * NU + 3) * 3; patch.C[o] = 1; patch.C[o + 1] = 0.86; patch.C[o + 2] = 0.30;   // one loud control feature
         patch.P.set(base);
       })();
+      var FG = 40, FIT = (function () {          // the normal equations, once: A = B^T B / N, rhs = B^T t / N, tt = t.t / N
+        var n = NU * NV, us = new Float64Array(FG), a, b, i, j, q, r, s;
+        for (a = 0; a < FG; a++) us[a] = (a + 0.5) / FG;
+        var gp = { pos: new Float32Array(FG * FG * 3) }; NB.patchGrid(patch, us, us, gp);     // x(u), z(v): heights do not enter
+        var TB = NB.axisTable(patch.Uk, NU, 3, us), A = new Float64Array(n * n), rhs = new Float64Array(n), tg = new Float64Array(FG * FG);
+        var idx = new Int32Array(16), w = new Float64Array(16), tt = 0, mean = 0, N = FG * FG;
+        for (b = 0; b < FG; b++) for (a = 0; a < FG; a++) {
+          s = b * FG + a; tg[s] = ground(gp.pos[s * 3], gp.pos[s * 3 + 2]); tt += tg[s] * tg[s]; mean += tg[s];
+          for (q = 0; q < 4; q++) for (r = 0; r < 4; r++) { idx[q * 4 + r] = (TB.span[b] - 3 + q) * NU + TB.span[a] - 3 + r; w[q * 4 + r] = TB.N[a * 4 + r] * TB.N[b * 4 + q]; }
+          for (i = 0; i < 16; i++) { rhs[idx[i]] += w[i] * tg[s]; for (j = 0; j < 16; j++) A[idx[i] * n + idx[j]] += w[i] * w[j]; }
+        }
+        for (i = 0; i < n * n; i++) A[i] /= N;
+        for (i = 0; i < n; i++) rhs[i] /= N;
+        return { n: n, A: A, b: rhs, tt: tt / N, mean: mean / N, us: us, pos: gp.pos, tg: tg };
+      })();
+      function mulA(X, out) { var n = FIT.n, i, j, s; for (i = 0; i < n; i++) { s = 0; for (j = 0; j < n; j++) s += FIT.A[i * n + j] * X[j]; out[i] = s; } return out; }
+      function dotN(x, y) { var s = 0; for (var i = 0; i < x.length; i++) s += x[i] * y[i]; return s; }
+      /* RMS of (surface - terrain) over the FG x FG samples, from the normal equations: tt - 2 b.Z + Z.AZ */
+      var fitTmp = new Float64Array(NU * NV);
+      function fitRms(Z) { return Math.sqrt(Math.max(0, FIT.tt - 2 * dotN(FIT.b, Z) + dotN(Z, mulA(Z, fitTmp)))); }
+      function heights(out) { for (var i = 0; i < NU * NV; i++) out[i] = patch.P[i * 3 + 1]; return out; }
+      /* conjugate gradients, one line search at a time: cgAim picks the step (al along p), cgLand takes it */
+      function cgNew(Z) {
+        var n = FIT.n, c = { Z: Z, r: new Float64Array(n), z: new Float64Array(n), p: new Float64Array(n), Ap: new Float64Array(n),
+                             from: new Float64Array(n), it: 0, tau: 0, done: false }, i;
+        mulA(Z, c.Ap);
+        for (i = 0; i < n; i++) { c.r[i] = FIT.b[i] - c.Ap[i]; c.z[i] = c.r[i] / FIT.A[i * n + i]; c.p[i] = c.z[i]; }
+        c.rz = c.rz0 = dotN(c.r, c.z); cgAim(c);
+        return c;
+      }
+      function cgAim(c) {
+        mulA(c.p, c.Ap); var pAp = dotN(c.p, c.Ap);
+        c.al = pAp > 0 ? c.rz / pAp : 0; c.from.set(c.Z); c.tau = 0;
+        c.slice = 0.05 + 0.62 * Math.pow(0.78, c.it);             // how long this step is shown taking, in seconds
+        if (!(pAp > 0) || c.rz <= 1e-18 * c.rz0) c.done = true;
+      }
+      function cgLand(c) {
+        var n = FIT.n, i, rz, be;
+        for (i = 0; i < n; i++) { c.Z[i] = c.from[i] + c.al * c.p[i]; c.r[i] -= c.al * c.Ap[i]; c.z[i] = c.r[i] / FIT.A[i * n + i]; }
+        rz = dotN(c.r, c.z); be = rz / c.rz; c.rz = rz; c.it++;
+        for (i = 0; i < n; i++) c.p[i] = c.z[i] + be * c.p[i];
+        if (c.rz <= 1e-18 * c.rz0 || c.it >= 4 * n) c.done = true; else cgAim(c);
+      }
+      (function () {                             // the converged net: the rest pose of every scene but `net`
+        var c = cgNew(new Float64Array(FIT.n).fill(FIT.mean)), i;
+        while (!c.done) cgLand(c);
+        for (i = 0; i < FIT.n; i++) base[i * 3 + 1] = c.Z[i];
+        FIT.rms = fitRms(c.Z); FIT.steps = c.it; fitBase.set(base); patch.P.set(base);
+      })();
+      /* scene net: one CG line search at a time, shown as a glide (eased) from where it starts to where it lands */
+      function fitTick(dt) {
+        var c = st.fit, i;
+        if (!c || c.done || c.user) return;
+        c.tau += dt / c.slice;
+        if (c.tau >= 1) cgLand(c);
+        var e = c.done ? 1 : KT.ease(c.tau);
+        for (i = 0; i < FIT.n; i++) patch.P[i * 3 + 1] = c.done ? c.Z[i] : c.from[i] + e * c.al * c.p[i];
+        surfDirty = true;
+      }
+      /* measured on the net as shown: RMS and largest |surface - terrain| over all FG x FG samples, as a share of the relief;
+         a red tick at every other sample */
+      var rgFull = { pos: new Float32Array(FG * FG * 3) }, fitStat = { rms: 0, max: 0 };
+      function updateResid() {
+        NB.patchGrid(patch, FIT.us, FIT.us, rgFull);
+        var P = rgFull.pos, A = resid.arr, se = 0, mx = 0, e, s, a, b, o = 0, N = FG * FG, c = st.fit;
+        for (s = 0; s < N; s++) { e = Math.abs(P[s * 3 + 1] - FIT.tg[s]); se += e * e; if (e > mx) mx = e; }
+        for (b = 0; b < TD; b++) for (a = 0; a < TD; a++) {
+          s = (b * 2 + 1) * FG + a * 2 + 1;
+          A[o] = P[s * 3]; A[o + 1] = P[s * 3 + 1]; A[o + 2] = P[s * 3 + 2]; A[o + 3] = P[s * 3]; A[o + 4] = FIT.tg[s]; A[o + 5] = P[s * 3 + 2]; o += 6;
+        }
+        resid.set(o / 3);
+        fitStat.rms = Math.sqrt(se / N) / HS; fitStat.max = mx / HS;
+        rdFit.set(pct(fitStat.rms)); rdMax.set(pct(fitStat.max));
+        rdIt.set(!c ? '—' : c.user ? 'stopped: a point was moved' : c.done ? 'converged · ' + c.it + ' CG steps' : 'CG step ' + (c.it + 1));
+        hudDirty = true;
+      }
+      function fmtMs(ms) { return ms == null ? '—' : ms < 10 ? ms.toFixed(1) + ' ms' : Math.round(ms) + ' ms'; }
+      function pctW(x) { return x == null ? '—' : (x * 100).toFixed(x < 0.1 ? 1 : 0) + ' %'; }
+      /* the numbers under the caption, for the scene on stage */
+      function drawHud() {
+        var s = st.show, sc = st.sc, h = '', A, B, a;
+        if (s.fit && st.fit) {
+          var c = st.fit;
+          h = (c.user ? 'least squares · stopped: a control point was moved' : c.done ? 'least squares · converged in <b>' + c.it + '</b> conjugate-gradient steps'
+               : 'least squares · conjugate gradients, step <b>' + (c.it + 1) + '</b>') +
+              '<br>RMS error <b class="e">' + pct(fitStat.rms) + '</b> of the relief · largest <b class="e">' + pct(fitStat.max) + '</b>';
+        } else if (s.tile && tl.own) {
+          var one = tl.b >= 0.5; A = one ? tl.one : tl.own; B = one ? tl.own : tl.one;
+          h = '<b class="s">' + (one ? 'one size for all' : 'each sized to its own cell') + '</b> · uncovered <b class="e">' + pct(A.unc) +
+              '</b> · piled 3+ deep <b>' + pct(A.pile) + '</b><br><span class="m">' + (one ? 'own cell' : 'one size') + ': uncovered ' + pct(B.unc) + ' · 3+ deep ' + pct(B.pile) + '</span>';
+        } else if (s.stitch && sx.n) {
+          h = '<b class="u">' + (sx.q * 2) + '</b> / ' + (sx.Q * 2) + ' triangles · two at every stop of the 2 × 2 window · ' + sx.V + ' samples';
+        } else if (sc.sweep) {
+          var ft = kn.ft[kn.cur];
+          h = '<span class="big s">' + (kn.cur * kn.cur).toLocaleString('en-US') + '</span> Gaussians from <span class="big c">' + (NU * NV * PER_CP) + '</span> stored numbers' +
+              '<br>frame time ' + (ft == null ? 'measuring…' : '<b>' + ft.toFixed(1) + ' ms</b> (' + Math.round(1000 / ft) + ' fps)') + ' · re-evaluated in <b>' + fmtMs(kn.ev[kn.cur]) + '</b>';
+        } else if (s.adapt && ad.stat) {
+          a = ad.stat;
+          var eq = a.sIn && a.uIn ? Math.round(a.n * (a.uIn / a.sIn) * (a.uIn / a.sIn)) : null;
+          h = '<b class="s">' + a.n.toLocaleString('en-US') + '</b> Gaussians, fixed · <b class="s">' + Math.round(100 * a.ins / a.n) + ' %</b> of them in the camera’s view' +
+              ' (<b>' + Math.round(100 * a.view) + ' %</b> of the surface)<br>cell side in view <b>' + pctW(a.sIn) + '</b> of the width, outside <b>' +
+              pctW(a.sOut) + '</b> · even lattice <b>' + pctW(a.uIn) + '</b>';
+          rdIn.set(a.ins.toLocaleString('en-US') + ' · ' + Math.round(100 * a.ins / a.n) + ' %'); rdFp.set(Math.round(100 * a.view) + ' % of the surface');
+          rdSpc.el.lastChild.innerHTML = pctW(a.sIn) + ' <i>·</i> ' + pctW(a.sOut); rdUni.set(pctW(a.uIn));
+          rdEq.set(eq ? '≈ ' + eq.toLocaleString('en-US') + ' Gaussians' : '—');
+        }
+        if (h !== hudHtml) { hudHtml = h; hud.innerHTML = h; hud.style.display = h ? '' : 'none'; hudPlace(); }
+      }
+      function hudPlace() { hud.style.top = Math.round(cap.offsetTop + cap.offsetHeight + 7) + 'px'; }
 
       /* ---------- scene objects ----------
          Draw order: opaque things (control points, arrows, splat field) first, then by renderOrder:
@@ -268,6 +407,80 @@
       var G9 = { pos: new Float32Array(27), su: new Float32Array(27), sv: new Float32Array(27) };
       var G9b = { pos: new Float32Array(27), su: new Float32Array(27), sv: new Float32Array(27) };
 
+      // the terrain the net is fitted to (scene `net`): every other fit sample as a dot, and in red how far the
+      // surface is from it there (target = the neutral colour, as in chapter 05)
+      var TD = FG / 2, tdUV = new Float64Array(TD), tgtPos = new Float32Array(TD * TD * 3), rg = { pos: new Float32Array(TD * TD * 3) };
+      (function () {
+        for (var a = 0; a < TD; a++) tdUV[a] = FIT.us[a * 2 + 1];
+        for (var b = 0; b < TD; b++) for (var a2 = 0; a2 < TD; a2++) {
+          var s = (b * 2 + 1) * FG + a2 * 2 + 1, o = (b * TD + a2) * 3;
+          tgtPos[o] = FIT.pos[s * 3]; tgtPos[o + 1] = FIT.tg[s]; tgtPos[o + 2] = FIT.pos[s * 3 + 2];
+        }
+      })();
+      var tgtGeo = new T.BufferGeometry(); tgtGeo.setAttribute('position', new T.BufferAttribute(tgtPos, 3));
+      var tgtDots = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.042, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.85 })), 2);
+      var tgtHid = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.042, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.22,
+        depthFunc: T.GreaterDepth, depthWrite: false })), 3);
+      var resid = G.lines(TD * TD * 2, C.err, 0.85); own(resid.obj, 2);
+      var residHid = ghostLines(resid, 0.25, 3);
+
+      /* ---------- the overlay: drawn after the frame, over the smooth Gaussians ----------
+         The depth is cleared and the surface's own depth written again (ovDepth), so what lies ON the surface — the
+         Gaussians' 1-sigma outlines, the red of what they leave uncovered, a camera's footprint — shows over the
+         rendered Gaussians and is hidden only by the surface itself. */
+      var ovl = new T.Scene(); ovl.fog = scene.fog;
+      function ovOwn(o, order) { o.frustumCulled = false; o.renderOrder = order; ovl.add(o); return o; }
+      var ovDepth = ovOwn(new T.Mesh(sheet.geo, new T.MeshBasicMaterial({ colorWrite: false, side: T.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 })), -10);
+      var maskTex = null, maskF = 0, maskData = null;
+      var ovMat = new T.ShaderMaterial({
+        transparent: true, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uFog: { value: new T.Vector2(4, 14) },
+                    uRed: { value: new T.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new T.Vector3().fromArray(G.rgb(C.text)) } },
+        vertexShader: 'varying vec2 vUv; varying float vZ; void main(){ vUv = uv; vec4 e = modelViewMatrix * vec4(position, 1.0); vZ = -e.z; gl_Position = projectionMatrix * e; }',
+        fragmentShader: [
+          'uniform sampler2D tMask; uniform float uBlend; uniform float uGap; uniform float uTint; uniform vec2 uFog; uniform vec3 uRed; uniform vec3 uWhite;',
+          'varying vec2 vUv; varying float vZ;',
+          'void main(){',
+          '  vec4 m = texture2D(tMask, vUv);',
+          '  float g = 0.85 * uGap * smoothstep(0.3, 0.7, mix(m.g, m.r, uBlend));',    // uncovered: own cell (g) or one size (r)
+          '  float t = 0.17 * uTint * m.b;',                                          // inside a camera's footprint
+          '  if (max(g, t) < 0.01) discard;',
+          '  float f = clamp((vZ - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);',
+          '  gl_FragColor = vec4(g >= t ? uRed : uWhite, max(g, t) * (1.0 - 0.55 * f));',
+          '}'].join('\n')
+      });
+      var ovMesh = ovOwn(new T.Mesh(sheet.geo, ovMat), 0);
+      function maskSize(F) {
+        if (F === maskF) return;
+        if (maskTex) maskTex.dispose();
+        maskF = F; maskData = new Uint8Array(F * F * 4);
+        maskTex = new T.DataTexture(maskData, F, F, T.RGBAFormat); maskTex.magFilter = maskTex.minFilter = T.LinearFilter;
+        maskTex.needsUpdate = true; ovMat.uniforms.tMask.value = maskTex;
+      }
+      var EM = 36;                                // segments per outline
+      var outl = G.lines(OUTMAX * OUTMAX * EM * 2, C.splat, 0.95); ovOwn(outl.obj, 2);
+
+      // stitch: the triangles (flat-shaded, the surface's colour), their edges, the newest pair, and the window
+      var SQ = (OUTMAX - 1) * (OUTMAX - 1);
+      var triGeo = new T.BufferGeometry();
+      triGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
+      triGeo.setAttribute('normal', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
+      triGeo.setDrawRange(0, 0);
+      var tri = own(new T.Mesh(triGeo, new T.MeshLambertMaterial({ color: 0x1d6d93, emissive: 0x07202e, side: T.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })), 1);
+      var triEdge = G.lines(SQ * 10, C.surf, 0.9); own(triEdge.obj, 2);
+      var triNew = G.lines(10, '#ffffff', 1); own(triNew.obj, 3);
+      var winGeo = new T.BufferGeometry(); winGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
+      var win = ovOwn(new T.LineLoop(winGeo, new T.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true })), 6);
+      var winDot = ovOwn(new T.Points(winGeo, new T.PointsMaterial({ color: 0xffffff, size: 6, sizeAttenuation: false, depthTest: false, transparent: true })), 6);
+
+      // adaptive: a second camera (body + frustum, in the neutral colour) and the outline of what it sees on the surface
+      var obs = new T.PerspectiveCamera(21, 1.45, 0.05, 30);
+      var obsBody = G.lines(48, C.text, 0.95); ovOwn(obsBody.obj, -5);
+      var obsRay = G.lines(16, C.text, 0.55); ovOwn(obsRay.obj, -5);
+      var fpLine = G.lines(4096, C.text, 0.95); ovOwn(fpLine.obj, 3);
+
       // floating labels
       function tag(html, tone, color) {
         var e = ui.el('div', 'kt-tag kt-tag-' + tone, html); if (color) e.style.color = color;
@@ -307,6 +520,40 @@
       var rdSh = ui.readout(panel, { label: 'shear the two lengths drop', tone: 'err' });
       var spBox = ui.el('div', 'kt-pl-spark'); panel.appendChild(spBox);
       var spc = ui.canvas(spBox, 'kt-pl-spark-cv');
+      // scene net: the optimiser
+      var rdFit = ui.readout(panel, { label: 'fit error · RMS', tone: 'err' });
+      var rdMax = ui.readout(panel, { label: 'largest miss' });
+      var rdIt = ui.readout(panel, { label: 'optimiser' });
+      // scenes scale and fill: one size for all, or each Gaussian sized to its own cell
+      var segSz = ui.seg(panel, { label: 'size', value: 'own', options: [{ v: 'one', label: 'one for all' }, { v: 'own', label: 'own cell' }],
+        onChange: function (v) { tl.auto = false; tl.goal = v === 'one' ? 1 : 0; } });
+      segSz.el.classList.add('kt-pl-sz');
+      var rdUnc = ui.readout(panel, { label: 'uncovered <i>one · own</i>', tone: 'err' });
+      var rdPile = ui.readout(panel, { label: 'piled 3+ deep <i>one · own</i>' });
+      [segSz, rdUnc, rdPile].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
+      // scene stitch
+      var rdTri = ui.readout(panel, { label: 'triangles', tone: 'surf' });
+      panel.insertBefore(rdTri.el, rdP.el);
+      // scene knob: its own slider, Gaussians on a log scale, and what it costs, measured
+      var slK = ui.slider(panel, { label: 'Gaussians', min: 0, max: 1000, step: 1, value: 0,
+        fmt: function (v) { var n = knN(v); return (n * n).toLocaleString('en-US'); },
+        onInput: function (v) { st.touchedN = true; knSet(knN(v)); } });
+      panel.insertBefore(slK.el, slN.el);
+      var rdFt = ui.readout(panel, { label: 'frame time · measured' });
+      var rdEv = ui.readout(panel, { label: 're-evaluate · measured' });
+      var rdLim = ui.readout(panel, { label: 'turns back at' });
+      var knBox = ui.el('div', 'kt-pl-spark'); panel.appendChild(knBox);
+      var knc = ui.canvas(knBox, 'kt-pl-spark-cv');
+      // scene adaptive
+      var rdIn = ui.readout(panel, { label: 'in the camera’s view', tone: 'splat' });
+      var rdFp = ui.readout(panel, { label: 'the view covers' });
+      var rdSpc = ui.readout(panel, { label: 'cell side <i>in · out</i>' });
+      var rdUni = ui.readout(panel, { label: 'even lattice, in view' });
+      var rdEq = ui.readout(panel, { label: 'that spacing everywhere' });
+      [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
+      // the numbers that must stay readable when the panel is folded away (a phone, the deck): under the caption
+      var hud = ui.el('div', 'kt-pl-hud'); root.appendChild(hud);
+      var hudDirty = true, hudHtml = '';
       var segNb = ui.seg(nbBar, { label: 'size from', value: st.nb,
         options: [{ v: 4, label: '4 neighbours' }, { v: 8, label: '8' }],
         onChange: function (v) { st.nb = v; probeDirty = uvDirty = latDirty = true; st.sparkT = 0; } });
@@ -350,6 +597,11 @@
             dragCP.moved = true;
             if (st.wigI >= 0 && st.wigI !== dragCP.i) patch.P.set(base.subarray(st.wigI * 3, st.wigI * 3 + 3), st.wigI * 3);
             st.wigI = -1; st.sc = Object.assign({}, st.sc, { wig: 0 });
+            if (st.fit && !st.fit.done) {                 // the optimiser stops; the other points take their fitted heights
+              for (var fi = 0; fi < FIT.n; fi++) if (fi !== dragCP.i) patch.P[fi * 3 + 1] = fitBase[fi * 3 + 1];
+              st.fit.done = true;
+            }
+            if (st.fit) st.fit.user = true;
           }
           patch.P[o] = KT.clamp(hitP.x, -3, 3); patch.P[o + 1] = KT.clamp(hitP.y, -1.1, 2.4); patch.P[o + 2] = KT.clamp(hitP.z, -3, 3);
           base.set(patch.P); surfDirty = fieldDirty = true;
@@ -418,12 +670,537 @@
 
       var fg = { pos: new Float32Array(NMAX * NMAX * 3), su: new Float32Array(NMAX * NMAX * 3),
                  sv: new Float32Array(NMAX * NMAX * 3), col: new Float32Array(NMAX * NMAX * 3) };
-      function updateField() {
-        var n = st.n, us = new Float32Array(n), d = new Float32Array(n), i;
-        for (i = 0; i < n; i++) { us[i] = (i + 0.5) / n; d[i] = 1 / n; }
+      var memo = {};
+      function centres(n) { var k = 'c' + n, a, i; if (!memo[k]) { a = memo[k] = new Float32Array(n); for (i = 0; i < n; i++) a[i] = (i + 0.5) / n; } return memo[k]; }
+      function evenD(n) { var k = 'd' + n; return memo[k] || (memo[k] = new Float32Array(n).fill(1 / n)); }
+      /* the n x n lattice of planoids sized to their cells (gl.writePlanoids), evaluated in strips of rows that fit fg */
+      function writeLattice(fd, n, k, rgb) {
+        var us = centres(n), d = evenD(n), rows = Math.max(1, Math.floor(NMAX * NMAX / n)), b0, nb, cnt = 0;
+        for (b0 = 0; b0 < n; b0 += rows) {
+          nb = Math.min(rows, n - b0);
+          NB.patchGrid(patch, us, us.subarray(b0, b0 + nb), fg);
+          cnt = G.writePlanoids(fd, cnt, fg, n, nb, d, d, k, rgb);
+        }
+        fd.commit(cnt);
+        return cnt;
+      }
+      function updateField() { writeLattice(field, st.n, st.gain, st.show.feat ? null : violet); st.fieldN = st.n; }
+
+      /* ---------- footprints ----------
+         A Gaussian lies in its tangent plane: centre S(u_i, v_i), axes along S_u^ and S_v^perp^, half-lengths LA, LB
+         (1 sigma). Carried into the chart through the Jacobian [S_u S_v] at its centre, its 1-sigma ellipse is
+             { (u_i + a, v_i + b) :  ( (|S_u| a + (S_v . S_u^) b) / LA )^2 + ( |S_v^perp| b / LB )^2 <= 1 } ,
+         kept as (a1 a + b1 b)^2 + (b2 b)^2 <= 1. That set's boundary, laid on the surface, is the outline that is
+         drawn; the set is what the coverage counts. It is first order (exact for a flat patch): the flat Gaussian's
+         own ellipse floats a little above or below the curved surface, the outline is drawn on the surface.
+         Two sizings of the same samples:
+           own cell   LA = |S_u| du k,  LB = |S_v^perp| dv k        the derivative rule, as gl.writePlanoids
+           one size   LA = LB = k sqrt(mean cell area)              cell area = |S_u| |S_v^perp| du dv at each sample:
+                                                                    the same total area, one size for all
+         `blend` goes from the first (0) to the second (1).
+         Coverage (measured on every change of samples, sigma / cell or surface): an F x F grid of (u,v) cell centres,
+         each weighted by its own surface area |S_u x S_v| / F^2, F = 8 points per lattice cell (192 ... 512 a side).
+           uncovered = area of the points inside no footprint / area of the patch
+           piled     = area of the points inside three or more / area of the patch                                  */
+      function footSet(cap) {
+        function f(k) { return new Float32Array(cap * (k || 1)); }
+        return { n: 0, u: f(), v: f(), du: f(), dv: f(), lu: f(), pr: f(), lvp: f(), cx: f(3), e1: f(3), e2: f(3) };
+      }
+      function fillSet(S, gd, us, vs, na, nb, du, dv) {
+        var P = gd.pos, SU = gd.su, SV = gd.sv, a, b, i = 0, t, ux, uy, uz, vx, vy, vz, lu, pr, px, py, pz, lv;
+        for (b = 0; b < nb; b++) for (a = 0; a < na; a++, i++) {
+          t = i * 3; ux = SU[t]; uy = SU[t + 1]; uz = SU[t + 2]; vx = SV[t]; vy = SV[t + 1]; vz = SV[t + 2];
+          lu = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1e-9; pr = (ux * vx + uy * vy + uz * vz) / lu;
+          px = vx - pr * ux / lu; py = vy - pr * uy / lu; pz = vz - pr * uz / lu; lv = Math.sqrt(px * px + py * py + pz * pz) || 1e-9;
+          S.u[i] = us[a]; S.v[i] = vs[b]; S.du[i] = du[a]; S.dv[i] = dv[b]; S.lu[i] = lu; S.pr[i] = pr; S.lvp[i] = lv;
+          S.cx[t] = P[t]; S.cx[t + 1] = P[t + 1]; S.cx[t + 2] = P[t + 2];
+          S.e1[t] = ux / lu; S.e1[t + 1] = uy / lu; S.e1[t + 2] = uz / lu; S.e2[t] = px / lv; S.e2[t + 1] = py / lv; S.e2[t + 2] = pz / lv;
+        }
+        S.n = i;
+      }
+      function sizeA(S, i, k, s1, bl) { return KT.lerp(S.lu[i] * S.du[i] * k, s1, bl); }
+      function sizeB(S, i, k, s1, bl) { return KT.lerp(S.lvp[i] * S.dv[i] * k, s1, bl); }
+      /* the set as planoids; rev writes them in reverse order (setCount then retires the first ones) */
+      function writeSet(fd, S, k, s1, bl, rgb, rev) {
+        var i, j, o, t, LA, LB;
+        for (i = 0; i < S.n; i++) {
+          j = rev ? S.n - 1 - i : i; o = j * 3; t = i * 3; LA = sizeA(S, i, k, s1, bl); LB = sizeB(S, i, k, s1, bl);
+          fd.center[o] = S.cx[t]; fd.center[o + 1] = S.cx[t + 1]; fd.center[o + 2] = S.cx[t + 2];
+          fd.axU[o] = S.e1[t] * LA; fd.axU[o + 1] = S.e1[t + 1] * LA; fd.axU[o + 2] = S.e1[t + 2] * LA;
+          fd.axV[o] = S.e2[t] * LB; fd.axV[o + 1] = S.e2[t + 1] * LB; fd.axV[o + 2] = S.e2[t + 2] * LB;
+          fd.color[o] = rgb[0]; fd.color[o + 1] = rgb[1]; fd.color[o + 2] = rgb[2];
+        }
+        fd.commit(S.n);
+      }
+
+      // the surface on a fine vertex grid, for laying lines on it (bilinear, then lifted along the upward normal)
+      var VF = 128, surfVer = 0, LIFT = 0.006;
+      var vg = { pos: new Float32Array((VF + 1) * (VF + 1) * 3), su: new Float32Array((VF + 1) * (VF + 1) * 3),
+                 sv: new Float32Array((VF + 1) * (VF + 1) * 3), nrm: new Float32Array((VF + 1) * (VF + 1) * 3), ver: -1 };
+      function vgUpdate() {
+        if (vg.ver === surfVer) return;
+        var f = lin(VF + 1), i, t, x, y, z, l;
+        NB.patchGrid(patch, f, f, vg);
+        for (i = 0; i < (VF + 1) * (VF + 1); i++) {
+          t = i * 3;
+          x = vg.su[t + 1] * vg.sv[t + 2] - vg.su[t + 2] * vg.sv[t + 1]; y = vg.su[t + 2] * vg.sv[t] - vg.su[t] * vg.sv[t + 2]; z = vg.su[t] * vg.sv[t + 1] - vg.su[t + 1] * vg.sv[t];
+          l = Math.sqrt(x * x + y * y + z * z) || 1; if (y < 0) l = -l;
+          vg.nrm[t] = x / l; vg.nrm[t + 1] = y / l; vg.nrm[t + 2] = z / l;
+        }
+        vg.ver = surfVer;
+      }
+      function onSurf(u, v, lift, A, o) {
+        u = u < 0 ? 0 : u > 1 ? 1 : u; v = v < 0 ? 0 : v > 1 ? 1 : v;
+        var x = u * VF, y = v * VF, i = Math.min(VF - 1, x | 0), j = Math.min(VF - 1, y | 0), s = x - i, t = y - j, c;
+        var k00 = (j * (VF + 1) + i) * 3, k10 = k00 + 3, k01 = k00 + (VF + 1) * 3, k11 = k01 + 3, P = vg.pos, N = vg.nrm;
+        for (c = 0; c < 3; c++) {
+          A[o + c] = (P[k00 + c] * (1 - s) + P[k10 + c] * s) * (1 - t) + (P[k01 + c] * (1 - s) + P[k11 + c] * s) * t +
+                     lift * ((N[k00 + c] * (1 - s) + N[k10 + c] * s) * (1 - t) + (N[k01 + c] * (1 - s) + N[k11 + c] * s) * t);
+        }
+      }
+      /* the 1-sigma outlines of footprints from..S.n-1, on the surface */
+      function outlineSet(S, k, s1, bl, from) {
+        var A = outl.arr, o = 0, i, m, LA, LB, a1, b1, b2, th, a, b, pu = 0, pv = 0, qu, qv;
+        for (i = from || 0; i < S.n; i++) {
+          LA = sizeA(S, i, k, s1, bl); LB = sizeB(S, i, k, s1, bl); a1 = S.lu[i] / LA; b1 = S.pr[i] / LA; b2 = S.lvp[i] / LB;
+          for (m = 0; m <= EM; m++) {
+            th = m / EM * 6.283185; b = Math.sin(th) / b2; a = (Math.cos(th) - b1 * b) / a1; qu = S.u[i] + a; qv = S.v[i] + b;
+            if (m) { onSurf(pu, pv, LIFT, A, o); onSurf(qu, qv, LIFT, A, o + 3); o += 6; }
+            pu = qu; pv = qv;
+          }
+        }
+        outl.set(o / 3);
+      }
+
+      // coverage: the area weights of the F x F grid, and the count of footprints over each point
+      var cw = { F: 0, ver: -1, w: null, tot: 0 }, cntA = null, cntB = null;
+      function coverW(F) {
+        if (cw.F === F && cw.ver === surfVer) return;
+        var fs = centres(F), rows = Math.max(1, Math.floor(NMAX * NMAX / F)), b0, nb, i, t, x, y, z, w, tot = 0;
+        if (cw.F !== F) { cw.w = new Float32Array(F * F); cntA = new Uint8Array(F * F); cntB = new Uint8Array(F * F); }
+        for (b0 = 0; b0 < F; b0 += rows) {
+          nb = Math.min(rows, F - b0); NB.patchGrid(patch, fs, fs.subarray(b0, b0 + nb), fg);
+          for (i = 0; i < nb * F; i++) {
+            t = i * 3;
+            x = fg.su[t + 1] * fg.sv[t + 2] - fg.su[t + 2] * fg.sv[t + 1]; y = fg.su[t + 2] * fg.sv[t] - fg.su[t] * fg.sv[t + 2]; z = fg.su[t] * fg.sv[t + 1] - fg.su[t + 1] * fg.sv[t];
+            w = Math.sqrt(x * x + y * y + z * z); cw.w[b0 * F + i] = w; tot += w;
+          }
+        }
+        cw.F = F; cw.ver = surfVer; cw.tot = tot;
+      }
+      function coverCount(S, k, s1, bl, F, cnt) {
+        var i, fu, fv, f0, f1, g0, g1, a, b, p1, p2, LA, LB, a1, b1, b2, ea, eb, uc, vc, row, w = cw.w, un = 0, pile = 0;
+        cnt.fill(0);
+        for (i = 0; i < S.n; i++) {
+          LA = sizeA(S, i, k, s1, bl); LB = sizeB(S, i, k, s1, bl); a1 = S.lu[i] / LA; b1 = S.pr[i] / LA; b2 = S.lvp[i] / LB;
+          eb = 1 / b2; ea = Math.sqrt(b1 * b1 + b2 * b2) / (a1 * b2); uc = S.u[i]; vc = S.v[i];
+          f0 = Math.max(0, Math.floor((uc - ea) * F - 0.5)); f1 = Math.min(F - 1, Math.ceil((uc + ea) * F - 0.5));
+          g0 = Math.max(0, Math.floor((vc - eb) * F - 0.5)); g1 = Math.min(F - 1, Math.ceil((vc + eb) * F - 0.5));
+          for (fv = g0; fv <= g1; fv++) {
+            b = (fv + 0.5) / F - vc; p2 = b2 * b; p2 *= p2;
+            if (p2 > 1) continue;
+            row = fv * F;
+            for (fu = f0; fu <= f1; fu++) {
+              a = (fu + 0.5) / F - uc; p1 = a1 * a + b1 * b;
+              if (p1 * p1 + p2 <= 1 && cnt[row + fu] < 255) cnt[row + fu]++;
+            }
+          }
+        }
+        for (i = 0; i < F * F; i++) { if (!cnt[i]) un += w[i]; else if (cnt[i] >= 3) pile += w[i]; }
+        return { unc: un / cw.tot, pile: pile / cw.tot };
+      }
+
+      /* ---------- scenes scale and fill: one size for all, or each Gaussian sized to its own cell ---------- */
+      var tset = footSet(NMAX * NMAX);
+      var tl = { key: '', b: 0, goal: 0, auto: true, mode: 'own', s1: 0, own: null, one: null, bDirty: true, imgOwn: null, imgOne: null };
+      /* own cell for 4.5 s, a 1.2 s glide, one size for 4.5 s, a glide back: 11.4 s a round */
+      function autoBlend(t) { var x = t % 11.4; return x < 4.5 ? 0 : x < 5.7 ? KT.ease((x - 4.5) / 1.2) : x < 10.2 ? 1 : 1 - KT.ease((x - 10.2) / 1.2); }
+      function tileTick(dt) {
+        var g = tl.auto ? autoBlend(st.t) : tl.goal, b = tl.auto ? g : tl.b + (g - tl.b) * (1 - Math.exp(-7 * dt));
+        if (Math.abs(b - g) < 2e-3) b = g;
+        if (b !== tl.b) { tl.b = b; tl.bDirty = true; }
+        var m = tl.b < 0.5 ? 'own' : 'one';
+        if (m !== tl.mode) { tl.mode = m; segSz.set(m); hudDirty = true; }
+      }
+      function maskImage(F, cnt) {                       // the uncovered points of one sizing, red, for the chart
+        var cv = document.createElement('canvas'); cv.width = cv.height = F;
+        var g = cv.getContext('2d'), im = g.createImageData(F, F), r = G.rgb(C.err).map(function (x) { return Math.round(x * 255); }), i, fu, fv, o;
+        for (fv = 0; fv < F; fv++) for (fu = 0; fu < F; fu++) {
+          i = fv * F + fu; o = ((F - 1 - fv) * F + fu) * 4;
+          im.data[o] = r[0]; im.data[o + 1] = r[1]; im.data[o + 2] = r[2]; im.data[o + 3] = cnt[i] ? 0 : 200;
+        }
+        g.putImageData(im, 0, 0); return cv;
+      }
+      function tileConfig() {
+        var n = st.n, us = centres(n), d = evenD(n), i, area = 0, F;
+        NB.patchGrid(patch, us, us, fg); fillSet(tset, fg, us, us, n, n, d, d);
+        for (i = 0; i < tset.n; i++) area += tset.lu[i] * tset.lvp[i] * tset.du[i] * tset.dv[i];
+        tl.s1 = st.gain * Math.sqrt(area / tset.n);
+        F = Math.min(512, Math.max(192, 8 * n)); coverW(F); maskSize(F);
+        tl.own = coverCount(tset, st.gain, tl.s1, 0, F, cntA); tl.one = coverCount(tset, st.gain, tl.s1, 1, F, cntB);
+        for (i = 0; i < F * F; i++) { maskData[i * 4] = cntB[i] ? 0 : 255; maskData[i * 4 + 1] = cntA[i] ? 0 : 255; maskData[i * 4 + 2] = 0; maskData[i * 4 + 3] = 255; }
+        maskTex.needsUpdate = true;
+        tl.imgOwn = maskImage(F, cntA); tl.imgOne = maskImage(F, cntB);
+        rdUnc.el.lastChild.innerHTML = pct(tl.one.unc) + ' <i>·</i> ' + pct(tl.own.unc);
+        rdPile.el.lastChild.innerHTML = pct(tl.one.pile) + ' <i>·</i> ' + pct(tl.own.pile);
+        hudDirty = true;
+      }
+      function tileUpdate() {
+        var key = st.n + '|' + st.gain + '|' + surfVer;
+        if (key !== tl.key) { tl.key = key; vgUpdate(); tileConfig(); tl.bDirty = true; }
+        if (!tl.bDirty) return;
+        tl.bDirty = false;
+        if (st.show.field) { writeSet(field, tset, st.gain, tl.s1, tl.b, violet); st.fieldN = st.n; }
+        if (st.n <= OUTMAX) outlineSet(tset, st.gain, tl.s1, tl.b, 0);
+        ovMat.uniforms.uBlend.value = tl.b; uvDirty = true; hudDirty = true;
+        if (st.show.nbr) probeDirty = true;
+      }
+
+      /* ---------- scene stitch: a 2 x 2 window over the lattice of samples, two triangles at every stop ----------
+         The samples are the Gaussians' centres on a uniform n x n lattice. Window (a, b) takes the four samples
+         (a, b), (a+1, b), (a+1, b+1), (a, b+1) and stitches the triangles (a,b)(a+1,b)(a+1,b+1) and (a,b)(a+1,b+1)(a,b+1):
+         the lattice says who the neighbours are, nothing is searched. Reading order in the chart — left to right,
+         from the top row (v = 1, the near side in the default view) down — STITCH_T seconds for the (n-1)^2 stops
+         after a STITCH_LEAD pause; the Gaussians the window has passed are retired (written in reverse order of
+         passing, so setCount drops them), as the full-scene mesh of chapter 06 does. Then it holds. */
+      function quadAt(n, k) { return { a: k % (n - 1), b: n - 2 - Math.floor(k / (n - 1)) }; }      // stop k: the window's lower-left sample
+      var sset = footSet(OUTMAX * OUTMAX), sx = { n: 0, Q: 0, q: -1, V: 0, t0: 0, ver: -1, k: 0, passed: 0, P: null };
+      function triAt(TP, TN, k, P, i0, i1, i2) {
+        var ax = P[i1] - P[i0], ay = P[i1 + 1] - P[i0 + 1], az = P[i1 + 2] - P[i0 + 2], bx = P[i2] - P[i0], by = P[i2 + 1] - P[i0 + 1], bz = P[i2 + 2] - P[i0 + 2];
+        var nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1, v, c;
+        if (ny < 0) l = -l;
+        [i0, i1, i2].forEach(function (i) { for (c = 0; c < 3; c++) { TP[k + c] = P[i + c]; } TN[k] = nx / l; TN[k + 1] = ny / l; TN[k + 2] = nz / l; k += 3; });
+        return k;
+      }
+      function stitchBuild() {
+        var n = Math.min(st.n, OUTMAX), us = centres(n), d = evenD(n), a, b, k = 0, e = 0, P, q;
+        vgUpdate();
+        // the set in the order the window passes the samples: rows from v = 1 down (vs reversed), each left to right
+        var vr = memo['r' + n] || (memo['r' + n] = Float32Array.from(us).reverse());
+        NB.patchGrid(patch, us, vr, fg); fillSet(sset, fg, us, vr, n, n, d, d);
+        writeSet(field, sset, st.gain, 0, 0, violet, true); st.fieldN = n;
         NB.patchGrid(patch, us, us, fg);
-        G.writePlanoids(field, 0, fg, n, n, d, d, st.gain, st.show.feat ? null : violet);
-        field.commit(n * n); st.fieldN = n;
+        P = sx.P = fg.pos.slice(0, n * n * 3);                 // the lattice itself, row b = v index
+        var TP = triGeo.attributes.position.array, TN = triGeo.attributes.normal.array, E = triEdge.arr;
+        for (k = 0, q = 0; q < (n - 1) * (n - 1); q++) {
+          a = quadAt(n, q).a; b = quadAt(n, q).b;
+          var v00 = (b * n + a) * 3, v10 = v00 + 3, v01 = v00 + n * 3, v11 = v01 + 3;
+          k = triAt(TP, TN, k, P, v00, v10, v11); k = triAt(TP, TN, k, P, v00, v11, v01);
+          e = segAt(E, e, P, v00, v10); e = segAt(E, e, P, v10, v11); e = segAt(E, e, P, v11, v01); e = segAt(E, e, P, v01, v00); e = segAt(E, e, P, v00, v11);
+        }
+        triGeo.attributes.position.needsUpdate = triGeo.attributes.normal.needsUpdate = true;
+        sx.n = n; sx.Q = (n - 1) * (n - 1); sx.V = n * n; sx.q = -1; sx.t0 = st.t; sx.ver = surfVer; sx.k = st.gain;
+        if (st.n !== n) { st.n = n; slN.set(n); layers(); }
+      }
+      function stitchTick() {
+        if (sx.n !== st.n || sx.ver !== surfVer || sx.k !== st.gain) stitchBuild();
+        var p = (st.t - sx.t0 - STITCH_LEAD) / STITCH_T * sx.Q, q = p < 0 ? 0 : Math.min(sx.Q, Math.floor(p) + 1);
+        if (q === sx.q) return;
+        sx.q = q;
+        var n = sx.n, k = Math.max(0, q - 1), qa = quadAt(n, k), a = qa.a, b = qa.b, done = q >= sx.Q, P = sx.P, W = winGeo.attributes.position.array, i, o;
+        triGeo.setDrawRange(0, q * 6); triEdge.set(q * 10);
+        sx.passed = done ? sx.V : q ? (n - 2 - b) * n + a : 0;      // in passing order: the rows above the window's top row, and its left
+        field.setCount(sx.V - sx.passed);
+        [(b * n + a), (b * n + a + 1), ((b + 1) * n + a + 1), ((b + 1) * n + a)].forEach(function (v, j) {
+          for (o = 0; o < 3; o++) W[j * 3 + o] = P[v * 3 + o] + (o === 1 ? 0.02 : 0);
+        });
+        winGeo.attributes.position.needsUpdate = true;
+        win.visible = winDot.visible = !done;
+        if (q) { for (i = 0; i < 30; i++) triNew.arr[i] = triEdge.arr[k * 30 + i]; triNew.set(10); } else triNew.set(0);
+        triNew.obj.visible = !done;
+        outlineSet(sset, st.gain, 0, 0, sx.passed);
+        rdTri.set((q * 2).toLocaleString('en-US') + ' / ' + (sx.Q * 2).toLocaleString('en-US'));
+        uvDirty = true; hudDirty = true;
+      }
+
+      /* ---------- scene knob: x4 Gaussians a step, stored numbers fixed, frame time measured ----------
+         Each step holds at least 1.4 s and 6 frames. Its frame time is the median interval between frames, from the
+         third frame after the change on (the first two carry the re-evaluation and the upload). The sweep turns
+         back at a step whose frame time is above both KN_BUDGET and 3x that of the first step (what a frame costs
+         anyway on this machine: on a slow one the fixed cost alone can pass 50 ms), or at the last step
+         (1024^2 = 1,048,576 Gaussians): that step is held a little longer, then it starts again from the first.
+         The ceiling is the field's buffer: 60 bytes a Gaussian (five 3-float attributes), 63 MB at the top,
+         allocated only while this scene is on and freed when it is left. */
+      var small = field, big = null;
+      var kn = { li: 0, t: 0, k: 0, iv: [], last: 0, ft: {}, ev: {}, lim: null, cur: 0, top: false, plotT: 0 };
+      function knBig(on) {
+        if (on && !big) {
+          var top = KN_LEVELS[KN_LEVELS.length - 1];
+          big = G.splats(top * top); big.uniforms.uRim.value = small.uniforms.uRim.value; scene.add(big.mesh);
+        }
+        if (on) { small.mesh.visible = false; big.mesh.visible = true; field = big; return; }
+        if (big) {
+          scene.remove(big.mesh); big.mesh.geometry.dispose();
+          var u = big.mesh.userData.ktSplat; [u.plain, u.depth, u.core, u.accum].forEach(function (m) { m.dispose(); });
+          big = null;
+        }
+        field = small;
+      }
+      function knN(v) { return Math.round(Math.exp(KT.lerp(Math.log(4), Math.log(1024), v / 1000))); }
+      function knV(n) { return Math.round((Math.log(n) - Math.log(4)) / (Math.log(1024) - Math.log(4)) * 1000); }
+      function knSet(n) {                    // re-evaluate the patch at n x n: the only work turning the knob takes
+        knBig(n * n > small.capacity || !!big);
+        var t0 = performance.now();
+        st.n = n; writeLattice(field, n, st.gain, violet); st.fieldN = n; field.setCount(n * n);
+        kn.ev[n] = performance.now() - t0; kn.cur = n; kn.k = 0; kn.t = 0; kn.iv = [];
+        slK.set(knV(n)); layers(); rdEv.set(kn.ev[n].toFixed(kn.ev[n] < 10 ? 1 : 0) + ' ms'); hudDirty = true; kn.plotT = 0;
+      }
+      function knCap() { var f0 = kn.ft[KN_LEVELS[0]]; return Math.max(KN_BUDGET, f0 != null ? 3 * f0 : 0); }
+      function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length & 1 ? s[m] : 0.5 * (s[m - 1] + s[m]); }
+      function knTick(dt) {
+        var now = performance.now(), iv = kn.last ? now - kn.last : 0, ft = null;
+        kn.last = now; kn.t += dt; kn.k++;
+        if (kn.k > 2 && iv > 0 && iv < 4000) { kn.iv.push(iv); if (kn.iv.length > 120) kn.iv.shift(); }
+        if (kn.iv.length >= 3) { ft = median(kn.iv); kn.ft[kn.cur] = ft; }
+        if (!st.touchedN && kn.iv.length >= 6) {
+          if (!kn.top && kn.t >= 1.4) {
+            var cap = knCap();
+            if (ft > cap || kn.li >= KN_LEVELS.length - 1) {
+              kn.top = true; kn.lim = { n: kn.cur, ft: ft, cap: cap, why: ft > cap ? 'frame' : 'buffer' };
+            } else { kn.li++; knSet(KN_LEVELS[kn.li]); return; }
+          } else if (kn.top && kn.t >= 2.8) { kn.top = false; kn.li = 0; knSet(KN_LEVELS[0]); return; }
+        }
+        kn.plotT -= dt;
+        if (kn.plotT <= 0) {
+          kn.plotT = 0.25;
+          rdFt.set(ft == null ? 'measuring…' : ft.toFixed(1) + ' ms · ' + Math.round(1000 / ft) + ' fps');
+          rdLim.set(!kn.lim ? '—' : (kn.lim.n * kn.lim.n).toLocaleString('en-US') + (kn.lim.why === 'frame' ? ' · frame > ' + Math.round(kn.lim.cap) + ' ms' : ' · buffer full'));
+          drawKnob(ft); hudDirty = true;
+        }
+      }
+      function drawKnob(ft) {
+        var z = knc.fit(), g = knc.ctx, w = z.w, h = z.h, lx0 = Math.log(16), lx1 = Math.log(1048576), ym = knCap() * 1.25, pts = [];
+        g.clearRect(0, 0, w, h);
+        KN_LEVELS.forEach(function (n) { if (kn.ft[n] != null) { pts.push([n * n, kn.ft[n]]); ym = Math.max(ym, kn.ft[n] * 1.12); } });
+        if (kn.ft[kn.cur] != null && KN_LEVELS.indexOf(kn.cur) < 0) ym = Math.max(ym, kn.ft[kn.cur] * 1.12);
+        function X(c) { return 8 + (Math.log(c) - lx0) / (lx1 - lx0) * (w - 16); }
+        function Y(ms) { return h - 13 - Math.min(ms, ym) / ym * (h - 28); }
+        g.font = '500 9px JetBrains Mono, ui-monospace, monospace'; g.textBaseline = 'middle';
+        [[1000 / 60, '60 fps', 'rgba(143,164,192,.35)'], [knCap(), 'turns back', 'rgba(239,83,80,.4)']].forEach(function (l) {
+          g.strokeStyle = l[2]; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(8, Y(l[0])); g.lineTo(w - 8, Y(l[0])); g.stroke(); g.setLineDash([]);
+          g.fillStyle = C.mute; g.textAlign = 'right'; g.fillText(l[1], w - 8, Y(l[0]) - 6);
+        });
+        g.fillStyle = C.mute; g.textAlign = 'center';
+        [[64, '64'], [1024, '1k'], [16384, '16k'], [262144, '262k']].forEach(function (l) { g.fillText(l[1], X(l[0]), h - 5); });
+        g.textAlign = 'right'; g.fillText('1M', w - 6, h - 5);
+        if (pts.length > 1) {
+          g.strokeStyle = 'rgba(221,229,240,.75)'; g.lineWidth = 1.5; g.beginPath();
+          pts.forEach(function (p, i) { if (i) g.lineTo(X(p[0]), Y(p[1])); else g.moveTo(X(p[0]), Y(p[1])); }); g.stroke();
+        }
+        g.fillStyle = C.text; pts.forEach(function (p) { g.beginPath(); g.arc(X(p[0]), Y(p[1]), 2.4, 0, 6.2832); g.fill(); });
+        if (ft != null) { g.fillStyle = C.splat; g.beginPath(); g.arc(X(kn.cur * kn.cur), Y(ft), 4, 0, 6.2832); g.fill(); }
+        g.fillStyle = C.dim; g.textAlign = 'left'; g.fillText('frame time vs Gaussians · measured', 8, 8);
+      }
+
+      /* ---------- scene adaptive: a fixed budget, warped towards what a camera sees ----------
+         The camera `obs` flies a closed path (AD_T s a round) above the patch, looking across it. On a QA x QA grid
+         of (u,v) cell centres a point is in its view when it projects inside the image; there its importance is the
+         image area its piece of surface covers, |S_u x S_v| cos(angle to the view ray) / distance^2 (foreshortening
+         and distance), elsewhere none — as in the manifold module's allocation, here for one tile.
+         The n x n cells of the lattice are warped towards it as a net of springs: the (n+1)^2 cell corners, those
+         on the border sliding along it, each pulled to the stiffness-weighted mean of its four neighbours, a
+         spring's stiffness being 1 + AD_ALPHA x the importance (normalised to its maximum, blurred) at its middle.
+         Gauss-Seidel sweeps at AD_RATE a second, from the even lattice when the scene opens: with positive
+         stiffnesses and the border fixed on the square this is a barycentric (Tutte) embedding, so cells cannot
+         fold. A separable warp, one density per axis, would also make every row and column through the view dense.
+         Each Gaussian sits at its cell's centre and is sized to its own cell by the chapter's rule, now through the
+         warp: with e_s, e_t the cell's mid-edge spans in (u,v) and J = [S_u S_v], its axes are k J e_s and
+         k (J e_t)^perp. Measured: how many Gaussians have their centre in the view; the share of the surface's area
+         in the view (on the QA grid); cell side = sqrt(|J e_s x J e_t|), the side of a Gaussian's cell on the
+         surface, averaged in the view and out of it, against the same budget on an even lattice. */
+      var QA = 64, AD_T = 28, AD_ALPHA = 12, AD_RATE = 600;
+      var qa = { pos: new Float32Array(QA * QA * 3), su: new Float32Array(QA * QA * 3), sv: new Float32Array(QA * QA * 3), area: new Float32Array(QA * QA), nrm: new Float32Array(QA * QA * 3) };
+      var ad = { ver: -1, fresh: true, w: new Float64Array(QA * QA), m: new Float64Array(QA * QA), tmp: new Float64Array(QA * QA), acc: 0,
+                 n: 0, X: null, inG: null, fv: new Float32Array((VF + 1) * (VF + 1)), seg: [], uniVer: -1, uniIn: null, uniS: null, stat: null };
+      var aset = footSet(NMAX * NMAX), M4 = new T.Matrix4(), q4 = [0, 0, 0];
+      aset.m = new Float32Array(NMAX * NMAX * 4);       // per Gaussian: the 1-sigma ellipse in the chart, (a, b) = M (cos, sin)
+      function proj(x, y, z) {                        // NDC x, y and w of a world point in the observer camera
+        var e = M4.elements, w = e[3] * x + e[7] * y + e[11] * z + e[15];
+        q4[0] = (e[0] * x + e[4] * y + e[8] * z + e[12]) / w; q4[1] = (e[1] * x + e[5] * y + e[9] * z + e[13]) / w; q4[2] = w;
+        return q4;
+      }
+      function seen(x, y, z) { var q = proj(x, y, z); return q[2] > 0 && Math.abs(q[0]) <= 1 && Math.abs(q[1]) <= 1; }
+      function obsAt(t) {
+        var f = t / AD_T * 6.283185, lx = 0.6 * Math.cos(f + 2.25), lz = 0.52 * Math.sin(f + 2.25);
+        obs.position.set(1.32 * Math.cos(f), 2.25 + 0.2 * Math.sin(2 * f), 1.08 * Math.sin(f));
+        obs.lookAt(lx, 0.12, lz); obs.updateMatrixWorld(); obs.updateProjectionMatrix();
+        M4.multiplyMatrices(obs.projectionMatrix, obs.matrixWorldInverse);
+      }
+      function stiff(u, v) {                          // 1 + AD_ALPHA x the blurred importance, bilinear on the QA grid
+        var x = KT.clamp(u * QA - 0.5, 0, QA - 1.001), y = KT.clamp(v * QA - 0.5, 0, QA - 1.001), i = x | 0, j = y | 0, s = x - i, t = y - j, m = ad.m;
+        return 1 + AD_ALPHA * ((m[j * QA + i] * (1 - s) + m[j * QA + i + 1] * s) * (1 - t) + (m[(j + 1) * QA + i] * (1 - s) + m[(j + 1) * QA + i + 1] * s) * t);
+      }
+      function relax() {                              // one Gauss-Seidel sweep over the corners
+        var n = ad.n, N = n + 1, X = ad.X, a, b, i, j, su, sv, sw, w, onU, onV, q;
+        var nb = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+        for (b = 0; b < N; b++) for (a = 0; a < N; a++) {
+          onU = a === 0 || a === n; onV = b === 0 || b === n;
+          if (onU && onV) continue;
+          i = b * N + a; su = 0; sv = 0; sw = 0;
+          for (q = 0; q < 4; q++) {
+            var p2 = a + nb[q][0], q2 = b + nb[q][1];
+            if (p2 < 0 || p2 > n || q2 < 0 || q2 > n || (onU && p2 !== a) || (onV && q2 !== b)) continue;
+            j = q2 * N + p2; w = stiff((X[i * 2] + X[j * 2]) / 2, (X[i * 2 + 1] + X[j * 2 + 1]) / 2);
+            su += w * X[j * 2]; sv += w * X[j * 2 + 1]; sw += w;
+          }
+          if (!onU) X[i * 2] = su / sw;
+          if (!onV) X[i * 2 + 1] = sv / sw;
+        }
+      }
+      var bl3 = [0, 0, 0];
+      function bil(A, u, v, out) {                    // a field of the fine vertex grid at (u, v)
+        var x = KT.clamp(u, 0, 1) * VF, y = KT.clamp(v, 0, 1) * VF, i = Math.min(VF - 1, x | 0), j = Math.min(VF - 1, y | 0), s = x - i, t = y - j, c;
+        var k00 = (j * (VF + 1) + i) * 3, k10 = k00 + 3, k01 = k00 + (VF + 1) * 3, k11 = k01 + 3;
+        for (c = 0; c < 3; c++) out[c] = (A[k00 + c] * (1 - s) + A[k10 + c] * s) * (1 - t) + (A[k01 + c] * (1 - s) + A[k11 + c] * s) * t;
+        return out;
+      }
+      function adaptTick(dt) {
+        var n = st.n, N = n + 1, i, a, b, j, t, x, y, z, w, s, W = ad.w;
+        vgUpdate();
+        if (ad.ver !== surfVer) {                     // the importance grid's surface: positions, area elements, normals
+          NB.patchGrid(patch, centres(QA), centres(QA), qa);
+          for (i = 0; i < QA * QA; i++) {
+            t = i * 3; x = qa.su[t + 1] * qa.sv[t + 2] - qa.su[t + 2] * qa.sv[t + 1]; y = qa.su[t + 2] * qa.sv[t] - qa.su[t] * qa.sv[t + 2]; z = qa.su[t] * qa.sv[t + 1] - qa.su[t + 1] * qa.sv[t];
+            w = Math.sqrt(x * x + y * y + z * z) || 1e-9; qa.area[i] = w; qa.nrm[t] = x / w; qa.nrm[t + 1] = y / w; qa.nrm[t + 2] = z / w;
+          }
+          ad.ver = surfVer; ad.uniVer = -1;
+        }
+        if (ad.n !== n || ad.fresh) {                 // the even lattice: where the net starts
+          ad.n = n; ad.X = new Float64Array(N * N * 2); ad.inG = new Uint8Array(n * n);
+          for (b = 0; b < N; b++) for (a = 0; a < N; a++) { ad.X[(b * N + a) * 2] = a / n; ad.X[(b * N + a) * 2 + 1] = b / n; }
+          ad.fresh = false; ad.acc = 0; ad.uniVer = -1;
+        }
+        obsAt(st.t);
+        var E = obs.position, mx = 0, seenA = 0, allA = 0, ins = 0;
+        for (i = 0; i < QA * QA; i++) {
+          t = i * 3; allA += qa.area[i]; W[i] = 0;
+          if (!seen(qa.pos[t], qa.pos[t + 1], qa.pos[t + 2])) continue;
+          x = E.x - qa.pos[t]; y = E.y - qa.pos[t + 1]; z = E.z - qa.pos[t + 2]; s = x * x + y * y + z * z;
+          W[i] = w = qa.area[i] * Math.abs(qa.nrm[t] * x + qa.nrm[t + 1] * y + qa.nrm[t + 2] * z) / (s * Math.sqrt(s));
+          if (w > mx) mx = w; seenA += qa.area[i];
+        }
+        // normalised and blurred (two 5-wide box passes) into the stiffness field
+        var M = ad.m, Tm = ad.tmp, r = 2;
+        for (i = 0; i < QA * QA; i++) M[i] = mx > 0 ? W[i] / mx : 0;
+        for (var pass = 0; pass < 2; pass++) {
+          for (b = 0; b < QA; b++) for (a = 0; a < QA; a++) { s = 0; for (j = -r; j <= r; j++) s += M[b * QA + KT.clamp(a + j, 0, QA - 1)]; Tm[b * QA + a] = s / (2 * r + 1); }
+          for (b = 0; b < QA; b++) for (a = 0; a < QA; a++) { s = 0; for (j = -r; j <= r; j++) s += Tm[KT.clamp(b + j, 0, QA - 1) * QA + a]; M[b * QA + a] = s / (2 * r + 1); }
+        }
+        ad.acc += AD_RATE * dt;
+        var sw = Math.min(40, Math.floor(ad.acc)); ad.acc -= sw;
+        for (i = 0; i < sw; i++) relax();
+        // the Gaussians: one per cell, at its centre, sized to it
+        var X = ad.X, P = [0, 0, 0], SU = [0, 0, 0], SV = [0, 0, 0], S = aset;
+        for (b = 0; b < n; b++) for (a = 0; a < n; a++) {
+          var c00 = (b * N + a) * 2, c10 = c00 + 2, c01 = c00 + N * 2, c11 = c01 + 2, k = b * n + a;
+          var u = (X[c00] + X[c10] + X[c01] + X[c11]) / 4, v = (X[c00 + 1] + X[c10 + 1] + X[c01 + 1] + X[c11 + 1]) / 4;
+          var esu = (X[c10] + X[c11] - X[c00] - X[c01]) / 2, esv = (X[c10 + 1] + X[c11 + 1] - X[c00 + 1] - X[c01 + 1]) / 2;
+          var etu = (X[c01] + X[c11] - X[c00] - X[c10]) / 2, etv = (X[c01 + 1] + X[c11 + 1] - X[c00 + 1] - X[c10 + 1]) / 2;
+          bil(vg.pos, u, v, P); bil(vg.su, u, v, SU); bil(vg.sv, u, v, SV);
+          var As = add(mul(SU, esu), SV, esv), At = add(mul(SU, etu), SV, etv), ls = len(As) || 1e-9, lam = dot(At, As) / (ls * ls);
+          var Ap = add(At, As, -lam), lp = len(Ap) || 1e-9, kk = st.gain;
+          S.u[k] = u; S.v[k] = v; t = k * 3;
+          S.cx[t] = P[0]; S.cx[t + 1] = P[1]; S.cx[t + 2] = P[2];
+          S.e1[t] = As[0] / ls; S.e1[t + 1] = As[1] / ls; S.e1[t + 2] = As[2] / ls; S.e2[t] = Ap[0] / lp; S.e2[t + 1] = Ap[1] / lp; S.e2[t + 2] = Ap[2] / lp;
+          S.lu[k] = ls * kk; S.lvp[k] = lp * kk; S.du[k] = 1; S.dv[k] = 1; S.pr[k] = 0;        // so that sizeA / sizeB give k |J e_s| and k |(J e_t)^perp|
+          S.m[k * 4] = kk * esu; S.m[k * 4 + 1] = kk * (etu - lam * esu); S.m[k * 4 + 2] = kk * esv; S.m[k * 4 + 3] = kk * (etv - lam * esv);
+        }
+        S.n = n * n;
+        if (st.show.field) { writeSet(field, S, 1, 0, 0, violet); st.fieldN = n; }
+        if (n <= OUTMAX) outlineM(S);
+        // which Gaussians are in the view, and how big their cells are, in it and out of it
+        for (i = 0; i < n * n; i++) { t = i * 3; ad.inG[i] = seen(S.cx[t], S.cx[t + 1], S.cx[t + 2]) ? 1 : 0; ins += ad.inG[i]; }
+        var sp = cellSide(S, ad.inG, st.gain);
+        if (ad.uniVer !== surfVer) {                  // the same budget on an even lattice
+          NB.patchGrid(patch, centres(n), centres(n), fg); ad.uniS = footSet(n * n); fillSet(ad.uniS, fg, centres(n), centres(n), n, n, evenD(n), evenD(n));
+          ad.uniIn = new Uint8Array(n * n); ad.uniVer = surfVer;
+        }
+        for (i = 0; i < n * n; i++) { t = i * 3; ad.uniIn[i] = seen(ad.uniS.cx[t], ad.uniS.cx[t + 1], ad.uniS.cx[t + 2]) ? 1 : 0; }
+        var su = cellSide(ad.uniS, ad.uniIn, st.gain);
+        ad.stat = { n: n * n, ins: ins, view: seenA / allA, sIn: sp.in, sOut: sp.out, uIn: su.in, uAll: su.all };
+        footprint();
+        uvDirty = true; hudDirty = true;
+      }
+      /* the outlines of a set whose chart ellipses are stored as M (scene adaptive) */
+      function outlineM(S) {
+        var A = outl.arr, o = 0, i, m, th, c, sn, pu = 0, pv = 0, qu, qv, Mm = S.m;
+        for (i = 0; i < S.n; i++) for (m = 0; m <= EM; m++) {
+          th = m / EM * 6.283185; c = Math.cos(th); sn = Math.sin(th);
+          qu = S.u[i] + Mm[i * 4] * c + Mm[i * 4 + 1] * sn; qv = S.v[i] + Mm[i * 4 + 2] * c + Mm[i * 4 + 3] * sn;
+          if (m) { onSurf(pu, pv, LIFT, A, o); onSurf(qu, qv, LIFT, A, o + 3); o += 6; }
+          pu = qu; pv = qv;
+        }
+        outl.set(o / 3);
+      }
+      /* the side of each Gaussian's cell on the surface, averaged in the view / out of it / all, as a share of the width.
+         The set's sizes are k times the cell's spans, so the cell's area is sizeA sizeB / k^2 */
+      function cellSide(S, inF, k) {
+        var i, d, si = 0, ni = 0, so = 0, no = 0, sa = 0;
+        for (i = 0; i < S.n; i++) {
+          d = Math.sqrt(S.lu[i] * S.lvp[i] * S.du[i] * S.dv[i]) / (S.m ? k : 1); sa += d;
+          if (inF[i]) { si += d; ni++; } else { so += d; no++; }
+        }
+        return { in: ni ? si / ni / SPAN : null, out: no ? so / no / SPAN : null, all: S.n ? sa / S.n / SPAN : null };
+      }
+      /* the part of the surface in the camera's view: marching squares on the fine vertex grid of
+         f = 1 - max(|x|, |y|) in the camera's image (f > 0 inside), laid on the surface; a tint inside (mask B) */
+      function footprint() {
+        var N = VF + 1, f = ad.fv, i, j, t, q, A = fpLine.arr, o = 0, seg = ad.seg, u0, v0;
+        for (i = 0; i < N * N; i++) { t = i * 3; q = proj(vg.pos[t], vg.pos[t + 1], vg.pos[t + 2]); f[i] = q[2] > 0 ? 1 - Math.max(Math.abs(q[0]), Math.abs(q[1])) : -1; }
+        maskSize(VF);
+        for (j = 0; j < VF; j++) for (i = 0; i < VF; i++) {
+          var m = (f[j * N + i] + f[j * N + i + 1] + f[(j + 1) * N + i] + f[(j + 1) * N + i + 1]) > 0;
+          t = (j * VF + i) * 4; maskData[t] = 0; maskData[t + 1] = 0; maskData[t + 2] = m ? 255 : 0; maskData[t + 3] = 255;
+        }
+        maskTex.needsUpdate = true;
+        seg.length = 0;
+        function cut(fa, fb) { return fa / (fa - fb); }
+        for (j = 0; j < VF; j++) for (i = 0; i < VF; i++) {
+          var f00 = f[j * N + i], f10 = f[j * N + i + 1], f01 = f[(j + 1) * N + i], f11 = f[(j + 1) * N + i + 1], pts = [];
+          if ((f00 > 0) !== (f10 > 0)) pts.push(i + cut(f00, f10), j);
+          if ((f10 > 0) !== (f11 > 0)) pts.push(i + 1, j + cut(f10, f11));
+          if ((f01 > 0) !== (f11 > 0)) pts.push(i + cut(f01, f11), j + 1);
+          if ((f00 > 0) !== (f01 > 0)) pts.push(i, j + cut(f00, f01));
+          for (var k = 0; k + 3 < pts.length; k += 4) seg.push(pts[k] / VF, pts[k + 1] / VF, pts[k + 2] / VF, pts[k + 3] / VF);
+        }
+        for (i = 0; i + 3 < seg.length && o + 6 <= A.length; i += 4) { onSurf(seg[i], seg[i + 1], LIFT * 1.5, A, o); onSurf(seg[i + 2], seg[i + 3], LIFT * 1.5, A, o + 3); o += 6; }
+        fpLine.set(o / 3);
+        // the camera: a small body, the start of its frustum, and four rays to where its corners meet the surface
+        var L = [], hw = Math.tan(obs.fov * Math.PI / 360) * obs.aspect, hh = Math.tan(obs.fov * Math.PI / 360), dn = 0.4, bx = 0.17, by = 0.115;
+        function box(x0, x1, y0, y1, z0, z1) {
+          var c = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+          [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]].forEach(function (e) { L.push(c[e[0]], c[e[1]]); });
+        }
+        box(-bx, bx, -by, by, 0.05, 0.33);
+        var nr = [[-hw * dn, -hh * dn, -dn], [hw * dn, -hh * dn, -dn], [hw * dn, hh * dn, -dn], [-hw * dn, hh * dn, -dn]];
+        nr.forEach(function (p, i2) { L.push([0, 0, 0], p, p, nr[(i2 + 1) % 4]); });
+        L.push([-0.05, by, 0.19], [0, by + 0.08, 0.19], [0, by + 0.08, 0.19], [0.05, by, 0.19]);      // which way is up
+        var v3 = new T.Vector3(); o = 0;
+        L.forEach(function (p) { v3.set(p[0], p[1], p[2]).applyMatrix4(obs.matrixWorld); obsBody.arr[o++] = v3.x; obsBody.arr[o++] = v3.y; obsBody.arr[o++] = v3.z; });
+        obsBody.set(L.length);
+        o = 0;
+        [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function (c) {
+          var h = rayHit(c[0], c[1]); if (!h) return;
+          obsRay.arr[o++] = obs.position.x; obsRay.arr[o++] = obs.position.y; obsRay.arr[o++] = obs.position.z;
+          obsRay.arr[o++] = h[0]; obsRay.arr[o++] = h[1]; obsRay.arr[o++] = h[2];
+        });
+        obsRay.set(o / 3);
+      }
+      /* where the ray through the image corner (x, y) first meets the surface (marched, then bisected), or null */
+      var xu = null;
+      function heightAt(x, z) {                        // the surface's height over world (x, z): invert x(u), z(v)
+        if (!xu) { xu = new Float64Array(VF + 1); for (var i = 0; i <= VF; i++) xu[i] = vg.pos[i * 3]; }
+        function inv(X) { var lo = 0, hi = VF; if (X <= xu[0]) return 0; if (X >= xu[VF]) return 1; while (hi - lo > 1) { var m = (lo + hi) >> 1; if (xu[m] <= X) lo = m; else hi = m; } return (lo + (X - xu[lo]) / (xu[hi] - xu[lo])) / VF; }
+        var p = [0, 0, 0]; onSurf(inv(x), inv(z), 0, p, 0); return p[1];
+      }
+      function rayHit(nx, ny) {
+        var v = new T.Vector3(nx, ny, 0.5).unproject(obs).sub(obs.position).normalize(), E = obs.position, t = 0, step = 0.03, lo, hi, m, k;
+        function under(t) { var x = E.x + v.x * t, z = E.z + v.z * t; return Math.abs(x) <= SPAN / 2 && Math.abs(z) <= SPAN / 2 && E.y + v.y * t <= heightAt(x, z); }
+        for (k = 0; k < 400; k++) { t += step; if (under(t)) break; }
+        if (k >= 400) return null;
+        lo = t - step; hi = t;
+        for (k = 0; k < 20; k++) { m = (lo + hi) / 2; if (under(m)) hi = m; else lo = m; }
+        return [E.x + v.x * hi, E.y + v.y * hi, E.z + v.z * hi];
       }
 
       function fmt3(x) { return x >= 1e-3 ? x.toPrecision(3) : x.toExponential(1); }
@@ -481,8 +1258,11 @@
 
         var ref = s.nbr && st.nb === 8 ? m.jf : m.gs, est = st.nb === 8 ? m.n8 : m.n4;
         pr.ref = ref; pr.est = est; pr.gap = st.nb === 8 ? m.gap8 : m.gap4;
+        // in scene scale the painted Gaussians take the size the lattice gives them: own cell, or one size for all (tl.b);
+        // the white ring stays the size the derivatives ask for
+        var bl = s.tile ? tl.b : 0, s1 = tl.s1, re = function (A) { var l = len(A) || 1; return mul(A, KT.lerp(1, s1 / l, bl)); };
         if (s.ell) {                       // the planoid itself, and its 1-sigma outline
-          sheet.gauss(4, p, mul(ref.ax[0], k), mul(ref.ax[1], k), violet, 0.9);
+          sheet.gauss(4, p, re(mul(ref.ax[0], k)), re(mul(ref.ax[1], k)), violet, s.tile ? 0.5 : 0.9);
           ringA.set(p, mul(ref.ax[0], k), mul(ref.ax[1], k), m.n, 0.014 * gz, 0.022);
         }
         if (s.nbr) {
@@ -495,7 +1275,7 @@
             // each neighbour is a planoid of its own, from its own derivatives
             var sx = [SU[t], SU[t + 1], SU[t + 2]], sy = [SV[t], SV[t + 1], SV[t + 2]], c0 = [P[t], P[t + 1], P[t + 2]];
             sy = add(sy, sx, -dot(sx, sy) / dot(sx, sx)); sx = mul(sx, D * k); sy = mul(sy, D * k);
-            sheet.gauss(j, c0, sx, sy, violet, on ? 0.42 : 0.13);
+            sheet.gauss(j, c0, re(sx), re(sy), violet, s.tile ? (on ? 0.3 : 0.1) : (on ? 0.42 : 0.13));
             var nn = cross(sx, sy), l = len(nn) || 1; if (nn[1] < 0) l = -l; c0 = add(c0, nn, 0.006 * gz / l);
             A = on ? nbRingA.arr : nbRingI.arr; o = on ? ra : ri;
             var prev = add(c0, sx), cur;
@@ -571,6 +1351,70 @@
         for (i = 1; i < inner; i++) {
           g.beginPath(); g.moveTo(i / inner * w, 0); g.lineTo(i / inner * w, h); g.moveTo(0, i / inner * h); g.lineTo(w, i / inner * h); g.stroke();
         }
+        if (s.tile && tl.imgOwn) {                         // red: the points no footprint covers, own cell -> one size
+          g.imageSmoothingEnabled = true;
+          if (tl.b < 1) { g.globalAlpha = 1 - tl.b; g.drawImage(tl.imgOwn, 0, 0, w, h); }
+          if (tl.b > 0) { g.globalAlpha = tl.b; g.drawImage(tl.imgOne, 0, 0, w, h); }
+          g.globalAlpha = 1;
+        }
+        function ellipses(S, k, s1, bl, from, alpha) {   // the footprints, in the chart where they are defined
+          g.strokeStyle = 'rgba(206,147,216,' + alpha + ')'; g.lineWidth = 1; g.beginPath();
+          for (var q = from; q < S.n; q++) {
+            var LA = sizeA(S, q, k, s1, bl), LB = sizeB(S, q, k, s1, bl), e1 = S.lu[q] / LA, e2 = S.pr[q] / LA, e3 = S.lvp[q] / LB, m, th, eb, ea, x, y;
+            for (m = 0; m <= 28; m++) {
+              th = m / 28 * 6.283185; eb = Math.sin(th) / e3; ea = (Math.cos(th) - e2 * eb) / e1;
+              x = (S.u[q] + ea) * w; y = (1 - S.v[q] - eb) * h;
+              if (m) g.lineTo(x, y); else g.moveTo(x, y);
+            }
+          }
+          g.stroke();
+        }
+        if (s.stitch && sx.n) {
+          var sn = sx.n, SX = function (q) { return (q + 0.5) / sn * w; }, SY = function (q) { return (1 - (q + 0.5) / sn) * h; }, qk, qa, qb, rr2 = Math.max(1.2, Math.min(3, w / sn * 0.2));
+          g.lineWidth = 1;
+          for (qk = 0; qk < sx.q; qk++) {
+            qa = quadAt(sn, qk).a; qb = quadAt(sn, qk).b;
+            g.fillStyle = qk === sx.q - 1 && sx.q < sx.Q ? 'rgba(255,255,255,.34)' : 'rgba(79,195,247,.2)';
+            g.beginPath(); g.moveTo(SX(qa), SY(qb)); g.lineTo(SX(qa + 1), SY(qb)); g.lineTo(SX(qa + 1), SY(qb + 1)); g.lineTo(SX(qa), SY(qb + 1)); g.closePath(); g.fill();
+            g.strokeStyle = 'rgba(79,195,247,.85)'; g.stroke();
+            g.beginPath(); g.moveTo(SX(qa), SY(qb)); g.lineTo(SX(qa + 1), SY(qb + 1)); g.stroke();
+          }
+          for (qb = 0; qb < sn; qb++) for (qa = 0; qa < sn; qa++) {
+            var gone = (sn - 1 - qb) * sn + qa < sx.passed;
+            g.fillStyle = gone ? C.surf : C.splat; g.beginPath(); g.arc(SX(qa), SY(qb), gone ? rr2 * 0.7 : rr2, 0, 6.2832); g.fill();
+          }
+          if (sx.q < sx.Q) {                                 // the window around the four samples it holds
+            qk = Math.max(0, sx.q - 1); qa = quadAt(sn, qk).a; qb = quadAt(sn, qk).b;
+            var pad = Math.max(3, w / sn * 0.3);
+            g.strokeStyle = '#ffffff'; g.lineWidth = 1.6;
+            g.strokeRect(SX(qa) - pad, SY(qb + 1) - pad, SX(qa + 1) - SX(qa) + 2 * pad, SY(qb) - SY(qb + 1) + 2 * pad);
+          }
+        }
+        if (s.adapt && ad.stat) {
+          if (!ad.cv) { ad.cv = document.createElement('canvas'); ad.cv.width = ad.cv.height = VF; ad.im = ad.cv.getContext('2d').createImageData(VF, VF); }
+          var D = ad.im.data, fu, fv, o2;
+          for (fv = 0; fv < VF; fv++) for (fu = 0; fu < VF; fu++) {
+            o2 = ((VF - 1 - fv) * VF + fu) * 4; D[o2] = D[o2 + 1] = D[o2 + 2] = 230; D[o2 + 3] = maskData[(fv * VF + fu) * 4 + 2] ? 52 : 0;
+          }
+          ad.cv.getContext('2d').putImageData(ad.im, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(ad.cv, 0, 0, w, h);
+          var an = ad.n, AN = an + 1, X2 = ad.X, aa, ab, o3;
+          // the net of cell corners, as the springs have pulled it, and a dot per Gaussian
+          g.strokeStyle = 'rgba(206,147,216,.38)'; g.lineWidth = 1; g.beginPath();
+          for (ab = 0; ab < AN; ab++) for (aa = 0; aa < AN; aa++) {
+            o3 = (ab * AN + aa) * 2;
+            if (aa) { g.moveTo(X2[o3 - 2] * w, (1 - X2[o3 - 1]) * h); g.lineTo(X2[o3] * w, (1 - X2[o3 + 1]) * h); }
+            if (ab) { g.moveTo(X2[o3 - AN * 2] * w, (1 - X2[o3 - AN * 2 + 1]) * h); g.lineTo(X2[o3] * w, (1 - X2[o3 + 1]) * h); }
+          }
+          g.stroke();
+          var rd2 = Math.max(0.8, Math.min(1.8, w / an * 0.14));
+          for (aa = 0; aa < an * an; aa++) {
+            g.fillStyle = ad.inG[aa] ? C.splat : 'rgba(206,147,216,.6)';
+            g.fillRect(aset.u[aa] * w - rd2, (1 - aset.v[aa]) * h - rd2, 2 * rd2, 2 * rd2);
+          }
+          g.strokeStyle = C.text; g.lineWidth = 1.3; g.beginPath();
+          for (aa = 0; aa + 3 < ad.seg.length; aa += 4) { g.moveTo(ad.seg[aa] * w, (1 - ad.seg[aa + 1]) * h); g.lineTo(ad.seg[aa + 2] * w, (1 - ad.seg[aa + 3]) * h); }
+          g.stroke();
+        }
         function cells(x0, y0, cw, ch, ci, cj) {          // the cell (ci, cj) and its neighbourhood, cell size cw x ch at (x0, y0) for cell (0, 0)
           for (b2 = -1; b2 <= 1; b2++) for (a2 = -1; a2 <= 1; a2++) {
             var x = x0 + (ci + a2) * cw, y = y0 - (cj + b2 + 1) * ch, mid = !a2 && !b2, on = mid || st.nb === 8 || !a2 || !b2;
@@ -585,7 +1429,8 @@
           g.stroke();
         }
         if (s.nbr) cells(0, h, w / n, h / n, st.ci, st.cj);
-        if (s.field || s.ell) {
+        if (s.tile && tset.n && n <= OUTMAX) ellipses(tset, st.gain, tl.s1, tl.b, 0, s.nbr ? 0.75 : 0.9);
+        if ((s.field || s.ell) && !s.stitch && !s.adapt) {
           g.fillStyle = C.splat;
           if (n <= 44) { var r = Math.max(1, Math.min(3, w / n * 0.22));
             for (b2 = 0; b2 < n; b2++) for (a2 = 0; a2 < n; a2++) { g.beginPath(); g.arc((a2 + 0.5) / n * w, (b2 + 0.5) / n * h, r, 0, 6.2832); g.fill(); } }
@@ -608,7 +1453,8 @@
             g.restore();
           }
         }
-        uvLab.textContent = !s.nbr ? '(u, v) chart' : w < 150 ? '(u, v) · ' + st.nb + ' nbrs' : '(u, v) · ' + st.nb + ' neighbours';
+        uvLab.textContent = s.nbr ? (w < 150 ? '(u, v) · ' + st.nb + ' nbrs' : '(u, v) · ' + st.nb + ' neighbours') : s.stitch ? '(u, v) · 2 × 2 window' :
+                            s.adapt ? (w < 150 ? '(u, v) · warped' : '(u, v) · warped lattice') : s.tile ? (w < 150 ? '(u, v) · 1σ' : '(u, v) · 1σ footprints') : '(u, v) chart';
       }
 
       /* ---------- the tangent plane, face-on ----------
@@ -740,12 +1586,38 @@
         var sc = SCENES[id]; if (!sc) return;
         st.scene = id; st.sc = sc; st.t = 0; st.touchedProbe = false; st.touchedN = false; st.wigI = -1;
         st.show = {}; sc.show.split(' ').forEach(function (k) { st.show[k] = true; });
+        if (!sc.sweep) knBig(false);                     // leaving the knob frees its big buffers
+        if (sc.fit) base.set(fitBase);                   // the fit starts over: from a flat net, towards the terrain
         patch.P.set(base);
+        st.fit = null;
+        if (sc.fit) {
+          var Z0 = new Float64Array(FIT.n).fill(FIT.mean);
+          for (var zi = 0; zi < FIT.n; zi++) patch.P[zi * 3 + 1] = Z0[zi];
+          st.fit = cgNew(Z0);
+        }
         if (sc.n) { st.n = sc.n; slN.set(sc.n); }
         if (sc.fixed) { st.u = sc.fixed[0]; st.v = sc.fixed[1]; }
-        field.uniforms.uRim.value = sc.rim == null ? 0.6 : sc.rim;
+        small.uniforms.uRim.value = sc.rim == null ? 0.6 : sc.rim;
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
         var s = st.show, on = function (o, v) { o.visible = !!v; };
+        // restart what runs on its own: the size alternation, the stitching, the camera's path, the knob
+        tl.auto = true; tl.goal = 0; tl.b = 0; tl.key = ''; tl.mode = 'own'; segSz.set('own');
+        sx.n = 0; ad.fresh = true; kn.li = 0; kn.top = false; kn.lim = null; kn.ft = {}; kn.last = 0;
+        if (sc.sweep) knSet(KN_LEVELS[0]);
+        on(tgtDots, s.fit); on(tgtHid, s.fit); on(resid.obj, s.fit); on(residHid, s.fit);
+        on(ovMesh, s.tile || s.adapt); ovMat.uniforms.uGap.value = s.tile ? 1 : 0; ovMat.uniforms.uTint.value = s.adapt ? 1 : 0;
+        on(ovDepth, s.tile || s.stitch || s.adapt);
+        outl.mat.color.set(s.field ? '#2e1440' : C.splat); outl.mat.opacity = s.field ? 0.85 : 0.95;   // on the violet Gaussians: a deep violet
+        [tri, triEdge.obj, triNew.obj, win, winDot].forEach(function (o) { on(o, s.stitch); });
+        triGeo.setDrawRange(0, 0); triEdge.set(0);
+        [obsBody.obj, obsRay.obj, fpLine.obj].forEach(function (o) { on(o, s.adapt); });
+        rdFit.el.style.display = rdMax.el.style.display = rdIt.el.style.display = s.fit ? '' : 'none';
+        segSz.el.style.display = rdUnc.el.style.display = rdPile.el.style.display = s.tile ? '' : 'none';
+        rdTri.el.style.display = s.stitch ? '' : 'none';
+        slK.el.style.display = rdFt.el.style.display = rdEv.el.style.display = rdLim.el.style.display = knBox.style.display = sc.sweep ? '' : 'none';
+        [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { r.el.style.display = s.adapt ? '' : 'none'; });
+        label(rdP, sc.sweep ? 'stored numbers' : 'learnable params');
+        hudHtml = null; hudDirty = true;
         on(net.obj, s.net); on(netGhost, s.net);
         balls.forEach(function (m, i) {
           m.visible = !!s.net;
@@ -756,7 +1628,7 @@
           m.scale.setScalar(s.feat ? 1.25 : 1);
         });
         wire.mat.opacity = s.field && !sc.hero ? 0.22 : s.tan ? 0.34 : 0.55;
-        on(field.mesh, s.field);
+        on(field.mesh, s.field); if (field !== small) small.mesh.visible = false;
         on(probe, s.probe); on(aU.obj, s.tan); on(aV.obj, s.tan); on(aN.obj, s.nor);
         on(isoU.obj, s.iso); on(isoV.obj, s.iso);
         on(plane, s.plane); on(planeHid, s.plane); on(plGrid.obj, s.plane); on(plEdge.obj, s.plane); on(plEdgeHid, s.plane);
@@ -766,7 +1638,8 @@
         sheet.uniforms.uCell.value.z = 0;
         on(ringA.mesh, s.ell); on(ringA.hid, s.ell);
         on(ringN.mesh, s.nbr); on(ringN.hid, s.nbr);
-        [blk.obj, nbRingA.obj, nbRingI.obj, span.obj, spanHid, err.obj].concat(nbDot).forEach(function (o) { on(o, s.nbr); });
+        [blk.obj, span.obj, spanHid, err.obj].concat(nbDot).forEach(function (o) { on(o, s.nbr); });
+        on(nbRingA.obj, s.nbr && !s.tile); on(nbRingI.obj, s.nbr && !s.tile);      // with every outline drawn, these would be twice
         tMu.style.display = s.probe && !s.nbr ? '' : 'none'; tU.style.display = tV.style.display = s.tan ? '' : 'none';
         tN.style.display = s.nor ? '' : 'none';
         uvBox.style.display = s.uv ? '' : 'none';
@@ -774,7 +1647,8 @@
         root.classList.toggle('kt-has-face', !!s.face); root.classList.toggle('kt-nbr', !!s.nbr);
         nbBar.style.display = s.nbr ? '' : 'none';
         panel.style.display = sc.hero ? 'none' : ''; cap.style.display = sc.hero ? 'none' : '';
-        slN.el.style.display = slG.el.style.display = rdG.el.style.display = (s.field || s.ell) ? '' : 'none';
+        slG.el.style.display = rdG.el.style.display = (s.field || s.ell || s.adapt) ? '' : 'none';
+        slN.el.style.display = (s.field || s.ell || s.adapt) && !sc.sweep ? '' : 'none';
         rdAng.el.style.display = s.tan ? '' : 'none';
         rdSn.el.style.display = rdSa.el.style.display = rdGap.el.style.display = spBox.style.display = s.nbr ? '' : 'none';
         on(grid, !sc.hero); on(glow, !sc.hero); shadows.forEach(function (m) { on(m, !sc.hero); });
@@ -786,6 +1660,7 @@
       function layers() {
         var s = st.show, fine = s.nbr && st.n <= LATMAX;
         lat.obj.visible = dots.visible = !!fine;
+        outl.obj.visible = !!(s.tile || s.stitch || s.adapt) && st.n <= OUTMAX;
         wire.obj.visible = !!s.wire || (!!s.nbr && !fine);
         rdSh.el.style.display = s.nbr && st.nb === 8 ? '' : 'none';
         rdG.set((st.n * st.n).toLocaleString('en-US'));
@@ -815,14 +1690,20 @@
         if (s.probe && !sc.fixed && !st.touchedProbe) {
           st.u = 0.5 + 0.3 * Math.sin(st.t * 0.5); st.v = 0.5 + 0.3 * Math.sin(st.t * 0.37 + 1); uvDirty = probeDirty = true;
         }
-        if (sc.sweep && !st.touchedN) {
-          var n = Math.round(Math.exp(KT.lerp(Math.log(6), Math.log(150), 0.5 - 0.5 * Math.cos(st.t * 0.55))));
-          if (n !== st.n) { st.n = n; slN.set(n); fieldDirty = latDirty = true; }
+        if (sc.fit) fitTick(dt);                                  // the optimiser pulls the net onto the terrain
+        if (sc.sweep) knTick(dt);                                 // the knob steps on, and measures
+        if (s.tile) tileTick(dt);                                 // one size for all <-> own cell
+        if (surfDirty) {
+          updateSurface(); surfVer++; probeDirty = true; if (s.nbr) latDirty = true; surfDirty = false;
+          if (s.fit) updateResid();
         }
-        if (surfDirty) { updateSurface(); probeDirty = true; if (s.nbr) latDirty = true; surfDirty = false; }
         if (latDirty) { layers(); if (s.nbr) updateLattice(); latDirty = false; }
-        if (s.field && fieldDirty) { updateField(); fieldDirty = false; }
-        if (s.field) {
+        if (s.tile) tileUpdate();
+        if (s.stitch) stitchTick();
+        if (s.adapt) adaptTick(dt);
+        if (s.field && fieldDirty && !sc.sweep && !s.tile && !s.stitch && !s.adapt) updateField();
+        fieldDirty = false;
+        if (s.field && !s.stitch && !sc.sweep) {
           var cnt = st.fieldN * st.fieldN;
           if (sc.hero) cnt = Math.round((0.5 - 0.42 * Math.cos(st.t * 0.33)) * st.fieldN) * st.fieldN;
           field.setCount(cnt);
@@ -830,7 +1711,8 @@
         if (s.probe && probeDirty) { updateProbe(); probeDirty = false; }
 
         /* ---- camera: a base view per scene, a rocking for parallax, and a step aside when the plane is edge-on ---- */
-        var g = orbit.goal, view = sc.hero ? { th: 0.9, ph: 1.12, r: 5.6 } : { th: 0.72, ph: 1.0, r: 7.2 }, tg = [0, 0.05, 0];
+        var g = orbit.goal, view = sc.hero ? { th: 0.9, ph: 1.12, r: 5.6 } : sc.view ? { th: sc.view.th, ph: sc.view.ph, r: sc.view.r } : { th: 0.72, ph: 1.0, r: 7.2 },
+            tg = [0, sc.view && sc.view.ty != null ? sc.view.ty : 0.05, 0];
         if (s.tan && pr) {                     // look at the probe; next to the neighbours, as close as the 3 x 3 block allows
           var fo = s.nbr ? (sc.wig ? 0.8 : 1) : 0.35;
           tg = [pr.c[0] * fo, 0.05 + (pr.c[1] - 0.05) * fo, pr.c[2] * fo];
@@ -875,8 +1757,15 @@
         var vk = W + 'x' + H + ':' + Math.round(st.lift);
         if (vk !== st.viewKey) { st.viewKey = vk; cam.setViewOffset(W, H, 0, Math.round(st.lift), W, H); }
         var near = Math.max(0.2, orbit.cur.r - 1.3), far = orbit.cur.r + 5.2;
-        scene.fog.near = near; scene.fog.far = far; sheet.uniforms.uFog.value.set(near, far + 1.5);
+        scene.fog.near = near; scene.fog.far = far; sheet.uniforms.uFog.value.set(near, far + 1.5); ovMat.uniforms.uFog.value.set(near, far + 1.5);
         G.draw(R, scene, cam);
+        if (s.tile || s.stitch || s.adapt) {      // what lies on the surface, over the Gaussians (see `ovl`)
+          var rr = R.renderer, ac = rr.autoClear;
+          rr.autoClear = false;
+          if (field.mesh.visible) rr.clearDepth();
+          G.draw(R, ovl, cam);
+          rr.autoClear = ac;
+        }
 
         if (s.probe && pr) {
           if (!s.nbr) {
@@ -896,6 +1785,7 @@
         if (s.uv && uvDirty) { drawUV(); uvDirty = false; }
         if (s.face && faceDirty) { drawFace(); faceDirty = false; }
         if (s.nbr) { st.sparkT -= dt; if (st.sparkT <= 0) { drawSpark(); st.sparkT = sc.wig ? 0.3 : 1e9; } }
+        if (hudDirty) { hudDirty = false; drawHud(); }
       });
       // anything that changes the estimate redraws the convergence plot (throttled while the surface is moving)
       function resetSpark() { if (st.sparkT > 1) st.sparkT = 0; }
@@ -925,7 +1815,17 @@
           '.kt-sim-planoid .kt-nbsw .kt-seg-btn.on{background:var(--splat)}' +
           '.kt-sim-planoid .kt-pl-spark{position:relative;height:92px;margin-top:2px;border-top:1px solid var(--line)}' +
           '.kt-sim-planoid .kt-pl-spark-cv{position:absolute;inset:0;width:100%;height:100%}' +
-          '.kt-sim-planoid .kt-readout .kt-lab sub,.kt-sim-planoid .kt-readout .kt-lab sup{font-size:8px;line-height:0}';
+          '.kt-sim-planoid .kt-readout .kt-lab sub,.kt-sim-planoid .kt-readout .kt-lab sup{font-size:8px;line-height:0}' +
+          '.kt-sim-planoid .kt-readout .kt-lab i,.kt-sim-planoid .kt-readout .kt-val i{font-style:normal;color:var(--mute)}' +
+          '.kt-sim-planoid .kt-pl-sz .kt-seg-btn.on{background:var(--splat)}' +
+          '.kt-sim-planoid .kt-pl-hud{position:absolute;z-index:4;left:14px;top:34px;max-width:min(64%,620px);pointer-events:none;' +
+          'font:500 11px/1.6 var(--f-mono);letter-spacing:.03em;color:var(--dim);text-shadow:0 1px 3px rgba(7,9,15,.9)}' +
+          '.kt-sim-planoid .kt-pl-hud b{font-weight:600;color:var(--text)}.kt-sim-planoid .kt-pl-hud .m{color:var(--mute)}' +
+          '.kt-sim-planoid .kt-pl-hud .s{color:var(--splat)}.kt-sim-planoid .kt-pl-hud .c{color:var(--ctrl)}' +
+          '.kt-sim-planoid .kt-pl-hud .e{color:var(--err)}.kt-sim-planoid .kt-pl-hud .u{color:var(--surf)}' +
+          '.kt-sim-planoid .kt-pl-hud .big{font:600 21px/1.25 var(--f-mono);letter-spacing:0}' +
+          '.kt-sim-planoid.kt-compact .kt-pl-hud,.kt-sim-planoid.kt-ins-small .kt-pl-hud{left:10px;font-size:10px;line-height:1.5;max-width:calc(100% - 20px)}' +
+          '.kt-sim-planoid.kt-compact .kt-pl-hud .big,.kt-sim-planoid.kt-ins-small .kt-pl-hud .big{font-size:16px}';
         document.head.appendChild(css);
       }
 
@@ -942,11 +1842,19 @@
                    shear: pr.shear, angle: pr.ang, edge: Math.abs(pr.n[0] * camDir.x + pr.n[1] * camDir.y + pr.n[2] * camDir.z) };
         },
         setNeighbours: function (k) { st.nb = k === 8 ? 8 : 4; segNb.set(st.nb); probeDirty = uvDirty = latDirty = true; st.sparkT = 0; },
+        /* scenes scale / fill: 'one' or 'own' pins the size (stops the alternation); the measured coverage */
+        setSize: function (m) { tl.auto = false; tl.goal = m === 'one' ? 1 : 0; segSz.set(m === 'one' ? 'one' : 'own'); },
+        tiling: function () { return tl.own && { n: st.n, k: st.gain, blend: tl.b, sigmaOne: tl.s1, own: tl.own, one: tl.one, F: cw.F }; },
+        fit: function () { return st.fit && { step: st.fit.it, done: st.fit.done, rms: fitStat.rms, max: fitStat.max, rmsConverged: FIT.rms / HS, steps: FIT.steps }; },
+        stitch: function () { return sx.n && { n: sx.n, triangles: sx.q * 2, of: sx.Q * 2, gaussiansLeft: sx.V - sx.passed }; },
+        knob: function () { return { n: kn.cur, gaussians: kn.cur * kn.cur, frame: Object.assign({}, kn.ft), evaluate: Object.assign({}, kn.ev), limit: kn.lim, big: !!big }; },
+        adaptive: function () { return ad.stat; },
         resize: function (w, h) {
           W = w; H = h; R.resize(w, h); uvDirty = faceDirty = true; st.sparkT = Math.min(st.sparkT, 0.05);
           fitR = Math.max(1, 1.32 / (w / h));               // back off on narrow stages so the patch stays in frame
           var ins = Math.round(KT.clamp(Math.min(w * 0.22, h * 0.3), 108, 200));
           st.ins = ins; root.style.setProperty('--kt-ins', ins + 'px'); root.classList.toggle('kt-ins-small', ins < 150);
+          hudPlace(); if (st.sc.sweep) kn.plotT = 0;
         },
         destroy: function () { R.renderer.dispose(); }
       };

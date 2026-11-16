@@ -4,13 +4,16 @@
      he-field  — implicit representation: a function you query (signed distance), and why
                  rendering one means asking it many times (ray marching)
      he-fit    — Gaussians: a real little optimiser fitting soft blobs to a picture
-   Registered with the kit (talk/kit.js) for its lifecycle; all on-screen text is DOM, in Hebrew. */
+   Registered with the kit (talk/kit.js) for its lifecycle; all on-screen text is DOM, in the page's language:
+   Hebrew on a page whose <html lang> is "he" (talk-he.html), English anywhere else (the opening of talk.html). */
 (function () {
   'use strict';
   var KT = window.KnotTalk, TAU = 6.283185307;
   var INK = '#1d1d1f', DIM = '#6e6e73', BLUE = '#0a84ff', PURPLE = '#af52de', ORANGE = '#ff7a3d';
   var DOUGH = [232, 184, 124], GLAZE = [255, 138, 176], SPR = [[92, 200, 250], [255, 214, 10], [255, 255, 255], [102, 212, 164], [191, 120, 255]];
-  function he(n) { return Math.round(n).toLocaleString('he-IL'); }
+  var EN = !/^he/i.test(document.documentElement.lang || '');
+  function L(h, e) { return EN ? e : h; }                     // the Hebrew text, or its English
+  function he(n) { return Math.round(n).toLocaleString(EN ? 'en-US' : 'he-IL'); }
   function h2(x, y) { var s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
   function rgb(c, k) { return 'rgb(' + Math.round(Math.min(255, c[0] * k)) + ',' + Math.round(Math.min(255, c[1] * k)) + ',' + Math.round(Math.min(255, c[2] * k)) + ')'; }
   function read(root) { var e = KT.ui.el('div', 'he-read'); root.appendChild(e); return function (big, small) { e.innerHTML = '<b>' + big + '</b>' + small; }; }
@@ -49,16 +52,16 @@
 
   /* ================= he-shapes: points · triangles · voxels ================= */
   KT.register('he-shapes', {
-    title: 'ייצוג מפורש', blurb: '', tool: 'Canvas 2D',
-    scenes: [{ id: 'points', label: 'נקודות' }, { id: 'mesh', label: 'משולשים' }, { id: 'voxels', label: 'קוביות' }],
+    title: L('ייצוג מפורש', 'Explicit representation'), blurb: '', tool: 'Canvas 2D',
+    scenes: [{ id: 'points', label: L('נקודות', 'Points') }, { id: 'mesh', label: L('משולשים', 'Triangles') }, { id: 'voxels', label: L('קוביות', 'Voxels') }],
     create: function (env) {
       var ui = env.ui, root = env.root, C = ui.canvas(root), g = C.ctx, W = 1, H = 1;
       var st = { mode: 'points', detail: 0.4, yaw: 0.6, pitch: 0.72, zoom: 1, t: 0, touched: false, sweep: false, hero: false, cyc: 0 };
       var out = read(root);
       var panel = ui.panel(root, { pos: 'bottom' });
-      var seg = ui.seg(panel, { value: 'points', options: [{ v: 'points', label: 'נקודות' }, { v: 'mesh', label: 'משולשים' }, { v: 'voxels', label: 'קוביות' }],
+      var seg = ui.seg(panel, { value: 'points', options: [{ v: 'points', label: L('נקודות', 'points') }, { v: 'mesh', label: L('משולשים', 'triangles') }, { v: 'voxels', label: L('קוביות', 'voxels') }],
         onChange: function (v) { st.mode = v; st.sweep = false; } });
-      var sl = ui.slider(panel, { label: 'פירוט', min: 0, max: 100, value: 40, fmt: function () { return ''; }, onInput: function (v) { st.detail = v / 100; st.sweep = false; } });
+      var sl = ui.slider(panel, { label: L('פירוט', 'detail'), min: 0, max: 100, value: 40, fmt: function () { return ''; }, onInput: function (v) { st.detail = v / 100; st.sweep = false; } });
       turn(C.cv, st, env.embed);
 
       // a fixed, well-spread pool of surface samples; "more points" just takes more of it
@@ -85,7 +88,7 @@
           for (i = 0; i < N; i++) { q = cm.at(pts[i].p); list.push([q[2], q[0], q[1], pts[i]]); }
           list.sort(function (a, b) { return a[0] - b[0]; });
           for (i = 0; i < N; i++) { q = list[i]; g.fillStyle = rgb(q[3].c, shade(cm.rot(q[3].n))); g.beginPath(); g.arc(q[1], q[2], Math.max(1.3, rad * (1 + q[0] * 0.1)), 0, TAU); g.fill(); }
-          out(he(N), 'נקודות');
+          out(he(N), L('נקודות', 'points'));
         } else if (st.mode === 'mesh') {
           var nu = Math.round(KT.lerp(5, 44, d)), nv = Math.max(4, Math.round(nu * 0.5)), faces = [];
           for (i = 0; i < nu; i++) for (j = 0; j < nv; j++) {
@@ -100,7 +103,7 @@
             g.fillStyle = f[5]; g.beginPath(); g.moveTo(f[1][0], f[1][1]); g.lineTo(f[2][0], f[2][1]); g.lineTo(f[3][0], f[3][1]); g.lineTo(f[4][0], f[4][1]); g.closePath(); g.fill(); g.stroke();
             g.beginPath(); g.moveTo(f[1][0], f[1][1]); g.lineTo(f[3][0], f[3][1]); g.stroke();
           });
-          out(he(nu * nv * 2), 'משולשים');
+          out(he(nu * nv * 2), L('משולשים', 'triangles'));
         } else {
           var n = Math.round(KT.lerp(6, 24, d)), h = 3 / n, ny = Math.max(2, Math.round(1.0 / h)), cubes = [], cells = n * n * ny;
           var F = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], fr = F.map(cm.rot);
@@ -124,7 +127,7 @@
               g.fillStyle = rgb(col, shade(fr[f])); g.beginPath(); g.moveTo(pp[0][0], pp[0][1]); g.lineTo(pp[1][0], pp[1][1]); g.lineTo(pp[2][0], pp[2][1]); g.lineTo(pp[3][0], pp[3][1]); g.closePath(); g.fill(); g.stroke();
             }
           });
-          out(he(cells), 'תאים ברשת');
+          out(he(cells), L('תאים ברשת', 'cells in the grid'));
         }
       }
 
@@ -148,14 +151,14 @@
 
   /* ================= he-field: a function you ask ================= */
   KT.register('he-field', {
-    title: 'ייצוג סתום', blurb: '', tool: 'Canvas 2D',
-    scenes: [{ id: 'probe', label: 'שאלה אחת' }, { id: 'march', label: 'הרבה שאלות' }],
+    title: L('ייצוג סתום', 'Implicit representation'), blurb: '', tool: 'Canvas 2D',
+    scenes: [{ id: 'probe', label: L('שאלה אחת', 'One question') }, { id: 'march', label: L('הרבה שאלות', 'Many questions') }],
     create: function (env) {
       var ui = env.ui, root = env.root, C = ui.canvas(root), g = C.ctx, W = 1, H = 1;
       var st = { scene: 'probe', p: [1.5, 0.7], t: 0, touched: false, n: 12, a: 0 };
       var out = read(root), bub = ui.el('div', 'he-bubble'); root.appendChild(bub);
       var panel = ui.panel(root, { pos: 'bottom' });
-      var sl = ui.slider(panel, { label: 'דגימות לכל קרן', min: 2, max: 64, value: 12, fmt: function (v) { return v; }, onInput: function (v) { st.n = v; } });
+      var sl = ui.slider(panel, { label: L('דגימות לכל קרן', 'samples per ray'), min: 2, max: 64, value: 12, fmt: function (v) { return v; }, onInput: function (v) { st.n = v; } });
       function f(x, y) { return Math.abs(Math.hypot(x, y) - R) - r; }       // the doughnut seen from above
       var fld = document.createElement('canvas'), S = 1, cx = 0, cy = 0;
       function X(x) { return cx + x * S; } function Y(y) { return cy - y * S; }
@@ -209,8 +212,8 @@
           g.setLineDash([5, 6]); g.lineWidth = 1.6; g.strokeStyle = INK; g.beginPath(); g.arc(px, py, Math.max(2, Math.abs(v) * S), 0, TAU); g.stroke(); g.setLineDash([]);
           g.fillStyle = '#fff'; g.beginPath(); g.arc(px, py, 9, 0, TAU); g.fill(); g.fillStyle = v < 0 ? '#ff5c8a' : PURPLE; g.beginPath(); g.arc(px, py, 6, 0, TAU); g.fill();
           bub.style.display = ''; bub.style.transform = 'translate(' + (px + 16) + 'px,' + (py - 46) + 'px)';
-          bub.innerHTML = '<span class="ltr">f = ' + (v < 0 ? '−' : '+') + Math.abs(v).toFixed(2) + '</span><i style="background:' + (v < 0 ? '#ff5c8a' : PURPLE) + '"></i>' + (v < 0 ? 'בפנים' : 'בחוץ');
-          out('שאלה אחת', 'תשובה אחת');
+          bub.innerHTML = '<span class="ltr">f = ' + (v < 0 ? '−' : '+') + Math.abs(v).toFixed(2) + '</span><i style="background:' + (v < 0 ? '#ff5c8a' : PURPLE) + '"></i>' + (v < 0 ? L('בפנים', 'inside') : L('בחוץ', 'outside'));
+          out(L('שאלה אחת', 'One question'), L('תשובה אחת', 'one answer'));
         } else {
           bub.style.display = 'none';
           var ex = 2.25, n = st.n, K = 44, strip = [], a, k, i2;
@@ -235,7 +238,7 @@
           for (k = 0; k < K; k++) { g.fillStyle = strip[k] ? '#ff8ab0' : '#f1ebe2'; g.fillRect(sx, top + (K - 1 - k) * cell, 18, Math.ceil(cell)); }
           g.strokeStyle = INK; g.lineWidth = 2; g.strokeRect(sx - 2, top + (K - 1 - now) * cell - 1, 22, cell + 2);
           var q = 1920 * 1080 * n;
-          out(q >= 1e6 ? he(q / 1e6) + ' מיליון' : he(q), 'שאלות לתמונה אחת');
+          out(q >= 1e6 ? he(q / 1e6) + L(' מיליון', ' million') : he(q), L('שאלות לתמונה אחת', 'questions for one picture'));
         }
       }
       function rr(c, x, y, w, h, r0) { c.beginPath(); c.moveTo(x + r0, y); c.arcTo(x + w, y, x + w, y + h, r0); c.arcTo(x + w, y + h, x, y + h, r0); c.arcTo(x, y + h, x, y, r0); c.arcTo(x, y, x + w, y, r0); c.closePath(); }
@@ -250,7 +253,7 @@
         var css = document.createElement('style'); css.id = 'he-bubble-css';
         css.textContent = '.he-bubble{position:absolute;z-index:4;left:0;top:0;display:flex;align-items:center;gap:.5rem;padding:.5rem .8rem;border-radius:999px;' +
           'background:rgba(255,255,255,.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 1px 0 #fff,0 8px 22px -10px rgba(60,30,90,.4);' +
-          'font-size:.92rem;font-weight:700;color:#1d1d1f;white-space:nowrap;pointer-events:none;direction:rtl;will-change:transform}' +
+          'font-size:.92rem;font-weight:700;color:#1d1d1f;white-space:nowrap;pointer-events:none;direction:' + (EN ? 'ltr' : 'rtl') + ';will-change:transform}' +
           '.he-bubble i{width:.5rem;height:.5rem;border-radius:50%}.he-bubble .ltr{font-variant-numeric:tabular-nums;font-weight:600;color:#6e6e73}';
         document.head.appendChild(css);
       }
@@ -261,17 +264,17 @@
 
   /* ================= he-fit: soft blobs learn a picture ================= */
   KT.register('he-fit', {
-    title: 'גאוסיאנים', blurb: '', tool: 'Canvas 2D · אופטימיזציה חיה',
-    scenes: [{ id: 'few', label: 'מעט כתמים' }, { id: 'many', label: 'הרבה כתמים' }],
+    title: L('גאוסיאנים', 'Gaussians'), blurb: '', tool: L('Canvas 2D · אופטימיזציה חיה', 'Canvas 2D · a live optimiser'),
+    scenes: [{ id: 'few', label: L('מעט כתמים', 'A few blobs') }, { id: 'many', label: L('הרבה כתמים', 'Many blobs') }],
     create: function (env) {
       var ui = env.ui, root = env.root, C = ui.canvas(root), g = C.ctx, W = 1, H = 1, TS = 76, NP = TS * TS;
       var st = { n: 14, show: true, step: 0, acc: 0 };
       var out = read(root);
       var panel = ui.panel(root, { pos: 'bottom' });
       panel.style.setProperty('--tint', ORANGE);
-      var sl = ui.slider(panel, { label: 'כמה גאוסיאנים', min: 6, max: 260, value: 14, fmt: function (v) { return v; }, onInput: function (v) { st.n = v; init(); } });
-      var tg = ui.toggle(panel, { label: 'הצג כתמים', value: true, onChange: function (v) { st.show = v; } });
-      ui.button(panel, { label: 'מהתחלה', onClick: function () { init(); } });
+      var sl = ui.slider(panel, { label: L('כמה גאוסיאנים', 'Gaussians'), min: 6, max: 260, value: 14, fmt: function (v) { return v; }, onInput: function (v) { st.n = v; init(); } });
+      var tg = ui.toggle(panel, { label: L('הצג כתמים', 'show the blobs'), value: true, onChange: function (v) { st.show = v; } });
+      ui.button(panel, { label: L('מהתחלה', 'start over'), onClick: function () { init(); } });
 
       // the picture to learn: a doughnut on a plate, drawn large and shrunk
       var tgt = document.createElement('canvas'), T = new Float32Array(NP * 3);
@@ -361,7 +364,7 @@
         var th = Math.max(54, side * 0.2), tx = x0 - th * 0.28, ty = y0 - th * 0.3;      // the target, as a small photo
         g.save(); g.shadowColor = 'rgba(88,56,24,.3)'; g.shadowBlur = 18; g.shadowOffsetY = 8; g.fillStyle = '#fff'; rr(g, tx - 4, ty - 4, th + 8, th + 8, th * 0.2); g.fill(); g.restore();
         g.save(); rr(g, tx, ty, th, th, th * 0.17); g.clip(); g.drawImage(tgt, tx, ty, th, th); g.restore();
-        out(he(st.n), 'גאוסיאנים · ' + he(st.n * NPAR) + ' מספרים');
+        out(he(st.n), L('גאוסיאנים · ', 'Gaussians · ') + he(st.n * NPAR) + L(' מספרים', ' numbers'));
       }
       function setScene(id) { st.n = id === 'many' ? 180 : 14; st.show = id !== 'many'; sl.set(st.n); tg.set(st.show); init(); }
       env.loop(function (t, dt) {

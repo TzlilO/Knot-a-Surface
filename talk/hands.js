@@ -17,12 +17,17 @@
    On it: wand (grow a selection from the pixel you click over the channel shown; on features, everything
    similar to it), brush, erase. The selection (cyan) can then be tinted, hidden, inflated or held.
 
+   show(true, 'select'): the atlas and its selection tools only, for a host that does something of its own with
+   the selection (the manifold module's `paint` scene puts the chosen material on it). On the object the pointer
+   then selects too: the wand from the control point under it, or the brush and the eraser around it.
+
    host = { root, ui, canvas, camera, charts() -> [chart], pick(x, y) -> { c, i, j, pos, n } | null,
             changed(chart, shape) }       shape: true when control points moved (false: colour, opacity, masks)
    A chart may carry: ground (never touched), feat { dim, scale, lo, hi, nu, nv, step, data (base64 int8) }.
-   This layer adds to a chart: sel, pin (Float32Array, one per control point), alpha (the same, when
-   something was hidden; the renderer reads it), and keeps what it changed so that reset() puts it back.
-   -> { claim(e), hit(x, y), undo(), step(dt), show(on), reset(), el }   claim / hit / undo are for the host's
+   This layer adds to a chart: sel, pin (Float32Array, one per control point), selRev (counts every change of
+   sel, so a host can tell), alpha (the same, when something was hidden; the renderer reads it), and keeps what it
+   changed so that reset() puts it back.
+   -> { claim(e), hit(x, y), undo(), step(dt), show(on, mode), reset(), el }   claim / hit / undo are for the host's
    orbit (KnotTalk.gestures): this layer adds no touch handling of its own. */
 (function () {
   'use strict';
@@ -32,7 +37,7 @@
 
   function create(host) {
     var T = window.THREE, ui = host.ui, cam = host.camera, cv = host.canvas;
-    var st = { act: 'grab', reach: 0.22, power: 1, chan: 'rgb', tool: 'wand', tol: 0.16, tint: 0, on: false };
+    var st = { act: 'grab', reach: 0.22, power: 1, chan: 'rgb', tool: 'wand', tol: 0.16, tint: 0, on: false, mode: 'hands' };
     var stroke = null, dirty = true, last = 0, mark = null;
     var ray = new T.Raycaster(), ndc = new T.Vector2(), plane = new T.Plane(), hitP = new T.Vector3();
 
@@ -81,6 +86,12 @@
       if (!st.on) return false;
       var h = host.pick(e.clientX, e.clientY); if (!h || h.c.ground) return false;
       masks(h.c); mark = { c: h.c, i: h.i, j: h.j };
+      if (st.mode === 'select') {                // the atlas's tools, used on the object
+        stroke = { c: h.c, id: e.pointerId, sel: true, was: new Float32Array(h.c.sel) };
+        selectAt(h.c, h.i, h.j, true);
+        try { cv.setPointerCapture(e.pointerId); } catch (err) { /* a synthetic pointer */ }
+        return true;
+      }
       if (st.act === 'hold') { stroke = { c: h.c, id: e.pointerId, hold: true }; holdAt(h); }
       else {
         var b = patchAt(h.c, h.i, h.j, h.pos, false), P = h.c.patch.P, was = new Float32Array(b.idx.length * 3), k;
@@ -108,6 +119,11 @@
     }
     cv.addEventListener('pointermove', function (e) {
       if (!stroke || e.pointerId !== stroke.id) return;
+      if (stroke.sel) {                          // brush and eraser follow the pointer; the wand acted where it went down
+        if (st.tool === 'wand') return;
+        var hs = host.pick(e.clientX, e.clientY); if (hs && hs.c === stroke.c) { mark = { c: hs.c, i: hs.i, j: hs.j }; selectAt(hs.c, hs.i, hs.j, false); }
+        return;
+      }
       if (stroke.hold) { var h = host.pick(e.clientX, e.clientY); if (h && h.c === stroke.c) { mark = { c: h.c, i: h.i, j: h.j }; holdAt(h); } return; }
       if (st.act !== 'grab') return;
       setRay(e);
@@ -117,6 +133,7 @@
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
     function undo() {                          // a second finger arrived: this was the start of a pinch-zoom, not a stroke
       if (!stroke) return;
+      if (stroke.sel) { stroke.c.sel.set(stroke.was); selChanged(stroke.c); stroke = null; return; }
       if (!stroke.hold) { stroke.d = [0, 0, 0]; stroke.t = 0; var a = st.act; st.act = 'grab'; apply(); st.act = a; }
       stroke = null;
     }
@@ -126,7 +143,7 @@
     function reset() {
       host.charts().forEach(function (c) {
         if (c.h0) { c.patch.P.set(c.h0.P); c.patch.C.set(c.h0.C); c.h0 = null; }
-        if (c.sel) { c.sel.fill(0); c.pin.fill(0); }
+        if (c.sel) { c.sel.fill(0); c.pin.fill(0); c.selRev = (c.selRev || 0) + 1; }
         c.alpha = null; c.hNok = false; host.changed(c, true);
       });
       stroke = null; mark = null; dirty = true;
@@ -136,10 +153,10 @@
     var CHANS = [{ v: 'rgb', label: 'rgb' }, { v: 'normal', label: 'normals' }, { v: 'alpha', label: 'opacity' }, { v: 'height', label: 'height' },
                  { v: 'feat', label: 'DINOv3' }, { v: 'mask', label: 'masks' }];
     var el = ui.el('div', 'kt-panel kt-hands'); host.root.appendChild(el);
-    el.appendChild(ui.el('div', 'kt-panel-title', 'hands'));
-    ui.seg(el, { value: st.act, options: ACTS, onChange: function (v) { st.act = v; } });
-    ui.slider(el, { label: 'reach', min: 0.06, max: 0.6, step: 0.01, value: st.reach, fmt: function (v) { return Math.round(v * 80) + ' mm'; }, onInput: function (v) { st.reach = v; } });
-    ui.slider(el, { label: 'strength', min: 0.2, max: 3, step: 0.1, value: st.power, fmt: function (v) { return v.toFixed(1); }, onInput: function (v) { st.power = v; } });
+    var only = [ui.el('div', 'kt-panel-title', 'hands')]; el.appendChild(only[0]);     // `only`: not shown in the select mode
+    only.push(ui.seg(el, { value: st.act, options: ACTS, onChange: function (v) { st.act = v; } }).el);
+    only.push(ui.slider(el, { label: 'reach', min: 0.06, max: 0.6, step: 0.01, value: st.reach, fmt: function (v) { return Math.round(v * 80) + ' mm'; }, onInput: function (v) { st.reach = v; } }).el);
+    only.push(ui.slider(el, { label: 'strength', min: 0.2, max: 3, step: 0.1, value: st.power, fmt: function (v) { return v.toFixed(1); }, onInput: function (v) { st.power = v; } }).el);
     var title = ui.el('div', 'kt-panel-title', 'atlas'); el.appendChild(title);
     var segC = ui.seg(el, { value: st.chan, options: CHANS, onChange: function (v) { st.chan = v; dirty = true; } });
     var box = ui.el('div', 'kt-hands-box'); el.appendChild(box);
@@ -147,7 +164,7 @@
     var g = pic.getContext('2d'), img = null;
     ui.seg(el, { value: st.tool, options: [{ v: 'wand', label: 'wand' }, { v: 'brush', label: 'brush' }, { v: 'erase', label: 'erase' }], onChange: function (v) { st.tool = v; } });
     ui.slider(el, { label: 'tolerance', min: 0.02, max: 0.6, step: 0.01, value: st.tol, fmt: function (v) { return v.toFixed(2); }, onInput: function (v) { st.tol = v; } });
-    var row = ui.el('div', 'kt-row kt-hands-ops'); el.appendChild(row);
+    var row = ui.el('div', 'kt-row kt-hands-ops'); el.appendChild(row); only.push(row);
     var note = ui.el('div', 'kt-hands-note'); el.appendChild(note);
     function sel() { var c = masks(obj()); return c; }
     function count(c) { var n = 0, i; for (i = 0; i < c.sel.length; i++) if (c.sel[i] > 0.5) n++; return n; }
@@ -164,9 +181,17 @@
     ui.button(row, { label: 'deflate', onClick: puff(-0.025) });
     ui.button(row, { label: 'hold', onClick: function () { var c = each(function (c, i) { c.pin[i] = 1; }); host.changed(c, false); } });
     var row2 = ui.el('div', 'kt-row kt-hands-ops'); el.appendChild(row2);
-    ui.button(row2, { label: 'select none', onClick: function () { var c = sel(); c.sel.fill(0); dirty = true; host.changed(c, false); } });
-    ui.button(row2, { label: 'let go', onClick: function () { var c = sel(); c.pin.fill(0); dirty = true; host.changed(c, false); } });
-    ui.button(row2, { label: 'reset', onClick: reset });
+    ui.button(row2, { label: 'select none', onClick: function () { var c = sel(); c.sel.fill(0); selChanged(c); } });
+    only.push(ui.button(row2, { label: 'let go', onClick: function () { var c = sel(); c.pin.fill(0); dirty = true; host.changed(c, false); } }));
+    only.push(ui.button(row2, { label: 'reset', onClick: reset }));
+    only.forEach(function (e) { e.classList.add('kt-hands-only'); });
+    /* the selection changed: count it on the chart (a host may follow it), redraw the atlas, tell the host */
+    function selChanged(c) { c.selRev = (c.selRev || 0) + 1; dirty = true; host.changed(c, false); }
+    /* the selection tool at control point (i, j): the wand only where the pointer went down */
+    function selectAt(c, i, j, down) {
+      if (st.tool === 'wand') { if (!down) return; wand(c, i, j); } else daub(c, i, j, st.tool === 'brush' ? 1 : 0);
+      selChanged(c);
+    }
 
     /* baked features of a chart, decoded once: { F (Float32, dim per stored point), dim, nu, nv, step, lo, hi } */
     function feat(c) {
@@ -204,7 +229,8 @@
       if (mark && mark.c === c) { g.strokeStyle = '#fff'; g.lineWidth = Math.max(1, nu / 120); g.beginPath(); g.arc(mark.i + 0.5, nv - 1 - mark.j + 0.5, nu / 30, 0, 6.3); g.stroke(); }
       title.textContent = 'atlas · ' + c.name + ' · ' + nu + ' × ' + nv;
       var f = feat(c), n = count(c);
-      note.textContent = (st.chan === 'feat' && !f ? 'no features are baked for this object · ' : '') + n.toLocaleString('en-US') + ' control points selected';
+      note.textContent = (st.chan === 'feat' && !f ? 'no features are baked for this object · ' : '') + n.toLocaleString('en-US') + ' control points selected' +
+        (st.mode === 'select' ? ' · select here or on the object' : '');
     }
     /* wand: on features, every control point whose feature is close to the clicked one; on any other channel,
        grow from the clicked point over neighbours whose value stays within the tolerance of it */
@@ -240,8 +266,8 @@
     function atlasAt(e) {
       var c = masks(obj()), r = pic.getBoundingClientRect(), i = Math.floor((e.clientX - r.left) / r.width * c.patch.nu), j = c.patch.nv - 1 - Math.floor((e.clientY - r.top) / r.height * c.patch.nv);
       if (i < 0 || j < 0 || i >= c.patch.nu || j >= c.patch.nv) return;
-      if (st.tool === 'wand') { if (drawing === 'down') wand(c, i, j); } else daub(c, i, j, st.tool === 'brush' ? 1 : 0);
-      mark = { c: c, i: i, j: j }; drawing = true; dirty = true; host.changed(c, false);
+      selectAt(c, i, j, drawing === 'down');
+      mark = { c: c, i: i, j: j }; drawing = true; dirty = true;
     }
     pic.addEventListener('pointerdown', function (e) { drawing = 'down'; try { pic.setPointerCapture(e.pointerId); } catch (err) { /* synthetic */ } atlasAt(e); e.preventDefault(); });
     pic.addEventListener('pointermove', function (e) { if (drawing) atlasAt(e); });
@@ -257,6 +283,9 @@
         '.kt-hands-ops{flex-wrap:wrap;gap:4px}.kt-hands-ops .kt-btn{flex:1;padding:6px 4px;font-size:10px}' +
         '.kt-hands-note{font:500 10px/1.4 var(--f-mono);color:var(--mute);margin-top:4px}' +
         '.kt-hands .kt-panel-title+.kt-row{margin-top:0}.kt-hands .kt-panel-title:not(:first-child){margin-top:8px}' +
+        '.kt-hands.kt-select .kt-hands-only{display:none}.kt-hands.kt-select .kt-panel-title{margin-top:0}' +
+        // folded panels (a narrow stage in the deck): opened, this one sits along the bottom, and never shows while off
+        '.kt-hands:not(.on){display:none!important}.kt-compact.kt-open .kt-hands{top:auto;bottom:8px;left:8px;right:8px;width:auto;max-height:55%}' +
         '@media (max-width:640px){.kt-hands{width:auto;right:12px}.kt-hands-box{width:110px}}';
       document.head.appendChild(css);
     }
@@ -270,13 +299,18 @@
         if (stroke && !stroke.hold && st.act !== 'grab') { stroke.t += dt; apply(); }
         last += dt; if (dirty && last > 0.08) { dirty = false; last = 0; paint(); }
       },
-      show: function (on) {
-        st.on = !!on; el.classList.toggle('on', st.on); stroke = null; dirty = true;
+      show: function (on, mode) {
+        st.on = !!on; st.mode = mode === 'select' ? 'select' : 'hands'; el.classList.toggle('on', st.on); el.classList.toggle('kt-select', st.mode === 'select');
+        stroke = null; dirty = true;
         var f = feat(masks(obj())); segC.el.querySelectorAll('.kt-seg-btn').forEach(function (b) { if (b._v === 'feat') b.style.display = f ? '' : 'none'; });
         if (!f && st.chan === 'feat') { st.chan = 'rgb'; segC.set('rgb'); }
       },
       /* for tests: do in code what a pointer would */
-      wandAt: function (i, j) { var c = masks(obj()); wand(c, i, j); dirty = true; host.changed(c, false); return count(c); },
+      wandAt: function (i, j) { var c = masks(obj()); wand(c, i, j); selChanged(c); return count(c); },
+      /* for tests: the brush (on = 1) or the eraser (on = 0) at control point (i, j) */
+      brushAt: function (i, j, on) { var c = masks(obj()); daub(c, i, j, on ? 1 : 0); selChanged(c); return count(c); },
+      /* for tests: which channel the atlas shows ('rgb', 'normal', 'alpha', 'height', 'feat', 'mask') */
+      channel: function (v) { st.chan = v; segC.set(v); dirty = true; },
       object: obj
     };
   }

@@ -106,23 +106,6 @@ body.has-sound .step p.credit{display:block}
 .wide .step{min-height:100vh;padding:5rem 4rem 5rem 5.5rem;justify-content:center}
 .wide .step>*{max-width:none}
 
-/* cover */
-.cover{position:relative;height:100vh;height:100dvh;overflow:hidden}
-.cover .sim-mount{position:absolute;inset:0}
-.cover:after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(180deg,rgba(7,9,15,.55) 0%,rgba(7,9,15,0) 26%,rgba(7,9,15,0) 48%,rgba(7,9,15,.92) 100%)}
-.cover-top{position:absolute;z-index:3;left:5.5rem;right:3rem;top:2.4rem;display:flex;justify-content:space-between;gap:2rem;
-  font:600 .62rem/1.5 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim);pointer-events:none}
-.cover-text{position:absolute;z-index:3;left:5.5rem;right:3rem;bottom:3.2rem;pointer-events:none}
-.cover h1{margin:0;font:700 clamp(3.2rem,11.5vw,12.5rem)/.82 var(--f-display);letter-spacing:-.065em;color:var(--text)}
-.cover h1 span{color:transparent;-webkit-text-stroke:2px var(--surf)}
-.cover .tag{margin:1.6rem 0 0;font:500 clamp(1.3rem,2.6vw,2.7rem)/1.1 var(--f-display);letter-spacing:-.02em;color:var(--text)}
-.cover .tag em{color:var(--splat);font-size:1.12em}
-.cover .by{margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:.4rem 2rem;font:500 .7rem/1.4 var(--f-mono);letter-spacing:.1em;
-  text-transform:uppercase;color:var(--dim)}
-.cover .by b{color:var(--text);font-weight:600}
-.cover .go{color:var(--surf)}
-
 /* legend ("how to read this talk") */
 .legend{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin:2rem 0 2.4rem}
 .legend div{--c:var(--surf);padding:1.1rem 1.1rem 1.2rem;border:1px solid var(--line);border-top:3px solid var(--c);border-radius:0 0 12px 12px;background:var(--bg2)}
@@ -183,8 +166,6 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   .step h2{font-size:1.55rem}.step p{font-size:.98rem}
   .opener .num{font-size:4.2rem;margin-bottom:.8rem}.opener h2{font-size:2.1rem}.opener p{font-size:1.02rem}
   .wide .step{padding:3.5rem 1.2rem;min-height:0}
-  .cover-top{left:1.2rem;right:1.2rem;top:1.2rem;font-size:.56rem}
-  .cover-text{left:1.2rem;right:1.2rem;bottom:3.6rem}
   .legend{grid-template-columns:repeat(2,minmax(0,1fr))}
   .exhibits{grid-template-columns:minmax(0,1fr)}
   .props{grid-template-columns:repeat(2,minmax(0,1fr))}
