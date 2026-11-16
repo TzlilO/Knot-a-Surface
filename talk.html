@@ -29,7 +29,7 @@
   <div><kbd>→</kbd><kbd>space</kbd>next step</div>
   <div><kbd>←</kbd>previous step</div>
   <div><kbd>F</kbd>focus the simulation · <kbd>esc</kbd>back</div>
-  <div><kbd>1</kbd>–<kbd>8</kbd>jump to a chapter · <kbd>0</kbd>the talk’s cover · <kbd>Home</kbd>the opening</div>
+  <div><kbd>1</kbd>–<kbd>9</kbd>jump to a chapter · <kbd>0</kbd>the talk’s cover · <kbd>Home</kbd>the opening</div>
   <div><kbd>T</kbd>start / reset the pace clock · <kbd>M</kbd>mute the sound</div>
   <div><kbd>D</kbd>slide master: show / hide parts · talk.html?master = the same in a second window</div>
   <div>the short cut hides the deep‑dive steps · the long one shows everything</div>
@@ -361,7 +361,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>A mesh from a <em class="c-surf">sliding window</em></h2>
       <p>The samples sit on a lattice, so each one already knows its neighbours. A 2 × 2 window slides over the 12 × 12 lattice and stitches two triangles at every stop: 121 stops, 242 triangles, nothing searched. The Gaussians it has passed are retired.</p>
-      <p class="aside">Chapter 06 runs the same window over the scanned owl.</p>
+      <p class="aside">Chapter 07 runs the same window over the scanned owl.</p>
     </article>
     <article class="step nav" data-scene="knob">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -376,7 +376,7 @@
       <h2>A fixed budget, <em class="c-splat">spent where a camera looks</em></h2>
       <p>The samples need not be even. Keep 1,024 Gaussians and pull the lattice, like a net of springs, towards what a second camera sees, weighted by how large each piece of surface appears in its picture.</p>
       <p>About two thirds of the Gaussians end up in its view, which covers 14–32 % of the surface as it flies. There a cell is 1.4–1.9 % of the patch’s width across, against 2.6–3.0 % on an even lattice: an even lattice would need about 2,500–3,200 Gaussians for that spacing everywhere.</p>
-      <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 06 spreads one budget over whole scenes the same way.</p>
+      <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 07 spreads one budget over whole scenes the same way.</p>
     </article>
     <article class="step nav" data-scene="features" data-depth="deep">
       <div class="lvl l3"><i><b></b></i>Math</div>
@@ -478,12 +478,66 @@
   </div>
 </section>
 
-<!-- ============================================================ 06 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6" data-min20="3">
+<!-- ============================================================ 06 PIPELINE -->
+<section class="chapter" data-sim="pipeline" data-rail="06" data-title="From photographs to charts" data-min40="3" data-min20="1.5">
+  <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav opener" data-scene="photos">
+      <div class="num">06</div><div class="kick">Before the owl · the pipeline</div>
+      <h2>From photographs to charts</h2>
+      <p>Chapter 07 opens on a finished owl. First, the road to it: photographs, sparse points, a starting guess, then the fit. Standard 3DGS and our charts share the road up to the starting guess.</p>
+      <div class="time">≈ 3 min</div>
+    </article>
+    <article class="step nav" data-scene="photos">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>It starts with <em>photographs</em></h2>
+      <p>DTU scan 122: 64 photographs of an owl figurine, 1554 × 1162 pixels each, taken 0.6 to 0.9 m from it. Each pyramid is one camera, standing where the dataset says it stood.</p>
+      <p class="aside">The poses and the pinhole come calibrated with the dataset; nothing here estimated them. The photographs themselves are not shown: their terms of use could not be checked.</p>
+      <span class="do">Drag to orbit</span>
+    </article>
+    <article class="step nav" data-scene="sfm">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Two views make a <em>point</em></h2>
+      <p>Find the same feature in two photographs and the two rays meet in 3D. As cameras are added, points fill in: 21,760 of them. At the median a point is observed four times and lands 0.46 px from where it was found.</p>
+      <p class="aside">This is the COLMAP model that comes with the copy of the dataset used here, triangulated with the dataset’s calibrated poses. A full structure-from-motion run would also have to estimate the poses; this one did not.</p>
+      <span class="do">Drag the cameras slider to scrub</span>
+    </article>
+    <article class="step nav" data-scene="init3dgs">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>3DGS starts from <em class="c-splat">round blobs</em></h2>
+      <p>The standard start: one Gaussian per point, round, its σ from its three nearest neighbours, the point’s colour, 10 % opacity. 21,760 Gaussians, 59 numbers each, colour included. Nothing is trained yet: this fog is iteration zero.</p>
+      <p class="aside">Made here exactly as the reference implementation makes it, and drawn the way 3DGS draws: sorted and blended. Where points are sparse the blobs are wide: the fog is the 536 Gaussians wider than 1 cm, 2.5 % of them, most on the table, under it or in the background.</p>
+      <span class="do">Switch off “σ above 1 cm” and the fog lifts</span>
+    </article>
+    <article class="step nav" data-scene="initspline">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>We start from <em class="c-ctrl">one chart</em></h2>
+      <p>Same points, another start: one cubic spline chart fitted through them by robust least squares. 12 × 16 control points, and every Gaussian is derived from the chart.</p>
+      <p>It lies 1.36 mm rms from the 16,799 points it kept, and 2.64 mm from the dense measured surface, which shaped none of its control points.</p>
+      <p class="aside">Its axis and angular range are borrowed from the depth-map fit of chapter 07. Fitted to the dense points themselves, a net this coarse reaches 2.00 mm: most of the gap is the net’s resolution, not the sparse data.</p>
+    </article>
+    <article class="step nav" data-scene="levels" data-depth="deep">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>Coarse to fine: <em class="c-ctrl">finer nets</em>, closer</h2>
+      <p>The owl of chapter 07 was refined level by level: 36 × 49 nodes, then 72 × 98, then 144 × 196, pulled onto an envelope first and then onto the measured points. The rms falls from 0.85 mm to 0.15 mm; the shipped net sits at 0.21 mm rms, 0.012 mm median.</p>
+      <p class="aside">A geometric fit to the dataset’s depth maps, not training: each level is a grid of points projected onto the measured surface. Level 1 is a little further off than the layout, and level 4 (numbers only) rises again to 0.22 mm: both shown as measured.</p>
+    </article>
+    <article class="step nav" data-scene="train">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Then 3DGS trains <em>until it converges</em></h2>
+      <p>From iteration zero, an optimiser runs for tens of thousands of steps, moving, growing, splitting and pruning Gaussians until the renders match the photographs.</p>
+      <p>That run needs a GPU and <b class="c-err">has not been made yet</b>. On one side, its starting point; on the other, a stand-in: our chart’s coarse-to-fine levels.</p>
+      <p class="aside">Once the run is made and exported, this step replays it: the Gaussians, loss and PSNR at each saved iteration. Only then, the finished owl.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ 07 MANIFOLD -->
+<section class="chapter" data-sim="manifold" data-rail="07" data-title="A manifold of splines" data-min40="6" data-min20="3">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene">
-      <div class="num">06</div><div class="kick">Scaling to scenes · full power</div>
+      <div class="num">07</div><div class="kick">Scaling to scenes · full power</div>
       <h2>A manifold of splines</h2>
       <p>One patch is a bent rectangle. A real object needs a dense net, and a scene needs an atlas of them.</p>
       <div class="time">≈ 6 min</div>
@@ -560,12 +614,12 @@
   </div>
 </section>
 
-<!-- ============================================================ 07 STRUCTURE -->
-<section class="chapter" data-off data-sim="structure" data-rail="07" data-title="The surface is also an index" data-min40="3" data-min20="1.5">
+<!-- ============================================================ 08 STRUCTURE -->
+<section class="chapter" data-off data-sim="structure" data-rail="08" data-title="The surface is also an index" data-min40="3" data-min20="1.5">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="bag">
-      <div class="num">07</div><div class="kick">What structure buys</div>
+      <div class="num">08</div><div class="kick">What structure buys</div>
       <h2>The surface is also an index</h2>
       <p>A 3DGS scene is a list of Gaussians in no particular order. Ours hang on spline charts, so each one has an address. That decides how hard the everyday operations are.</p>
       <div class="time">≈ 3 min</div>
@@ -614,12 +668,12 @@
   </div>
 </section>
 
-<!-- ============================================================ 07b CONTACT -->
-<section class="chapter" data-sim="touch" data-rail="07b" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
+<!-- ============================================================ 09 CONTACT -->
+<section class="chapter" data-sim="touch" data-rail="09" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx>
-      <div class="num">07<small>b</small></div><div class="kick">A list against charts · contact</div>
+      <div class="num">09</div><div class="kick">A list against charts · contact</div>
       <h2>Can’t touch this</h2>
       <p>A game, a physics engine and an editor all begin with the same question: where is the surface, and which way does it face? A list of Gaussians has no answer. A spline does.</p>
       <div class="time">≈ 2½ min</div>
@@ -660,10 +714,10 @@
   </div>
 </section>
 
-<!-- ============================================================ 08 EVIDENCE -->
-<section class="wide" data-rail="08" data-title="Evidence" data-min40="3.5" data-min20="1.75">
+<!-- ============================================================ 10 EVIDENCE -->
+<section class="wide" data-rail="10" data-title="Evidence" data-min40="3.5" data-min20="1.75">
   <article class="step nav">
-    <div class="lvl">08 · Evidence</div>
+    <div class="lvl">10 · Evidence</div>
     <h2 class="thesis">Does a representation this constrained still <em>reconstruct real objects</em>?</h2>
     <div class="exhibits">
       <div class="exhibit" id="ex-dtu">
@@ -728,6 +782,7 @@
 <script src="talk/face-data.js"></script>
 <script src="talk/dtu-data.js"></script>
 <script src="talk/dtu/scan55.js"></script>
+<script src="talk/dtu/pipeline122.js"></script>
 <script src="talk/dtu/owlmask122.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/meshlist.js"></script>
@@ -741,6 +796,7 @@
 <script src="talk/sims/manifold.js"></script>
 <script src="talk/sims/structure.js"></script>
 <script src="talk/sims/touch.js"></script>
+<script src="talk/sims/pipeline.js"></script>
 <script src="talk/he/sims.js"></script>
 <script src="talk/audio/tracks.js"></script>
 <script src="talk/audio/beat.js"></script>

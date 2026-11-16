@@ -1,5 +1,5 @@
 /* Knot-a-Surface talk — module `pipeline`: "From photographs to charts".
-   What comes before chapter 06's owl, on the real data of DTU scan 122: talk/dtu/pipeline122.js, written offline by
+   What comes before chapter 07's owl, on the real data of DTU scan 122: talk/dtu/pipeline122.js, written offline by
    tools/dtu/pipeline.py in the scene frame and units of talk/dtu-data.js (+y up, the table at y = 0, 1 unit = 80 mm).
      photos      the dataset's 64 calibrated cameras as frusta (pose and pinhole from the file). The photographs themselves
                  are not shown: their terms of use could not be checked (`photos: null` in the file).
@@ -9,9 +9,10 @@
      init3dgs    the 3DGS initialisation from those points as the reference implementation (graphdeco-inria) makes it:
                  one isotropic Gaussian per point, variance = the mean squared distance to its three nearest neighbours
                  (simple-knn's distCUDA2; done here exactly, once, with a k-d tree), the point's colour, opacity 0.1. Drawn
-                 the way 3DGS draws: EWA-projected, sorted, alpha-composited (a material of this module, inside gl.draw's
-                 frame). A magnifier shows one Gaussian, its three nearest neighbours and the Gaussians within 12 sigma of
-                 it (the rest of the cloud cut away). Nothing is trained.
+                 the way 3DGS draws: EWA-projected, sorted, alpha-composited (a material of this module), through gl.draw
+                 into a single-sampled target that is laid over the stage and reused until the view changes. A toggle
+                 leaves out the Gaussians wider than 1 cm (the fog, said on screen); a magnifier shows one Gaussian, its
+                 three nearest neighbours and the Gaussians within 12 sigma of it (the rest cut away). Nothing is trained.
      initspline  a 12 x 16 cubic chart fitted by pipeline.py to the sparse points (robust least squares; no depth map for
                  its geometry, only its axis and angular range come from fit.py's layout): its amber control net and
                  Gaussians derived from it (gl.writePlanoids), with the file's numbers.
@@ -30,7 +31,9 @@
                  Without that file the run is PENDING, said so on screen, and the stage shows the stand-in: the 3DGS
                  initialisation beside the levels of the geometric fit.
    Drawing: the light scenes (photos, sfm) are drawn every frame and sway; the Gaussian scenes hold the camera still and
-   draw only when something changes (the view, a control, a morph, a new probe), so a still stage costs nothing.
+   draw only when something changes (the view, a control, a morph, a new probe), so a still stage costs nothing. Views
+   are fitted into the part of the stage the caption, panel, plot and magnifier leave free. Colours come from KT.color
+   and the kit's CSS tokens, so the module reads on the talk's light page and on the dark lab pages alike.
    Every number on screen comes from those files or is measured in the page.
    Tool: WebGL (three.js). Standalone: talk/sims/pipeline.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js and
    dtu/pipeline122.js; on dtu-data.js for the shipped owl; on dtu/train122.js when it exists. */
@@ -60,6 +63,9 @@
   function pc(v) { return (v * 100).toFixed(1) + ' %'; }
   function every(n, s) { var a = [], i; for (i = 0; i < n; i++) if (i % s === 0 || i === n - 1) a.push(i); return a; }
   function finite(v) { return typeof v === 'number' && isFinite(v); }
+  function rgb3(hex) { var n = parseInt(String(hex).replace('#', ''), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function rgba(hex, a) { return 'rgba(' + rgb3(hex).join(',') + ',' + a + ')'; }                 // a theme colour, see-through
+  function mixHex(a, b, t) { var p = rgb3(a), q = rgb3(b); return 'rgb(' + p.map(function (v, i) { return Math.round(v + (q[i] - v) * t); }).join(',') + ')'; }
 
   KT.register('pipeline', {
     title: 'From photographs to charts',
@@ -77,7 +83,7 @@
       var D = KT.dtuPipeline && KT.dtuPipeline[SCAN];
       if (!D) {                                   // nothing to show without the data file: say which one
         cap.innerHTML = '<b>no data</b> · this module needs talk/dtu/pipeline122.js (written by tools/dtu/pipeline.py)';
-        return { setScene: function () {}, resize: function (w, h) { R.resize(w, h); R.renderer.render(scene, cam); }, destroy: function () { R.renderer.dispose(); } };
+        return { setScene: function () {}, resize: function (w, h) { R.resize(w, h); G.draw(R, scene, cam); }, destroy: function () { R.renderer.dispose(); } };
       }
       var TR = KT.dtuTrain && KT.dtuTrain[SCAN] && KT.dtuTrain[SCAN].snaps && KT.dtuTrain[SCAN].snaps.length ? KT.dtuTrain[SCAN] : null;
       var OWL = KT.dtu && KT.dtu.scan === SCAN ? KT.dtu.charts.filter(function (c) { return !c.plane; })[0] : null;   // the shipped chart
@@ -158,14 +164,14 @@
         g.setAttribute('position', new T.BufferAttribute(SF.P, 3)); g.setAttribute('aCol', new T.BufferAttribute(SF.C, 3, true));
         g.setAttribute('aSec', new T.BufferAttribute(sec, 1));
         var m = new T.ShaderMaterial({
-          uniforms: { uK: { value: NC }, uSize: { value: 2.6 }, uDim: { value: 1 } },
+          uniforms: { uK: { value: NC }, uSize: { value: 2.6 }, uDim: { value: 1 }, uHi: { value: new T.Vector3().fromArray(G.rgb(C.text)) } },
           vertexShader: 'attribute vec3 aCol; attribute float aSec; uniform float uK; uniform float uSize; varying vec3 vCol; varying float vPop;\n' +
             'void main(){ float age = uK - aSec; vCol = aCol; vPop = clamp(1.0 - age / 1.6, 0.0, 1.0);\n' +
             '  if (age <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); gl_PointSize = 0.0; return; }\n' +
             '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = uSize * (1.0 + 1.3 * vPop); }',
-          fragmentShader: 'uniform float uDim; varying vec3 vCol; varying float vPop;\n' +
+          fragmentShader: 'uniform float uDim; uniform vec3 uHi; varying vec3 vCol; varying float vPop;\n' +
             'void main(){ vec2 q = gl_PointCoord * 2.0 - 1.0; if (dot(q, q) > 1.0) discard;\n' +
-            '  gl_FragColor = vec4(mix(vCol * uDim, vec3(1.0), 0.75 * vPop), 1.0); }'
+            '  gl_FragColor = vec4(mix(vCol * uDim, uHi, 0.75 * vPop), 1.0); }'
         });
         var o = new T.Points(g, m); o.frustumCulled = false; o.renderOrder = 1; scene.add(o);
         return o;
@@ -323,11 +329,11 @@
           rtC.viewport.set(q[0] * p, q[1] * p, q[2] * p, q[3] * p).floor(); rtC.scissor.copy(rtC.viewport); rtC.scissorTest = true;
           r.setRenderTarget(rtC); r.setClearColor(0x000000, 0); r.clear(true, false, false);
           r.autoClear = false; gsPrep(camera, q[2] * p, q[3] * p);
-          r.render(scene, camera);
+          G.draw(R, scene, camera);
           r.setRenderTarget(null); r.setClearColor(cc, ca);
           cloudOk = true;
         }
-        r.autoClear = false; r.render(comp.scene, comp.cam); r.autoClear = auto;
+        r.autoClear = false; G.draw(R, comp.scene, comp.cam); r.autoClear = auto;
       }
 
       /* the reference initialisation: sigma^2 = mean squared distance to the three nearest other points (exact, k-d tree) */
@@ -727,10 +733,10 @@
         for (j = 0; j < NC; j++) mx = Math.max(mx, byCam[j].length);
         for (j = 0; j < NC; j++) {
           var bh = byCam[j].length / mx * (H - 4);
-          g.fillStyle = j < k ? (j === k - 1 ? C.text : 'rgba(221,229,240,.55)') : 'rgba(143,164,192,.18)';
+          g.fillStyle = j < k ? (j === k - 1 ? C.text : rgba(C.text, 0.55)) : rgba(C.dim, 0.18);
           g.fillRect(x0 + j * bw + 0.5, H - bh, Math.max(1, bw - 1), bh);
         }
-        g.strokeStyle = 'rgba(221,229,240,.9)'; g.lineWidth = 1.2; g.beginPath();
+        g.strokeStyle = rgba(C.text, 0.9); g.lineWidth = 1.2; g.beginPath();
         for (j = 0; j <= Math.min(k, NC); j++) { var x = x0 + j * bw, y = H - cum[j] / NP * (H - 4); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
         g.stroke();
         g.fillStyle = C.mute; g.fillText('camera 1', x0, h - 2); g.textAlign = 'right'; g.fillText(NC + '', w - 4, h - 2);
@@ -744,20 +750,20 @@
         var L = levels(), cur = L.i, lo = Math.log10(0.008), hi = Math.log10(3), x0 = 30, x1 = w - 8, H = h - 13, top = 12;
         function X(i) { return x0 + (i + 0.5) / rows.length * (x1 - x0); }
         function Y(v) { return top + (1 - (Math.log10(Math.max(v, 0.008)) - lo) / (hi - lo)) * (H - top); }
-        g.strokeStyle = 'rgba(143,164,192,.18)'; g.lineWidth = 1; g.fillStyle = C.mute;
+        g.strokeStyle = rgba(C.dim, 0.18); g.lineWidth = 1; g.fillStyle = C.mute;
         [0.01, 0.1, 1].forEach(function (v) { var y = Y(v); g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); g.fillText(v + '', 2, y + 3); });
         rows.forEach(function (r, i) {
-          if (r.st === cur) { g.fillStyle = 'rgba(221,229,240,.09)'; g.fillRect(X(i) - (x1 - x0) / rows.length / 2, top - 4, (x1 - x0) / rows.length, H - top + 6); }
+          if (r.st === cur) { g.fillStyle = rgba(C.text, 0.09); g.fillRect(X(i) - (x1 - x0) / rows.length / 2, top - 4, (x1 - x0) / rows.length, H - top + 6); }
           g.fillStyle = r.st === cur ? C.text : C.mute; g.textAlign = 'center'; g.fillText(r.lab, X(i), h - 2);
         });
         g.textAlign = 'left';
-        [['rms_mm', C.err, 'rms', 1.6], ['p95_mm', '#ff8a80', 'p95', 1.1], ['median_mm', '#ffcdd2', 'median', 1.1]].forEach(function (s, k) {
+        [['rms_mm', C.err, 'rms', 1.6], ['p95_mm', mixHex(C.err, C.text, 0.35), 'p95', 1.1], ['median_mm', mixHex(C.err, C.text, 0.65), 'median', 1.1]].forEach(function (s, k) {
           g.strokeStyle = s[1]; g.lineWidth = s[3]; g.beginPath();
           rows.forEach(function (r, i) { var y = Y(r.d[s[0]]); if (i) g.lineTo(X(i), y); else g.moveTo(X(i), y); });
           g.stroke();
           rows.forEach(function (r, i) {
             var y = Y(r.d[s[0]]); g.beginPath(); g.arc(X(i), y, 2.4, 0, Math.PI * 2);
-            if (r.st < 0) { g.fillStyle = '#07090f'; g.fill(); g.strokeStyle = s[1]; g.stroke(); } else { g.fillStyle = s[1]; g.fill(); }
+            if (r.st < 0) { g.fillStyle = C.bg; g.fill(); g.strokeStyle = s[1]; g.stroke(); } else { g.fillStyle = s[1]; g.fill(); }
           });
           g.fillStyle = s[1]; g.fillText(s[2], x0 + 4 + k * 46, 9);
         });
@@ -771,8 +777,8 @@
         function X(it) { return x0 + Math.log10(1 + it) / Math.log10(1 + maxIt) * (x1 - x0); }
         var ls = [], ps = [];
         for (j = 0; j < I.length; j++) { if (L.loss && finite(L.loss[j]) && L.loss[j] > 0) ls.push([I[j], L.loss[j]]); if (L.psnr && finite(L.psnr[j])) ps.push([I[j], L.psnr[j]]); }
-        g.strokeStyle = 'rgba(143,164,192,.18)'; g.lineWidth = 1;
-        TR.snaps.forEach(function (s, k) { var x = X(s.iter); g.strokeStyle = k === trn.i ? C.text : 'rgba(143,164,192,.25)'; g.beginPath(); g.moveTo(x, top - 2); g.lineTo(x, H); g.stroke(); });
+        g.strokeStyle = rgba(C.dim, 0.18); g.lineWidth = 1;
+        TR.snaps.forEach(function (s, k) { var x = X(s.iter); g.strokeStyle = k === trn.i ? C.text : rgba(C.dim, 0.25); g.beginPath(); g.moveTo(x, top - 2); g.lineTo(x, H); g.stroke(); });
         if (SI != null) {                          // where the run stopped (the file's stop record)
           var xs = X(SI); g.save(); g.setLineDash([3, 3]); g.strokeStyle = C.text; g.beginPath(); g.moveTo(xs, top - 2); g.lineTo(xs, H); g.stroke(); g.restore();
           g.fillStyle = C.dim; g.textAlign = xs > (x0 + x1) / 2 ? 'right' : 'left'; g.fillText('stop', xs + (xs > (x0 + x1) / 2 ? -3 : 3), H - 3); g.textAlign = 'left';
@@ -1048,11 +1054,11 @@
       '.kt-sim-pipeline .pl-side b{color:var(--text);font-weight:600;letter-spacing:.06em;text-transform:uppercase}.kt-sim-pipeline .pl-side em{font-style:normal;color:var(--splat)}' +
       '.kt-sim-pipeline .pl-divide{position:absolute;z-index:3;background:var(--line2);pointer-events:none}' +
       '.kt-sim-pipeline .pl-pend{position:absolute;z-index:4;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;text-align:center;' +
-      'font:500 11px/1.55 var(--f-mono);color:var(--dim);padding:10px 14px;background:rgba(7,9,15,.82);border:1px solid rgba(var(--err-rgb),.55);border-radius:10px;max-width:min(360px,80%)}' +
+      'font:500 11px/1.55 var(--f-mono);color:var(--dim);padding:10px 14px;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(var(--err-rgb),.55);border-radius:10px;max-width:min(360px,80%)}' +
       '.kt-sim-pipeline .pl-pend b{color:var(--err);font-weight:600;letter-spacing:.08em;text-transform:uppercase}' +
       '.kt-sim-pipeline .pl-note{position:absolute;z-index:4;right:12px;bottom:12px;max-width:min(46%,420px);pointer-events:none;font:500 10px/1.45 var(--f-mono);color:var(--mute);text-align:right}' +
       '.kt-sim-pipeline .pl-inset{position:absolute;z-index:3;pointer-events:none;border:1px solid rgba(var(--splat-rgb),.65);border-radius:6px}' +
-      '.kt-sim-pipeline .pl-inset span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:rgba(7,9,15,.74);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
+      '.kt-sim-pipeline .pl-inset span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:var(--panel);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
       '.kt-sim-pipeline .pl-inset b{color:var(--text)}.kt-sim-pipeline .pl-inset em{font-style:normal;color:var(--splat)}' +
       '.kt-sim-pipeline .pl-mark{position:absolute;z-index:3;width:22px;height:22px;margin:-11px 0 0 -11px;border:1.5px solid var(--splat);border-radius:50%;pointer-events:none}' +
       '.kt-sim-pipeline.kt-embed .kt-hint{display:none}' +

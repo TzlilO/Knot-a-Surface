@@ -110,7 +110,7 @@
      <article ... data-audio="name" data-audio-len="30">: while such a step is active the first seconds of the
      track loop, faded in and out. Names are resolved in KnotTalk.tracks (talk/audio/tracks.js); a name that is
      not listed there is silent, and the mute button and the credit line (.credit) stay hidden. M mutes.
-     <article ... data-sfx>: the step's simulation makes sound effects of its own (synthesized, e.g. chapter 07b);
+     <article ... data-sfx>: the step's simulation makes sound effects of its own (synthesized, e.g. chapter 09, "Can’t touch this");
      the button shows there too, and the same mute reaches them through KnotTalk.muted.
      Browsers only start sound after a key or a click. */
   var snd = { a: null, src: '', len: 30, ok: false, want: false, mute: false, vol: 0, raf: 0, btn: $('.sound') };
@@ -302,7 +302,7 @@
     else if (k === 't' || k === 'T') toggleClock();
     else if (k === 'm' || k === 'M') snd.btn.click();
     else if (k === '?') keys.classList.toggle('on');
-    else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-8 = that chapter, 9 = takeaways
+    else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-9 = the chapter with that rail number; a key with none goes to the last part
       var c = k === '0' ? ($('section.cover[data-rail]') || chapters[0]) : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
       go(firstNav(c));
     }

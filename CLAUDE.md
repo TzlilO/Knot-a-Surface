@@ -56,7 +56,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
   part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
   emptied section goes with its stage and rail entry); the clock and the cut buttons count only what is on.
-  `data-off` on a section or step = off until the presenter turns it on (chapter 07 ships off). localStorage
+  `data-off` on a section or step = off until the presenter turns it on (chapter 08, `structure`, ships off). localStorage
   `kt-parts` holds only the presenter's overrides, keyed `rail · step title` (renaming a step drops its choice);
   deck.js applies them before the first frame; "Reset to defaults" and "Show all". `talk.html?master` (or `#master`)
   = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
@@ -97,7 +97,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
   charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
-  capture rig and an `edit(k)` animation. The stand-ins are NOT offered on the manifold lab page any more: its picker and tabs show only the DTU scans; the barn remains the landing page's hero and the fallback without scan data). The deck's chapter 06 runs on ONE subject, scene `scan`: a REAL
+  capture rig and an `edit(k)` animation. The stand-ins are NOT offered on the manifold lab page any more: its picker and tabs show only the DTU scans; the barn remains the landing page's hero and the fallback without scan data). The deck's chapter 07 runs on ONE subject, scene `scan`: a REAL
   DTU object (scan 122, an owl) baked offline by `python3 -I tools/dtu/fit.py <data-dir> 122` into
   `talk/dtu-data.js` (`KnotTalk.dtu`, must load before `talk/scenes.js`; without it the barn stands in).
   It is an offline fit to the dataset's depth maps and photographs: never call it trained or a result of
@@ -150,11 +150,11 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
   head is shaped from MediaPipe's canonical face mesh (`talk/face-data.js`, Apache-2.0; `faceFit` casts a
   ray per control point; without that file it falls back to sculpted bumps).
-  `structure` (talk/sims/structure.js, chapter 07) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
+  `structure` (talk/sims/structure.js, chapter 08, off by default) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
   ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured.
-  `touch` (talk/sims/touch.js, chapter 07b "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
+  `touch` (talk/sims/touch.js, chapter 09 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
   an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
   loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
@@ -167,8 +167,24 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   scripted. Sound effects are synthesized from the simulation's own quantities (knock from the impulse, hiss from
   the Gaussians inside the ball, pluck and wobble from the springs, crack, shards, whoosh, a click per contact
   definition), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
-  own sound switch. The talk's 07b steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
+  own sound switch. The talk's chapter 09 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
   registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
+  `pipeline` (talk/sims/pipeline.js, chapter 06 "From photographs to charts", right before the owl's chapter 07) =
+  the road to the owl, on the real data of `talk/dtu/pipeline122.js` (`KnotTalk.dtuPipeline[122]`, written by
+  `python3 -I tools/dtu/pipeline.py`; it must load before the module). Scenes: `photos` (the dataset's 64 calibrated
+  cameras as frusta; the photographs are not shown: the dataset's terms could not be checked), `sfm` (the COLMAP
+  points that come with the dataset copy, each appearing once its second camera is added: triangulated with the
+  GIVEN poses, never call it a full SfM run), `init3dgs` (the reference 3DGS initialisation, made exactly: one round
+  Gaussian per point, sigma^2 = mean squared distance to its 3 nearest points, the point's colour, opacity 0.1; drawn
+  as 3DGS draws, EWA-projected and sorted, into a target reused until the view changes; a toggle leaves out the 536
+  Gaussians wider than 1 cm, said on screen; a magnifier on one Gaussian), `initspline` (a 12 x 16 chart fitted to
+  the sparse points by robust least squares; only its axis and angular range come from fit.py), `levels` (fit.py's
+  coarse-to-fine levels: a GEOMETRIC fit to the depth maps, never call it training; level 1 and level 4 are worse
+  than the level before, shown as measured), `train` (replays `talk/dtu/train122.js` = `KnotTalk.dtuTrain[122]`,
+  exported by tools/train from a real 3DGS run, snapshot by snapshot, never interpolated, with the run's optional
+  `stop` record; without that file the run is PENDING on screen and the stand-in is the 3DGS init beside the levels;
+  add its script tag only once the file exists). The Gaussian scenes hold the camera still and draw only when
+  something changes; views are fitted into the part of the stage the caption, panel, plot and magnifier leave free.
 - `tools/train/` is for the user's own GPU machine (nothing is trained here): `README.md` (setup, pinned versions),
   `train3dgs.py` (runs graphdeco-inria/gaussian-splatting at 54c035f on DTU scan 122 from Hugging Face `Y1ue/DTU`;
   trains on RGB copies of the RGBA photographs, saves PLY snapshots at 0, 100, 300, 1000, 3000, 7000, 15000, 30000
@@ -189,7 +205,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
   (`talk/audio/tracks.js`, empty by default: no recording is in the repo) while the step is active; M mutes; the
   `.credit` line of a step shows only when a track has loaded. `data-sfx` marks a step whose simulation makes
-  its own synthesized sound effects (chapter 07b); the ♪ button shows there too and `KnotTalk.muted` carries
+  its own synthesized sound effects (chapter 09); the ♪ button shows there too and `KnotTalk.muted` carries
   the mute to the module.
 - Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
   away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
@@ -355,6 +371,9 @@ with sync_playwright() as p:
     print(pg.inner_text(".kss-hud-tl")); b.close()
 PY
 ```
+Headless SwiftShader has no frame backpressure: frames queue without limit and a screenshot can time out. When
+testing a heavy WebGL scene, sync the stage canvas after every animation frame (a 1-pixel readPixels from an init
+script wrapping requestAnimationFrame), as a real browser waits for its GPU.
 Always: syntax-check every inline script block with `new Function(...)` after building,
 grep the HUD for expected state, screenshot before shipping. Push only after zero
 console errors.

@@ -176,6 +176,10 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   .exhibits{grid-template-columns:minmax(0,1fr)}
   .props{grid-template-columns:repeat(2,minmax(0,1fr))}
   .labs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* room below the end of the talk: the reading line sits at 62 % of the screen here (deck.js) and the full-width
+     steps are short, so without it the last step on screen (whichever it is: the slide master may hide the ones
+     after it) could never reach the line and become active. 40 % of the largest viewport is always enough */
+  body:not(.kt-presenter)::after{content:"";display:block;height:40vh;height:40lvh}
 }
 /* ---------- touch ---------- */
 .rail a,.hud,.stage-tools,.keys{touch-action:manipulation}          /* one tap = one click, no double-tap zoom */
