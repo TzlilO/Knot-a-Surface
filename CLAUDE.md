@@ -83,7 +83,14 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
   `edit(k)`. Opacity: `gl.splats(n, {alpha: true})` gives a field an opacity per Gaussian; while its
   `ktSplat.thin` is set, `gl.draw` draws the solid Gaussians as before and the see-through ones as two more layers
-  (far side, near side) blended over them. Other fields and modules are untouched. Its views are the splat shader's render modes (`uMode` in
+  (far side, near side) blended over them. Other fields and modules are untouched. Scene `hands` (lab page only) hosts
+  the tool layer `talk/hands.js` (`KnotTalk.hands.create(host)`, its own file so that any module with charts can host it):
+  Hands = grab / pinch / pull / push / hold on the object with mouse or touch, as soft-brush edits of control points;
+  an atlas of the object's chart, one pixel per control point, in a chosen channel (rgb, normals, opacity, height,
+  baked features when `talk/dtu/features<N>.js` is loaded, masks) with wand / brush / erase selection and tint / hide /
+  inflate / hold on the selection. The module gives it `pickSurface` (nearest Gaussian under the pointer -> chart and
+  control point, from `instC` / `instK` filled in `emit`) and the orbit's `pick` / `hit` / `release` hooks; it adds no
+  touch handlers of its own. A chart marked `ground` (the table) is never touched and can be put away (`c.off`). Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`

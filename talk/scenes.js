@@ -671,7 +671,11 @@
     D.charts.forEach(function (d) {
       var P = d.P, K = d.C, nu = d.nu, o = d.plane ? { nu: nu, nv: d.nv, tu: 5, tv: 4 }
                                                : { nu: nu, nv: d.nv, tu: 9, tv: 12, cu: 4, cv: 4, closed: true };
-      chart(C, d.name, o, function (s, t, i, j) { var k = (j * nu + i) * 3; return [P[k], P[k + 1], P[k + 2], K[k], K[k + 1], K[k + 2]]; }).seen = d.seen;
+      var c = chart(C, d.name, o, function (s, t, i, j) { var k = (j * nu + i) * 3; return [P[k], P[k + 1], P[k + 2], K[k], K[k + 1], K[k + 2]]; });
+      c.seen = d.seen; c.ground = !!d.plane;                      // the table is ground: tools leave it alone, and it can be put away
+      // features of a pretrained model baked onto the control points, when their file (talk/dtu/features<N>.js) is loaded
+      var F = KT.dtuFeatures && KT.dtuFeatures[D.scan], fc = F && F.charts[d.name];
+      c.feat = fc ? { dim: F.dim, scale: F.scale, lo: F.lo, hi: F.hi, nu: fc.nu, nv: fc.nv, step: fc.step || 1, data: fc.data } : null;
     });
     var T = D.target, ty = T[1], tz = T[2];
     return {
