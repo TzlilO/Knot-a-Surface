@@ -290,7 +290,9 @@
            default of Open3D's voxel block grid), foot (1.6: a Gaussian's disc, in sigmas) }
      J.V, J.S, J.P = views, pixels along a side, pixels a view; J.grid (sizeGrid); J.trunc (in scene units);
      J.view = views fused so far; J.stage = 'depth' | 'fuse' | 'extract' | 'done'; J.ms = { depth, fuse, extract };
-     J.bytes = { volume, maps, tables, mesh }: the bytes of the arrays allocated (the mesh's when it is there);
+     J.bytes = { volume, maps, tables, mesh }: the bytes of the arrays allocated: the volume (6 a voxel), the depth
+     map and its Gaussians (8 a pixel), the extractor's edge tables and the Gaussians' colours as bytes, the mesh
+     (24 a vertex: position and colour; 12 a triangle), known when it is out;
      J.mesh = { pos, col, tri, nV, nTri, slab } when done. The volume is released as soon as the mesh is out;
      free() releases everything else too. */
   function fuser(L, o) {
@@ -304,10 +306,10 @@
     var S = Math.max(32, Math.min(o.maxSide || 512, Math.ceil(2 * rad / h))), all = o.cams || [], VM = o.maxViews || 64, cams = [];
     for (i = 0; i < Math.min(VM, all.length); i++) cams.push(camera(all[all.length > VM ? Math.floor(i * all.length / VM) : i], mid, rad, S));
     var V = cams.length, AX = [2, 0, 1], n0 = G.n[AX[0]], n1 = G.n[AX[1]], n2 = G.n[AX[2]], NV = n0 * n1 * n2;      // slabs are horizontal: k runs along +y
-    var D = null, W = null, C = null, depth = null, own = null, ex = null;
+    var D = null, W = null, C = null, C8 = null, depth = null, own = null, ex = null;
     var J = { n: n, done: false, stage: 'depth', progress: 0, view: 0, V: V, views: all.length, S: S, P: S * S, grid: G, spacing: spacing, trunc: tr, truncVoxels: TRV, minWeight: WMIN,
               foot: FOOT, cams: cams, ms: { depth: 0, fuse: 0, extract: 0 }, mesh: null, slabAxis: AX[2],
-              bytes: { volume: NV * 6, maps: S * S * 8, tables: 5 * n0 * n1 * 4, mesh: 0 } };
+              bytes: { volume: NV * 6, maps: S * S * 8, tables: 5 * n0 * n1 * 4 + n * 3, mesh: 0 } };
     var v = 0, gi = 0, kz = 0, cam = null;
 
     /* a depth map: Gaussians gi.. of the list into the z-buffer of camera `cam`, until the clock says stop */
@@ -358,7 +360,7 @@
     }
     /* fusion: the slabs kz.. of the volume against the depth map of camera `cam` */
     function fuse(end) {
-      var c = cam.c, r = cam.r, u = cam.u, f = cam.f, F = cam.F, cx = S / 2, cy = S / 2, near = 1e-3 * cam.d, GL = G.lo, k, j, i2, e, w, t, sdf, d, g, q3, px, py, iz;
+      var c = cam.c, r = cam.r, u = cam.u, f = cam.f, F = cam.F, cx = S / 2, cy = S / 2, near = 1e-3 * cam.d, GL = G.lo, k, j, i2, e, w, t, sdf, d, g, q3, px, py, iz, iw;
       var ox = GL[0] - c[0], oy = GL[1] - c[1], oz = GL[2] - c[2], K = 32767 / tr;
       var X0 = r[0] * ox + r[1] * oy + r[2] * oz, Y0 = u[0] * ox + u[1] * oy + u[2] * oz, Z0 = f[0] * ox + f[1] * oy + f[2] * oz;
       var dXi = h * r[AX[0]], dYi = h * u[AX[0]], dZi = h * f[AX[0]], dXj = h * r[AX[1]], dYj = h * u[AX[1]], dZj = h * f[AX[1]], dXk = h * r[AX[2]], dYk = h * u[AX[2]], dZk = h * f[AX[2]];
@@ -376,10 +378,9 @@
             sdf = d - Z;
             if (sdf < -tr) continue;                                   // far behind what was seen: unknown
             t = sdf >= tr ? 32767 : sdf * K;
-            e = q0 + i2; w = W[e];
-            D[e] = Math.round((D[e] * w + t) / (w + 1));
-            g = own[(py | 0) * S + (px | 0)] * 3; q3 = e * 3;
-            C[q3] = (C[q3] * w + CL[g] * 255) / (w + 1); C[q3 + 1] = (C[q3 + 1] * w + CL[g + 1] * 255) / (w + 1); C[q3 + 2] = (C[q3 + 2] * w + CL[g + 2] * 255) / (w + 1);
+            g = own[e] * 3; e = q0 + i2; w = W[e]; iw = 1 / (w + 1); q3 = e * 3;
+            D[e] = Math.floor((D[e] * w + t) * iw + 0.5);
+            C[q3] = (C[q3] * w + C8[g]) * iw + 0.5; C[q3 + 1] = (C[q3 + 1] * w + C8[g + 1]) * iw + 0.5; C[q3 + 2] = (C[q3 + 2] * w + C8[g + 2]) * iw + 0.5;
             if (w < 255) W[e] = w + 1;
           }
         }
@@ -389,7 +390,10 @@
     }
     J.step = function (budget) {
       var end = now() + (budget == null ? 1e9 : budget), t0;
-      if (!D && !J.done) { D = new Int16Array(NV); W = new Uint8Array(NV); C = new Uint8ClampedArray(NV * 3); depth = new Float32Array(S * S); own = new Int32Array(S * S); }
+      if (!D && !J.done) {
+        D = new Int16Array(NV); W = new Uint8Array(NV); C = new Uint8Array(NV * 3); depth = new Float32Array(S * S); own = new Int32Array(S * S);
+        C8 = new Uint8Array(n * 3); for (var c8 = 0; c8 < n * 3; c8++) C8[c8] = CL[c8] <= 0 ? 0 : CL[c8] >= 1 ? 255 : Math.round(CL[c8] * 255);    // the Gaussians' colours as bytes
+      }
       while (!J.done) {
         t0 = now();
         if (J.stage === 'depth') {
@@ -405,7 +409,7 @@
           if (fin) {
             J.mesh = { pos: ex.pos, col: ex.col, tri: ex.tri, nV: ex.nV, nTri: ex.nTri, slab: ex.slab };
             J.bytes.mesh = ex.pos.byteLength + ex.col.byteLength + ex.tri.byteLength;
-            D = W = C = depth = own = ex = null; J.stage = 'done'; J.done = true;
+            D = W = C = C8 = depth = own = ex = null; J.stage = 'done'; J.done = true;
           }
         }
         // two thirds of a view's work is its fusion (measured); the extraction is the last twentieth
@@ -416,7 +420,7 @@
       return J.done;
     };
     J.run = function () { while (!J.step(1e9)); return J; };
-    J.free = function () { D = W = C = depth = own = ex = null; J.mesh = null; };
+    J.free = function () { D = W = C = C8 = depth = own = ex = null; J.mesh = null; };
     /* for tests and pictures: the depth map of view k, drawn at once -> { depth (BIG = nothing), own, S } */
     J.depthOf = function (k) {
       var d0 = depth, o0 = own, g0 = gi, c0 = cam, out;

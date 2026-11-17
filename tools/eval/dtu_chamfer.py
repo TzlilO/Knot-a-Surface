@@ -392,28 +392,35 @@ def self_test(data=None, scan=None, max_minutes=30.0, workers=-1):
         Pr = reduce_points(Pb, 0.2, 0, g, workers); dd = cKDTree(Pr).query(Pr, k=2)[0][:, 1]
         check('reduce: smallest distance between two kept points', float(dd.min()), 0.2, 0.2 * 0.5)
         check('reduce: every removed point has a kept one within 0.2 mm', float(cKDTree(Pr).query(Pb)[0].max()), 0.1, 0.1 + 1e-9)
-        # c. the surface the reference was sampled from, as a mesh: about zero both ways
+        # c. the surface the reference was sampled from, as a mesh. "About zero" has a floor in this protocol: the reference
+        #    is a 0.2 mm lattice and the input is reduced to points at least 0.2 mm apart, so neither side hits the other
         V, F = grid_mesh(surf, 0, 60, 0, 60, 0.5); p = os.path.join(d, 'same.ply'); write_ply(p, V, F); r, R0 = run(p, 900, d)
-        check('same surface as a 0.5 mm mesh: accuracy', r['accuracy_mm'], 0.07, 0.07); check('same surface as a 0.5 mm mesh: completeness', r['completeness_mm'], 0.07, 0.07)
+        check('same surface as a 0.5 mm mesh: accuracy (floor of the 0.2 mm sampling: below 0.15)', r['accuracy_mm'], 0.075, 0.075)
+        check('same surface as a 0.5 mm mesh: completeness (floor of the 0.2 mm reduction: below 0.2)', r['completeness_mm'], 0.1, 0.1)
         check('ground plane: the table strip is left out of completeness (points used)', float(R0['result']['completeness']['of']) if 'result' in R0 else None, nplate, 0, 'points')
         # d. the reference cloud itself as a point cloud: exactly zero accuracy
         r, _ = run(os.path.join(d, 'Points', 'stl', 'stl900_total.ply'), 900, d, mode='pcd')
         check('the reference cloud as input (pcd): accuracy', r['accuracy_mm'], 0, 1e-9); check('the reference cloud as input (pcd): completeness (at most the 0.2 mm of the reduction)', r['completeness_mm'], 0.1, 0.1)
-        # e. a known rigid offset: a flat plate under... the flat part of the reference is not flat, so use a flat reference
+        # e. a known rigid offset d along the normal of an exactly flat reference: both ways between d and sqrt(d^2 + 0.2^2)
         d2 = os.path.join(d, 'flat'); synthetic_flat(d2)
         for off in (0.5, 2.0, 7.0):
-            V, F = grid_mesh(flat, -5, 65, -5, 65, 1.0, dz=off); p = os.path.join(d, 'off.ply'); write_ply(p, V, F); r, _ = run(p, 901, d2)
-            check('flat plate moved rigidly by %g mm along its normal: accuracy' % off, r['accuracy_mm'], off, 0.02 * off + 0.002)
-            check('flat plate moved rigidly by %g mm along its normal: completeness' % off, r['completeness_mm'], off, 0.02 * off + 0.002)
-        V, F = grid_mesh(flat, 0, 60, 0, 60, 1.0); V = V + [3.0, 0, 0]; p = os.path.join(d, 'slide.ply'); write_ply(p, V, F); r, _ = run(p, 901, d2)
-        check('flat plate slid by 3 mm in its own plane: accuracy (57 of 60 mm at 0, a 3 mm lip at 0..3)', r['accuracy_mm'], (57 * 0.0765 + 3 * 1.5) / 60, 0.05)
+            V, F = grid_mesh(flat, 0, 60, 0, 60, 1.0, dz=off); p = os.path.join(d, 'off.ply'); write_ply(p, V, F); r, _ = run(p, 901, d2); hi = float(np.hypot(off, 0.2))
+            check('flat plate moved rigidly by %g mm along its normal: accuracy (%g .. %.4f)' % (off, off, hi), r['accuracy_mm'], (off + hi) / 2, (hi - off) / 2 + 1e-4)
+            check('flat plate moved rigidly by %g mm along its normal: completeness (%g .. %.4f)' % (off, off, hi), r['completeness_mm'], (off + hi) / 2, (hi - off) / 2 + 1e-4)
+        V, F = grid_mesh(flat, 0, 60, 0, 60, 1.0); p = os.path.join(d, 'base.ply'); write_ply(p, V, F); r0, _ = run(p, 901, d2); a0 = r0['accuracy_mm']
+        check('flat plate in place: accuracy (the sampling floor again)', a0, 0.075, 0.075)
+        p = os.path.join(d, 'slide.ply'); write_ply(p, V + [3.0, 0, 0], F); r, _ = run(p, 901, d2)
+        check('flat plate slid by 3 mm in its own plane: accuracy = 57 mm at the floor, a 3 mm lip at 0 .. 3 mm', r['accuracy_mm'], (57 * (a0 or 0) + 3 * 1.5) / 60, 0.02)
         # f. the 20 mm cap and the mask
-        V, F = grid_mesh(flat, 0, 60, 0, 60, 1.0, dz=25.0); p = os.path.join(d, 'far.ply'); write_ply(p, V, F); _, R1 = run(p, 901, d2)
-        check('plate 25 mm away: stops, no distance below the cap (1 = yes)', float(R1['stop']['reason'] in ('no_points_in_mask', 'no_distance_below_cap')), 1, 0, '')
-        V, F = grid_mesh(flat, 0, 60, 0, 60, 1.0); F2 = np.vstack([F, F[:200] + len(V)]); V2 = np.vstack([V, V + [0, 0, 15.0]]); p = os.path.join(d, 'out.ply'); write_ply(p, V2, F2); r, _ = run(p, 901, d2)
-        check('a second sheet 15 mm above, outside the observation mask: accuracy unchanged', r['accuracy_mm'], 0.05, 0.05)
-        V2 = np.vstack([V, V + [0, 0, 6.0]]); F2 = np.vstack([F, F + len(V)]); p = os.path.join(d, 'in.ply'); write_ply(p, V2, F2); r, _ = run(p, 901, d2)
-        check('a second sheet 6 mm above, inside the mask: accuracy = half the points at 6 mm', r['accuracy_mm'], 3.0, 0.1)
+        p = os.path.join(d, 'far.ply'); write_ply(p, V + [0, 0, 25.0], F); _, R1 = run(p, 901, d2)
+        check('plate 25 mm away: stops, nothing in the mask or below the cap (1 = yes)', float(R1['stop']['reason'] in ('no_points_in_mask', 'no_distance_below_cap')), 1, 0, '')
+        p = os.path.join(d, 'out.ply'); write_ply(p, np.vstack([V, V + [0, 0, 15.0]]), np.vstack([F, F + len(V)])); r, _ = run(p, 901, d2)
+        check('a second sheet 15 mm above, outside the observation mask: accuracy unchanged', r['accuracy_mm'], a0 or 0, 0.01)
+        p = os.path.join(d, 'in.ply'); write_ply(p, np.vstack([V, V + [0, 0, 6.0]]), np.vstack([F, F + len(V)])); r, _ = run(p, 901, d2)
+        check('a second sheet 6 mm above, inside the mask: accuracy = half the points at 6 mm', r['accuracy_mm'], 3.0 + (a0 or 0) / 2, 0.06)
+        synthetic_flat(os.path.join(d, 'tall'), margin=30.0)
+        r, R7 = run(os.path.join(d, 'in.ply'), 901, os.path.join(d, 'tall'), max_dist=5.0)
+        check('the same with --max-dist 5: the sheet at 6 mm is an outlier, accuracy back at the floor', r['accuracy_mm'], a0 or 0, 0.01)
         # g. the guards
         Vn = V.copy(); Vn[5, 1] = np.nan; p = os.path.join(d, 'nan.ply'); write_ply(p, Vn, F); _, R2 = run(p, 901, d2)
         check('a NaN vertex: refused (1 = yes)', float(R2['stop']['reason'] == 'non_finite_input'), 1, 0, '')
@@ -430,15 +437,13 @@ def self_test(data=None, scan=None, max_minutes=30.0, workers=-1):
             if ref:
                 r, R6 = run(ref['stl'], scan, data, mode='pcd')
                 check('scan %d: its reference cloud as input (pcd): accuracy' % scan, r['accuracy_mm'], 0, 1e-9); check('scan %d: its reference cloud as input (pcd): completeness (at most the 0.2 mm of the reduction)' % scan, r['completeness_mm'], 0.1, 0.1)
+                # a rigid shift by d reads as d only where the surface faces the shift (see the flat plate above); on a real
+                # scene the parts that lie along the shift slide on themselves, so the accuracy is above 0 and at most d
                 S, _ = read_ply(ref['stl'], faces=False); P = loadmat(ref['plane'])['P'].astype(float).ravel(); n = P[:3] / np.linalg.norm(P[:3])
-                # nearest-neighbour distance after a rigid shift t is about |t . normal| where the surface is smooth: predict it from the cloud's own geometry
-                tree = cKDTree(S); sub = np.random.default_rng(0).choice(len(S), 20000, replace=False); _, nb = tree.query(S[sub], k=12, workers=workers)
-                C = S[nb] - S[nb].mean(1, keepdims=True); nrm = np.linalg.svd(C, full_matrices=False)[2][:, 2]; cosm = float(np.abs(nrm @ n).mean())
                 for off in (1.0, 3.0):
-                    p = os.path.join(d, 'moved.ply'); write_ply(p, S + off * n); r, _ = run(p, scan, data, mode='pcd')
-                    check('scan %d: reference moved rigidly by %g mm along the table normal: accuracy (bound: %g; first order: %g x mean |cos| %.3f)' % (scan, off, off, off, cosm), r['accuracy_mm'], off * cosm, 0.15 * off)
-                    rows[-1]['upper_bound_mm'] = off
-                    if r['accuracy_mm'] is not None and r['accuracy_mm'] > off + 1e-6: fails.append('moved reference: accuracy above the shift')
+                    p = os.path.join(d, 'moved.ply'); write_ply(p, S + off * n); r, _ = run(p, scan, data, mode='pcd'); got = r['accuracy_mm']
+                    check('scan %d: reference moved rigidly by %g mm along the table normal: accuracy (above 0, at most %g)' % (scan, off, off), got, off / 2, off / 2 + 1e-4)
+                    check('scan %d: the same, completeness (above 0, at most %g)' % (scan, off), r['completeness_mm'], off / 2, off / 2 + 0.2)
     print('%d checks, %d failed' % (len(rows), len(fails)), flush=True)
     return dict(tool='tools/eval/dtu_chamfer.py', version=VERSION, self_test=rows, failed=fails)
 
