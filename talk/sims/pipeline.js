@@ -1104,10 +1104,12 @@
       '.kt-sim-pipeline.pl-narrow.pl-split:not(.kt-open) .kt-panel{display:none}' +
       '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset>span{font-size:9px;left:4px;top:4px;padding:2px 4px}' +
       /* Hebrew: this module's own small titles are neither letter-spaced nor set in capitals (a unit inside a Hebrew
-         title must stay "mm"); the run's note, the file's own English, stands on a line of its own under its Hebrew
-         label. Right to left (the kit mirrors a panel's rows: label right, value left): a value that wraps keeps its
-         lines against the panel's outer edge, which is now the left one */
+         title must stay "mm"); a left-to-right run inside a Hebrew sentence (a number with its unit, a size, a file's
+         name) is never broken over two lines; the run's note, the file's own English, stands on lines of its own
+         under its Hebrew label. Right to left (the kit mirrors a panel's rows: label right, value left): a value that
+         wraps keeps its lines against the panel's outer edge, which is now the left one */
       ':root[lang="he"] .kt-sim-pipeline :is(.pl-plot-t,.pl-side,.pl-side b,.pl-pend b){letter-spacing:0;text-transform:none}' +
+      ':root[lang="he"] .kt-sim-pipeline :is(.kt-caption,.pl-side,.pl-pend,.pl-inset) span[dir="ltr"]{white-space:nowrap}' +
       ':root[lang="he"] .kt-sim-pipeline .pl-note span[dir="ltr"]{display:block}' +
       ':root[dir="rtl"][data-lang] .kt-sim-pipeline .kt-panel .kt-readout .kt-val{text-align:left}';
     document.head.appendChild(css);

@@ -11,7 +11,8 @@
      (d) direction  in values, what the bidi algorithm will reorder unless it is wrapped in <span dir="ltr"> or
                     U+2066 … U+2069: a digit, a space and %; an arrow, ×, a range with a dash, or = between Latin
                     letters or digits (a {placeholder} counts as a digit); a Latin name followed by a bracket
-                    (S(u, v)); a number and its unit; also direction marks that do not pair           warning
+                    (S(u, v)); a slash with spaces between numbers; a number and its unit; also direction
+                    marks that do not pair                                                             warning
      (e) stale      keys of the dictionary that neither the page nor any string of the scripts asks for  warning
      (f) keys       the slide master's step keys are the same in English and in Hebrew (the page is loaded in both,
                     with the dictionary), and nothing is asked for at load that the dictionary lacks    ERROR
@@ -75,6 +76,7 @@ const LINT = [
   [/\d\s*[–—]\s*\d/, 'a range of numbers with a dash'],
   [/[A-Za-z0-9)]\s*=\s*[A-Za-z0-9(−+-]/, '= between Latin letters or digits'],
   [/[A-Za-z0-9]\([^()]*\)/, 'a Latin name followed by a bracket (a formula written as text)'],
+  [/\d\s+\/\s+\d/, 'a slash with spaces between numbers'],
   [/\d\s+(?:mm|cm|ms|px|dB|fps|Hz|rms|RMS|min|[kKMm])(?![A-Za-z])/, 'a number and its unit']
 ];
 

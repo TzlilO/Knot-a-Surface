@@ -1322,8 +1322,10 @@
           ':root[data-theme="light"] .kt-sim-touch.tc-close .kt-caption{border-radius:6px;background:rgba(255,255,255,.86);' +
           'box-shadow:0 0 0 6px rgba(255,255,255,.86),0 10px 26px -16px rgba(88,56,24,.45)}' +   // its margin as a spread: the caption keeps its place and size
           '@media (max-width:640px){.kt-sim-touch .kt-side{font-size:9.5px;padding:6px 8px}}' +
-          // Hebrew is neither letter-spaced nor set in capitals
-          ':root[lang="he"] .kt-sim-touch :is(.kt-side,.kt-side b){letter-spacing:0;text-transform:none}';
+          // Hebrew is neither letter-spaced nor set in capitals, and a left-to-right run inside a Hebrew sentence (a number
+          // with its unit, a formula, an address) is never broken over two lines
+          ':root[lang="he"] .kt-sim-touch :is(.kt-side,.kt-side b,.kt-mo text){letter-spacing:0;text-transform:none}' +
+          ':root[lang="he"] .kt-sim-touch .kt-side span[dir="ltr"]{white-space:nowrap}';
         document.head.appendChild(css);
       }
 

@@ -777,10 +777,7 @@
       ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-th{letter-spacing:.04em}',
       ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-name{letter-spacing:.02em}',
       /* Hebrew (talk/i18n.js sets <html lang>) has no capitals and is not letter-spaced */
-      ':root[lang="he"] .kt-sim-flatland :is(.fl-th,.fl-name){letter-spacing:0;text-transform:none}',
-      /* the step readout is a kit readout outside a panel: on a Hebrew page kit.css moves a panel's values to the left end
-         of their row; this one stays at the right end, where it is in English */
-      ':root[lang="he"] .kt-sim-flatland .fl-metrics .kt-readout .kt-val{margin-left:auto;margin-right:0}'
+      ':root[lang="he"] .kt-sim-flatland :is(.fl-th,.fl-name){letter-spacing:0;text-transform:none}'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -1266,9 +1263,12 @@
             lines.push([T('ACROSS RAY'), base + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
           }
           lines.push([T('ONE CAMERA ONLY'), T('{a} of {b} floaters', { a: P.one.length, b: P.list.length }), COL.dim]);
+          var col = 118;                     // where the values start; a translated name that is longer moves them out
+          ctx.font = font(11, 600);
+          if (KT.rtl) for (i = 0; i < lines.length; i++) col = Math.max(col, ctx.measureText(lines[i][0]).width + 10);
           for (i = 0; i < lines.length; i++) {
             ctx.font = font(11, 600); ctx.fillStyle = COL.mute; ctx.fillText(lines[i][0], B.x, B.y + 11 + i * 15);
-            ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], B.x + 118, B.y + 11 + i * 15);
+            ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], B.x + col, B.y + 11 + i * 15);
           }
           return;
         }

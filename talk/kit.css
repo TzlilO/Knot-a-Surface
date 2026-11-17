@@ -179,8 +179,9 @@ body.kt-labpage{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:
    digits stay what they are (fallback is per glyph). A page that sets these must also load Heebo (talk.html does).
    A stage is a figure, and a figure is not mirrored: inside a mounted simulation everything keeps the direction it has
    in English (the module's own layout, canvas and SVG text, every number), and nothing moves: panels, captions, the
-   controls button stay in their corners. What the kit itself draws reads right to left: in a panel the label is on the
-   right and the value on the left, a caption and a hint are right-to-left text. A value takes its direction from what
+   controls button stay in their corners. What the kit itself draws reads right to left: in a panel, and in a row of
+   the kit wherever a module puts it, the label is on the right and the value on the left; a caption and a hint are
+   right-to-left text. A value takes its direction from what
    it holds (a number with its unit stays left to right), a slider keeps its minimum on the left. Hebrew strings carry
    their own direction (KnotTalk.t wraps them), so they read right inside the left-to-right figure too; a module's own
    box of running text can ask for the page's direction with class kt-text. The opening's three modules
@@ -191,7 +192,7 @@ body.kt-labpage{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:
 }
 :root[dir="rtl"][data-lang] .kt-sim{direction:ltr}
 :root[dir="rtl"][data-lang] .kt-sim[class*="kt-sim-he-"],
-:root[dir="rtl"][data-lang] :is(.kt-panel,.kt-caption,.kt-hint,.kt-gear,.kt-text){direction:rtl}
+:root[dir="rtl"][data-lang] :is(.kt-panel,.kt-row,.kt-caption,.kt-hint,.kt-gear,.kt-text){direction:rtl}
 :root[dir="rtl"][data-lang] :is(.ltr,bdi){direction:ltr;unicode-bidi:isolate}
 :root[dir="rtl"][data-lang] .kt-val{unicode-bidi:plaintext;margin-left:0;margin-right:auto}
 :root[dir="rtl"][data-lang] .kt-slider .kt-val{margin-right:0;text-align:right}        /* beside its slider, not at the panel's far edge */

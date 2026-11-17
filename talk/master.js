@@ -439,16 +439,16 @@
      languages). A presenter view that hears no talk window follows the saved language instead (the storage event).
      The drawer, if the switch was made in it, opens again after the reload. */
   var keptHere = (I18N && I18N.kept && I18N.kept.master) || {};
-  function follow(l) { if (I18N && l !== KT.lang) fromAfar(function () { I18N.setLang(l); }); }
+  function speak(l) { if (I18N && l !== KT.lang) fromAfar(function () { I18N.setLang(l); }); }   // this window in language l, as another window asked
   document.addEventListener('kt-lang', function (e) {
     e.detail.keep.master = { open: isOpen };
     if (!afar) bus.post({ type: 'lang', lang: e.detail.lang, presenter: presenter });
   });
   if (presenter) window.addEventListener('storage', function (e) {
-    if (e.key === 'kt-lang' && e.newValue && !view.linked) follow(e.newValue);
+    if (e.key === 'kt-lang' && e.newValue && !view.linked) speak(e.newValue);
   });
   bus.on(function (d) {
-    if (d.type === 'lang') { if (!!d.presenter !== presenter) follow(d.lang); return; }
+    if (d.type === 'lang') { if (!!d.presenter !== presenter) speak(d.lang); return; }
     if (presenter) {
       if (d.type === 'state') {
         view.linked = true; view.cut = d.cut === 20 ? 20 : 40; view.cur = d.cur || null; view.t0 = +d.t0 || 0; view.plan = +d.plan || 0;

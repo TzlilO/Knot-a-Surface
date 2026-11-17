@@ -203,6 +203,7 @@
   function switcher(cls) {
     var box = document.createElement('div');
     box.className = cls || 'kt-langs'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', KT.t('Language'));
+    box.setAttribute('data-i18n', 'off');                            // the names of the languages are not copy
     Object.keys(LANGS).forEach(function (l) {
       var b = document.createElement('button');
       b.type = 'button'; b.textContent = LANGS[l].short; b.title = LANGS[l].name; b.lang = l;
