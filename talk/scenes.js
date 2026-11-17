@@ -861,4 +861,10 @@
   /* the cover's pair: not offered in the lab page's scene picker */
   if (KT.dtu && KT.dtuScans && KT.dtuScans[55]) KT.scenes.duo = { label: T('Owl and rabbit'), suite: T('DTU scans 122 and 55'), photo: true, hidden: true, note: NOTE_T,
                                                                   en: { label: 'Owl and rabbit', suite: 'DTU scans 122 and 55', note: NOTE }, build: duo };
+  /* on an English page a scene's label, suite and note are the very strings of its `en`: an edit that lets the two
+     drift apart is said at once */
+  if (KT.lang === 'en') Object.keys(KT.scenes).forEach(function (k) {
+    var s = KT.scenes[k];
+    if ((s.label !== s.en.label || s.suite !== s.en.suite || s.note !== s.en.note) && window.console) window.console.error('scenes: `' + k + '` and its `en` differ');
+  });
 })();

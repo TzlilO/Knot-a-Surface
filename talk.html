@@ -792,7 +792,7 @@
 </section>
 
 <!-- the copy in the chosen language, before the heavy scripts load: no flash of English (talk/i18n.js; deck.js calls it again) -->
-<script>KnotTalk.i18n.apply();</script>
+<script>if (window.KnotTalk && KnotTalk.i18n) KnotTalk.i18n.apply();</script>
 <script src="talk/vendor/three.min.js"></script>
 <script src="talk/vendor/katex.min.js"></script>
 <script src="talk/nurbs.js"></script>
