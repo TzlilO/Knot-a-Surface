@@ -18,9 +18,12 @@
      auditor(tri, nTri, M)  one grading for both: edges, boundary edges, non-manifold edges (three or more triangles
                             on one edge), bridges (edges between points that are not neighbours on the surface: on
                             another chart, or across a fold or groove of the same one) and holes.
-   emulator, mesher and auditor are JOBS: step(ms) works for about ms milliseconds and returns true when finished,
-   run() goes to the end. Each measures the time spent inside its steps, so a page can spread the work over frames
-   and still report what it cost. emulate(...) and audit(...) are the same, run at once.
+     addresser(P, n, S)     addresses for a mesh whose points are not the samples (TSDF fusion, talk/meshtsdf.js): the
+                            address of the nearest lattice sample, through a hash grid; the audit then grades it too.
+     gauge(P, n, M)         how far a mesh's points are from the surface: each projected onto the chart of its address.
+   emulator, mesher, auditor, addresser and gauge are JOBS: step(ms) works for about ms milliseconds and returns true
+   when finished, run() goes to the end. Each measures the time spent inside its steps, so a page can spread the work
+   over frames and still report what it cost. emulate(...) and audit(...) are the same, run at once.
    parts = [{ patch, na, nb, chart }]: chart `chart` sampled on an even na x nb lattice (u = (a + 0.5) / na).
    Plain functions; also require()-able under node (tests). Depends on talk/nurbs.js. */
 (function (root) {
@@ -142,6 +145,7 @@
     function cy(i) { return Math.floor((P[i * 3 + 1] - lo[1]) / cell) + 1; }
     function cz(i) { return Math.floor((P[i * 3 + 2] - lo[2]) / cell) + 1; }
     function find(x, y, z, add) {
+      if (x < 0 || y < 0 || z < 0 || x >= DX || y >= DY || z >= DZ) return -1;      // outside the grid: no cell (and no other cell's key)
       var key = x + DX * (y + DY * z), h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & mask;
       while (keys[h] !== -1) { if (keys[h] === key) return h; h = (h + 1) & mask; }
       if (!add) return -1;
@@ -153,16 +157,25 @@
     for (i = 0; i < n; i++) { ord[start[slot[i]] + fill[slot[i]]++] = i; }
     return {
       tests: 0,
+      bytes: keys.byteLength + cnt.byteLength + start.byteLength + fill.byteLength + slot.byteLength + ord.byteLength,
       /* the k nearest points to point i (not i itself), nearest first, into nbI / nbD (squared distances) at off;
          shells of cells around i's cell until the k-th distance is inside what was searched. Returns how many. */
-      knn: function (i, k, nbI, nbD, off) {
-        var x0 = cx(i), y0 = cy(i), z0 = cz(i), px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2], m = 0, r, a, b, c, h, j, t, d, e, s, w;
+      knn: function (i, k, nbI, nbD, off) { return this.knnAt(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], k, nbI, nbD, off, i); },
+      /* the same from any position (skip: a point to leave out, or -1). A position outside the points' box starts at
+         the nearest cell of the box and searches that much further */
+      knnAt: function (px, py, pz, k, nbI, nbD, off, skip) {
+        var x0 = Math.floor((px - lo[0]) / cell) + 1, y0 = Math.floor((py - lo[1]) / cell) + 1, z0 = Math.floor((pz - lo[2]) / cell) + 1, out = 0, m = 0, r, a, b, c, h, j, t, d, e, s, w;
+        if (x0 < 1 || y0 < 1 || z0 < 1 || x0 > DX - 2 || y0 > DY - 2 || z0 > DZ - 2) {
+          x0 = Math.min(Math.max(x0, 1), DX - 2); y0 = Math.min(Math.max(y0, 1), DY - 2); z0 = Math.min(Math.max(z0, 1), DZ - 2);
+          a = lo[0] + (x0 - 1) * cell; b = lo[1] + (y0 - 1) * cell; c = lo[2] + (z0 - 1) * cell;        // how far outside that cell
+          out = Math.hypot(Math.max(a - px, 0, px - a - cell), Math.max(b - py, 0, py - b - cell), Math.max(c - pz, 0, pz - c - cell));
+        }
         for (r = 1; r <= RMAX; r++) {
           for (c = -r; c <= r; c++) for (b = -r; b <= r; b++) for (a = -r; a <= r; a++) {
             if (r > 1 && Math.max(Math.abs(a), Math.abs(b), Math.abs(c)) !== r) continue;     // shell 1 is the whole 3 x 3 x 3 block
             h = find(x0 + a, y0 + b, z0 + c, false); if (h < 0) continue;
             for (t = start[h], e = t + cnt[h]; t < e; t++) {
-              j = ord[t]; if (j === i) continue;
+              j = ord[t]; if (j === skip) continue;
               s = j * 3; d = (P[s] - px) * (P[s] - px) + (P[s + 1] - py) * (P[s + 1] - py) + (P[s + 2] - pz) * (P[s + 2] - pz);
               this.tests++;
               if (m < k) m++; else if (d >= nbD[off + k - 1]) continue;
@@ -171,11 +184,18 @@
               nbD[off + w] = d; nbI[off + w] = j;
             }
           }
-          if (m >= k && nbD[off + k - 1] <= r * cell * r * cell) break;
+          if (m >= k && (out ? Math.sqrt(nbD[off + k - 1]) <= r * cell - out : nbD[off + k - 1] <= r * cell * r * cell)) break;
         }
         return m;
       }
     };
+  }
+  /* the gap between neighbouring Gaussians that a list's own Gaussians suggest: their mean axis, over what the emulator
+     makes of a gap (0.72 x 0.6..1.3) */
+  function gap(L) {
+    var s = 0, k, c = Math.min(L.n, 4096);
+    for (k = 0; k < c; k++) { var q = Math.floor(k * L.n / c) * 3; s += Math.hypot(L.axU[q], L.axU[q + 1], L.axU[q + 2]) + Math.hypot(L.axV[q], L.axV[q + 1], L.axV[q + 2]); }
+    return s / (2 * c * 0.72 * 0.95);
   }
 
   /* the eigenvector of the smallest eigenvalue of a symmetric 3 x 3 matrix (the normal of a point cloud's
@@ -199,13 +219,22 @@
 
   /* ---------- meshing a list ----------
      J.tests = distances computed; J.ms = { index, search, normal, fan, vote, audit } in ms; J.tri / J.nTri = the kept
-     triangles, each listed once, by the first Gaussian (in list order) that proposed it, in that order; J.stats = the audit. */
+     triangles, each listed once, by the first Gaussian (in list order) that proposed it, in that order; J.stats = the audit.
+     J.bytes = { work, mesh }: the bytes of the arrays it allocated (the hash grid, the neighbours and their distances,
+     the normals, the stars, the buffer the triangles are collected in) and of the triangles it kept (12 each); the
+     vertices are the list's own Gaussians. As implemented, with N Gaussians and k neighbours each:
+       time    O(N k) expected: a hash grid whose cells hold a few Gaussians each, so a search looks at a number of
+               candidates that grows with k and not with N (J.tests counts them); then, per Gaussian, a covariance over
+               k neighbours, up to k cuts of a polygon that keeps about six corners, and a vote over its six triangles.
+               (Worst cases: O(k^2) per Gaussian for the cuts; O(N) per search if the Gaussians crowd into one cell.
+               A k-d tree in place of the grid searches in O(N log N).)
+       memory  O(N k): 8 k bytes of neighbours a Gaussian, the stars (about 14 entries each), the grid and normals. */
   function mesher(L, o) {
     o = o || {};
     var n = L.n, P = L.pos, K = o.k || 12, MU = o.mu || 1.6, RI = o.ri == null ? 5 : o.ri, DEV = Math.cos((o.dev == null ? 45 : o.dev) * Math.PI / 180), KEEP = o.keep || 2;
     var nbI = new Int32Array(n * K), nbD = new Float32Array(n * K), nbN = new Uint8Array(n), NRM = new Float32Array(n * 3);
     var star = new Int32Array(Math.max(1024, n * 14)), sStart = new Int32Array(n + 1), sLen = 0, grid = null, i = 0, out = null, m = 0, aud = null;
-    var J = { n: n, tests: 0, tri: null, nTri: 0, stats: null, progress: 0, cell: 0, normals: NRM };
+    var J = { n: n, k: K, tests: 0, tri: null, nTri: 0, stats: null, progress: 0, cell: 0, normals: NRM, bytes: null };
     var X = new Float64Array(K + 1), Y = new Float64Array(K + 1), Jx = new Int32Array(K + 1);
     var PX = new Float64Array(2 * K + 16), PY = new Float64Array(2 * K + 16), PL = new Int32Array(2 * K + 16);
     var QX = new Float64Array(2 * K + 16), QY = new Float64Array(2 * K + 16), QL = new Int32Array(2 * K + 16), nv3 = [0, 0, 0];
@@ -308,7 +337,10 @@
       { name: 'fan', fn: each(fan, 2) },
       { name: 'vote', fn: each(vote, 3, function () { sStart[n] = sLen; out = new Uint32Array(Math.max(3, sLen * 3 / 2)); m = 0; }) },
       { name: 'audit', fn: function (end) {
-        if (!aud) { J.tri = out.subarray(0, m * 3); J.nTri = m; aud = auditor(J.tri, m, L); }
+        if (!aud) {
+          J.tri = out.subarray(0, m * 3); J.nTri = m; aud = auditor(J.tri, m, L, o.audit);
+          J.bytes = { work: grid.bytes + nbI.byteLength + nbD.byteLength + nbN.byteLength + NRM.byteLength + star.byteLength + sStart.byteLength + out.byteLength - m * 12, mesh: m * 12 };
+        }
         var fin = aud.step(Math.max(1, end - now()));
         J.progress = (4 + 0.4 * aud.progress) / 4.4;
         if (fin) { J.stats = aud.stats; J.progress = 1; }
@@ -320,7 +352,11 @@
   /* ---------- the charts' own lattices, stitched ----------
      parts in the window's order; vertex (a, b) of part m is m.off + b * na + a (offsets assigned here). Returns the
      triangles (two per window stop, in the window's order), three edges per stop for drawing, and per vertex its chart
-     and lattice cell (for the audit). No search: the neighbours are the next addresses. ms = the time it took. */
+     and lattice cell (for the audit). No search: the neighbours are the next addresses. ms = the time it took.
+     As implemented: one pass over the N samples, O(N) time, and nothing is kept while it runs. bytes = { work: 0, mesh }:
+     the triangles (12 bytes each) are the only thing it makes, and they could be read off the addresses instead of
+     stored; the vertices are the samples themselves. (The edge list is for drawing and the addresses for the audit:
+     neither is counted.) */
   function lattice(parts) {
     var t0 = now(), V = 0, Q = 0, a, b, t = 0, e = 0;
     parts.forEach(function (m) {
@@ -338,7 +374,8 @@
       }
     });
     return { n: V, V: V, Q: Q, tri: tri, nTri: Q * 2, edge: edge, chart: chart, part: part, ca: ca, cb: cb,
-             grid: parts.map(function (m) { return { na: m.na, nb: m.nb, wu: m.wu, wv: m.wv, patch: m.patch }; }), ms: now() - t0 };
+             grid: parts.map(function (m) { return { na: m.na, nb: m.nb, wu: m.wu, wv: m.wv, patch: m.patch }; }), ms: now() - t0,
+             bytes: { work: 0, mesh: tri.byteLength } };
   }
 
   /* ---------- one audit for both ----------
@@ -350,7 +387,11 @@
      neighbours). A HOLE is a loop of boundary edges (edges on one triangle only) that does not reach the chart's own
      rim (the outermost two rows of cells): a sheet's border is not a hole, and a gap that runs into it is not counted.
      stats: the counts, and for drawing, edges as (a, b, first triangle holding it), in the order of that triangle:
-     bridges and non-manifold edges in `bad`, the edges around holes in `hole`. */
+     bridges and non-manifold edges in `bad`, the edges around holes in `hole`.
+     A mesh whose points are not the samples (TSDF fusion makes its own vertices) is graded the same way once its
+     points have addresses: addresser(), below, gives each the address of the lattice sample nearest to it. Its
+     triangles are as large as its own cells, not the lattice's, so `o.rim` says how many lattice cells from the
+     chart's rim still count as the rim: two of the mesh's own cells (default 2: the lattice's and the list's). */
   var ea = new Float64Array(12);
   function along(g, a0, b0, a1, b1) {        // [path along the surface, chord] between the centres of two cells of one lattice
     if (g.wu && Math.abs(a1 - a0) > g.na / 2) a1 += a1 < a0 ? g.na : -g.na;
@@ -365,8 +406,8 @@
     }
     return [len, Math.hypot(x - x0, y - y0, z - z0)];
   }
-  function auditor(tri, nTri, M) {
-    var nV = M.n, chart = M.chart, part = M.part, ca = M.ca, cb = M.cb, grid = M.grid, S = 1;
+  function auditor(tri, nTri, M, o) {
+    var nV = M.n, chart = M.chart, part = M.part, ca = M.ca, cb = M.cb, grid = M.grid, S = 1, RIM = Math.max(2, Math.round((o && o.rim) || 2));
     while (S < nTri * 3) S <<= 1;
     var mask = S - 1, K1 = new Int32Array(S).fill(-1), K2 = new Int32Array(S), CNT = new Int32Array(S), FIRST = new Int32Array(S), used = [];
     var par = new Int32Array(nV).fill(-1), rimE = [], t = 0, i = 0;
@@ -391,7 +432,7 @@
     function join(a, b) { if (par[a] < 0) par[a] = a; if (par[b] < 0) par[b] = b; a = root(a); b = root(b); if (a !== b) par[a] = b; }
     function border(x) {
       var g = grid[part[x]];
-      return (!g.wu && (ca[x] <= 1 || ca[x] >= g.na - 2)) || (!g.wv && (cb[x] <= 1 || cb[x] >= g.nb - 2));
+      return (!g.wu && (ca[x] < RIM || ca[x] >= g.na - RIM)) || (!g.wv && (cb[x] < RIM || cb[x] >= g.nb - RIM));
     }
     return job(J, [
       { name: 'edges', fn: function (end) {
@@ -429,9 +470,100 @@
       } }
     ]);
   }
-  function audit(tri, nTri, M) { return auditor(tri, nTri, M).run().stats; }
+  function audit(tri, nTri, M, o) { return auditor(tri, nTri, M, o).run().stats; }
 
-  var api = { emulator: emulator, emulate: emulate, mesher: mesher, lattice: lattice, auditor: auditor, audit: audit, evalAt: evalAt };
+  /* ---------- addresses for points that have none ----------
+     S = { n, pos, chart, part, ca, cb, grid }: the lattice's samples, where they are and their addresses. Each of the
+     n points P gets the address of the sample nearest to it, found through a hash grid over the samples (cell: twice
+     the mean step along a lattice row). Where one of its four nearest samples lies on another chart, that one is kept
+     as a second address (alt), for the distance to the surface near a seam. A job.
+     -> J.M = { n, chart, part, ca, cb, grid, alt: { part (-1: none), ca, cb }, near: the sample's index } */
+  function addresser(P, n, S, o) {
+    var K = 4, nbI = new Int32Array(K), nbD = new Float32Array(K), g = null, i = 0, k;
+    var M = { n: n, chart: new Uint16Array(n), part: new Uint16Array(n), ca: new Int32Array(n), cb: new Int32Array(n), grid: S.grid, near: new Int32Array(n),
+              alt: { part: new Int16Array(n).fill(-1), ca: new Int32Array(n), cb: new Int32Array(n) } };
+    var J = { M: null, progress: 0, cell: 0 };
+    return job(J, [
+      { name: 'index', fn: function () {
+        var s = 0, c = 0, t, q;
+        for (t = 0; t < 4096 && S.n > 1; t++) {
+          q = Math.floor(t * (S.n - 1) / 4096);
+          if (S.part[q] !== S.part[q + 1] || S.cb[q] !== S.cb[q + 1]) continue;
+          s += Math.hypot(S.pos[q * 3] - S.pos[q * 3 + 3], S.pos[q * 3 + 1] - S.pos[q * 3 + 4], S.pos[q * 3 + 2] - S.pos[q * 3 + 5]); c++;
+        }
+        J.cell = (o && o.cell) || 2 * s / Math.max(1, c) || 1;
+        g = hashGrid(S.pos, S.n, J.cell);
+        return true;
+      } },
+      { name: 'nearest', fn: function (end) {
+        while (i < n) {
+          for (var e = Math.min(n, i + 256); i < e; i++) {
+            var m = g.knnAt(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], K, nbI, nbD, 0, -1), s = nbI[0];
+            M.near[i] = s; M.chart[i] = S.chart[s]; M.part[i] = S.part[s]; M.ca[i] = S.ca[s]; M.cb[i] = S.cb[s];
+            for (k = 1; k < m; k++) if (S.part[nbI[k]] !== S.part[s]) { M.alt.part[i] = S.part[nbI[k]]; M.alt.ca[i] = S.ca[nbI[k]]; M.alt.cb[i] = S.cb[nbI[k]]; break; }
+          }
+          J.progress = i / Math.max(1, n);
+          if (now() >= end) break;
+        }
+        if (i < n) return false;
+        J.M = M; J.progress = 1; g = null;
+        return true;
+      } }
+    ]);
+  }
+
+  /* ---------- how far a mesh's points are from the surface ----------
+     The point of a chart nearest to p: Gauss-Newton on (u, v) from a start (S_u, S_v are exact: one evaluation gives
+     the point and both tangents), at most 12 steps, each no longer than a tenth of the domain, the best point met
+     kept. g = { wu, wv, patch }. -> the distance. */
+  var ec = new Float64Array(12);
+  function closest(g, u, v, px, py, pz) {
+    var best = 1e30, it, rx, ry, rz, d, a, b, c, gu, gv, det, du, dv;
+    for (it = 0; it < 12; it++) {
+      evalAt(g.patch, u, v, ec);
+      rx = ec[0] - px; ry = ec[1] - py; rz = ec[2] - pz; d = Math.sqrt(rx * rx + ry * ry + rz * rz);
+      if (d < best) best = d;
+      a = ec[3] * ec[3] + ec[4] * ec[4] + ec[5] * ec[5]; b = ec[3] * ec[6] + ec[4] * ec[7] + ec[5] * ec[8]; c = ec[6] * ec[6] + ec[7] * ec[7] + ec[8] * ec[8];
+      gu = ec[3] * rx + ec[4] * ry + ec[5] * rz; gv = ec[6] * rx + ec[7] * ry + ec[8] * rz; det = a * c - b * b;
+      if (!(det > 1e-30)) break;
+      du = -(c * gu - b * gv) / det; dv = -(a * gv - b * gu) / det;
+      if (du > 0.1) du = 0.1; else if (du < -0.1) du = -0.1;
+      if (dv > 0.1) dv = 0.1; else if (dv < -0.1) dv = -0.1;
+      var u1 = g.wu ? (((u + du) % 1) + 1) % 1 : Math.min(Math.max(u + du, 0), 0.99999), v1 = g.wv ? (((v + dv) % 1) + 1) % 1 : Math.min(Math.max(v + dv, 0), 0.99999);
+      if (Math.abs(u1 - u) < 1e-9 && Math.abs(v1 - v) < 1e-9) break;       // at rest (or held by the chart's rim)
+      u = u1; v = v1;
+    }
+    return best;
+  }
+  /* the distances of n points P from the surface, each measured to the chart its address names (M = { part, ca, cb,
+     grid }, and M.alt for a second address: the nearer of the two counts), starting from the middle of its cell. A job.
+     -> J.stats = { n, mean, rms, p95, max } in scene units; J.dist. */
+  function gauge(P, n, M) {
+    var D = new Float32Array(n), i = 0, sum = 0, sq = 0, J = { stats: null, dist: D, progress: 0 }, A = M.alt || null;
+    return job(J, [
+      { name: 'project', fn: function (end) {
+        while (i < n) {
+          for (var e = Math.min(n, i + 128); i < e; i++) {
+            var g = M.grid[M.part[i]], d = closest(g, (M.ca[i] + 0.5) / g.na, (M.cb[i] + 0.5) / g.nb, P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+            if (A && A.part[i] >= 0) { g = M.grid[A.part[i]]; d = Math.min(d, closest(g, (A.ca[i] + 0.5) / g.na, (A.cb[i] + 0.5) / g.nb, P[i * 3], P[i * 3 + 1], P[i * 3 + 2])); }
+            D[i] = d; sum += d; sq += d * d;
+          }
+          J.progress = 0.95 * i / Math.max(1, n);
+          if (now() >= end) break;
+        }
+        return i >= n;
+      } },
+      { name: 'rank', fn: function () {
+        var s = new Float32Array(D).sort();
+        J.stats = { n: n, mean: n ? sum / n : 0, rms: n ? Math.sqrt(sq / n) : 0, p95: n ? s[Math.min(n - 1, Math.floor(0.95 * n))] : 0, max: n ? s[n - 1] : 0 };
+        J.progress = 1;
+        return true;
+      } }
+    ]);
+  }
+
+  var api = { emulator: emulator, emulate: emulate, mesher: mesher, lattice: lattice, auditor: auditor, audit: audit, evalAt: evalAt,
+              gap: gap, addresser: addresser, gauge: gauge, closest: closest };
   KT.meshList = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

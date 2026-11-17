@@ -35,11 +35,19 @@
    are fitted into the part of the stage the caption, panel, plot and magnifier leave free. Colours come from KT.color
    and the kit's CSS tokens, so the module reads on the talk's light page and on the dark lab pages alike.
    Every number on screen comes from those files or is measured in the page.
+   Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js), keyed by its English, one sentence
+   (numbers and all) as one template. In Hebrew the stage stays a left-to-right island: nothing here moves or mirrors,
+   and T gives each string its own direction, so a label reads right on the canvas and in the panel alike. The boxes
+   of running text this module builds (the tags of the split, the pending box, the magnifier's label, the run's note)
+   are marked right-to-left there (prose()). Text a data file brings in English: a level's `what` is looked up like any
+   other sentence (the dictionary has the five the file holds; another would show as it is); the run's `note` and
+   `stop.reason` are shown as they are, left to right.
    Tool: WebGL (three.js). Standalone: talk/sims/pipeline.html. Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js and
    dtu/pipeline122.js; on dtu-data.js for the shipped owl; on dtu/train122.js when it exists. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color, SCAN = 122;
+  var T = KT.t, RTL = !!KT.rtl;  // the page's language: T(english, vars) -> that string in it (the English itself when there is no translation)
   var FRUST = 1.2;               // depth at which a camera's image rectangle is drawn (scene units: 96 mm)
   var NUM = 59;                  // numbers per Gaussian in the reference model: position 3, scale 3, rotation 4, opacity 1, colour 48 (SH to degree 3)
   var RAYS = 26;                 // triangulation rays drawn for the camera just added
@@ -50,17 +58,21 @@
   var SWAY = { photos: 1, sfm: 1 };   // scenes whose camera sways by itself; the others hold still, and draw only when something changes
 
   var SCENES = {
-    photos: { view: 'rig', cap: '<b>the photographs</b> · DTU scan 122 · 64 calibrated cameras<br>each frustum is one camera: its pose and pinhole as the dataset gives them. The photographs themselves are not shown' },
-    sfm: { view: 'rig', cap: '<b>sparse points</b> · COLMAP, as it comes with the copy of the dataset used here<br>features matched and triangulated with the dataset’s calibrated poses: no pose was estimated · a point appears once two of its cameras are in' },
-    init3dgs: { view: 'owl', cap: '<b>3DGS initialisation</b> · as the reference implementation makes it<br>one round Gaussian per sparse point · σ from its three nearest neighbours · the point’s colour · opacity 0.1 · nothing trained' },
-    initspline: { view: 'owl', cap: '<b>our initialisation</b> · one cubic chart fitted to the same points<br>12 × 16 control points by robust least squares on the sparse points alone (only its axis and angular range come from the depth-map fit) · every Gaussian derived from the chart' },
-    levels: { view: 'owl', cap: '<b>coarse to fine</b> · the owl’s chart fitted offline to the dataset’s depth maps<br>a geometric fit, not training: each level a finer grid of nodes, pulled onto an envelope first, then onto the measured points' },
+    photos: { view: 'rig', cap: T('<b>the photographs</b> · DTU scan 122 · 64 calibrated cameras<br>each frustum is one camera: its pose and pinhole as the dataset gives them. The photographs themselves are not shown') },
+    sfm: { view: 'rig', cap: T('<b>sparse points</b> · COLMAP, as it comes with the copy of the dataset used here<br>features matched and triangulated with the dataset’s calibrated poses: no pose was estimated · a point appears once two of its cameras are in') },
+    init3dgs: { view: 'owl', cap: T('<b>3DGS initialisation</b> · as the reference implementation makes it<br>one round Gaussian per sparse point · σ from its three nearest neighbours · the point’s colour · opacity 0.1 · nothing trained') },
+    initspline: { view: 'owl', cap: T('<b>our initialisation</b> · one cubic chart fitted to the same points<br>12 × 16 control points by robust least squares on the sparse points alone (only its axis and angular range come from the depth-map fit) · every Gaussian derived from the chart') },
+    levels: { view: 'owl', cap: T('<b>coarse to fine</b> · the owl’s chart fitted offline to the dataset’s depth maps<br>a geometric fit, not training: each level a finer grid of nodes, pulled onto an envelope first, then onto the measured points') },
     train: { view: 'owl', cap: '' }
   };
 
   function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
   function f2(v) { return (+v).toFixed(2); }
-  function pc(v) { return (v * 100).toFixed(1) + ' %'; }
+  function pc(v) { return T('{n} %', { n: (v * 100).toFixed(1) }); }
+  /* a level's name as the data file has it ('layout', 'level 2'), in the page's language; any other name as it is */
+  function lvName(n) { var m = /^level (\d+)$/.exec(n); return m ? T('level {n}', { n: m[1] }) : n === 'layout' ? T('layout') : n; }
+  /* a box of running text, several lines of it: right-to-left on a right-to-left page (the stage itself stays left-to-right) */
+  function prose(el) { if (RTL) el.setAttribute('dir', 'rtl'); return el; }
   function every(n, s) { var a = [], i; for (i = 0; i < n; i++) if (i % s === 0 || i === n - 1) a.push(i); return a; }
   function finite(v) { return typeof v === 'number' && isFinite(v); }
   function rgb3(hex) { var n = parseInt(String(hex).replace('#', ''), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -76,13 +88,13 @@
     scenes: [{ id: 'photos', label: 'Photographs' }, { id: 'sfm', label: 'Sparse points' }, { id: 'init3dgs', label: '3DGS init' },
              { id: 'initspline', label: 'Chart init' }, { id: 'levels', label: 'Coarse to fine' }, { id: 'train', label: 'Training' }],
     create: function (env) {
-      var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
-      var cam = new T.PerspectiveCamera(36, 1, 0.02, 400), R = G.renderer(root, cam, env.opts.clear), scene = new T.Scene();
+      var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
+      var cam = new THREE.PerspectiveCamera(36, 1, 0.02, 400), R = G.renderer(root, cam, env.opts.clear), scene = new THREE.Scene();
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
       addCss();
       var D = KT.dtuPipeline && KT.dtuPipeline[SCAN];
       if (!D) {                                   // nothing to show without the data file: say which one
-        cap.innerHTML = '<b>no data</b> · this module needs talk/dtu/pipeline122.js (written by tools/dtu/pipeline.py)';
+        cap.innerHTML = T('<b>no data</b> · this module needs talk/dtu/pipeline122.js (written by tools/dtu/pipeline.py)');
         return { setScene: function () {}, resize: function (w, h) { R.resize(w, h); G.draw(R, scene, cam); }, destroy: function () { R.renderer.dispose(); } };
       }
       var TR = KT.dtuTrain && KT.dtuTrain[SCAN] && KT.dtuTrain[SCAN].snaps && KT.dtuTrain[SCAN].snaps.length ? KT.dtuTrain[SCAN] : null;
@@ -104,9 +116,9 @@
         return o;
       }
       function camMat(colour, base, hi) {        // a camera's lines or image rectangle: shown once camera aCam is added (uK > aCam), flashing as it is
-        return new T.ShaderMaterial({
-          transparent: true, depthWrite: false, side: T.DoubleSide,
-          uniforms: { uK: { value: 0 }, uAll: { value: 0 }, uCol: { value: new T.Color(colour) }, uBase: { value: base }, uHi: { value: hi } },
+        return new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.DoubleSide,
+          uniforms: { uK: { value: 0 }, uAll: { value: 0 }, uCol: { value: new THREE.Color(colour) }, uBase: { value: base }, uHi: { value: hi } },
           vertexShader: 'attribute float aCam; uniform float uK; uniform float uAll; varying float vF; varying float vIn;\n' +
             'void main(){ float age = uK - aCam; vIn = age > 0.0 ? 1.0 : 0.0; vF = age > 0.0 ? clamp(1.0 - age / 2.5, 0.0, 1.0) : 0.0;\n' +
             '  if (age <= 0.0 && uAll < 0.5) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }\n' +
@@ -116,9 +128,9 @@
         });
       }
       function camGeo(list, ids, index) {
-        var g = new T.BufferGeometry(), P = new Float32Array(list.length * 3), A = new Float32Array(ids), i;
+        var g = new THREE.BufferGeometry(), P = new Float32Array(list.length * 3), A = new Float32Array(ids), i;
         for (i = 0; i < list.length; i++) P.set(list[i], i * 3);
-        g.setAttribute('position', new T.BufferAttribute(P, 3)); g.setAttribute('aCam', new T.BufferAttribute(A, 1));
+        g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('aCam', new THREE.BufferAttribute(A, 1));
         if (index) g.setIndex(index);
         return g;
       }
@@ -136,9 +148,9 @@
           var f = axes(c)[2], t = (TGT[0] - c.c[0]) * f[0] + (TGT[1] - c.c[1]) * f[1] + (TGT[2] - c.c[2]) * f[2];
           AX.push(c.c, [c.c[0] + f[0] * t, c.c[1] + f[1] * t, c.c[2] + f[2] * t]); AI.push(i, i);
         });
-        var lines = new T.LineSegments(camGeo(L, LI), camMat(C.text, 0.62, 0.38));
-        var planes = new T.Mesh(camGeo(Q, QI, X), camMat(C.text, 0.07, 0.5));
-        var optic = new T.LineSegments(camGeo(AX, AI), camMat(C.dim, 0.13, 0.25));
+        var lines = new THREE.LineSegments(camGeo(L, LI), camMat(C.text, 0.62, 0.38));
+        var planes = new THREE.Mesh(camGeo(Q, QI, X), camMat(C.text, 0.07, 0.5));
+        var optic = new THREE.LineSegments(camGeo(AX, AI), camMat(C.dim, 0.13, 0.25));
         // the table plane under the owl: a ring and a cross where the optical axes meet
         var ring = [], s;
         for (s = 0; s < 96; s++) {
@@ -146,10 +158,10 @@
           ring.push([TGT[0] + 1.5 * Math.cos(a0), 0, TGT[2] + 1.5 * Math.sin(a0)], [TGT[0] + 1.5 * Math.cos(a1), 0, TGT[2] + 1.5 * Math.sin(a1)]);
         }
         ring.push([TGT[0] - 0.25, 0, TGT[2]], [TGT[0] + 0.25, 0, TGT[2]], [TGT[0], 0, TGT[2] - 0.25], [TGT[0], 0, TGT[2] + 0.25]);
-        var gr = new T.BufferGeometry(), gp = new Float32Array(ring.length * 3);
+        var gr = new THREE.BufferGeometry(), gp = new Float32Array(ring.length * 3);
         ring.forEach(function (p, i) { gp.set(p, i * 3); });
-        gr.setAttribute('position', new T.BufferAttribute(gp, 3));
-        var floor = new T.LineSegments(gr, new T.LineBasicMaterial({ color: C.mute, transparent: true, opacity: 0.45 }));
+        gr.setAttribute('position', new THREE.BufferAttribute(gp, 3));
+        var floor = new THREE.LineSegments(gr, new THREE.LineBasicMaterial({ color: C.mute, transparent: true, opacity: 0.45 }));
         [lines, planes, optic, floor].forEach(function (o) { o.frustumCulled = false; scene.add(o); });
         lines.renderOrder = 4; planes.renderOrder = 3;
         var mats = [lines.material, planes.material, optic.material];
@@ -159,12 +171,12 @@
 
       /* ================= the sparse points: a point appears when its second camera is added ================= */
       var sfm = (function () {
-        var g = new T.BufferGeometry(), sec = new Float32Array(NP), i;
+        var g = new THREE.BufferGeometry(), sec = new Float32Array(NP), i;
         for (i = 0; i < NP; i++) sec[i] = SF.second[i];
-        g.setAttribute('position', new T.BufferAttribute(SF.P, 3)); g.setAttribute('aCol', new T.BufferAttribute(SF.C, 3, true));
-        g.setAttribute('aSec', new T.BufferAttribute(sec, 1));
-        var m = new T.ShaderMaterial({
-          uniforms: { uK: { value: NC }, uSize: { value: 2.6 }, uDim: { value: 1 }, uHi: { value: new T.Vector3().fromArray(G.rgb(C.text)) } },
+        g.setAttribute('position', new THREE.BufferAttribute(SF.P, 3)); g.setAttribute('aCol', new THREE.BufferAttribute(SF.C, 3, true));
+        g.setAttribute('aSec', new THREE.BufferAttribute(sec, 1));
+        var m = new THREE.ShaderMaterial({
+          uniforms: { uK: { value: NC }, uSize: { value: 2.6 }, uDim: { value: 1 }, uHi: { value: new THREE.Vector3().fromArray(G.rgb(C.text)) } },
           vertexShader: 'attribute vec3 aCol; attribute float aSec; uniform float uK; uniform float uSize; varying vec3 vCol; varying float vPop;\n' +
             'void main(){ float age = uK - aSec; vCol = aCol; vPop = clamp(1.0 - age / 1.6, 0.0, 1.0);\n' +
             '  if (age <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); gl_PointSize = 0.0; return; }\n' +
@@ -173,7 +185,7 @@
             'void main(){ vec2 q = gl_PointCoord * 2.0 - 1.0; if (dot(q, q) > 1.0) discard;\n' +
             '  gl_FragColor = vec4(mix(vCol * uDim, uHi, 0.75 * vPop), 1.0); }'
         });
-        var o = new T.Points(g, m); o.frustumCulled = false; o.renderOrder = 1; scene.add(o);
+        var o = new THREE.Points(g, m); o.frustumCulled = false; o.renderOrder = 1; scene.add(o);
         return o;
       })();
       /* per camera: the points it completes, and the counts and reprojection errors as cameras are added */
@@ -213,9 +225,9 @@
          fragment is opacity x exp(-d^2 / 2) (at most 0.99), blended back to front over what is behind (the instances are
          sorted by depth on the CPU when the view turns). Two fields share the shader: the cloud, and the few Gaussians
          around one of them that the magnifier shows. */
-      var gsMat = new T.ShaderMaterial({
+      var gsMat = new THREE.ShaderMaterial({
         transparent: true, depthWrite: false, depthTest: true,
-        uniforms: { uFocal: { value: new T.Vector2(1, 1) }, uView: { value: new T.Vector2(1, 1) }, uLim: { value: new T.Vector2(1, 1) },
+        uniforms: { uFocal: { value: new THREE.Vector2(1, 1) }, uView: { value: new THREE.Vector2(1, 1) }, uLim: { value: new THREE.Vector2(1, 1) },
                     uOpa: { value: -1 } },
         vertexShader: [
           'attribute vec3 iC; attribute vec3 iA; attribute vec3 iB; attribute vec4 iK;',
@@ -258,13 +270,13 @@
         u.uFocal.value.set(P[0] * vw / 2, P[5] * vh / 2); u.uView.value.set(vw, vh); u.uLim.value.set(1.3 / P[0], 1.3 / P[5]);
       }
       function gsField(cap, order) {
-        var base = new T.PlaneGeometry(2, 2), g = new T.InstancedBufferGeometry(), at = {};
+        var base = new THREE.PlaneGeometry(2, 2), g = new THREE.InstancedBufferGeometry(), at = {};
         g.index = base.index; g.setAttribute('position', base.getAttribute('position'));
         [['iC', 3], ['iA', 3], ['iB', 3], ['iK', 4]].forEach(function (s) {
-          var a = new T.InstancedBufferAttribute(new Float32Array(cap * s[1]), s[1]); a.setUsage(T.DynamicDrawUsage); g.setAttribute(s[0], a); at[s[0]] = a;
+          var a = new THREE.InstancedBufferAttribute(new Float32Array(cap * s[1]), s[1]); a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(s[0], a); at[s[0]] = a;
         });
         g.instanceCount = 0;
-        var mesh = new T.Mesh(g, gsMat); mesh.frustumCulled = false; mesh.renderOrder = order; mesh.visible = false; scene.add(mesh);
+        var mesh = new THREE.Mesh(g, gsMat); mesh.frustumCulled = false; mesh.renderOrder = order; mesh.visible = false; scene.add(mesh);
         var src = { C: new Float32Array(cap * 3), A: new Float32Array(cap * 3), B: new Float32Array(cap * 3), K: new Float32Array(cap * 4) };
         var depth = new Float32Array(cap), key = new Uint16Array(cap), ord = new Uint32Array(cap), cnt = new Uint32Array(65536);
         return {
@@ -303,22 +315,22 @@
          only makes every blended fragment dearer) and laid over the screen, premultiplied, so a transparent stage stays
          transparent. The target is drawn again only when the view or the Gaussians change (cloudOk = false): the
          magnifier can move on without redrawing the cloud. */
-      var rtC = new T.WebGLRenderTarget(4, 4, { minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false, stencilBuffer: false });
+      var rtC = new THREE.WebGLRenderTarget(4, 4, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, stencilBuffer: false });
       var comp = (function () {
-        var tri = new T.BufferGeometry();
-        tri.setAttribute('position', new T.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
-        var m = new T.ShaderMaterial({
-          transparent: true, depthTest: false, depthWrite: false, blending: T.CustomBlending,
-          blendSrc: T.OneFactor, blendDst: T.OneMinusSrcAlphaFactor, blendSrcAlpha: T.OneFactor, blendDstAlpha: T.OneMinusSrcAlphaFactor,
-          uniforms: { tC: { value: rtC.texture }, uSize: { value: new T.Vector2(4, 4) } },
+        var tri = new THREE.BufferGeometry();
+        tri.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+        var m = new THREE.ShaderMaterial({
+          transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending,
+          blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+          uniforms: { tC: { value: rtC.texture }, uSize: { value: new THREE.Vector2(4, 4) } },
           vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
           fragmentShader: 'uniform sampler2D tC; uniform vec2 uSize; void main(){ gl_FragColor = texture2D(tC, gl_FragCoord.xy / uSize); }'
         });
-        var q = new T.Mesh(tri, m); q.frustumCulled = false;
-        var sc = new T.Scene(); sc.add(q);
-        return { scene: sc, cam: new T.Camera(), mat: m };
+        var q = new THREE.Mesh(tri, m); q.frustumCulled = false;
+        var sc = new THREE.Scene(); sc.add(q);
+        return { scene: sc, cam: new THREE.Camera(), mat: m };
       })();
-      var cloudOk = false, V2 = new T.Vector2(), CC = new T.Color();
+      var cloudOk = false, V2 = new THREE.Vector2(), CC = new THREE.Color();
       /* the cloud (GS, the only thing visible when this is called) in the rectangle q = [x, y, w, h] (CSS px, y from the
          bottom), over a screen already cleared there; the renderer's viewport and scissor must be q */
       function drawCloud(camera, q) {
@@ -459,6 +471,11 @@
         writeField(g, d[0], d[1], VIOLET); field.uniforms.uFlat.value = 0;
         rdGs.set(fmt(st.drawn));
       }
+      function shipName(s) { return s.name === 'shipped' ? T('the shipped net') : lvName(s.name); }   // a level's name in a sentence
+      function lvSize(s) {                         // a level and the size of its net, as one sentence: "level 2 · 72 × 98"
+        var m = /^level (\d+)$/.exec(s.name), v = { n: m && m[1], nu: s.patch.nu, nv: s.patch.nv };
+        return m ? T('level {n} · {nu} × {nv}', v) : s.name === 'layout' ? T('layout · {nu} × {nv}', v) : s.name === 'shipped' ? T('shipped · {nu} × {nv}', v) : s.name + ' · ' + v.nu + ' × ' + v.nv;
+      }
 
       /* the levels of the geometric fit, then the shipped net: each sampled once on the same (u, v) lattice */
       var LV = null;
@@ -503,8 +520,8 @@
 
       /* ================= control nets (amber); a dense net is drawn thinned ================= */
       var net = G.lines(44000 * 2, C.ctrl, 0.55); net.obj.renderOrder = 6; scene.add(net.obj);
-      var netG = new T.BufferGeometry(); netG.setAttribute('position', new T.BufferAttribute(new Float32Array(3000 * 3), 3));
-      var netP = new T.Points(netG, new T.PointsMaterial({ color: C.ctrl, size: 5, sizeAttenuation: false })); netP.frustumCulled = false; netP.renderOrder = 7; scene.add(netP);
+      var netG = new THREE.BufferGeometry(); netG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3000 * 3), 3));
+      var netP = new THREE.Points(netG, new THREE.PointsMaterial({ color: C.ctrl, size: 5, sizeAttenuation: false })); netP.frustumCulled = false; netP.renderOrder = 7; scene.add(netP);
       function setNet(patch) {
         var nu = patch.nu, nv = patch.nv, P = patch.P, ns = Math.max(1, Math.ceil(Math.max(nu, nv) / 50)), I = every(nu, ns), J = every(nv, ns), A = net.arr, n = 0, i, j, a, b, o;
         function seg(p, q) { A[n++] = P[p]; A[n++] = P[p + 1]; A[n++] = P[p + 2]; A[n++] = P[q]; A[n++] = P[q + 1]; A[n++] = P[q + 2]; }
@@ -525,13 +542,13 @@
       function showNet(v) { net.obj.visible = netP.visible = !!v; var k = field.mesh.userData.ktSplat; if (k && !v) { k.front = k.front || k.core; k.core = k.front; } need = true; }
 
       /* ================= one Gaussian under a magnifier (init3dgs) ================= */
-      var cam2 = new T.PerspectiveCamera(8, 1, 0.005, 60);
+      var cam2 = new THREE.PerspectiveCamera(8, 1, 0.005, 60);
       var probe = (function () {
-        var lines = G.lines(6, C.text, 0.85), ringG = new T.BufferGeometry(), dots = new T.BufferGeometry();
-        ringG.setAttribute('position', new T.BufferAttribute(new Float32Array(64 * 3), 3));
-        dots.setAttribute('position', new T.BufferAttribute(new Float32Array(4 * 3), 3));
-        var ring = new T.LineLoop(ringG, new T.LineBasicMaterial({ color: C.splat, transparent: true, opacity: 0.95, depthTest: false }));
-        var pts = new T.Points(dots, new T.PointsMaterial({ color: C.text, size: 6, sizeAttenuation: false, depthTest: false, transparent: true }));
+        var lines = G.lines(6, C.text, 0.85), ringG = new THREE.BufferGeometry(), dots = new THREE.BufferGeometry();
+        ringG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 3), 3));
+        dots.setAttribute('position', new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+        var ring = new THREE.LineLoop(ringG, new THREE.LineBasicMaterial({ color: C.splat, transparent: true, opacity: 0.95, depthTest: false }));
+        var pts = new THREE.Points(dots, new THREE.PointsMaterial({ color: C.text, size: 6, sizeAttenuation: false, depthTest: false, transparent: true }));
         lines.mat.depthTest = false;
         [lines.obj, ring, pts].forEach(function (o) { o.frustumCulled = false; o.renderOrder = 12; o.visible = false; scene.add(o); });
         // where to look: well-observed points on the front of the owl, from its feet to its head
@@ -546,7 +563,7 @@
         list = [4, 1, 7, 2, 6, 0, 8, 3, 5].map(function (k) { return list[k]; }).filter(function (k) { return k != null; });   // jump around the owl
         return { lines: lines, ring: ring, pts: pts, list: list, i: 0, t: 0, show: function (v) { lines.obj.visible = ring.visible = pts.visible = v; } };
       })();
-      var inset = ui.el('div', 'pl-inset'), insetLab = ui.el('span'), mark = ui.el('div', 'pl-mark');
+      var inset = ui.el('div', 'pl-inset'), insetLab = prose(ui.el('span')), mark = ui.el('div', 'pl-mark');
       inset.appendChild(insetLab); root.appendChild(inset); root.appendChild(mark);
       function probeAim() {                        // put the magnifier's camera on the probe, looking the way the main camera looks
         var I = initGauss(), p = probe.list[probe.i], s = I.sig[p], P = SF.P, e = cam.matrixWorld.elements;
@@ -578,53 +595,53 @@
       var parts = [];
       function only(el, ids) { parts.push({ el: el, on: ids.split(' ') }); return el; }
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
-      var what = only(ui.el('div', 'pl-what'), 'levels'); root.appendChild(what);
-      var pend = ui.el('div', 'pl-pend'); root.appendChild(pend);
-      var note = ui.el('div', 'pl-note'); root.appendChild(note);
-      var tagL = ui.el('div', 'pl-side'), tagR = ui.el('div', 'pl-side'), bar = ui.el('div', 'pl-divide');
+      var what = only(prose(ui.el('div', 'pl-what')), 'levels'); root.appendChild(what);
+      var pend = prose(ui.el('div', 'pl-pend')); root.appendChild(pend);
+      var note = prose(ui.el('div', 'pl-note')); root.appendChild(note);
+      var tagL = prose(ui.el('div', 'pl-side')), tagR = prose(ui.el('div', 'pl-side')), bar = ui.el('div', 'pl-divide');
       root.appendChild(tagL); root.appendChild(tagR); root.appendChild(bar);
-      var panel = ui.panel(root, { pos: 'tr', title: 'scan 122 · from photographs to charts' });
+      var panel = ui.panel(root, { pos: 'tr', title: T('scan 122 · from photographs to charts') });
       function row(label, ids, tone, more) { var r = ui.readout(panel, { label: label, tone: tone }); only(r.el, ids); if (more) r.el.classList.add('pl-more'); return r; }
       /* photos */
-      var rdPh = row('photographs', 'photos'), rdFo = row('focal length · field of view', 'photos', '', true), rdDi = row('distance to the owl', 'photos'), rdPo = row('poses', 'photos', '', true);
+      var rdPh = row(T('photographs'), 'photos'), rdFo = row(T('focal length · field of view'), 'photos', '', true), rdDi = row(T('distance to the owl'), 'photos'), rdPo = row(T('poses'), 'photos', '', true);
       /* sfm */
-      var rdK = row('cameras added', 'sfm'), rdN = row('points triangulated', 'sfm'), rdE = row('reprojection error, median', 'sfm', 'err'), rdTr = row('track length, observations', 'sfm', '', true);
-      var slK = ui.slider(panel, { label: 'cameras', min: 1, max: NC, step: 1, value: NC, fmt: function (v) { return v + ' / ' + NC; },
+      var rdK = row(T('cameras added'), 'sfm'), rdN = row(T('points triangulated'), 'sfm'), rdE = row(T('reprojection error, median'), 'sfm', 'err'), rdTr = row(T('track length, observations'), 'sfm', '', true);
+      var slK = ui.slider(panel, { label: T('cameras'), min: 1, max: NC, step: 1, value: NC, fmt: function (v) { return v + ' / ' + NC; },
         onInput: function (v) { st.play = false; st.k = v; } });
       only(slK.el, 'sfm');
       var rowBtn = only(ui.el('div', 'kt-row pl-btns'), 'photos sfm'); panel.appendChild(rowBtn);
-      ui.button(rowBtn, { label: 'replay', onClick: function () { st.k = 0; st.play = true; setRays(-1); } });
+      ui.button(rowBtn, { label: T('replay'), onClick: function () { st.k = 0; st.play = true; setRays(-1); } });
       /* init3dgs */
-      var rdG = row('Gaussians', 'init3dgs', 'splat'), rdS = row('σ, median', 'init3dgs'), rdWide = row('σ above 1 cm', 'init3dgs', '', true), rdO = row('opacity at init', 'init3dgs'), rdNu = row('numbers stored, colour included', 'init3dgs', '', true);
-      var segO = ui.seg(panel, { label: 'opacity', value: 'init', options: [{ v: 'init', label: '0.1 (init)' }, { v: 'one', label: '1' }],
+      var rdG = row(T('Gaussians'), 'init3dgs', 'splat'), rdS = row(T('σ, median'), 'init3dgs'), rdWide = row(T('σ above 1 cm'), 'init3dgs', '', true), rdO = row(T('opacity at init'), 'init3dgs'), rdNu = row(T('numbers stored, colour included'), 'init3dgs', '', true);
+      var segO = ui.seg(panel, { label: T('opacity'), value: 'init', options: [{ v: 'init', label: T('0.1 (init)') }, { v: 'one', label: '1' }],
         onChange: function (v) { st.opa = v; gsMat.uniforms.uOpa.value = v === 'one' ? 1 : -1; need = true; cloudOk = false; } });
       only(segO.el, 'init3dgs');
       var rowW = only(ui.el('div', 'kt-row pl-btns'), 'init3dgs'); panel.appendChild(rowW);
-      ui.toggle(rowW, { label: 'σ above 1 cm', value: true, onChange: function (v) { st.wide = v; gsInit(); paintInit(); } });
+      ui.toggle(rowW, { label: T('σ above 1 cm'), value: true, onChange: function (v) { st.wide = v; gsInit(); paintInit(); } });
       /* initspline */
-      var rdCP = row('control points', 'initspline', 'ctrl'), rdFit = row('fitted to', 'initspline'), rdTo = row('to those points', 'initspline', 'err'),
-          rdTd = row('to the dense surface', 'initspline', 'err'), rdRf = row('same net, dense points', 'initspline', '', true), rdNs = row('numbers stored, shape only', 'initspline', '', true);
-      var rdGs = row('Gaussians drawn', 'initspline levels', 'splat');
-      var slN = ui.slider(panel, { label: 'Gaussians', min: 2000, max: CAPS - 2000, step: 1000, value: st.nInit, fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; },
+      var rdCP = row(T('control points'), 'initspline', 'ctrl'), rdFit = row(T('fitted to'), 'initspline'), rdTo = row(T('to those points'), 'initspline', 'err'),
+          rdTd = row(T('to the dense surface'), 'initspline', 'err'), rdRf = row(T('same net, dense points'), 'initspline', '', true), rdNs = row(T('numbers stored, shape only'), 'initspline', '', true);
+      var rdGs = row(T('Gaussians drawn'), 'initspline levels', 'splat');
+      var slN = ui.slider(panel, { label: T('Gaussians'), min: 2000, max: CAPS - 2000, step: 1000, value: st.nInit, fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; },
         onInput: function (v) { st.nInit = v; writeInit(); } });
       only(slN.el, 'initspline');
       var rowT = only(ui.el('div', 'kt-row pl-btns'), 'initspline levels'); panel.appendChild(rowT);
-      ui.toggle(rowT, { label: 'control net', value: true, onChange: function (v) { st.nets = v; netFor(); } });
-      var tgP = ui.toggle(rowT, { label: 'sparse points', value: true, onChange: function (v) { st.pts = v; sfm.visible = v && st.scene === 'initspline'; need = true; } });
+      ui.toggle(rowT, { label: T('control net'), value: true, onChange: function (v) { st.nets = v; netFor(); } });
+      var tgP = ui.toggle(rowT, { label: T('sparse points'), value: true, onChange: function (v) { st.pts = v; sfm.visible = v && st.scene === 'initspline'; need = true; } });
       only(tgP.el, 'initspline');
       /* levels */
-      var rdL = row('level', 'levels'), rdLe = row('rms · p95 · median', 'levels', 'err'), rdL1 = row('measured points within 1 mm', 'levels', '', true), rdLo = row('nodes on the measured surface', 'levels', '', true);
-      var lvOpts = D.levels.map(function (l, i) { return { v: i, label: i ? 'L' + i : 'layout' }; });
-      if (OWL) lvOpts.push({ v: D.levels.length, label: 'shipped' });
+      var rdL = row(T('level'), 'levels'), rdLe = row(T('rms · p95 · median'), 'levels', 'err'), rdL1 = row(T('measured points within 1 mm'), 'levels', '', true), rdLo = row(T('nodes on the measured surface'), 'levels', '', true);
+      var lvOpts = D.levels.map(function (l, i) { return { v: i, label: i ? 'L' + i : T('layout') }; });
+      if (OWL) lvOpts.push({ v: D.levels.length, label: T('shipped') });
       var segL = ui.seg(panel, { value: 0, options: lvOpts, onChange: function (v) { levels().auto = false; levelGo(v); } });
       only(segL.el, 'levels');
       /* train */
-      var rdRun = TR ? null : row('3DGS run', 'train', 'err'), rdIt, rdTot, rdKept, rdLoss, rdPs, slS = null;
+      var rdRun = TR ? null : row(T('3DGS run'), 'train', 'err'), rdIt, rdTot, rdKept, rdLoss, rdPs, slS = null;
       if (TR) {
-        rdIt = row('iteration', 'train'); rdTot = row('Gaussians in the checkpoint', 'train', 'splat'); rdKept = row('kept in the file, drawn', 'train', 'splat');
-        rdLoss = row('training loss', 'train'); rdPs = row('PSNR', 'train', 'ok');
-        if (TR.stop) row('the run stopped', 'train').set(stopText(TR.stop));   // optional in the file: why and where the run ended
-        slS = ui.slider(panel, { label: 'snapshot', min: 0, max: TR.snaps.length - 1, step: 1, value: 0,
+        rdIt = row(T('iteration'), 'train'); rdTot = row(T('Gaussians in the checkpoint'), 'train', 'splat'); rdKept = row(T('kept in the file, drawn'), 'train', 'splat');
+        rdLoss = row(T('training loss'), 'train'); rdPs = row('PSNR', 'train', 'ok');
+        if (TR.stop) row(T('the run stopped'), 'train').set(stopText(TR.stop));   // optional in the file: why and where the run ended
+        slS = ui.slider(panel, { label: T('snapshot'), min: 0, max: TR.snaps.length - 1, step: 1, value: 0,
           fmt: function (v) { return fmt(TR.snaps[v].iter); }, onInput: function (v) { trn.auto = false; snapGo(v); } });
         only(slS.el, 'train');
       }
@@ -641,25 +658,25 @@
         rdPh.set(NC + ' · ' + IN.width + ' × ' + IN.height + ' px');
         rdFo.set(fmt(IN.fx) + ' px · ' + fx.toFixed(1) + '° × ' + fy.toFixed(1) + '°');
         rdDi.set((d0 * MM / 1000).toFixed(2) + ' – ' + (d1 * MM / 1000).toFixed(2) + ' m');
-        rdPo.set('calibrated, given');
-        rdTr.set('median ' + SF.stats.track_median + ' · max ' + SF.stats.track_max);
+        rdPo.set(T('calibrated, given'));
+        rdTr.set(T('median {a} · max {b}', { a: SF.stats.track_median, b: SF.stats.track_max }));
         var I = D.init, nn = I.nu * I.nv;
         rdCP.set(I.nu + ' × ' + I.nv + ' = ' + fmt(nn));
-        rdFit.set(fmt(I.fit.points) + ' points · ' + fmt(I.fit.inliers) + ' inliers');
-        rdTo.set('rms ' + f2(I.to_sparse.inliers.rms_mm) + ' · median ' + f2(I.to_sparse.inliers.median_mm) + ' mm');
-        rdTd.set('rms ' + f2(I.to_dense.rms_mm) + ' · median ' + f2(I.to_dense.median_mm) + ' mm');
+        rdFit.set(T('{a} points · {b} inliers', { a: fmt(I.fit.points), b: fmt(I.fit.inliers) }));
+        rdTo.set(T('rms {a} · median {b} mm', { a: f2(I.to_sparse.inliers.rms_mm), b: f2(I.to_sparse.inliers.median_mm) }));
+        rdTd.set(T('rms {a} · median {b} mm', { a: f2(I.to_dense.rms_mm), b: f2(I.to_dense.median_mm) }));
         rdRf.set('rms ' + f2(I.reference.rms_mm) + ' mm');
         rdNs.set(fmt(nn) + ' × 3 = ' + fmt(nn * 3));
-        rdO.set('0.1 each');
+        rdO.set(T('0.1 each'));
         rdG.set(fmt(NP));
         rdNu.set(fmt(NP) + ' × ' + NUM + ' = ' + fmt(NP * NUM));
-        if (rdRun) rdRun.set('pending: no snapshots loaded');
+        if (rdRun) rdRun.set(T('pending: no snapshots loaded'));
       })();
       function paintInit() {                       // the init3dgs numbers: all measured from the kNN
         var nw = 0, i; for (i = 0; i < NP; i++) if (INIT.sig[i] * MM > 10) nw++;
         rdS.set(f2(INIT.med * MM) + ' mm');
-        rdWide.set(fmt(nw) + ' Gaussians' + (GS.n < NP ? ', left out' : ''));
-        rdG.set(GS.n < NP ? fmt(GS.n) + ' of ' + fmt(NP) : fmt(NP));
+        rdWide.set(GS.n < NP ? T('{n} Gaussians, left out', { n: fmt(nw) }) : T('{n} Gaussians', { n: fmt(nw) }));
+        rdG.set(GS.n < NP ? T('{a} of {b}', { a: fmt(GS.n), b: fmt(NP) }) : fmt(NP));
       }
       function paintK() {
         var k = Math.max(0, Math.min(NC, Math.ceil(st.k - 1e-9))), m = medErr(k);
@@ -669,11 +686,11 @@
       }
       function paintLevel() {
         var L = levels(), s = L.S[L.i], d = s.d;
-        rdL.set((s.name === 'shipped' ? 'shipped' : s.name) + ' · ' + s.patch.nu + ' × ' + s.patch.nv);
+        rdL.set(lvSize(s));
         rdLe.set(f2(d.rms_mm) + ' · ' + (d.p95_mm < 0.1 ? d.p95_mm.toFixed(3) : f2(d.p95_mm)) + ' · ' + (d.median_mm < 0.1 ? d.median_mm.toFixed(3) : f2(d.median_mm)) + ' mm');
         rdL1.set(pc(d.within_1mm)); rdLo.set(pc(d.on_measured));
         segL.set(L.i);
-        what.innerHTML = '<b>' + (s.name === 'shipped' ? 'the shipped net' : s.name) + '</b> · ' + d.what;
+        what.innerHTML = '<b>' + shipName(s) + '</b> · ' + T(d.what);   // d.what: the file's sentence (English, by pipeline.py), translated when the dictionary has exactly it
         if (st.split) tagR.innerHTML = sideR();
       }
 
@@ -690,11 +707,12 @@
       }
       function snapGo(k) { trn.want = k; trn.t = 0; if (slS) slS.set(k); }
       function stopText(s) {                       // e.g. "at 9,500 · converged: plateau · best 31.2 dB at 8,000"; each part only when the file has it
-        var t = [];
-        if (finite(s.iter)) t.push('at ' + fmt(s.iter));
-        if (s.reason) t.push(String(s.reason));
-        if (finite(s.best_psnr)) t.push('best ' + s.best_psnr.toFixed(1) + ' dB' + (finite(s.best_iter) ? ' at ' + fmt(s.best_iter) : ''));
-        return t.join(' · ') || 'yes';
+        var t = [], all;
+        if (finite(s.iter)) t.push(T('at {i}', { i: fmt(s.iter) }));
+        if (s.reason) t.push(RTL ? '\u2066' + s.reason + '\u2069' : String(s.reason));   // the file's own words, as recorded: left to right
+        if (finite(s.best_psnr)) t.push(finite(s.best_iter) ? T('best {p} dB at {i}', { p: s.best_psnr.toFixed(1), i: fmt(s.best_iter) }) : T('best {p} dB', { p: s.best_psnr.toFixed(1) }));
+        all = t.join(' · ') || T('yes');
+        return RTL ? '\u2067' + all + '\u2069' : all;   // on a right-to-left page the parts follow each other right to left
       }
       function paintSnap() {
         var s = TR.snaps[trn.i], lg = logAt(s.iter);
@@ -709,26 +727,29 @@
         if (trn.auto) { trn.t += dt; if (trn.t > (trn.i === TR.snaps.length - 1 ? SNAP * 1.8 : SNAP)) snapGo((trn.i + 1) % TR.snaps.length); }
       }
       function pendingCap() {                      // the halves sit side by side, one above the other on a narrow stage (as layout() has it)
-        var wide = st.w >= 560;
-        return '<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>' + (wide ? 'left' : 'above') +
-               ', the 3DGS initialisation, untrained · ' + (wide ? 'right' : 'below') + ', a stand-in: the levels of the offline geometric fit, which is not training';
+        var wide = st.w >= 560;                    // (the halves keep their sides on a right-to-left page: the words name them)
+        return wide ? T('<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>left, the 3DGS initialisation, untrained · right, a stand-in: the levels of the offline geometric fit, which is not training')
+                    : T('<b>3DGS training</b> · <span class="pl-red">the run is pending</span>: no snapshots are loaded<br>above, the 3DGS initialisation, untrained · below, a stand-in: the levels of the offline geometric fit, which is not training');
       }
-      function sideL() { return '<b>3DGS</b> · iteration 0 of a run that has not been made yet<br>the initialisation, untrained: ' + fmt(NP) + ' Gaussians, opacity 0.1'; }
+      function sideL() { return T('<b>3DGS</b> · iteration 0 of a run that has not been made yet<br>the initialisation, untrained: {n} Gaussians, opacity 0.1', { n: fmt(NP) }); }
       function sideR() {
         var L = levels(), s = L.S[L.i];
-        return '<b>stand-in</b> · our chart, coarse to fine: <em>' + (s.name === 'shipped' ? 'the shipped net' : s.name) + '</em> · ' + s.patch.nu + ' × ' + s.patch.nv +
-               '<br>a geometric fit to the depth maps, not training · rms ' + f2(s.d.rms_mm) + ' mm';
+        return T('<b>stand-in</b> · our chart, coarse to fine: <em>{name}</em> · {nu} × {nv}<br>a geometric fit to the depth maps, not training · rms {rms} mm',
+                 { name: shipName(s), nu: s.patch.nu, nv: s.patch.nv, rms: f2(s.d.rms_mm) });
       }
 
       /* ================= plots ================= */
+      /* the plot's type: the mono face, as ever; on a right-to-left page the page's own mono stack (kit.css: the same face
+         first, then the page's Hebrew face), so that a Hebrew label on the canvas is set like the Hebrew around it */
+      var PLOTFONT = '500 9px ' + ((RTL && getComputedStyle(root).getPropertyValue('--f-mono').trim()) || '"JetBrains Mono", ui-monospace, monospace');
       function drawPlot() {
         plotDirty = false;
         var s = pcv.fit(), g = pcv.ctx, w = s.w, h = s.h, id = st.scene;
-        g.clearRect(0, 0, w, h); g.font = '500 9px "JetBrains Mono", ui-monospace, monospace'; g.textBaseline = 'alphabetic';
+        g.clearRect(0, 0, w, h); g.font = PLOTFONT; g.textBaseline = 'alphabetic';
         if (id === 'sfm') plotSfm(g, w, h); else if (id === 'levels') plotLevels(g, w, h); else if (id === 'train') { if (TR) plotTrain(g, w, h); else plotLevels(g, w, h); }
       }
       function plotSfm(g, w, h) {                  // the points each camera completes, and the running total
-        plotT.textContent = 'points completed by each camera';
+        plotT.textContent = T('points completed by each camera');
         var k = Math.ceil(st.k - 1e-9), mx = 0, j, x0 = 4, bw = (w - 8) / NC, H = h - 14;
         for (j = 0; j < NC; j++) mx = Math.max(mx, byCam[j].length);
         for (j = 0; j < NC; j++) {
@@ -739,14 +760,14 @@
         g.strokeStyle = rgba(C.text, 0.9); g.lineWidth = 1.2; g.beginPath();
         for (j = 0; j <= Math.min(k, NC); j++) { var x = x0 + j * bw, y = H - cum[j] / NP * (H - 4); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
         g.stroke();
-        g.fillStyle = C.mute; g.fillText('camera 1', x0, h - 2); g.textAlign = 'right'; g.fillText(NC + '', w - 4, h - 2);
-        g.fillStyle = C.dim; g.fillText('running total: ' + fmt(cum[Math.min(k, NC)]), w - 4, 10); g.textAlign = 'left';
+        g.fillStyle = C.mute; g.fillText(T('camera 1'), x0, h - 2); g.textAlign = 'right'; g.fillText(NC + '', w - 4, h - 2);
+        g.fillStyle = C.dim; g.fillText(T('running total: {n}', { n: fmt(cum[Math.min(k, NC)]) }), w - 4, 10); g.textAlign = 'left';
       }
       function plotLevels(g, w, h) {               // rms, p95, median of every level on a log axis; level 4 has numbers only
-        plotT.textContent = 'distance to the measured surface, mm (log)';
-        var rows = D.levels.map(function (l, i) { return { lab: i ? 'L' + i : 'lay', d: l, st: i }; });
+        plotT.textContent = T('distance to the measured surface, mm (log)');
+        var rows = D.levels.map(function (l, i) { return { lab: i ? 'L' + i : T('lay'), d: l, st: i }; });
         rows.push({ lab: 'L4', d: D.level_last, st: -1 });
-        if (OWL) rows.push({ lab: 'ship', d: D.shipped, st: D.levels.length });
+        if (OWL) rows.push({ lab: T('ship'), d: D.shipped, st: D.levels.length });
         var L = levels(), cur = L.i, lo = Math.log10(0.008), hi = Math.log10(3), x0 = 30, x1 = w - 8, H = h - 13, top = 12;
         function X(i) { return x0 + (i + 0.5) / rows.length * (x1 - x0); }
         function Y(v) { return top + (1 - (Math.log10(Math.max(v, 0.008)) - lo) / (hi - lo)) * (H - top); }
@@ -757,7 +778,7 @@
           g.fillStyle = r.st === cur ? C.text : C.mute; g.textAlign = 'center'; g.fillText(r.lab, X(i), h - 2);
         });
         g.textAlign = 'left';
-        [['rms_mm', C.err, 'rms', 1.6], ['p95_mm', mixHex(C.err, C.text, 0.35), 'p95', 1.1], ['median_mm', mixHex(C.err, C.text, 0.65), 'median', 1.1]].forEach(function (s, k) {
+        [['rms_mm', C.err, 'rms', 1.6], ['p95_mm', mixHex(C.err, C.text, 0.35), 'p95', 1.1], ['median_mm', mixHex(C.err, C.text, 0.65), T('median'), 1.1]].forEach(function (s, k) {
           g.strokeStyle = s[1]; g.lineWidth = s[3]; g.beginPath();
           rows.forEach(function (r, i) { var y = Y(r.d[s[0]]); if (i) g.lineTo(X(i), y); else g.moveTo(X(i), y); });
           g.stroke();
@@ -767,10 +788,10 @@
           });
           g.fillStyle = s[1]; g.fillText(s[2], x0 + 4 + k * 46, 9);
         });
-        g.fillStyle = C.mute; g.textAlign = 'right'; g.fillText('○ no net', x1, 9); g.textAlign = 'left';
+        g.fillStyle = C.mute; g.textAlign = 'right'; g.fillText(T('○ no net'), x1, 9); g.textAlign = 'left';
       }
       function plotTrain(g, w, h) {                // the run's loss (log) and PSNR against the iteration (log), snapshots marked
-        plotT.textContent = 'the run: training loss and PSNR';
+        plotT.textContent = T('the run: training loss and PSNR');
         var L = TR.log || {}, I = L.iter || [], maxIt = 1, j, x0 = 26, x1 = w - 26, top = 12, H = h - 13;
         TR.snaps.forEach(function (s) { maxIt = Math.max(maxIt, s.iter); }); I.forEach(function (v) { maxIt = Math.max(maxIt, v); });
         var SI = TR.stop && finite(TR.stop.iter) ? TR.stop.iter : null; if (SI != null) maxIt = Math.max(maxIt, SI);
@@ -781,13 +802,13 @@
         TR.snaps.forEach(function (s, k) { var x = X(s.iter); g.strokeStyle = k === trn.i ? C.text : rgba(C.dim, 0.25); g.beginPath(); g.moveTo(x, top - 2); g.lineTo(x, H); g.stroke(); });
         if (SI != null) {                          // where the run stopped (the file's stop record)
           var xs = X(SI); g.save(); g.setLineDash([3, 3]); g.strokeStyle = C.text; g.beginPath(); g.moveTo(xs, top - 2); g.lineTo(xs, H); g.stroke(); g.restore();
-          g.fillStyle = C.dim; g.textAlign = xs > (x0 + x1) / 2 ? 'right' : 'left'; g.fillText('stop', xs + (xs > (x0 + x1) / 2 ? -3 : 3), H - 3); g.textAlign = 'left';
+          g.fillStyle = C.dim; g.textAlign = xs > (x0 + x1) / 2 ? 'right' : 'left'; g.fillText(T('stop'), xs + (xs > (x0 + x1) / 2 ? -3 : 3), H - 3); g.textAlign = 'left';
         }
         if (ls.length > 1) {
           var a = Infinity, b = -Infinity; ls.forEach(function (p) { a = Math.min(a, Math.log10(p[1])); b = Math.max(b, Math.log10(p[1])); }); if (b - a < 1e-6) { a -= 0.5; b += 0.5; }
           g.strokeStyle = C.err; g.lineWidth = 1.3; g.beginPath();
           ls.forEach(function (p, i) { var y = top + (1 - (Math.log10(p[1]) - a) / (b - a)) * (H - top); if (i) g.lineTo(X(p[0]), y); else g.moveTo(X(p[0]), y); });
-          g.stroke(); g.fillStyle = C.err; g.fillText('loss', 2, 9);
+          g.stroke(); g.fillStyle = C.err; g.fillText(T('loss'), 2, 9);
         }
         if (ps.length) {
           var c = Infinity, d = -Infinity; ps.forEach(function (p) { c = Math.min(c, p[1]); d = Math.max(d, p[1]); }); if (d - c < 1) { c -= 0.5; d += 0.5; }
@@ -797,12 +818,12 @@
           ps.forEach(function (p) { var y = top + (1 - (p[1] - c) / (d - c)) * (H - top); g.beginPath(); g.arc(X(p[0]), y, 2.3, 0, Math.PI * 2); g.fill(); });
           g.textAlign = 'right'; g.fillText('PSNR ' + c.toFixed(0) + '–' + d.toFixed(0) + ' dB', w - 2, 9); g.textAlign = 'left';
         }
-        g.fillStyle = C.mute; g.fillText('0', x0 - 3, h - 2); g.textAlign = 'right'; g.fillText(fmt(maxIt), x1 + 22, h - 2); g.textAlign = 'center'; g.fillText('iteration (log)', (x0 + x1) / 2, h - 2); g.textAlign = 'left';
+        g.fillStyle = C.mute; g.fillText('0', x0 - 3, h - 2); g.textAlign = 'right'; g.fillText(fmt(maxIt), x1 + 22, h - 2); g.textAlign = 'center'; g.fillText(T('iteration (log)'), (x0 + x1) / 2, h - 2); g.textAlign = 'left';
       }
 
       /* ================= cameras: views fitted to the stage ================= */
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 0.6, maxRadius: 90, target: TGT });
-      var fitCam = new T.PerspectiveCamera(36, 1, 0.02, 400), V3 = new T.Vector3();
+      var fitCam = new THREE.PerspectiveCamera(36, 1, 0.02, 400), V3 = new THREE.Vector3();
       var OWLBOX = [[-1.0, 0.0, -0.3], [0.95, 3.5, 0.7]], box = function (b) { var o = [], i; for (i = 0; i < 8; i++) o.push([b[i & 1][0], b[(i >> 1) & 1][1], b[(i >> 2) & 1][2]]); return o; };
       var RIGPTS = CAMS.map(function (c) { return c.c; }).concat(box(OWLBOX)), OWLPTS = box(OWLBOX);
       var RIGC = (function () { var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; RIGPTS.forEach(function (p) { for (var q = 0; q < 3; q++) { lo[q] = Math.min(lo[q], p[q]); hi[q] = Math.max(hi[q], p[q]); } }); return [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2]; })();
@@ -886,15 +907,15 @@
         netFor();
         // words
         var c = sc.cap;
-        if (id === 'train') c = TR ? '<b>3DGS training</b> · one real 3DGS run on the same photographs and points<br>its snapshots, one after another: Gaussians are cloned, split and pruned between them, so they are not blended'
+        if (id === 'train') c = TR ? T('<b>3DGS training</b> · one real 3DGS run on the same photographs and points<br>its snapshots, one after another: Gaussians are cloned, split and pruned between them, so they are not blended')
                                    : pendingCap();
         cap.innerHTML = c; cap.appendChild(what);           // the level's words flow under the caption
         pend.style.display = id === 'train' && !TR ? '' : 'none';
-        pend.innerHTML = '<b>real 3DGS run: pending</b><br>it needs a GPU (tools/train); this step replays the run’s snapshots once they are exported to talk/dtu/train122.js';
-        hint.textContent = { photos: 'drag to orbit', sfm: 'drag the cameras slider to scrub', init3dgs: 'drag to orbit', initspline: 'drag to orbit', levels: 'pick a level, or let them run', train: TR ? 'drag the snapshot slider' : '' }[id];
+        pend.innerHTML = T('<b>real 3DGS run: pending</b><br>it needs a GPU (tools/train); this step replays the run’s snapshots once they are exported to talk/dtu/train122.js');
+        hint.textContent = { photos: T('drag to orbit'), sfm: T('drag the cameras slider to scrub'), init3dgs: T('drag to orbit'), initspline: T('drag to orbit'), levels: T('pick a level, or let them run'), train: TR ? T('drag the snapshot slider') : '' }[id];
         tagL.style.display = tagR.style.display = bar.style.display = st.split ? '' : 'none';
         if (st.split) { tagL.innerHTML = sideL(); tagR.innerHTML = sideR(); }
-        if (id === 'train' && TR) note.innerHTML = TR.note ? 'the run: ' + TR.note : '';
+        if (id === 'train' && TR) note.innerHTML = TR.note ? T('the run: {note}', { note: TR.note }) : '';   // the note is the file's own (English) text: the translation keeps it as it is, left to right
         note.style.display = id === 'train' && TR && TR.note ? '' : 'none';
         layout();
         orbit.touched = false; orbit.to(home(), first);
@@ -1010,10 +1031,10 @@
         rr.setScissorTest(false); rr.setViewport(0, 0, st.w, st.h);
         var I = INIT, P = SF.P, d = [0, 1, 2].map(function (q) { var n = I.near[a.p * 3 + q]; return Math.hypot(P[n * 3] - a.c[0], P[n * 3 + 1] - a.c[1], P[n * 3 + 2] - a.c[2]) * MM; });
         var s = inset.style; s.display = ''; s.left = ix + 'px'; s.top = top + 'px'; s.width = iw + 'px'; s.height = ih + 'px';
+        var iv = { mag: Math.round(mag), s: f2(a.s * MM), d: d.map(f2).join(', '), n: fmt(probe.count), r: f2(probe.R * MM) };
         insetLab.innerHTML = st.narrow
-          ? '<b>×' + Math.round(mag) + '</b> · <em>σ ' + f2(a.s * MM) + ' mm</em><br>3 nearest: ' + d.map(f2).join(', ') + ' mm<br>' + fmt(probe.count) + ' within ' + f2(probe.R * MM) + ' mm'
-          : '<b>×' + Math.round(mag) + '</b> · one Gaussian: <em>σ ' + f2(a.s * MM) + ' mm</em><br>its 3 nearest: ' + d.map(f2).join(', ') + ' mm' +
-            '<br>shown: the ' + fmt(probe.count) + ' within ' + f2(probe.R * MM) + ' mm of it';
+          ? T('<b>×{mag}</b> · <em>σ {s} mm</em><br>3 nearest: {d} mm<br>{n} within {r} mm', iv)
+          : T('<b>×{mag}</b> · one Gaussian: <em>σ {s} mm</em><br>its 3 nearest: {d} mm<br>shown: the {n} within {r} mm of it', iv);
         var sp = G.project(cam, a.c[0], a.c[1], a.c[2], st.w, st.h);
         mark.style.display = sp ? '' : 'none'; if (sp) { mark.style.left = sp[0] + 'px'; mark.style.top = sp[1] + 'px'; }
       }
@@ -1058,7 +1079,7 @@
       '.kt-sim-pipeline .pl-pend b{color:var(--err);font-weight:600;letter-spacing:.08em;text-transform:uppercase}' +
       '.kt-sim-pipeline .pl-note{position:absolute;z-index:4;right:12px;bottom:12px;max-width:min(46%,420px);pointer-events:none;font:500 10px/1.45 var(--f-mono);color:var(--mute);text-align:right}' +
       '.kt-sim-pipeline .pl-inset{position:absolute;z-index:3;pointer-events:none;border:1px solid rgba(var(--splat-rgb),.65);border-radius:6px}' +
-      '.kt-sim-pipeline .pl-inset span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:var(--panel);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
+      '.kt-sim-pipeline .pl-inset>span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:var(--panel);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
       '.kt-sim-pipeline .pl-inset b{color:var(--text)}.kt-sim-pipeline .pl-inset em{font-style:normal;color:var(--splat)}' +
       '.kt-sim-pipeline .pl-mark{position:absolute;z-index:3;width:22px;height:22px;margin:-11px 0 0 -11px;border:1.5px solid var(--splat);border-radius:50%;pointer-events:none}' +
       /* the light theme: the boxes lie over the scene (the grey fog of the 3DGS initialisation fills a whole half of the
@@ -1066,7 +1087,7 @@
       ':root[data-theme="light"] .kt-sim-pipeline :is(.pl-side,.pl-plot){background:rgba(255,255,255,.84);border-color:transparent;' +
       'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
       ':root[data-theme="light"] .kt-sim-pipeline .pl-pend{background:rgba(255,255,255,.86)}' +
-      ':root[data-theme="light"] .kt-sim-pipeline .pl-inset span{background:rgba(255,255,255,.84)}' +
+      ':root[data-theme="light"] .kt-sim-pipeline .pl-inset>span{background:rgba(255,255,255,.84)}' +
       // (the split's left half is that fog from top to bottom: the caption over it gets the same glass, its margin drawn
       // as a spread shadow so that the caption keeps its size, and the views fitted around it keep theirs)
       ':root[data-theme="light"] .kt-sim-pipeline.pl-split .kt-caption{border-radius:6px;background:rgba(255,255,255,.84);' +
@@ -1081,7 +1102,16 @@
       '.kt-sim-pipeline.pl-narrow.kt-compact .kt-caption{max-width:calc(100% - 110px)}' +
       '.kt-sim-pipeline.pl-narrow:not(.kt-compact) .kt-panel{top:auto;bottom:12px;right:12px;min-width:0;width:min(230px,calc(100% - 24px))}' +
       '.kt-sim-pipeline.pl-narrow.pl-split:not(.kt-open) .kt-panel{display:none}' +
-      '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset span{font-size:9px;left:4px;top:4px;padding:2px 4px}';
+      '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset>span{font-size:9px;left:4px;top:4px;padding:2px 4px}' +
+      /* Hebrew: this module's own small titles are neither letter-spaced nor set in capitals (a unit inside a Hebrew
+         title must stay "mm"); a left-to-right run inside a Hebrew sentence (a number with its unit, a size, a file's
+         name) is never broken over two lines; the run's note, the file's own English, stands on lines of its own
+         under its Hebrew label. Right to left (the kit mirrors a panel's rows: label right, value left): a value that
+         wraps keeps its lines against the panel's outer edge, which is now the left one */
+      ':root[lang="he"] .kt-sim-pipeline :is(.pl-plot-t,.pl-side,.pl-side b,.pl-pend b){letter-spacing:0;text-transform:none}' +
+      ':root[lang="he"] .kt-sim-pipeline :is(.kt-caption,.pl-side,.pl-pend,.pl-inset) span[dir="ltr"]{white-space:nowrap}' +
+      ':root[lang="he"] .kt-sim-pipeline .pl-note span[dir="ltr"]{display:block}' +
+      ':root[dir="rtl"][data-lang] .kt-sim-pipeline .kt-panel .kt-readout .kt-val{text-align:left}';
     document.head.appendChild(css);
   }
 })();

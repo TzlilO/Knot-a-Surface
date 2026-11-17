@@ -23,7 +23,8 @@
 
    host = { root, ui, canvas, camera, charts() -> [chart], pick(x, y) -> { c, i, j, pos, n } | null,
             changed(chart, shape) }       shape: true when control points moved (false: colour, opacity, masks)
-   A chart may carry: ground (never touched), feat { dim, scale, lo, hi, nu, nv, step, data (base64 int8) }.
+   A chart may carry: ground (never touched), feat { dim, scale, lo, hi, nu, nv, step, data (base64 int8) }, label (what
+   a viewer reads for its name, in the page's language).
    This layer adds to a chart: sel, pin (Float32Array, one per control point), selRev (counts every change of
    sel, so a host can tell), alpha (the same, when something was hidden; the renderer reads it), and keeps what it
    changed so that reset() puts it back.
@@ -31,8 +32,8 @@
    orbit (KnotTalk.gestures): this layer adds no touch handling of its own. */
 (function () {
   'use strict';
-  var KT = window.KnotTalk;
-  var ACTS = [{ v: 'grab', label: 'grab' }, { v: 'pinch', label: 'pinch' }, { v: 'pull', label: 'pull' }, { v: 'push', label: 'push' }, { v: 'hold', label: 'hold' }];
+  var KT = window.KnotTalk, T = KT.t;      // T: a string in the page's language (talk/i18n.js; the English itself on a page without languages), for showing only
+  var ACTS = [{ v: 'grab', label: T('grab') }, { v: 'pinch', label: T('pinch') }, { v: 'pull', label: T('pull') }, { v: 'push', label: T('push') }, { v: 'hold', label: T('hold') }];
   var TINTS = [[0.85, 0.20, 0.25], [0.95, 0.70, 0.10], [0.20, 0.70, 0.35], [0.20, 0.45, 0.90], [0.90, 0.90, 0.88]];
   /* the marks on the atlas: a selection tinted towards the surface colour, a hold towards the control points', and the ring
      around the pixel last touched. A dark page keeps them as they were written (cyan, amber, white); a light page takes
@@ -42,10 +43,10 @@
   var SELC = LIGHT ? rgbOf(KT.color.surf) : [0.31, 0.76, 0.97], HOLDC = LIGHT ? rgbOf(KT.color.ctrl) : [1.0, 0.65, 0.15], RING = LIGHT ? KT.color.text : '#fff';
 
   function create(host) {
-    var T = window.THREE, ui = host.ui, cam = host.camera, cv = host.canvas;
+    var THREE = window.THREE, ui = host.ui, cam = host.camera, cv = host.canvas;
     var st = { act: 'grab', reach: 0.22, power: 1, chan: 'rgb', tool: 'wand', tol: 0.16, tint: 0, on: false, mode: 'hands' };
     var stroke = null, dirty = true, last = 0, mark = null;
-    var ray = new T.Raycaster(), ndc = new T.Vector2(), plane = new T.Plane(), hitP = new T.Vector3();
+    var ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(), hitP = new THREE.Vector3();
 
     /* ---------- the chart being worked on: the first one that is not ground ---------- */
     function obj() { var cs = host.charts(), i; for (i = 0; i < cs.length; i++) if (!cs[i].ground) return cs[i]; return cs[0]; }
@@ -103,7 +104,7 @@
         var b = patchAt(h.c, h.i, h.j, h.pos, false), P = h.c.patch.P, was = new Float32Array(b.idx.length * 3), k;
         for (k = 0; k < b.idx.length; k++) { was[k * 3] = P[b.idx[k] * 3]; was[k * 3 + 1] = P[b.idx[k] * 3 + 1]; was[k * 3 + 2] = P[b.idx[k] * 3 + 2]; }
         stroke = { c: h.c, id: e.pointerId, idx: b.idx, w: b.w, was: was, at: h.pos, n: h.n, d: [0, 0, 0], t: 0 };
-        plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), hitP.set(h.pos[0], h.pos[1], h.pos[2]));
+        plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new THREE.Vector3()), hitP.set(h.pos[0], h.pos[1], h.pos[2]));
       }
       remember(h.c);
       try { cv.setPointerCapture(e.pointerId); } catch (err) { /* a synthetic pointer */ }
@@ -156,40 +157,40 @@
     }
 
     /* ---------- the atlas ---------- */
-    var CHANS = [{ v: 'rgb', label: 'rgb' }, { v: 'normal', label: 'normals' }, { v: 'alpha', label: 'opacity' }, { v: 'height', label: 'height' },
-                 { v: 'feat', label: 'DINOv3' }, { v: 'mask', label: 'masks' }];
+    var CHANS = [{ v: 'rgb', label: 'rgb' }, { v: 'normal', label: T('normals') }, { v: 'alpha', label: T('opacity') }, { v: 'height', label: T('height') },
+                 { v: 'feat', label: 'DINOv3' }, { v: 'mask', label: T('masks') }];
     var el = ui.el('div', 'kt-panel kt-hands'); host.root.appendChild(el);
-    var only = [ui.el('div', 'kt-panel-title', 'hands')]; el.appendChild(only[0]);     // `only`: not shown in the select mode
+    var only = [ui.el('div', 'kt-panel-title', T('hands'))]; el.appendChild(only[0]);     // `only`: not shown in the select mode
     only.push(ui.seg(el, { value: st.act, options: ACTS, onChange: function (v) { st.act = v; } }).el);
-    only.push(ui.slider(el, { label: 'reach', min: 0.06, max: 0.6, step: 0.01, value: st.reach, fmt: function (v) { return Math.round(v * 80) + ' mm'; }, onInput: function (v) { st.reach = v; } }).el);
-    only.push(ui.slider(el, { label: 'strength', min: 0.2, max: 3, step: 0.1, value: st.power, fmt: function (v) { return v.toFixed(1); }, onInput: function (v) { st.power = v; } }).el);
-    var title = ui.el('div', 'kt-panel-title', 'atlas'); el.appendChild(title);
+    only.push(ui.slider(el, { label: T('reach'), min: 0.06, max: 0.6, step: 0.01, value: st.reach, fmt: function (v) { return Math.round(v * 80) + ' mm'; }, onInput: function (v) { st.reach = v; } }).el);
+    only.push(ui.slider(el, { label: T('strength'), min: 0.2, max: 3, step: 0.1, value: st.power, fmt: function (v) { return v.toFixed(1); }, onInput: function (v) { st.power = v; } }).el);
+    var title = ui.el('div', 'kt-panel-title', T('atlas')); el.appendChild(title);
     var segC = ui.seg(el, { value: st.chan, options: CHANS, onChange: function (v) { st.chan = v; dirty = true; } });
     var box = ui.el('div', 'kt-hands-box'); el.appendChild(box);
     var pic = ui.el('canvas', 'kt-hands-cv'); box.appendChild(pic);
     var g = pic.getContext('2d'), img = null;
-    ui.seg(el, { value: st.tool, options: [{ v: 'wand', label: 'wand' }, { v: 'brush', label: 'brush' }, { v: 'erase', label: 'erase' }], onChange: function (v) { st.tool = v; } });
-    ui.slider(el, { label: 'tolerance', min: 0.02, max: 0.6, step: 0.01, value: st.tol, fmt: function (v) { return v.toFixed(2); }, onInput: function (v) { st.tol = v; } });
+    ui.seg(el, { value: st.tool, options: [{ v: 'wand', label: T('wand') }, { v: 'brush', label: T('brush') }, { v: 'erase', label: T('erase') }], onChange: function (v) { st.tool = v; } });
+    ui.slider(el, { label: T('tolerance'), min: 0.02, max: 0.6, step: 0.01, value: st.tol, fmt: function (v) { return v.toFixed(2); }, onInput: function (v) { st.tol = v; } });
     var row = ui.el('div', 'kt-row kt-hands-ops'); el.appendChild(row); only.push(row);
     var note = ui.el('div', 'kt-hands-note'); el.appendChild(note);
     function sel() { var c = masks(obj()); return c; }
     function count(c) { var n = 0, i; for (i = 0; i < c.sel.length; i++) if (c.sel[i] > 0.5) n++; return n; }
     function each(fn) { var c = sel(), i; remember(c); for (i = 0; i < c.sel.length; i++) if (c.sel[i] > 0.5) fn(c, i); dirty = true; return c; }
-    ui.button(row, { label: 'tint', onClick: function () {
+    ui.button(row, { label: T('tint'), onClick: function () {
       var t = TINTS[st.tint++ % TINTS.length], c = each(function (c, i) { var K = c.patch.C, B = c.h0.C, o = i * 3, l = 0.4 + 2.2 * (0.3 * B[o] + 0.59 * B[o + 1] + 0.11 * B[o + 2]);
         K[o] = t[0] * Math.min(1, l); K[o + 1] = t[1] * Math.min(1, l); K[o + 2] = t[2] * Math.min(1, l); });    // the tint, shaded by the original's brightness
       host.changed(c, false); } });
-    ui.button(row, { label: 'hide', onClick: function () {
+    ui.button(row, { label: T('hide'), onClick: function () {
       var c = sel(); if (!c.alpha) c.alpha = new Float32Array(c.sel.length).fill(1);
       each(function (c, i) { c.alpha[i] = c.alpha[i] < 0.5 ? 1 : 0; }); host.changed(c, false); } });
     function puff(s) { return function () { var c = sel(), N = nrm(c); each(function (c, i) { var P = c.patch.P, o = i * 3; P[o] += N[o] * s; P[o + 1] += N[o + 1] * s; P[o + 2] += N[o + 2] * s; }); c.hNok = false; host.changed(c, true); }; }
-    ui.button(row, { label: 'inflate', onClick: puff(0.025) });
-    ui.button(row, { label: 'deflate', onClick: puff(-0.025) });
-    ui.button(row, { label: 'hold', onClick: function () { var c = each(function (c, i) { c.pin[i] = 1; }); host.changed(c, false); } });
+    ui.button(row, { label: T('inflate'), onClick: puff(0.025) });
+    ui.button(row, { label: T('deflate'), onClick: puff(-0.025) });
+    ui.button(row, { label: T('hold'), onClick: function () { var c = each(function (c, i) { c.pin[i] = 1; }); host.changed(c, false); } });
     var row2 = ui.el('div', 'kt-row kt-hands-ops'); el.appendChild(row2);
-    ui.button(row2, { label: 'select none', onClick: function () { var c = sel(); c.sel.fill(0); selChanged(c); } });
-    only.push(ui.button(row2, { label: 'let go', onClick: function () { var c = sel(); c.pin.fill(0); dirty = true; host.changed(c, false); } }));
-    only.push(ui.button(row2, { label: 'reset', onClick: reset }));
+    ui.button(row2, { label: T('select none'), onClick: function () { var c = sel(); c.sel.fill(0); selChanged(c); } });
+    only.push(ui.button(row2, { label: T('let go'), onClick: function () { var c = sel(); c.pin.fill(0); dirty = true; host.changed(c, false); } }));
+    only.push(ui.button(row2, { label: T('reset'), onClick: reset }));
     only.forEach(function (e) { e.classList.add('kt-hands-only'); });
     /* the selection changed: count it on the chart (a host may follow it), redraw the atlas, tell the host */
     function selChanged(c) { c.selRev = (c.selRev || 0) + 1; dirty = true; host.changed(c, false); }
@@ -235,10 +236,10 @@
       }
       g.putImageData(img, 0, 0);
       if (mark && mark.c === c) { g.strokeStyle = RING; g.lineWidth = Math.max(1, nu / 120); g.beginPath(); g.arc(mark.i + 0.5, nv - 1 - mark.j + 0.5, nu / 30, 0, 6.3); g.stroke(); }
-      title.textContent = 'atlas · ' + c.name + ' · ' + nu + ' × ' + nv;
+      title.textContent = T('atlas · {name} · {size}', { name: c.label || c.name, size: nu + ' × ' + nv });     // label: what a viewer reads for the chart's name, where the host's charts carry one
       var f = feat(c), n = count(c);
-      note.textContent = (st.chan === 'feat' && !f ? 'no features are baked for this object · ' : '') + n.toLocaleString('en-US') + ' control points selected' +
-        (st.mode === 'select' ? ' · select here or on the object' : '');
+      note.textContent = (st.chan === 'feat' && !f ? T('no features are baked for this object') + ' · ' : '') + T('{n} control points selected', { n: n.toLocaleString('en-US') }) +
+        (st.mode === 'select' ? ' · ' + T('select here or on the object') : '');
     }
     /* wand: on features, every control point whose feature is close to the clicked one; on any other channel,
        grow from the clicked point over neighbours whose value stays within the tolerance of it */

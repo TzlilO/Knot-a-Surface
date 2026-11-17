@@ -6,18 +6,22 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk;
+  /* T: a string in the page's language (talk/i18n.js; the English itself on a page without languages). A line with a
+     number in it is one template, never pieces joined in English order. In Hebrew the stage stays laid out left to
+     right (kit.css) and a string from T carries its own direction. Never compare or parse what T returns. */
+  var T = KT.t;
 
   /* per-primitive float counts */
-  var GS = [['μ', 3, 'position'], ['s', 3, 'scale'], ['q', 4, 'rotation'], ['α', 1, 'opacity'], ['SH₃', 48, 'colour, 16 × RGB']];
-  var CP = [['P', 3, 'position'], ['α̃', 1, 'opacity'], ['SH₁', 12, 'colour, 4 × RGB']];
+  var GS = [['μ', 3, T('position')], ['s', 3, T('scale')], ['q', 4, T('rotation')], ['α', 1, T('opacity')], ['SH₃', 48, T('colour, 16 × RGB')]];
+  var CP = [['P', 3, T('position')], ['α̃', 1, T('opacity')], ['SH₁', 12, T('colour, 4 × RGB')]];
   var PER_G = 59, PER_CP = 16;
   var NMAX = 5e6;
 
   var SCENES = {
-    gaussian: { show: 1, n: 1e6, m: 1e5, cap: '<b>3DGS</b> · every Gaussian is its own set of free numbers' },
-    control:  { show: 2, n: 1e6, m: 1e5, cap: '<b>Knot-a-Surface</b> · the numbers live on control points; Gaussians carry none' },
-    scale:    { show: 3, n: 1e6, m: 1e5, cap: '<b>a scene</b> · same Gaussians on screen, two very different ledgers' },
-    knob:     { show: 3, n: 1e5, m: 1e5, sweep: 1, cap: '<b>more Gaussians</b> · one ledger grows, the other does not move' }
+    gaussian: { show: 1, n: 1e6, m: 1e5, cap: T('<b>3DGS</b> · every Gaussian is its own set of free numbers') },
+    control:  { show: 2, n: 1e6, m: 1e5, cap: T('<b>Knot-a-Surface</b> · the numbers live on control points; Gaussians carry none') },
+    scale:    { show: 3, n: 1e6, m: 1e5, cap: T('<b>a scene</b> · same Gaussians on screen, two very different ledgers') },
+    knob:     { show: 3, n: 1e5, m: 1e5, sweep: 1, cap: T('<b>more Gaussians</b> · one ledger grows, the other does not move') }
   };
 
   function fmt(n) {
@@ -51,7 +55,7 @@
           var grp = ui.el('div', 'lg-grp'), cells = ui.el('div', 'lg-grp-c');
           for (var i = 0; i < g[1]; i++) cells.appendChild(ui.el('i'));
           grp.appendChild(cells);
-          grp.appendChild(ui.el('div', 'lg-grp-l', '<b>' + g[0] + '</b> ' + g[1] + ' · ' + g[2]));
+          grp.appendChild(ui.el('div', 'lg-grp-l', T('<b>{sym}</b> {n} · {what}', { sym: g[0], n: g[1], what: g[2] })));
           row.appendChild(grp);
         });
         if (note) row.appendChild(ui.el('div', 'lg-none', note));
@@ -59,9 +63,9 @@
         return r;
       }
       var recs = ui.el('div', 'lg-recs'); wrap.appendChild(recs);
-      var rG = record('lg-free', 'one free Gaussian', '3DGS · optimised independently', GS, PER_G + ' floats');
-      var rC = record('lg-ctrl', 'one control point', 'Knot-a-Surface · the only thing optimised', CP, PER_CP + ' floats');
-      var rD = record('lg-der', 'one Gaussian', 'Knot-a-Surface · derived from S(u, v)', [], '0 floats',
+      var rG = record('lg-free', T('one free Gaussian'), T('3DGS · optimised independently'), GS, T('{n} floats', { n: PER_G }));
+      var rC = record('lg-ctrl', T('one control point'), T('Knot-a-Surface · the only thing optimised'), CP, T('{n} floats', { n: PER_CP }));
+      var rD = record('lg-der', T('one Gaussian'), T('Knot-a-Surface · derived from S(u, v)'), [], T('{n} floats', { n: 0 }),
         'μ = S(u,v) &nbsp;·&nbsp; R = [Ŝ<sub>u</sub> Ŝ<sub>v</sub><sup>⊥</sup> n] &nbsp;·&nbsp; s = (‖S<sub>u</sub>‖Δu, ‖S<sub>v</sub>‖Δv, ε)');
       recs.appendChild(rG); recs.appendChild(rC); recs.appendChild(rD);
 
@@ -76,7 +80,7 @@
       }
       var bG = bar('lg-free', '3DGS'), bC = bar('lg-ctrl', 'Knot-a-Surface');
       var big = ui.el('div', 'lg-ratio'); scale.appendChild(big);
-      var bigN = ui.el('div', 'lg-ratio-n'), bigL = ui.el('div', 'lg-ratio-l', 'fewer optimised parameters'); big.appendChild(bigN); big.appendChild(bigL);
+      var bigN = ui.el('div', 'lg-ratio-n'), bigL = ui.el('div', 'lg-ratio-l', T('fewer optimised parameters')); big.appendChild(bigN); big.appendChild(bigL);
       var gauge = ui.el('div', 'lg-gauge', '<div class="lg-band"></div><div class="lg-pin"></div>' +
         '<span style="left:0">1×</span><span style="left:33.3%">10×</span><span style="left:56.6%">50×</span><span style="left:100%">1000×</span>');
       big.appendChild(gauge);
@@ -88,21 +92,26 @@
           fmt: function (v) { return fmt(lo * Math.pow(hi / lo, v / 1000)); },
           onInput: function (v) { st.touched = true; set(lo * Math.pow(hi / lo, v / 1000)); paint(); } });
       }
-      var slN = logSlider('Gaussians rendered', 1e4, 1e7, function () { return st.n; }, function (v) { st.n = v; });
-      var slM = logSlider('control points', 1e3, 1e6, function () { return st.m; }, function (v) { st.m = v; });
+      var slN = logSlider(T('Gaussians rendered'), 1e4, 1e7, function () { return st.n; }, function (v) { st.n = v; });
+      var slM = logSlider(T('control points'), 1e3, 1e6, function () { return st.m; }, function (v) { st.m = v; });
       function setLog(sl, v, lo, hi) { sl.set(Math.round(Math.log(v / lo) / Math.log(hi / lo) * 1000)); }
-      scale.appendChild(ui.el('div', 'lg-fine', 'float32 · 3DGS at SH degree 3 (59 per Gaussian) · ours at SH degree 1 on the control net (16 per control point) · ' +
+      var fine = ui.el('div', 'lg-fine', T('float32 · 3DGS at SH degree 3 (59 per Gaussian) · ours at SH degree 1 on the control net (16 per control point) · ' +
         'shaded band = the 10–50× the paper projects'));
+      if (KT.rtl) fine.dir = 'rtl';                   // several lines of running text: in Hebrew they are set from the right
+      scale.appendChild(fine);
 
       function paint() {
         var pg = st.n * PER_G, pc = st.m * PER_CP, ratio = pg / pc;
         var ref = st.sc.sweep ? NMAX * PER_G : Math.max(pg, pc);
         bG.fill.style.width = Math.max(0.4, pg / ref * 100) + '%';
         bC.fill.style.width = Math.max(0.4, pc / ref * 100) + '%';
-        bG.val.innerHTML = '<b>' + fmt(pg) + '</b> params · ' + mb(pg) + '<small>' + fmt(st.n) + ' Gaussians × ' + PER_G + '</small>';
-        bC.val.innerHTML = '<b>' + fmt(pc) + '</b> params · ' + mb(pc) + '<small>' + fmt(st.m) + ' control points × ' + PER_CP + ' &nbsp;+&nbsp; ' + fmt(st.n) + ' Gaussians × 0</small>';
+        // two lines under each bar, each its own template (<small> is a line of its own)
+        bG.val.innerHTML = T('<b>{p}</b> params · {mb}', { p: fmt(pg), mb: mb(pg) }) +
+          '<small>' + T('{n} Gaussians × {k}', { n: fmt(st.n), k: PER_G }) + '</small>';
+        bC.val.innerHTML = T('<b>{p}</b> params · {mb}', { p: fmt(pc), mb: mb(pc) }) +
+          '<small>' + T('{m} control points × {k} &nbsp;+&nbsp; {n} Gaussians × 0', { m: fmt(st.m), k: PER_CP, n: fmt(st.n) }) + '</small>';
         bigN.textContent = (ratio >= 100 ? Math.round(ratio) : ratio >= 10 ? ratio.toFixed(0) : ratio.toFixed(1)) + '×';
-        bigL.textContent = ratio >= 1 ? 'fewer optimised parameters' : 'of the 3DGS parameter count';
+        bigL.textContent = ratio >= 1 ? T('fewer optimised parameters') : T('of the 3DGS parameter count');
         pin.style.left = KT.clamp(Math.log10(Math.max(1, ratio)) / 3, 0, 1) * 100 + '%';
       }
 
@@ -163,7 +172,10 @@
           '.lg-show-2 .lg-free,.lg-show-3 .lg-rec-s{opacity:.55}',
           '.lg-show-3 .lg-grp-l{display:none}.lg-show-3 .lg-rec{padding:9px 14px}.lg-show-3 .lg-rec-s{margin-bottom:7px}',
           '.lg-show-3 .lg-grp-c i{width:7px;height:7px}.lg-show-3 .lg-grp-c{max-width:none}.lg-show-3 .lg-none{padding:5px 10px;font-size:11px}',
-          '@container (max-width:560px){.lg-bar{grid-template-columns:1fr}.lg-bar-v{grid-column:1}.lg-grp-c i{width:8px;height:8px}.lg-wrap{justify-content:flex-start}}'
+          '@container (max-width:560px){.lg-bar{grid-template-columns:1fr}.lg-bar-v{grid-column:1}.lg-grp-c i{width:8px;height:8px}.lg-wrap{justify-content:flex-start}}',
+          /* Hebrew (talk/i18n.js sets <html lang>) has no capitals and is not letter-spaced: a name or a formula inside
+             a label keeps its case */
+          ':root[lang="he"] .lg-rec-s{letter-spacing:0;text-transform:none}:root[lang="he"] .lg-fine{letter-spacing:0}'
         ].join('\n');
         document.head.appendChild(css);
       }

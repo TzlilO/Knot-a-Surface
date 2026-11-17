@@ -171,3 +171,34 @@ body.kt-labpage{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:
 :where(:root[data-theme="light"]) .kt-sim button:focus-visible,:where(:root[data-theme="light"]) .kt-sim input:focus-visible{outline:2px solid var(--surf);outline-offset:2px}
 :where(:root[data-theme="light"]) .kt-caption{font:500 .74rem/1.45 var(--f-ui);letter-spacing:0;color:var(--dim)}
 :where(:root[data-theme="light"]) .kt-hint{font:600 .62rem/1 var(--f-ui);letter-spacing:.08em;color:var(--mute)}
+
+/* ---------- right to left: a page whose language talk/i18n.js set to Hebrew (<html dir="rtl" data-lang="he">) ----------
+   talk-he.html is right to left as well, but it styles the kit itself (talk/he/he.css): these rules ask for the mark
+   i18n.js leaves (data-lang), so they never reach it. Only the light theme has them so far (the talk).
+   Type: Heebo stands behind Inter and behind the mono font, so Hebrew letters come from it while Latin letters and
+   digits stay what they are (fallback is per glyph). A page that sets these must also load Heebo (talk.html does).
+   A stage is a figure, and a figure is not mirrored: inside a mounted simulation everything keeps the direction it has
+   in English (the module's own layout, canvas and SVG text, every number), and nothing moves: panels, captions, the
+   controls button stay in their corners. What the kit itself draws reads right to left: in a panel, and in a row of
+   the kit wherever a module puts it, the label is on the right and the value on the left; a caption and a hint are
+   right-to-left text. A value takes its direction from what
+   it holds (a number with its unit stays left to right), a slider keeps its minimum on the left. Hebrew strings carry
+   their own direction (KnotTalk.t wraps them), so they read right inside the left-to-right figure too; a module's own
+   box of running text can ask for the page's direction with class kt-text. The opening's three modules
+   (talk/he/sims.js: he-shapes, he-field, he-fit) were made for a right-to-left page and stay right to left. */
+:root[dir="rtl"][data-lang]{
+  --f-ui:'Inter','Heebo',ui-sans-serif,system-ui,sans-serif;
+  --f-mono:'JetBrains Mono','Heebo',ui-monospace,'SF Mono',Menlo,monospace;
+}
+:root[dir="rtl"][data-lang] .kt-sim{direction:ltr}
+:root[dir="rtl"][data-lang] .kt-sim[class*="kt-sim-he-"],
+:root[dir="rtl"][data-lang] :is(.kt-panel,.kt-row,.kt-caption,.kt-hint,.kt-gear,.kt-text){direction:rtl}
+:root[dir="rtl"][data-lang] :is(.ltr,bdi){direction:ltr;unicode-bidi:isolate}
+:root[dir="rtl"][data-lang] .kt-val{unicode-bidi:plaintext;margin-left:0;margin-right:auto}
+:root[dir="rtl"][data-lang] .kt-slider .kt-val{margin-right:0;text-align:right}        /* beside its slider, not at the panel's far edge */
+:root[dir="rtl"][data-lang] .kt-slider input{direction:ltr}
+/* a segmented row in a panel: a two-word Hebrew label stays on one line (its button takes the width it needs, the
+   row's other buttons give it up), so the row keeps the height of the others */
+:root[dir="rtl"][data-lang] .kt-panel .kt-seg .kt-seg-btn{white-space:nowrap}
+/* no capitals in Hebrew, and no tracking: the small label styles are set plainly */
+:root[dir="rtl"][data-lang] :is(.kt-panel-title,.kt-hint,.kt-gear){letter-spacing:0;text-transform:none}

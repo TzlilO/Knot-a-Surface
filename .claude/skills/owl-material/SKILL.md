@@ -43,14 +43,18 @@ table) and cached, so it can be as elaborate as you like; only `move` runs every
 much of it shows at each control point.
 
 ```js
-name: { label: 'shown in the picker', beak: [r, g, b], lid: [r, g, b], view: 'through',   // view: optional
+name: { label: T('shown in the picker'), beak: [r, g, b], lid: [r, g, b], view: 'through', // view: optional
   p: { opacity: 0.34, gloss: 1 },                                                         // its properties, at their defaults
-  knobs: [{ k: 'opacity', label: 'opacity', min: 0.08, max: 1, step: 0.01 }],             // the ones the simulator may turn
+  knobs: [{ k: 'opacity', label: T('opacity'), min: 0.08, max: 1, step: 0.01 }],          // the ones the simulator may turn
   colour: function (s, p) { ...; s.r = ; s.g = ; s.b = ; /* optional */ s.a = ; },
   eye: function (d, lx, ly) { return [r, g, b]; },         // optional
   move: function (s, t, p) { s.x += ; s.y += ; s.z += ; }  // optional
 }
 ```
+
+Labels go through `T` (`KnotTalk.t`): the talk has a Hebrew version, and a label without a line in
+`talk/i18n/he.js` under exactly its English shows in English there. Add that line with the material
+(`"molten gold": "זהב מותך"`), then `node tools/i18n/check.js` (see `tools/i18n/README.md`).
 
 Every number that is a property of the material (how opaque, how glossy, how stiff, how much of a pattern)
 belongs in `p`, read through the last argument, and gets a `knobs` entry: the simulator builds one slider per

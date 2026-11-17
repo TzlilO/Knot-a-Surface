@@ -6,6 +6,14 @@
 <title>Knot-a-Surface — the talk</title>
 <script src="talk/i18n.js"></script>
 <script src="talk/i18n/he.js"></script>
+<!-- titles only (talk/deck.js "subtitles"): decided here, before the first paint, so no subtitle flashes. What a change
+     of language carried over its reload, else ?subs=on|off in the address (saved), else the saved choice (kt-subs) -->
+<script>(function () {
+  var k = window.KnotTalk && KnotTalk.i18n && KnotTalk.i18n.kept && KnotTalk.i18n.kept.deck, q = /[?&]subs=(on|off)(?:&|$)/.exec(location.search), v = null;
+  try { v = localStorage.getItem('kt-subs'); if (q) localStorage.setItem('kt-subs', v = q[1]); } catch (e) { if (q) v = q[1]; }
+  if (k && typeof k.subs === 'boolean') v = k.subs ? 'on' : 'off';
+  if (v === 'off') document.documentElement.classList.add('kt-titles');
+})();</script>
 <meta name="description" content="Knot-a-Surface: surfaces first, Gaussians second. A scroll-driven thesis talk with eight live simulations, from a single spline to a manifold of spline charts.">
 <!-- what a shared link shows: the owl in split screen, as scanned and with two material edits (talk/share.jpg, made by tools/share/render.js) -->
 <meta property="og:type" content="website">
@@ -24,7 +32,7 @@
 <meta name="twitter:image" content="https://tzlilo.github.io/Knot-a-Surface/talk/share.jpg">
 <meta name="twitter:image:alt" content="The scanned stone owl twice, each cut into slanted bands: stone and surface normals; stone, clear glass and green jelly.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="talk/vendor/katex.min.css">
 <link rel="stylesheet" href="talk/kit.css">
 <link rel="stylesheet" href="talk/deck.css">
@@ -44,12 +52,14 @@
   <button type="button" class="sound" aria-label="Mute the sound" title="M · mute" hidden>♪</button>
 </div>
 <div class="keys">
-  <div><kbd>→</kbd><kbd>space</kbd>next step</div>
-  <div><kbd>←</kbd>previous step</div>
+  <div><kbd class="k-fwd">→</kbd><kbd>space</kbd>next step</div>
+  <div><kbd class="k-back">←</kbd>previous step</div>
   <div><kbd>F</kbd>focus the simulation · <kbd>esc</kbd>back</div>
   <div><kbd>1</kbd>–<kbd>9</kbd>jump to a chapter · <kbd>0</kbd>the talk’s cover · <kbd>Home</kbd>the opening</div>
   <div><kbd>T</kbd>start / reset the pace clock · <kbd>M</kbd>mute the sound</div>
   <div><kbd>D</kbd>slide master: show / hide parts · talk.html?master = the same in a second window</div>
+  <div><kbd>S</kbd>titles only: hide / show the subtitles · the presenter view keeps them as notes</div>
+  <div><kbd>L</kbd>language: English / <span lang="he">עברית</span></div>
   <div>the short cut hides the deep‑dive steps · the long one shows everything</div>
 </div>
 
@@ -63,7 +73,7 @@
   <div class="p-text">
     <div class="tag k-blob">Before the talk · about five minutes</div>
     <h1>How does a computer <span>see</span> in 3D?</h1>
-    <p class="lede">Three ways to describe a world: a list, a question, and a cloud of soft blobs.</p>
+    <p class="lede">Two ways to describe a world, a list and a question, and then a list whose items are soft blobs.</p>
     <div class="meta">Scroll down, or press space</div>
   </div>
   <div class="hero glass"><div class="sim-mount"></div></div>
@@ -113,12 +123,12 @@
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav" data-scene="few">
-      <div class="tag">Gaussian splatting</div>
+      <div class="tag">Explicit representation · Gaussians</div>
       <h2>And what if the points were <span>soft</span>?</h2>
-      <p>A Gaussian is a blob with a centre, a size, a direction, an opacity and a colour. <b>Explicit like a point, smooth like a function.</b></p>
+      <p>A Gaussian is a blob with a centre, a size, a direction, an opacity and a colour. <b>Still explicit: a list of items, now soft ones that blend.</b></p>
     </article>
     <article class="step nav" data-scene="many">
-      <div class="tag">Gaussian splatting</div>
+      <div class="tag">Explicit representation · Gaussians</div>
       <h2>And the computer <span>learns</span> where to put them</h2>
       <p>Start from random blobs and compare with the picture. At every step each blob moves a little, until the picture comes into focus.</p>
       <p class="fine">In a real scene one starts from a sparse point cloud, and must know where every camera stood.</p>
@@ -136,7 +146,7 @@
   </div></div>
   <div class="steps">
     <article class="step nav">
-      <div class="tag">Gaussian splatting</div>
+      <div class="tag">Explicit representation · Gaussians</div>
       <h2>And in 3D: <span>real time</span></h2>
       <p>Throw the blobs at the screen, sort them by depth and blend. No rays and no questions.</p>
       <p class="fine">Drawing is fast. Training takes many minutes on a graphics card.</p>
@@ -150,11 +160,11 @@
     <h2>So which one?</h2>
     <div class="trio">
       <div class="glass k-explicit"><b>Explicit</b><small>points · triangles · voxels</small>
-        <ul><li>Fast to draw</li><li>Easy to edit</li><li class="no">Every detail costs more items</li></ul></div>
+        <ul><li>Fast to draw</li><li>Easy to edit</li><li class="no">Triangles: hard edges, no usable gradient</li><li class="no">Points: a hard dot passes no gradient on</li><li class="no">Voxels: memory grows with the cube of the resolution</li></ul></div>
       <div class="glass k-implicit"><b>Implicit</b><small>a function · NeRF</small>
         <ul><li>Smooth and continuous</li><li>Compact</li><li class="no">Many questions for every pixel</li></ul></div>
-      <div class="glass k-blob"><b>Gaussians</b><small>3D Gaussian Splatting</small>
-        <ul><li>Fast to draw</li><li>Photographic quality</li><li class="no">No defined surface</li></ul></div>
+      <div class="glass k-blob"><b>Explicit, soft</b><small>Gaussians · 3D Gaussian Splatting</small>
+        <ul><li>Soft, so it can be learned from photographs</li><li>Fast to draw, photographic quality</li><li class="no">No defined surface</li></ul></div>
     </div>
   </article>
   <article class="step nav k-explicit">
@@ -506,13 +516,6 @@
       <p>Chapter 07 opens on a finished owl. First, the road to it: photographs, sparse points, a starting guess, then the fit. Standard 3DGS and our charts share the road up to the starting guess.</p>
       <div class="time">≈ 3 min</div>
     </article>
-    <article class="step nav" data-scene="photos">
-      <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>It starts with <em>photographs</em></h2>
-      <p>DTU scan 122: 64 photographs of an owl figurine, 1554 × 1162 pixels each, taken 0.6 to 0.9 m from it. Each pyramid is one camera, standing where the dataset says it stood.</p>
-      <p class="aside">The poses and the pinhole come calibrated with the dataset; nothing here estimated them. The photographs themselves are not shown: their terms of use could not be checked.</p>
-      <span class="do">Drag to orbit</span>
-    </article>
     <article class="step nav" data-scene="sfm">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Two views make a <em>point</em></h2>
@@ -577,6 +580,7 @@
     <article class="step nav" data-scene="charts">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>An <em>atlas</em> of charts</h2>
+      <p>A <b>chart</b> is one spline patch with its own (u, v) square, like a page of a map atlas: a flat page that covers one piece of a curved world.</p>
       <p>Each coherent piece of surface gets its own (u, v) domain. Here there are two: the owl and its books are one sheet wrapped around the front and both sides, the table is the other. A scene with more parts takes more charts; together they are an atlas of patches that this talk loosely calls a <b>spline manifold</b>.</p>
       <p class="aside">Inside a chart the surface is C². Across a seam between two charts, nothing is guaranteed here.</p>
     </article>
@@ -600,10 +604,10 @@
     </article>
     <article class="step nav" data-scene="mesh" data-depth="deep" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>A mesh from a list <em>has to search</em></h2>
-      <p>First the same Gaussians the way 3DGS stores them: an unordered list. To mesh it, every Gaussian has to find its nearest neighbours, fit a plane through them and triangulate there; a triangle stays where its corners agree.</p>
-      <p>The board counts the cost: some 70 distances per Gaussian, millions at the talk’s budget, and still <b class="c-err">bridges</b> between parts of the surface that only lie close together, non‑manifold edges and holes.</p>
-      <p class="aside">The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained. Every count and time on the board is measured in this page.</p>
+      <h2>Three ways to a mesh, <em>side by side</em></h2>
+      <p>The same Gaussians, meshed three times at the same budget. <b class="c-surf">Ours</b> stitches the lattice: every sample already knows its neighbours. A <b>list</b>, the way 3DGS stores them, has to search for each Gaussian’s neighbours and triangulate around it. <b>TSDF fusion</b>, the usual route from 3DGS to a mesh, draws a depth map from each of the scan’s 64 cameras, fuses them in a voxel grid and extracts the zero level set.</p>
+      <p>The board has what each one cost here. The lattice is one pass, <span data-tex="O(N)"></span>, and keeps nothing but the triangles. The list pays <span data-tex="O(N\,k)"></span>, some 70 distances per Gaussian, and still leaves <b class="c-err">bridges</b>, non‑manifold edges and holes. The fusion pays for the box, not the surface: <span data-tex="O(V\,R^3)"></span> time and <span data-tex="O(R^3)"></span> memory. At the talk’s budget its grid is capped, at 4 million voxels on a desktop and 1.5 million on a phone, so a voxel is wider than the spacing of the samples: its mesh has no non‑manifold edges, but it is soft, off the surface by the distance the board gives, sewn to the table, and open where no camera looked.</p>
+      <p class="aside">The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained, and the depth maps are drawn from it. Every count, time and byte on the board is measured in this page; the bytes are those of the arrays each technique allocated, not process memory. Production fusion hashes blocks of voxels near the surface, which brings its memory down to about <span data-tex="R^2"></span>; a k‑d tree searches a list in <span data-tex="O(N\log N)"></span>.</p>
     </article>
     <article class="step nav" data-scene="stitch" data-depth="deep" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -659,7 +663,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>A mesh, <em>for the asking</em></h2>
       <p>Join each address to the next and there are the triangles, at whatever resolution was sampled: the lattice is the tessellation. Joining a list’s nearest neighbours gives a scribble, with <b class="c-err">red</b> edges bridging separate surfaces.</p>
-      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors, which is not run here.</p>
+      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors. Chapter 07 runs TSDF fusion on this owl, next to a proper mesh of the list and to ours.</p>
     </article>
     <article class="step nav" data-scene="segments" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -700,7 +704,7 @@
     <article class="step nav" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx>
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Drop a ball on a list: <em class="c-err">nothing to hit</em></h2>
-      <p>A list of Gaussians is a density, not a boundary. With no rule, the ball falls straight through. Treat every Gaussian as a loose particle and the ball knocks them away, because nothing holds them together.</p>
+      <p>A list of Gaussians is a density, not a boundary. With no rule, the ball falls straight through. Then, close up and slowed down: when would it have touched at all? Each way a list can say “contact” gives a different moment.</p>
       <p class="aside">A real pipeline first picks a density threshold or extracts a mesh: a separate algorithm with its own errors. The list is emulated from the same bowl; it is not a trained 3DGS model.</p>
     </article>
     <article class="step nav" data-scene="moment" data-depth="deep" data-audio="touch" data-audio-len="30" data-sfx>
@@ -790,6 +794,8 @@
   </article>
 </section>
 
+<!-- the copy in the chosen language, before the heavy scripts load: no flash of English (talk/i18n.js; deck.js calls it again) -->
+<script>if (window.KnotTalk && KnotTalk.i18n) KnotTalk.i18n.apply();</script>
 <script src="talk/vendor/three.min.js"></script>
 <script src="talk/vendor/katex.min.js"></script>
 <script src="talk/nurbs.js"></script>
@@ -804,6 +810,7 @@
 <script src="talk/dtu/owlmask122.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/meshlist.js"></script>
+<script src="talk/meshtsdf.js"></script>
 <script src="talk/meshio.js"></script>
 <script src="talk/terrain.js"></script>
 <script src="talk/sims/flatland.js"></script>

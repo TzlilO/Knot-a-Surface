@@ -59,6 +59,19 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `cover`: the owl and the rabbit (hidden scene `duo`, DTU scans 122 and 55 side by side, the rabbit at the
   owl's scale) on a 22 s loop: the picture, a dissolve into rolling bands (normals, Gaussians, visual) and back,
   with a slow camera sway. Home goes to the opening.
+- Two languages (`tools/i18n/README.md` is the full description): talk.html is written in English; Hebrew is a
+  dictionary keyed by the English itself, `talk/i18n/he.js` (`KnotTalk.i18nData.he`), hand-edited and reviewed: change
+  values there, never regenerate it. `talk/i18n.js` loads first in the head and decides the language once per load
+  (`?lang=he|en`, else the saved `kt-lang`, else English); switching (HUD "EN | עב", key L, the slide master) reloads
+  the page and keeps step, cut, parts, clock and mute. `KnotTalk.i18n.apply()` swaps the page's blocks and attributes;
+  every string a script shows goes through `KnotTalk.t('English', vars)` (one sentence per call, `{name}` templates;
+  kit.js gives the English back on pages without i18n.js). On the Hebrew page `KnotTalk.t` wraps its result in bidi
+  isolates, so never use a translated string as an id, a key or a file name: `KT.scenes[..].en` and the slide master's
+  keys stay English. The deck mirrors right to left (arrow keys too: ← forward); a simulation stage (`.kt-sim`) stays
+  a left-to-right island and only kit panels, captions and hints read right to left. A changed English sentence falls
+  back to English until its dictionary key is changed with it: run `node tools/i18n/check.js` after touching copy or
+  strings (coverage, markup, numbers and step keys are errors), and look at the step in `talk.html?lang=he`.
+  `tools/i18n/GLOSSARY.md` fixes the terms.
 - Slide master (`talk/master.js` + `talk/master.css`): D (or the HUD list button) opens a drawer listing every
   `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
   part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
@@ -69,7 +82,18 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
   postMessage to a window opened from the drawer, and the storage event; deck.js mounts nothing there
   (`body.kt-presenter`). `KnotTalk.deck` is the deck's handle (steps, sections, go / step, set / refresh /
-  setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`).
+  setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`, `kt-subs`).
+  The presenter view is two columns: the talk window's controls over the SPEAKER NOTES = the active step's subtitles,
+  cloned from its own copy of the page by step key (nothing but keys crosses windows), scrollable, A− / A+ (localStorage
+  `kt-notes`); the list beside them. TITLES ONLY (`html.kt-titles`): a step's subtitles leave the slide, the presenter
+  view keeps them. Subtitles = `KnotTalk.deck.subtitles(step)` = the step's direct `p` (not `.thesis` / `.qa` /
+  `.lede`), `ul`, `.do`, `.try`, `.time` (deck.js `SUB`, mirrored in deck.css), on the two title screens what follows
+  the title block (the cover's `p.fine`, the opening's `.meta`); badges, headlines, `.lede`, the cover's byline and
+  exhibits (`.eq`, `.flip`, `table.cmp`, `.exhibits`, `.legend`, `.props`, `.labs`, `.trio`, `.p-next`) stay. Steps
+  keep their min-height, so activation, scenes and the clock do not change. `talk.html`'s head sets the class before
+  the first paint: kept over a language reload, else `?subs=on|off` (saved; a toggle drops it from the address), else
+  localStorage `kt-subs` (default on). Switched by S, the HUD button, the slide master's switch and the presenter view
+  (bus message `subs`); `KnotTalk.deck.subs()` / `setSubs(on)`, event `kt-subs` {subs}.
 - Link preview: talk.html's head carries Open Graph / Twitter tags (absolute URLs) pointing at `talk/share.jpg`,
   1200 x 630: two owls cut into slanted bands, the scan (stone | normals) and its copy (stone | glass | jelly).
   `node tools/share/render.js` redraws it: `tools/share/page.html` mounts one `manifold` instance per band (scene
@@ -121,18 +145,34 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   become scenes `scan<N>` in the lab page's picker only; one sheet around an axis suits a compact single body, and
   `tools/dtu/README.md` lists the scans that failed. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
   points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` meshes the same
-  Gaussians twice at the budget the slider sets, and a board compares them, every number measured in the page. The
-  list: `talk/meshlist.js` (`KnotTalk.meshList`, node-requirable) EMULATES an unstructured 3DGS list from the charts'
-  lattices (never call it trained) and meshes it as a list must: hash grid + 12-nearest search (distances counted),
-  PCA normal, local Delaunay star in the tangent plane, a triangle kept where 2 of 3 corners propose it; emulator,
-  mesher and auditor are jobs stepped a few ms per frame. The lattice: one even lattice per chart with as many points
-  as the budget (`sizeLattices`: area x gain, square cells), stitched by a running 2 x 2 window (instances in reverse
-  window order so `setCount` retires the stitched ones). One audit grades both (bridges, non-manifold edges, holes).
-  `mesh` plays the list, then the lattice; `stitch` starts at the lattice and keeps the mesh; a new budget rebuilds
-  once the slider rests. Export: `talk/meshio.js` (`KnotTalk.meshio`) writes the stitched lattice as PLY / GLB / OBJ
-  / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename, blob)` -> promise, defined
-  only if absent and looked up at click time (a host page may replace it). Tests: `api.meshStats()`,
-  `meshFile(fmt)`, `meshSeek(t)`.
+  Gaussians THREE ways at the budget the slider sets, side by side: three viewports of the one renderer, one camera,
+  one orbit (`drawMesh` sets viewport, scissor and aspect per technique; `layoutMesh` places them between the caption
+  and the board), each with its own Gaussians (the main field for the lattice, two extra `gl.splats` for the list in
+  list order and in slab order), triangles, red defect edges and a tag with its job's own time. The board has one
+  column per technique: complexity as implemented, measured time and array bytes (working + mesh, not process
+  memory), triangles, bridges, non-manifold edges, holes, and the distance of the mesh's vertices from the spline
+  charts (mean and 95th percentile); its notes give N, k, V, P, R³ and say when the voxel cap binds. Every number is
+  measured in the page; the step's copy names only the two caps, never a measured value. Ours, the lattice: one even
+  lattice per chart with as many points as the budget (`sizeLattices`: area x gain, square cells), stitched by a
+  running 2 x 2 window (instances in reverse window order so `setCount` retires the stitched ones). The list:
+  `talk/meshlist.js` (`KnotTalk.meshList`, node-requirable) EMULATES an unstructured 3DGS list from the charts'
+  lattices (never call it or its depth maps trained) and meshes it as a list must: hash grid + 12-nearest search
+  (distances counted), PCA normal, local Delaunay star in the tangent plane, a triangle kept where 2 of 3 corners
+  propose it. It also has `addresser` (the nearest lattice sample as the address of a vertex made in space, so ONE
+  audit grades all three, with `rim` in lattice cells), `gauge` (closest point on the chart by Gauss-Newton) and the
+  byte accounting. TSDF fusion: `talk/meshtsdf.js` (`KnotTalk.meshTsdf`, node-requirable, loads before manifold.js;
+  without it the comparison has two columns): depth maps of the emulated list from `def.rig.cams` (at most 64) by a
+  CPU z-buffer, each Gaussian a flat disc in its own plane; a dense voxel grid over the list's box (voxel = the
+  Gaussians' spacing unless that passes the cap: 4 M voxels, 1.5 M on a small screen, mount option `voxels`;
+  truncation 3 voxels, weight 1 per view, 6 bytes a voxel), views fused one at a time; marching cubes whose 256 cases
+  are generated from one rule per face and proved by `checkCubes()`, cells seen by fewer than 3 views left out. All
+  are jobs: the list's mesher and the fusion share 12-30 ms a frame (mount option `slice` fixes it for tests; under a
+  virtual clock a job finishes in one frame and its shown time is capped), grading waits in a queue, and a new budget
+  rebuilds all three once the slider rests. `stitch` shows one technique on the whole stage (the lattice; `mesh from`
+  picks the list or TSDF) and has the downloads. Export: `talk/meshio.js` (`KnotTalk.meshio`) writes the stitched
+  lattice as PLY / GLB / OBJ / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename,
+  blob)` -> promise, defined only if absent and looked up at click time (a host page may replace it). Tests:
+  `api.meshStats()` (everything on the board), `meshFile(fmt)`, `meshSeek(t)`.
   The owl's `animate(t, paint, material, from, target, fromTarget)` (`owlLife` in
   `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as control-point edits of the owl alone, and
   `paint` wipes a MATERIAL in (scene `paint`) over a TARGET, from the top of what is painted to its foot: one entry
@@ -177,8 +217,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   never closer than the object's box allows; on light, operations fade the scene towards `KT.color.bg` (on dark,
   towards black); parts use the charts' own `c.hex`.
   `touch` (talk/sims/touch.js, chapter 09 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
-  an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
-  loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
+  an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: the ball falls through, then,
+  without a cut, the list's half of `moment` runs on the same code (`run.close`, `model()`) and hands back; the
+  loose-particle rule is a third drop on the lab page only, never in the talk's `ghost`), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
   shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list), `moment` (the
   camera closes in and time runs 20x slower over the last 10 cm above the list: the seven "moments of contact" a list
@@ -227,12 +268,25 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   plateau with a patience, only once the schedule allows it) and a "not learning" check early on; resource and
   stall watchdogs; SIGINT / SIGTERM handled. Every threshold is a flag with a documented default, the best state
   is saved, and the reason it stopped is recorded and carried into what is exported.
+- `tools/eval/` = the DTU Chamfer distance (numpy + scipy, `python3 -I`; `README.md` there). `dtu_chamfer.py MESH.ply
+  --scan N --data REF` runs the standard protocol (Jensen et al. 2014 as in DTUeval-python's eval.py: 0.2 mm sampling
+  and reduction, `ObsMask{N}_10.mat`, `Plane{N}.mat`, `stl{N:03d}_total.ply`, 20 mm cap; accuracy, completeness,
+  overall in mm) on a mesh in the DTU world frame in mm and writes a JSON with every parameter, file hash and
+  `stop.reason` (`--max-minutes` 30, `--max-points`, `--seed` 0, `--self-test`, `--mask-only`); it agrees with eval.py
+  to the last digit where the shuffle decides nothing. `chart_mesh.py` writes a fitted scan's charts as lattices in
+  that frame (rigid fit of the file's `cams` onto `cameras.npz`, stops above 0.2 mm; `full` = one vertex per control
+  point, `talk<N>` = the mesh scene's lattice at budget N; each with and without the table chart). `eval_fits.py
+  --dtu DATA --ref REF -o OUT` does both for scans 122 and 55. Those are OFFLINE FITS to depth maps rendered from the
+  very reference they are measured against (MVSNet's Depths_raw): never call the numbers trained, a result of the
+  method, or comparable with published tables; a perfect mesh scores about 0.1 mm, not 0. Reference data never goes
+  in the repo. Until `stl122_total.ply` and `stl055_total.ply` are obtained, no number for the owl or the rabbit
+  exists: do not quote one.
 - Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
   as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the
   old dithered look. A new 3D module must use it too.
 - Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
-  (`talk/audio/tracks.js`, empty by default: no recording is in the repo) while the step is active; M mutes; the
+  (`talk/audio/tracks.js`, empty by default: no recording is in the repo; `talk.html?song=on`, saved as `kt-song`, points `touch` at the presenter's own file `talk/audio/local/touch.mp3`, a git-ignored folder: never commit or publish a recording) while the step is active; M mutes; the
   `.credit` line of a step shows only when a track has loaded. `data-sfx` marks a step whose simulation makes
   its own synthesized sound effects (chapter 09); the ♪ button shows there too and `KnotTalk.muted` carries
   the mute to the module.

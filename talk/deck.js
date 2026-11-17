@@ -1,7 +1,8 @@
 /* Knot-a-Surface talk — scroll-driven deck engine.
    Steps (.step, plus the cover) are the unit of navigation: the one nearest the reading line is
    active, and its data-scene is pushed to the chapter's simulation. Keys: → / space next,
-   ← previous, F focus the stage, T pace clock, 0 the Knot-a-Surface cover, 1–8 chapters, Home the opening.
+   ← previous, F focus the stage, T pace clock, S titles only (see "subtitles"), 0 the Knot-a-Surface cover, 1–8
+   chapters, Home the opening, L the language (talk/i18n.js: English or Hebrew; in Hebrew the two arrows swap, ← is next).
    The opening ("How does a computer see in 3D?") and the cover sit in a light wrapper, .prelude
    (talk/prelude.css); while a step inside it is active, body.lightroom turns the fixed chrome light too.
    Parts of the talk can be switched off (data-off in talk.html, or the slide master, talk/master.js): see "parts"
@@ -18,6 +19,19 @@
      before anything below can run a frame. */
   var presenter = /(?:^|&)master(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#master';
   if (presenter) document.body.classList.add('kt-presenter');
+
+  /* ================= language =================
+     talk/i18n.js decides it (KT.lang, KT.rtl) and swaps the page's copy: talk.html calls apply() right after its
+     copy, and the call here takes whatever that one could not see, before anything below reads the page (the rail's
+     titles, the KaTeX placeholders a translated block still holds). Every string this file puts on screen goes
+     through KT.t. Hebrew reads right to left, so its two arrow keys swap (← next, → previous, as in talk-he.html)
+     and the help panel shows them that way. */
+  var I18N = KT.i18n || null, RTL = !!KT.rtl;
+  if (I18N) I18N.apply();
+  if (RTL) {
+    $$('.keys .k-fwd').forEach(function (e) { e.textContent = '←'; });
+    $$('.keys .k-back').forEach(function (e) { e.textContent = '→'; });
+  }
 
   /* ================= evidence data — edit here =================
      DTU: Table 1 of the paper (Chamfer distance, mm, lower is better; PGSR = its best results).
@@ -51,8 +65,8 @@
     var frame = $('.stage-frame', sec);
     if (!frame) return;
     var tools = el('div', 'stage-tools');
-    var link = el('a', '', 'open module ↗'); link.href = 'talk/sims/' + sec.dataset.sim + '.html'; link.target = '_blank'; link.rel = 'noopener';
-    var fb = el('button', '', 'focus · F'); fb.type = 'button'; fb.addEventListener('click', function () { setFocus(!document.body.classList.contains('focus')); });
+    var link = el('a', '', KT.t('open module ↗')); link.href = 'talk/sims/' + sec.dataset.sim + '.html'; link.target = '_blank'; link.rel = 'noopener';
+    var fb = el('button', '', KT.t('focus · F')); fb.type = 'button'; fb.addEventListener('click', function () { setFocus(!document.body.classList.contains('focus')); });
     tools.appendChild(link); tools.appendChild(fb); frame.appendChild(tools);
     sec._link = link;
   });
@@ -229,7 +243,10 @@
      neither navigable nor counted by the clock and the cut totals. A section with nothing left on screen goes,
      with its sticky stage and its rail entry, and the light wrapper goes when none of its sections is left.
      A section's budget is shared evenly by the steps the cut shows, so what is off comes off the totals.
-     A step's key is its section's rail label and its title: a saved choice survives edits elsewhere in the page. */
+     A step's key is its section's rail label and its title: a saved choice survives edits elsewhere in the page.
+     The key is made from the ENGLISH title in every language (the page as written: i18n.source, i18n.attrEn), so a
+     choice made in one language holds in the other and windows in different languages understand each other; the
+     title that is shown (n._title, the slide master's rows) is in the language of the page. */
   var over = {}, byKey = {}, prelude = $('.prelude');
   function navsOf(sec) { return sec._navs || (sec._navs = sec.matches('.nav') ? [sec] : $$('.nav', sec)); }
   function textOf(e) {
@@ -239,8 +256,10 @@
   }
   allNav.forEach(function (n) {                    // a title: the step's heading, else its thesis line, else its label
     var h = $('h1, h2', n) || $('.thesis, .qa', n) || $('.lvl, .tag, .kick', n), t = h ? textOf(h) : '';
-    n._title = t || (n._sec.dataset.title || 'Step') + ' · ' + (navsOf(n._sec).indexOf(n) + 1);
-    var base = (n._sec.dataset.rail || '') + ' · ' + n._title, k = base, j = 1;
+    var en = h ? (I18N ? textOf(I18N.source(h)) : t) : '', at = navsOf(n._sec).indexOf(n) + 1;
+    n._title = t || (n._sec.dataset.title || KT.t('Step')) + ' · ' + at;
+    if (!en) en = ((I18N ? I18N.attrEn(n._sec, 'data-title') : n._sec.dataset.title) || 'Step') + ' · ' + at;
+    var base = (n._sec.dataset.rail || '') + ' · ' + en, k = base, j = 1;
     while (byKey[k]) k = base + ' #' + (++j);
     n._key = k; byKey[k] = n;
   });
@@ -276,10 +295,10 @@
   function refresh() { layout(); settle(); onScroll(); tick(); emit('kt-parts', { over: Object.assign({}, over) }); }
   function tick() {
     var p = plan();
-    if (!clock.t0) { clock.el.className = 'clock'; clock.el.innerHTML = 'T · start clock · plan ' + mmss(p); return; }
+    if (!clock.t0) { clock.el.className = 'clock'; clock.el.innerHTML = KT.t('T · start clock · plan {t}', { t: mmss(p) }); return; }
     var e = (Date.now() - clock.t0) / 1000;
     clock.el.className = 'clock ' + (e > p + 45 ? 'late' : 'ok');
-    clock.el.innerHTML = '<b>' + mmss(e) + '</b> · plan ' + mmss(p) + ' / ' + Math.round(total(cut())) + '′';
+    clock.el.innerHTML = KT.t('<b>{e}</b> · plan {p} / {tot}′', { e: mmss(e), p: mmss(p), tot: Math.round(total(cut())) });
   }
   setInterval(tick, 1000);
 
@@ -287,20 +306,71 @@
   function setFocus(on) { document.body.classList.toggle('focus', !!on && !!$('.stage-frame.is-current')); }
   var keys = $('.keys');
   $('.help').addEventListener('click', function () { keys.classList.toggle('on'); });
+  /* the key of a keydown, a letter in lower case. While the keyboard types another script (a Hebrew layout gives
+     'ך' for L and 'ג' for D) a letter shortcut goes by the key's position instead, so F, T, M, D and L still work */
+  function letter(e) {
+    var k = e.key || '';
+    if (k.length !== 1) return k;
+    return k.charCodeAt(0) > 127 && /^Key[A-Z]$/.test(e.code || '') ? e.code.charAt(3).toLowerCase() : k.toLowerCase();
+  }
+  /* the language: the same control in the HUD and in the slide master; L switches (the page reloads, see "boot") */
+  var hud = $('.hud');
+  if (I18N && hud) hud.insertBefore(I18N.switcher('lang'), $('.clock', hud));
+
+  /* ================= subtitles: titles only =================
+     A step's subtitles are its text about the picture: paragraphs (p.aside, p.fine, p.big, p.scope, p.credit…), lists,
+     the .do / .try lines, an opener's .time; on the two title screens what follows the title block (the cover's
+     p.fine, the opening's "scroll down" .meta). What stays: badges and labels (.lvl, .tag, .num, .kick), the
+     headline (h1, h2, p.thesis, p.qa), a title screen's .lede and the cover's byline, and every exhibit (.eq, .flip,
+     table.cmp, .exhibits, .legend, .props, .labs, .trio, .p-next). Titles only (html.kt-titles; deck.css hides SUB
+     there) leaves every step its height, so the reading line, the scroll and the scenes behave as before. talk.html's
+     head sets the class before the first paint (?subs=on|off, else localStorage 'kt-subs'); S, the HUD button, the
+     slide master and the presenter view switch it (setSubs). The presenter view shows subtitles(step) as its notes. */
+  var SUB = ':scope>:is(p:not(.thesis,.qa,.lede),ul,.do,.try,.time)', root = document.documentElement;
+  function subtitles(n) {
+    var host = n.matches('.p-hero') ? $('.p-text', n) : n, out = host ? $$(SUB, host) : [];
+    if (host && n.matches('.p-open')) out = $$(':scope>:is(p:not(.lede),.meta)', host);
+    return out;
+  }
+  var subsBtn = el('button', 'subs', '<svg viewBox="0 0 16 13" aria-hidden="true"><path d="M1.5 2.2h13" stroke-width="2.2"/><path class="sl" d="M1.5 7h10.5M1.5 11h7.5" stroke-width="1.4"/></svg>');
+  subsBtn.type = 'button'; subsBtn.title = KT.t('S · titles only: hide / show the subtitles');
+  subsBtn.setAttribute('aria-label', KT.t('Titles only: hide the subtitles of the slides (S)'));
+  if (hud) hud.insertBefore(subsBtn, $('.help', hud));
+  function subs() { return !root.classList.contains('kt-titles'); }
+  function paintSubs() { subsBtn.setAttribute('aria-pressed', String(!subs())); }
+  function setSubs(on) {
+    on = !!on;
+    if (on !== subs()) {
+      root.classList.toggle('kt-titles', !on);
+      settle(); onScroll();
+    }
+    try { localStorage.setItem('kt-subs', on ? 'on' : 'off'); } catch (e) {}
+    // an address that says ?subs= would undo this choice at the next load: it goes, the saved choice holds
+    if (/[?&]subs=/.test(location.search)) try {
+      history.replaceState(null, '', location.pathname + location.search.replace(/([?&])subs=[^&]*&?/, '$1').replace(/[?&]$/, '') + location.hash);
+    } catch (e) {}
+    paintSubs();
+    emit('kt-subs', { subs: on });
+  }
+  subsBtn.addEventListener('click', function () { setSubs(!subs()); });
+  paintSubs();
+
   document.addEventListener('keydown', function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     var t = e.target, tag = t && t.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;       // sliders keep their arrows
     if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
-    var k = e.key;
-    if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ') { e.preventDefault(); stepBy(e.shiftKey && k === ' ' ? -1 : 1); }
-    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); stepBy(-1); }
+    var k = letter(e), fwd = RTL ? 'ArrowLeft' : 'ArrowRight', back = RTL ? 'ArrowRight' : 'ArrowLeft';   // right to left: ← is forward
+    if (k === fwd || k === 'ArrowDown' || k === 'PageDown' || k === ' ') { e.preventDefault(); stepBy(e.shiftKey && k === ' ' ? -1 : 1); }
+    else if (k === back || k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); stepBy(-1); }
     else if (k === 'Home') { e.preventDefault(); go(allNav[0]); }
     else if (k === 'End') { e.preventDefault(); var v = visibleNav(); go(v[v.length - 1]); }
-    else if (k === 'f' || k === 'F') setFocus(!document.body.classList.contains('focus'));
+    else if (k === 'f') setFocus(!document.body.classList.contains('focus'));
     else if (k === 'Escape') { setFocus(false); keys.classList.remove('on'); }
-    else if (k === 't' || k === 'T') toggleClock();
-    else if (k === 'm' || k === 'M') snd.btn.click();
+    else if (k === 't') toggleClock();
+    else if (k === 'm') snd.btn.click();
+    else if (k === 'l') { if (I18N && !e.repeat) I18N.toggle(); }
+    else if (k === 's') { if (!e.repeat) setSubs(!subs()); }
     else if (k === '?') keys.classList.toggle('on');
     else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-9 = the chapter with that rail number; a key with none goes to the last part
       var c = k === '0' ? ($('section.cover[data-rail]') || chapters[0]) : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
@@ -335,28 +405,28 @@
     var n = DTU.scans.length, mo = mean(DTU.ours), mp = mean(DTU.pgsr), wins = 0, close = 0, i;
     for (i = 0; i < n; i++) { if (DTU.ours[i] < DTU.pgsr[i]) wins++; if (Math.abs(DTU.ours[i] - DTU.pgsr[i]) <= 0.05) close++; }
     $('.stats', box).innerHTML =
-      '<div><b>' + mo.toFixed(3) + '</b>ours · mean mm</div><div><b>' + mp.toFixed(3) + '</b>PGSR · mean mm</div>' +
-      '<div><b>' + close + ' / ' + n + '</b>scans within 0.05 mm</div><div><b>' + wins + ' / ' + n + '</b>scans where ours is lower</div>';
+      '<div><b>' + mo.toFixed(3) + '</b>' + KT.t('ours · mean mm') + '</div><div><b>' + mp.toFixed(3) + '</b>' + KT.t('PGSR · mean mm') + '</div>' +
+      '<div><b>' + close + ' / ' + n + '</b>' + KT.t('scans within 0.05 mm') + '</div><div><b>' + wins + ' / ' + n + '</b>' + KT.t('scans where ours is lower') + '</div>';
     // the means above are computed from the rows; say so while a printed mean differs from its row
     var warn = $('.check', box), bad = [];
-    if (Math.abs(mo - DTU.printedMean.ours) > 0.0015) bad.push('ours ' + DTU.printedMean.ours);
-    if (Math.abs(mp - DTU.printedMean.pgsr) > 0.006) bad.push('PGSR ' + DTU.printedMean.pgsr);
+    if (Math.abs(mo - DTU.printedMean.ours) > 0.0015) bad.push(KT.t('ours {v}', { v: DTU.printedMean.ours }));
+    if (Math.abs(mp - DTU.printedMean.pgsr) > 0.006) bad.push(KT.t('PGSR {v}', { v: DTU.printedMean.pgsr }));
     warn.style.display = bad.length ? '' : 'none';
-    warn.textContent = 'Means are computed from the 15 scans shown (the table prints ' + bad.join(', ') + ').';
+    warn.textContent = KT.t('Means are computed from the 15 scans shown (the table prints {list}).', { list: bad.join(', ') });
 
     // the key's swatches (written in talk.html in the dark ink) take the chart's ink
     var key = $$('.chart-key i', box);
     if (key[0]) key[0].style.background = INK.ours;
     if (key[1]) key[1].style.borderColor = INK.dim;
     var W = 660, H = 290, L = 40, Rm = 10, Tm = 12, B = 34, y0 = 0.2, y1 = 1.0;
-    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Chamfer distance per DTU scan, ours versus PGSR' }, $('.plot', box));
+    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': KT.t('Chamfer distance per DTU scan, ours versus PGSR') }, $('.plot', box));
     function X(k) { return L + (k + 0.5) * (W - L - Rm) / n; }
     function Y(v) { return Tm + (y1 - v) / (y1 - y0) * (H - Tm - B); }
     [0.2, 0.4, 0.6, 0.8, 1.0].forEach(function (v) {
       svg('path', { d: 'M' + L + ' ' + Y(v) + 'H' + (W - Rm), stroke: INK.line, 'stroke-width': 1 }, s);
       svg('text', { x: L - 8, y: Y(v) + 3.5, 'text-anchor': 'end', fill: INK.mute, style: MONO }, s, v.toFixed(1));
     });
-    svg('text', { x: L, y: H - 4, fill: INK.mute, style: MONO }, s, 'DTU scan');
+    svg('text', { x: L, y: H - 4, fill: INK.mute, style: MONO }, s, KT.t('DTU scan'));
     var tip = tipFor(box), hot = svg('rect', { y: Tm, height: H - Tm - B, fill: INK.hot, opacity: 0, rx: 4 }, s);
     for (i = 0; i < n; i++) {
       var x = X(i), a = DTU.ours[i], b = DTU.pgsr[i];
@@ -371,7 +441,8 @@
       if (k < 0 || k >= n) { tip.hide(); hot.setAttribute('opacity', 0); return; }
       hot.setAttribute('x', L + k * bw); hot.setAttribute('width', bw); hot.setAttribute('opacity', 0.05);
       var d = DTU.ours[k] - DTU.pgsr[k], pr = box.getBoundingClientRect();
-      tip.show('scan <b>' + DTU.scans[k] + '</b><br>ours <b>' + DTU.ours[k].toFixed(3) + '</b> · PGSR <b>' + DTU.pgsr[k].toFixed(2) + '</b><br>Δ ' + (d > 0 ? '+' : '−') + Math.abs(d).toFixed(3) + ' mm',
+      tip.show(KT.t('scan <b>{scan}</b><br>ours <b>{ours}</b> · PGSR <b>{pgsr}</b><br>Δ {d} mm',
+          { scan: DTU.scans[k], ours: DTU.ours[k].toFixed(3), pgsr: DTU.pgsr[k].toFixed(2), d: (d > 0 ? '+' : '−') + Math.abs(d).toFixed(3) }),
         r.left - pr.left + X(k) / W * r.width, r.top - pr.top + Y(Math.max(DTU.ours[k], DTU.pgsr[k])) / H * r.height);
     }
     // hover with a mouse; on touch a tap shows a scan and the tip stays until the next tap
@@ -381,7 +452,7 @@
 
   function benchChart(box) {
     var W = 560, H = 290, L = 46, Rm = 16, Tm = 12, B = 38;
-    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Optimised parameters versus Chamfer distance on the proxy bench' }, $('.plot', box));
+    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': KT.t('Optimised parameters versus Chamfer distance on the proxy bench') }, $('.plot', box));
     var lx0 = Math.log10(5e4), lx1 = Math.log10(8e6), ly0 = Math.log10(40), ly1 = Math.log10(1000);
     function X(v) { return L + (Math.log10(v) - lx0) / (lx1 - lx0) * (W - L - Rm); }
     function Y(v) { return H - B - (Math.log10(v) - ly0) / (ly1 - ly0) * (H - Tm - B); }
@@ -393,8 +464,8 @@
       svg('path', { d: 'M' + L + ' ' + Y(v) + 'H' + (W - Rm), stroke: INK.line, 'stroke-width': 1 }, s);
       svg('text', { x: L - 8, y: Y(v) + 3.5, 'text-anchor': 'end', fill: INK.mute, style: MONO }, s, v);
     });
-    svg('text', { x: W - Rm, y: H - 5, 'text-anchor': 'end', fill: INK.mute, style: MONO }, s, 'optimised parameters · log →');
-    svg('text', { x: L, y: H - 5, fill: INK.mute, style: MONO }, s, '↓ Chamfer mm · log');
+    svg('text', { x: W - Rm, y: H - 5, 'text-anchor': 'end', fill: INK.mute, style: MONO }, s, KT.t('optimised parameters · log →'));
+    svg('text', { x: L, y: H - 5, fill: INK.mute, style: MONO }, s, KT.t('↓ Chamfer mm · log'));
     var tip = tipFor(box);
     s.addEventListener('pointerdown', function (e) { if (e.target.getAttribute('opacity') !== '0') tip.hide(); });  // a tap off the points closes the tip
     BENCH.forEach(function (m) {
@@ -406,8 +477,10 @@
       var h = svg('circle', { cx: x, cy: y, r: 16, fill: '#fff', opacity: 0 }, s);
       h.addEventListener('pointerenter', function () {
         var r = s.getBoundingClientRect(), pr = box.getBoundingClientRect();
-        tip.show('<b>' + m.name + '</b><br>' + m.prim.toLocaleString('en-US') + ' primitives · <b>' + (m.params >= 1e6 ? (m.params / 1e6).toFixed(2) + ' M' : (m.params / 1e3).toFixed(1) + ' k') +
-          '</b> params<br>Chamfer <b>' + m.chamfer.toFixed(1) + ' mm</b> · closed ' + m.closed + '%<br>converged at step ' + m.step,
+        tip.show(KT.t('<b>{name}</b><br>{prim} primitives · <b>{params}</b> params<br>Chamfer <b>{chamfer} mm</b> · closed {closed}%<br>converged at step {step}', {
+            name: m.name, prim: m.prim.toLocaleString('en-US'),
+            params: m.params >= 1e6 ? (m.params / 1e6).toFixed(2) + ' M' : (m.params / 1e3).toFixed(1) + ' k',
+            chamfer: m.chamfer.toFixed(1), closed: m.closed, step: m.step === 'no loop' ? KT.t('no loop') : m.step }),
           r.left - pr.left + x / W * r.width, r.top - pr.top + y / H * r.height);
       });
       h.addEventListener('pointerleave', function (e) { if (e.pointerType !== 'touch') tip.hide(); });
@@ -417,13 +490,16 @@
   ex = $('#ex-bench'); if (ex) benchChart(ex);
 
   /* ================= the handle: talk/master.js (the slide master) and tests =================
-     events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh) */
+     events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh),
+     kt-subs {subs} (subtitles shown, or titles only) */
   KT.deck = {
     presenter: presenter,                                              // this page is the presenter view (talk.html?master)
     steps: allNav, sections: chapters, navs: navsOf,                   // every step (.nav) and every data-rail section, in order
-    key: function (n) { return n._key; }, title: function (n) { return n._title; },
+    key: function (n) { return n._key; }, title: function (n) { return n._title; },   // the key is English in every language, the title is the page's
+    letter: letter,                                                    // a keydown's key, by position on a keyboard that types another script
     section: function (n) { return n._sec; }, byKey: function (k) { return byKey[k] || null; },
     current: function () { return cur; }, cut: cut, setCut: setCut,
+    subs: subs, setSubs: setSubs, subtitles: subtitles,               // subs(): true = subtitles shown; subtitles(step): its subtitle elements
     defaultOn: defaultOn, isOn: isOn, inCut: inCut, shown: shown,      // shown(n, m): on, and in cut m (default: the current one)
     minutes: minutes, share: share, budget: budget, total: total, plan: plan,
     clock: function () { return clock.t0; }, toggleClock: toggleClock,
@@ -438,22 +514,34 @@
     refresh: refresh
   };
 
-  /* ================= boot ================= */
+  /* ================= boot =================
+     A change of language reloads the page (talk/i18n.js). What the presenter had is handed over that reload and is
+     back here: the cut, the parts that are on, the running clock, the mute, the step (the saved choices and the
+     address hold most of it anyway; this also works where the browser gives the page no storage). */
+  document.addEventListener('kt-lang', function (e) {
+    e.detail.keep.deck = { cut: cut(), over: Object.assign({}, over), t0: clock.t0, mute: snd.mute, step: cur ? cur._i : -1, subs: subs() };
+  });
+  var kept = (I18N && I18N.kept && I18N.kept.deck) || {};
   var saved = 40;
   try { saved = +localStorage.getItem('kt-cut') === 20 ? 20 : 40; } catch (e) {}
+  if (kept.cut === 20 || kept.cut === 40) saved = kept.cut;
   document.body.classList.toggle('cut-20', saved === 20);
   cutBtns.forEach(function (b) { b.classList.toggle('on', +b.dataset.cut === saved); });
   // the slide master's saved choices (talk/master.js writes them, step key -> on): read here, before the first frame
   (function () {
-    try { var o = JSON.parse(localStorage.getItem('kt-parts') || '{}'), k; for (k in o) if (byKey[k] && typeof o[k] === 'boolean') set(byKey[k], o[k]); }
-    catch (e) { /* no storage: the page's own defaults */ }
+    var o = null, k;
+    try { o = JSON.parse(localStorage.getItem('kt-parts') || '{}'); } catch (e) { /* no storage: the page's own defaults */ }
+    if (kept.over && typeof kept.over === 'object') o = kept.over;
+    for (k in o || {}) if (byKey[k] && typeof o[k] === 'boolean') set(byKey[k], o[k]);
   })();
+  if (kept.t0 > 0) clock.t0 = +kept.t0;
+  if (kept.mute) snd.mute = true;
   layout();
-  var m = /^#s(\d+)$/.exec(location.hash);
-  if (m && allNav[+m[1]]) {
+  var m = /^#s(\d+)$/.exec(location.hash), start = kept.step >= 0 ? +kept.step : m ? +m[1] : -1;
+  if (allNav[start]) {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
     // a step that is off by now gives way to its predecessor
-    requestAnimationFrame(function () { var n = allNav[+m[1]]; go(n.offsetParent === null ? nearest(n, -1) : n, true); onScroll(); });
+    requestAnimationFrame(function () { var n = allNav[start]; go(n.offsetParent === null ? nearest(n, -1) : n, true); onScroll(); });
   }
   onScroll(); tick();
 })();
