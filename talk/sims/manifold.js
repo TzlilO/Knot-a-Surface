@@ -79,7 +79,12 @@
       var R = G.renderer(root, cam, env.opts.clear), scene = new THREE.Scene();
       var CAP = Math.min(+env.opts.cap || CAP0, CAP0);       // this mount's Gaussian capacity: a page that mounts several can ask for less
       var small = Math.min(window.innerWidth, window.innerHeight) < 560;
-      var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: true, nets: false, rig: false, t: 0,
+      /* sampling: 'even' | 'adaptive' | 'window' (opts.sampling picks it). The standalone lab page (the shell sets body.kt-labpage; an
+         embed passes `embed`) starts on the view window; every embedded use keeps the adaptive sampler it always had. st.adaptive is
+         "follows the view" (off = even) and st.win picks the view window among the view-following modes. */
+      var SAMPLINGS = ['even', 'adaptive', 'window'];
+      var dflt = SAMPLINGS.indexOf(env.opts.sampling) >= 0 ? env.opts.sampling : !env.embed && document.body.classList.contains('kt-labpage') ? 'window' : 'adaptive';
+      var st = { scene: 'scene', sc: SCENES.scene, scn: '', view: 'splats', adaptive: dflt !== 'even', win: dflt === 'window', buf: 0.04, nets: false, rig: false, t: 0,
                  budget: Math.min(+env.opts.budget || (small ? 30000 : KT.dtu ? 160000 : 90000), (Math.min(+env.opts.cap || CAP0, CAP0)) - 20000),   // the scanned object has detail to show for a larger budget
                  k: 0.72, cull: true, ground: true, drawn: 0, paint: 0, mat: 'glass', from: 'stone', tourI: 0, tourT: 0, abT: 0, touchedAB: false, touchedEdit: false,
                  target: 'object', fromT: 'object' };     // where the material goes (the scene's `targets`: object, owl, selection), and where the one before it went
@@ -92,9 +97,9 @@
       var field = G.splats(CAP, { alpha: true }); scene.add(field.mesh);     // alpha: a chart may carry an opacity per control point (c.alpha)
 
       /* ---------- chrome ---------- */
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
-      var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
-      var badge = ui.el('div', 'kt-ab'); root.appendChild(badge);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
+      var hint = ui.el('div', 'kt-box kt-hint'); root.appendChild(hint);
+      var badge = ui.el('div', 'kt-box kt-ab'); root.appendChild(badge);
       var panel = ui.panel(root, { pos: 'tr', title: T('scene · budget') });
       /* the picker offers the scanned objects; only a page without their data offers the hand-modelled scenes */
       var pick = Object.keys(KT.scenes).filter(function (k) { return !KT.scenes[k].hidden; }), real = pick.filter(function (k) { return KT.scenes[k].photo; });
@@ -110,12 +115,25 @@
       var segV = ui.seg(panel, { value: 'splats', options: MODES.concat([{ v: 'split', label: T('all') }]),
         onChange: function (v) { st.view = v; showView(); } });
       var rowT = ui.el('div', 'kt-row mf-tog'); panel.appendChild(rowT);
-      var tgA = ui.toggle(rowT, { label: T('adaptive'), value: true, onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); } });
+      var tgA = ui.toggle(rowT, { label: T('adaptive'), value: dflt !== 'even', onChange: function (v) { st.adaptive = v; st.touchedAB = true; need = true; paintBadge(); paintMode(); } });
       var tgN = ui.toggle(rowT, { label: T('nets'), value: false, onChange: function (v) { st.nets = v; showNets(); } });
       var tgR = ui.toggle(rowT, { label: T('cameras'), value: false, onChange: function (v) { st.rig = v; showNets(); } });
       ui.toggle(rowT, { label: T('no back faces'), value: true, onChange: function (v) { st.cull = v; need = true; } });
       /* the ground (a chart the scene marks `ground`) can be put away: the object alone, with the whole budget */
       ui.toggle(rowT, { label: T('ground'), value: true, onChange: function (v) { st.ground = v; charts.forEach(function (c) { c.off = !!c.ground && !v; }); need = true; remesh(); } });
+      /* the lab page (and a mount that asks for a sampling) picks it here: even, adaptive or the view window, with its buffer */
+      var segW = null, slW = null;
+      function mode() { return !st.adaptive ? 'even' : st.win ? 'window' : 'adaptive'; }
+      function setMode(m) { st.adaptive = m !== 'even'; if (m !== 'even') st.win = m === 'window'; st.touchedAB = true; need = true; paintMode(); paintBadge(); }
+      function paintMode() { tgA.set(st.adaptive); if (segW) segW.set(mode()); if (slW) slW.el.style.display = mode() === 'window' ? '' : 'none'; }
+      if (!env.embed || env.opts.sampling) {
+        segW = ui.seg(panel, { value: mode(), options: [{ v: 'even', label: T('even') }, { v: 'adaptive', label: T('adaptive') }, { v: 'window', label: T('view window') }], onChange: setMode });
+        segW.el.classList.add('mf-samp');
+        slW = ui.slider(panel, { label: T('buffer'), min: 0, max: 0.15, step: 0.005, value: st.buf,
+          fmt: function (v) { return (v * 100).toFixed(1) + ' %'; }, onInput: function (v) { st.buf = v; need = true; } });
+        slW.el.classList.add('mf-samp');
+        tgA.el.style.display = 'none';                     // the three-way control above says the same, and more
+      }
       var rdG = ui.readout(panel, { label: T('Gaussians drawn'), tone: 'splat' });
       var rdV = ui.readout(panel, { label: T('budget in view'), tone: 'ok' });
       rdV.el.classList.add('mf-samp');   // the view-adaptive sampler's row: not in the mesh scene (whose lattice the budget sizes)
@@ -124,7 +142,7 @@
       var atlas = ui.el('div', 'kt-atlas'); root.appendChild(atlas);
       /* split screen: one divider and one label per band, laid over the canvas and moved every frame */
       var split = ui.el('div', 'kt-split'), bands = MODES.concat(MODES[0]).map(function (m) {      // six: the most bands a split shows
-        var b = { a: ui.el('i'), b: ui.el('i'), lab: ui.el('span', '', m.name) };   // a divider can wrap: two copies
+        var b = { a: ui.el('i'), b: ui.el('i'), lab: ui.el('span', 'kt-box', m.name) };   // a divider can wrap: two copies
         split.appendChild(b.a); split.appendChild(b.b); split.appendChild(b.lab);
         return b;
       });
@@ -220,11 +238,11 @@
         atlas.style.gridTemplateColumns = 'repeat(' + Math.min(charts.length, small ? 4 : 8) + ',minmax(0,76px))';
         charts.forEach(function (c) {
           var tile = ui.el('div', 'kt-tile'); tile.style.setProperty('--c', c.hex);
-          tile.appendChild(ui.el('div', 'kt-tile-name', c.label));        // what a viewer reads for the chart's name (talk/scenes.js); the name itself is an id
+          tile.appendChild(ui.el('div', 'kt-box kt-tile-name', c.label));        // what a viewer reads for the chart's name (talk/scenes.js); the name itself is an id
           var box = ui.el('div', 'kt-tile-box'); tile.appendChild(box);
           c.cv = ui.canvas(box, 'kt-tile-cv');
-          c.lab = ui.el('div', 'kt-tile-n'); tile.appendChild(c.lab);
-          tile.appendChild(ui.el('div', 'kt-tile-s', T('{n} ctrl', { n: c.patch.nu + '×' + c.patch.nv })));
+          c.lab = ui.el('div', 'kt-box kt-tile-n'); tile.appendChild(c.lab);
+          tile.appendChild(ui.el('div', 'kt-box kt-tile-s', T('{n} ctrl', { n: c.patch.nu + '×' + c.patch.nv })));
           atlas.appendChild(tile); c.w = null; c.vis = null;
         });
         charts.forEach(coarse); updateNets(); showNets();
@@ -275,6 +293,7 @@
         cam.updateMatrixWorld(); M.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
         var e = M.elements, cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
         var totA = 0, totW = 0, inView = 0, z0 = 1e9, z1 = 0;
+        var win = mode() === 'window', lim = win ? 1 + st.buf : 1.12;      // lim: how far past the image edge (in half-images) a cell still asks for Gaussians
         charts.forEach(function (c) { if (!c.off) totA += c.area; });
         charts.forEach(function (c) {
           var n = c.gu * c.gv, i, o, w; c.w = c.w || new Float32Array(n); c.vis = c.vis || new Uint8Array(n);
@@ -283,14 +302,15 @@
             o = i * 3; var x = c.cpos[o], y = c.cpos[o + 1], z = c.cpos[o + 2];
             var cw = e[3] * x + e[7] * y + e[11] * z + e[15], px = e[0] * x + e[4] * y + e[8] * z + e[12], py = e[1] * x + e[5] * y + e[9] * z + e[13];
             w = 0; c.vis[i] = 0;
-            if (cw > 0.05 && Math.abs(px) < cw * 1.12 && Math.abs(py) < cw * 1.12) {
+            if (cw > 0.05 && Math.abs(px) < cw * lim && Math.abs(py) < cw * lim) {
               var dx = cx - x, dy = cy - y, dz = cz - z, d2 = dx * dx + dy * dy + dz * dz, dl = Math.sqrt(d2);
               var cs = (dx * c.cnrm[o] + dy * c.cnrm[o + 1] + dz * c.cnrm[o + 2]) / dl * c.flip;
               // open charts: foreshortening. closed charts: the near side counts in full (flat planoids must
               // stay small all the way to the silhouette), the hidden far side keeps a thin share
               if (c.closed) { c.vis[i] = cs > -0.15 ? 1 : 0; cs = c.vis[i] ? 1 : c.alpha ? 0.6 : st.cull ? 0 : 0.3; }      // culled: the far side asks for nothing (a see-through chart shows it)
               else { cs = Math.max(0.25, Math.abs(cs)); c.vis[i] = 1; }
-              w = c.carea[i] * cs / d2 * c.gain;
+              if (win && (Math.abs(px) > cw || Math.abs(py) > cw)) c.vis[i] = 0;       // window: "in view" is the image itself, not its buffer
+              w = c.carea[i] * cs / d2 * (win ? 1 : c.gain);                          // window: the whole budget goes by area on screen
               if (cw < z0) z0 = cw; if (cw > z1) z1 = cw;
             }
             c.w[i] = w; totW += w;
@@ -311,15 +331,16 @@
             var mu = new Float64Array(cu), mv = new Float64Array(cv), share = 0, lu = 0, lv = 0, a, b, i, imp;
             for (b = 0; b < cv; b++) for (a = 0; a < cu; a++) {
               i = (tl.iv * cv + b) * gu + tl.iu * cu + a;
-              imp = st.adaptive ? FLOOR * c.carea[i] / totA + (1 - FLOOR) * c.w[i] / (totW || 1) : c.carea[i] / totA;
+              imp = win ? c.w[i] / (totW || 1) : st.adaptive ? FLOOR * c.carea[i] / totA + (1 - FLOOR) * c.w[i] / (totW || 1) : c.carea[i] / totA;
               share += imp; mu[a] += imp; mv[b] += imp; lu += imp * c.clu[i] / c.tu; lv += imp * c.clv[i] / c.tv;
               if (first && c.vis[i]) inView += imp;
             }
+            if (win && !share) { tl.na = tl.nb = 0; return; }                         // window: a tile outside it gets nothing
             var N = Math.max(4, goal * share * scale), ratio = lu / (lv || 1e-12);   // aim for square cells in world space
             // curved closed charts keep a minimum count around the bend so flat planoids can follow it
             tl.nb = Math.max(c.minB, Math.round(Math.sqrt(N / ratio))); tl.na = Math.max(c.minA, Math.round(N / tl.nb));
-            for (a = 0; a < cu; a++) mu[a] += share / cu * 0.3;                       // bounded contrast inside a tile:
-            for (b = 0; b < cv; b++) mv[b] += share / cv * 0.3;                       // no giant cells on the far side
+            for (a = 0; a < cu; a++) mu[a] += share / cu * (win ? 0.12 : 0.3);        // bounded contrast inside a tile:
+            for (b = 0; b < cv; b++) mv[b] += share / cv * (win ? 0.12 : 0.3);        // no giant cells on the far side
             tl.us = new Float32Array(tl.na); tl.du = new Float32Array(tl.na); tl.vs = new Float32Array(tl.nb); tl.dv = new Float32Array(tl.nb);
             invCdf(mu, tl.na, tl.us, tl.du); invCdf(mv, tl.nb, tl.vs, tl.dv);
             for (a = 0; a < tl.na; a++) { tl.us[a] = (tl.iu + tl.us[a]) / c.tu; tl.du[a] /= c.tu; }
@@ -358,7 +379,7 @@
           if (c.off) { c.count = 0; c.lab.textContent = T('put away'); return; }
           eye.flip = c.flip;
           c.tiles.forEach(function (tl) {
-            if (tl.na * tl.nb > CAP) return;
+            if (tl.na * tl.nb > CAP || (!tl.na && st.win)) return;     // (window: a tile outside the view holds no lattice)
             NB.patchGrid(c.patch, tl.us, tl.vs, sg);
             var t0 = n, k, q, l, o, s;
             // a see-through chart keeps its far side, and each Gaussian takes the opacity of the control point nearest to it
@@ -453,10 +474,10 @@
       var KINDS = TS ? ['lattice', 'list', 'tsdf'] : ['lattice', 'list'];
       var KNAME = { lattice: T('ours · the lattice'), list: T('a list · emulated'), tsdf: T('TSDF fusion') };            // over a viewport (text)
       var KHEAD = { lattice: T('the lattice <i>ours</i>'), list: T('a list <i>emulated</i>'), tsdf: T('TSDF fusion') };  // a column of the board (HTML)
-      var board = ui.el('div', 'mf-board'); root.appendChild(board);
+      var board = ui.el('div', 'kt-box mf-board'); root.appendChild(board);
       /* compare view: a title and a status line over each viewport, a rule between two */
       var tags = KINDS.map(function (k) {
-        var e = ui.el('div', 'mf-vp mf-vp-' + k); e.appendChild(ui.el('b', '', KNAME[k])); e.appendChild(ui.el('span')); root.appendChild(e); return e;
+        var e = ui.el('div', 'kt-box mf-vp mf-vp-' + k); e.appendChild(ui.el('b', '', KNAME[k])); e.appendChild(ui.el('span')); root.appendChild(e); return e;
       });
       var bars = KINDS.slice(1).map(function () { var e = ui.el('i', 'mf-bar'); root.appendChild(e); return e; });
       rdG.el.classList.add('mf-one'); rdP.el.classList.add('mf-deck1'); segV.el.classList.add('mf-deck1');   // rows the compare view has no use for
@@ -1064,7 +1085,7 @@
         setBands(sc.teaser || sc.cover ? TEASE_BANDS : null, small ? 1 : 2);      // a narrow stage has room for three bands, not six
         field.uniforms.uFade.value = 0; split.style.opacity = '';
         st.view = sc.view; segV.set(sc.view); showView(); st.nets = !!sc.nets; st.rig = !!sc.rig;
-        st.adaptive = true; tgA.set(true); paintBadge();
+        st.adaptive = dflt !== 'even'; st.win = dflt === 'window'; paintMode(); paintBadge();
         field.uniforms.uRim.value = sc.rim || 0.3;
         var fresh = st.scn !== sc.scn;
         loadScene(sc.scn); showNets(); paintCap(); syncMesh(); st.paint = 0; st.from = 'stone'; st.fromT = st.target;
@@ -1141,7 +1162,7 @@
         }
         if (sc.ab && !st.touchedAB) {
           st.abT += dt;
-          if (st.abT > 3.4) { st.abT = 0; st.adaptive = !st.adaptive; tgA.set(st.adaptive); paintBadge(); need = true; }
+          if (st.abT > 3.4) { st.abT = 0; st.adaptive = !st.adaptive; paintMode(); paintBadge(); need = true; }
         }
         if (sc.breathe && !st.touchedEdit && !dragCP && (def.animate || def.edit)) {
           // the scene's own edit: a life of its own where the scene has one (and a repaint, wiped in), else one move eased in and out
@@ -1285,6 +1306,8 @@
         setTarget: pickTarget,                                                            // 'object', 'owl' or 'selection' (the paint scene's control)
         hands: function () { return hands; },                                             // for tests
         pickSurface: pickSurface,
+        sampling: function (m) { if (SAMPLINGS.indexOf(m) >= 0) setMode(m); return mode(); },       // 'even' | 'adaptive' | 'window' (for tests and host pages)
+        setBuffer: function (b) { st.buf = KT.clamp(+b, 0, 0.15); if (slW) slW.set(st.buf); need = true; return st.buf; },
         setBudget: function (n) { st.budget = KT.clamp(n, 6000, CAP - 20000); slB.set(st.budget); need = true; remesh(); },
         /* scenes `mesh` and `stitch`, for tests: what is meshed and every number on the board; the stitched lattice as a file */
         meshStats: function () {

@@ -26,7 +26,7 @@
   try { R = KL.renderer(stage, cam, { capacity: CAP, page: PAGE }); }
   catch (e) { stage.classList.add('dead'); stage.appendChild(el('p', 'lab-dead', 'This figure needs WebGL 2, which this browser does not provide.')); return; }
   var field = { center: R.center, axU: R.axU, axV: R.axV, color: R.color, capacity: CAP };
-  var st = { scn: '', mode: 0, split: false, roll: 0, budget: +query.budget || (small ? 90000 : 200000), sampling: 'adaptive', k: 0.72,
+  var st = { scn: '', mode: 0, split: false, roll: 0, budget: +query.budget || (small ? 90000 : 200000), sampling: 'locked', buffer: 0.04, k: 0.72,
              tool: 'orbit', brush: 0.5, by: 'feature', thr: 0.55, nets: false, hide: false, drawn: 0 };
   var def = null, charts = [], totalCP = 0, feat = null, need = true, camKey = '', lastAlloc = 0, zr = [1, 30];
   var sel = null;               // { n, cen:[x,y,z], seed, edit:{inflate,lift,scale,tint,amount} } while a selection exists
@@ -74,7 +74,8 @@
 
   /* ---------- allocation: importance -> per-tile counts -> warped (u,v) lattices ----------
      st.sampling: 'even' = by surface area · 'adaptive' = by what the camera sees, with a floor everywhere ·
-     'locked' = the whole budget inside the view frustum, shared by area on screen (nothing outside it) */
+     'locked' (the default; "view window" in the UI) = the whole budget inside the view frustum widened by st.buffer (how far past
+     the image edge a cell still counts, in half-images; slider 0 to 0.15), shared by area on screen, nothing outside it */
   var M = new T.Matrix4();
   function invCdf(m, n, out, dOut) {
     var g = m.length, cdf = new Float64Array(g + 1), i, tot = 0, prev = 0;
@@ -85,7 +86,7 @@
   function allocate() {
     cam.updateMatrixWorld(); M.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     var e = M.elements, cx = cam.position.x, cy = cam.position.y, cz = cam.position.z, totA = 0, totW = 0, z0 = 1e9, z1 = 0;
-    var locked = st.sampling === 'locked', lim = locked ? 1.04 : 1.12;
+    var locked = st.sampling === 'locked', lim = locked ? 1 + st.buffer : 1.12;
     charts.forEach(function (c) { totA += c.area; });
     charts.forEach(function (c) {
       var n = c.gu * c.gv, i, o, w; c.w = c.w || new Float32Array(n);
@@ -458,7 +459,10 @@
     $('modes').appendChild(b);
   });
   var slB = slider('budget', { min: 20000, max: CAP - 20000, step: 5000, value: st.budget, fmt: function (v) { return (v / 1000).toFixed(0) + 'k'; }, on: function (v) { st.budget = v; need = true; } });
-  seg('sampling', st.sampling, function (v) { st.sampling = v; need = true; });
+  var slBuf = slider('buffer', { min: 0, max: 0.15, step: 0.005, value: st.buffer, fmt: function (v) { return (v * 100).toFixed(1) + ' %'; }, on: function (v) { st.buffer = v; need = true; } });
+  function paintSampling() { $('buffer').hidden = st.sampling !== 'locked'; }
+  seg('sampling', st.sampling, function (v) { st.sampling = v; need = true; paintSampling(); });
+  paintSampling();
   $('nets').addEventListener('change', function () { st.nets = this.checked; showNets(); });
   function setTool(v) { st.tool = v; document.body.dataset.tool = v; ring.style.opacity = 0; segTool.set(v); }
   var segTool = seg('tool', st.tool, setTool);

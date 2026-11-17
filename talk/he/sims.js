@@ -16,7 +16,7 @@
   function he(n) { return Math.round(n).toLocaleString(EN ? 'en-US' : 'he-IL'); }
   function h2(x, y) { var s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
   function rgb(c, k) { return 'rgb(' + Math.round(Math.min(255, c[0] * k)) + ',' + Math.round(Math.min(255, c[1] * k)) + ',' + Math.round(Math.min(255, c[2] * k)) + ')'; }
-  function read(root) { var e = KT.ui.el('div', 'he-read'); root.appendChild(e); return function (big, small) { e.innerHTML = '<b>' + big + '</b>' + small; }; }
+  function read(root) { var e = KT.ui.el('div', 'kt-box he-read'); root.appendChild(e); return function (big, small) { e.innerHTML = '<b>' + big + '</b>' + small; }; }
 
   /* ---------- the doughnut ---------- */
   var R = 1, r = 0.44;
@@ -156,7 +156,7 @@
     create: function (env) {
       var ui = env.ui, root = env.root, C = ui.canvas(root), g = C.ctx, W = 1, H = 1;
       var st = { scene: 'probe', p: [1.5, 0.7], t: 0, touched: false, n: 12, a: 0 };
-      var out = read(root), bub = ui.el('div', 'he-bubble'); root.appendChild(bub);
+      var out = read(root), bub = ui.el('div', 'kt-box he-bubble'); root.appendChild(bub);
       var panel = ui.panel(root, { pos: 'bottom' });
       var sl = ui.slider(panel, { label: L('דגימות לכל קרן', 'samples per ray'), min: 2, max: 64, value: 12, fmt: function (v) { return v; }, onInput: function (v) { st.n = v; } });
       function f(x, y) { return Math.abs(Math.hypot(x, y) - R) - r; }       // the doughnut seen from above

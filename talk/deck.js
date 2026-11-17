@@ -17,7 +17,7 @@
   /* talk.html?master (or #master) is the slide master's presenter view (talk/master.js): the page shows its panel only
      (master.css hides the rest under body.kt-presenter), so the deck here mounts no simulation and takes no step. Set
      before anything below can run a frame. */
-  var presenter = /(?:^|&)master(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#master';
+  var presenter = /(?:^|&)(?:master|prompter)(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#master' || location.hash === '#prompter';   // ?prompter: the same view as a teleprompter (master.js)
   if (presenter) document.body.classList.add('kt-presenter');
 
   /* ================= language =================
@@ -355,6 +355,31 @@
   subsBtn.addEventListener('click', function () { setSubs(!subs()); });
   paintSubs();
 
+  /* ================= info boxes: on / off =================
+     The DOM boxes over a simulation stage that carry text, numbers or controls (the kit's caption, readout, panel and
+     hint, and each module's own boards, tags, badges, labels, legends, plots) wear the class `kt-box`; with html.kt-bare
+     (deck.css, "Info boxes off") they are hidden and only the picture stays. Same plumbing as the subtitles: the class
+     is set by talk.html's head before the first paint (?info=on|off, else localStorage 'kt-info'), switched by I, the HUD
+     button, the slide master and the presenter view (setInfo), event kt-info {info}. */
+  var infoBtn = el('button', 'info', '<svg viewBox="0 0 16 13" aria-hidden="true"><rect class="fr" x="1.2" y="1.2" width="13.6" height="10.6" rx="2.2" stroke-width="1.3"/><rect class="bx" x="3.6" y="3.4" width="5.4" height="3" rx="1" stroke-width="1.3"/><path class="sl" d="M10.4 2.4 L2.6 10.6" stroke-width="1.5"/></svg>');
+  infoBtn.type = 'button'; infoBtn.title = KT.t('I · info boxes: hide / show the captions and panels over the simulations');
+  infoBtn.setAttribute('aria-label', KT.t('Info boxes off: hide the boxes over the simulations (I)'));
+  if (hud) hud.insertBefore(infoBtn, subsBtn.nextSibling);
+  function info() { return !root.classList.contains('kt-bare'); }
+  function paintInfo() { infoBtn.setAttribute('aria-pressed', String(!info())); }
+  function setInfo(on) {
+    on = !!on;
+    if (on !== info()) root.classList.toggle('kt-bare', !on);     // hidden, not removed: no module lays out again
+    try { localStorage.setItem('kt-info', on ? 'on' : 'off'); } catch (e) {}
+    if (/[?&]info=/.test(location.search)) try {
+      history.replaceState(null, '', location.pathname + location.search.replace(/([?&])info=[^&]*&?/, '$1').replace(/[?&]$/, '') + location.hash);
+    } catch (e) {}
+    paintInfo();
+    emit('kt-info', { info: on });
+  }
+  infoBtn.addEventListener('click', function () { setInfo(!info()); });
+  paintInfo();
+
   document.addEventListener('keydown', function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     var t = e.target, tag = t && t.tagName;
@@ -371,6 +396,7 @@
     else if (k === 'm') snd.btn.click();
     else if (k === 'l') { if (I18N && !e.repeat) I18N.toggle(); }
     else if (k === 's') { if (!e.repeat) setSubs(!subs()); }
+    else if (k === 'i') { if (!e.repeat) setInfo(!info()); }
     else if (k === '?') keys.classList.toggle('on');
     else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-9 = the chapter with that rail number; a key with none goes to the last part
       var c = k === '0' ? ($('section.cover[data-rail]') || chapters[0]) : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
@@ -491,7 +517,7 @@
 
   /* ================= the handle: talk/master.js (the slide master) and tests =================
      events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh),
-     kt-subs {subs} (subtitles shown, or titles only) */
+     kt-subs {subs} (subtitles shown, or titles only), kt-info {info} (boxes over the simulations shown, or off) */
   KT.deck = {
     presenter: presenter,                                              // this page is the presenter view (talk.html?master)
     steps: allNav, sections: chapters, navs: navsOf,                   // every step (.nav) and every data-rail section, in order
@@ -499,7 +525,8 @@
     letter: letter,                                                    // a keydown's key, by position on a keyboard that types another script
     section: function (n) { return n._sec; }, byKey: function (k) { return byKey[k] || null; },
     current: function () { return cur; }, cut: cut, setCut: setCut,
-    subs: subs, setSubs: setSubs, subtitles: subtitles,               // subs(): true = subtitles shown; subtitles(step): its subtitle elements
+    info: info, setInfo: setInfo,                                      // info(): true = boxes over the simulations shown; setInfo(on)
+    subs: subs, setSubs: setSubs, subtitles: subtitles,              // subs(): true = subtitles shown; subtitles(step): its subtitle elements
     defaultOn: defaultOn, isOn: isOn, inCut: inCut, shown: shown,      // shown(n, m): on, and in cut m (default: the current one)
     minutes: minutes, share: share, budget: budget, total: total, plan: plan,
     clock: function () { return clock.t0; }, toggleClock: toggleClock,
@@ -519,7 +546,7 @@
      back here: the cut, the parts that are on, the running clock, the mute, the step (the saved choices and the
      address hold most of it anyway; this also works where the browser gives the page no storage). */
   document.addEventListener('kt-lang', function (e) {
-    e.detail.keep.deck = { cut: cut(), over: Object.assign({}, over), t0: clock.t0, mute: snd.mute, step: cur ? cur._i : -1, subs: subs() };
+    e.detail.keep.deck = { cut: cut(), over: Object.assign({}, over), t0: clock.t0, mute: snd.mute, step: cur ? cur._i : -1, subs: subs(), info: info() };
   });
   var kept = (I18N && I18N.kept && I18N.kept.deck) || {};
   var saved = 40;
