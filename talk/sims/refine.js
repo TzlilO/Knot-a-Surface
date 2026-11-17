@@ -567,6 +567,17 @@
      PART 2 — the instrument (Canvas 2D)
      ===================================================================================== */
   var KT = root.KnotTalk, C = KT.color;
+  /* Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js): that string in the page's language,
+     or the English itself where there is no translation (the lab page). A line with numbers in it is one template,
+     T('RMSE {a} → {b}', { a: .., b: .. }); the numbers are formatted as before and passed in. Declared here, below the
+     node exports: PART 1 has no words and no KnotTalk.
+     On a right-to-left page the stage stays a left-to-right island (the kit sets it): the figure, its axes, numbers and
+     every label stay where they are, and a string from T() carries its own direction (it comes inside U+2067 .. U+2069,
+     or U+2066 .. U+2069), so it reads right on the canvas as it is. What is left to this module: Hebrew is drawn
+     without the tracking of the capitals it replaces (trackOf), and a line cut in two keeps its direction (flowTxt).
+     A T() result is for display only: never a key, an id or a test. */
+  var T = KT.t, HEB = /[\u0590-\u05FF]/;
+  function trackOf(s, ls) { return HEB.test(s) ? '0px' : (ls || '0px'); }
   function rgbOf(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
   function rgbaOf(hex, a) { var c = rgbOf(hex); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
   function rgba(key, a) { return rgbaOf(C[key], a); }
@@ -888,9 +899,9 @@
   function densOf(i) { return Math.round(CFG.GMIN * Math.pow(CFG.GMAX / CFG.GMIN, i / DSTEPS)); }
   function densIdx(n) { return Math.round(DSTEPS * Math.log(n / CFG.GMIN) / Math.log(CFG.GMAX / CFG.GMIN)); }
   var REGIMES = {
-    ctrl: { n: 256, label: 'ctrl-starved', head: 'STARVED OF CONTROL POINTS' },
-    gauss: { n: 8, label: 'gauss-starved', head: 'STARVED OF GAUSSIANS' },
-    bal: { n: 128, label: 'balanced', head: 'BALANCED' }
+    ctrl: { n: 256, label: T('ctrl-starved'), head: T('STARVED OF CONTROL POINTS') },
+    gauss: { n: 8, label: T('gauss-starved'), head: T('STARVED OF GAUSSIANS') },
+    bal: { n: 128, label: T('balanced'), head: T('BALANCED') }
   };
 
   KT.register('refine', {
@@ -912,52 +923,53 @@
       rootEl.appendChild(wrap); wrap.appendChild(stage); wrap.appendChild(col);
       var cv = ui.canvas(stage), ctx = cv.ctx;
 
-      var pr = ui.panel(col, { title: 'Layer A · control density' }); pr.classList.add('rf-read');
+      var pr = ui.panel(col, { title: T('Layer A · control density') }); pr.classList.add('rf-read');
       var LABELS = [];
       function readout(full, short, tone, cls) {
         var r = ui.readout(pr, { label: full, tone: tone }); if (cls) r.el.className += ' ' + cls;
         LABELS.push({ el: r.el.querySelector('.kt-lab'), full: full, short: short });
         return r;
       }
-      var rdNet = readout('control points', 'net', 'ctrl');
-      var rdPar = readout('parameters', 'params', 'ctrl', 'rf-x3');
-      var rdKn = readout('interior knots', 'knots', 'ctrl', 'rf-x');
-      var rdRmse = readout('surface RMSE', 'surface', 'err');
-      var rdMax = readout('max error', 'max err', 'err', 'rf-x2');
-      var rdUni = readout('uniform RMSE', 'uniform', '', 'rf-hide');
-      var t2 = ui.el('div', 'kt-panel-title rf-t2', 'Layer B · sampling density'); pr.appendChild(t2);
-      var rdG = readout('Gaussians', 'Gaussians', 'splat', 'rf-gx');
-      var rdDrawn = readout('drawn RMSE', 'drawn', 'err', 'rf-gx');
-      var rdAng = readout('normal error', 'normals', 'err', 'rf-hide');
+      var rdNet = readout(T('control points'), T('net'), 'ctrl');
+      var rdPar = readout(T('parameters'), T('params'), 'ctrl', 'rf-x3');
+      var rdKn = readout(T('interior knots'), T('knots'), 'ctrl', 'rf-x');
+      var rdRmse = readout(T('surface RMSE'), T('surface'), 'err');
+      var rdMax = readout(T('max error'), T('max err'), 'err', 'rf-x2');
+      var rdUni = readout(T('uniform RMSE'), T('uniform'), '', 'rf-hide');
+      var t2 = ui.el('div', 'kt-panel-title rf-t2', T('Layer B · sampling density')); pr.appendChild(t2);
+      var rdG = readout(T('Gaussians'), T('Gaussians'), 'splat', 'rf-gx');
+      var rdDrawn = readout(T('drawn RMSE'), T('drawn'), 'err', 'rf-gx');
+      var rdAng = readout(T('normal error'), T('normals'), 'err', 'rf-hide');
 
-      var pc = ui.panel(col, { title: 'controls' }); pc.classList.add('rf-ctrl');
-      var segMap = ui.seg(pc, { label: 'map', value: 'fit',
-        options: [{ v: 'fit', label: 'fit' }, { v: 'target', label: 'target' }, { v: 'error', label: 'error' }],
+      var pc = ui.panel(col, { title: T('controls') }); pc.classList.add('rf-ctrl');
+      var segMap = ui.seg(pc, { label: T('map'), value: 'fit',
+        options: [{ v: 'fit', label: T('fit') }, { v: 'target', label: T('target') }, { v: 'error', label: T('error') }],
         onChange: function (v) { st.view = v; dirty = true; } });
-      var segShade = ui.seg(pc, { label: 'shade', value: 'height',
-        options: [{ v: 'height', label: 'height' }, { v: 'normal', label: 'normals' }],
+      var segShade = ui.seg(pc, { label: T('shade'), value: 'height',
+        options: [{ v: 'height', label: T('height') }, { v: 'normal', label: T('normals') }],
         onChange: function (v) { setShade(v); } });
       var rowB = ui.el('div', 'kt-row rf-btns'); pc.appendChild(rowB);
-      ui.button(rowB, { label: 'insert', onClick: function () { userInsert(); } });
-      ui.button(rowB, { label: 'remove', onClick: function () { userRemove(); } });
-      ui.button(rowB, { label: 'auto', onClick: function () { userAuto(); } });
-      ui.button(rowB, { label: 'reset', onClick: function () { userReset(); } });
+      ui.button(rowB, { label: T('insert'), onClick: function () { userInsert(); } });
+      ui.button(rowB, { label: T('remove'), onClick: function () { userRemove(); } });
+      ui.button(rowB, { label: T('auto'), onClick: function () { userAuto(); } });
+      ui.button(rowB, { label: T('reset'), onClick: function () { userReset(); } });
       var rowP = ui.el('div', 'kt-row rf-btns rf-pre'); pc.appendChild(rowP);
       var preBtn = {};
       ['ctrl', 'gauss', 'bal'].forEach(function (k) { preBtn[k] = ui.button(rowP, { label: REGIMES[k].label, onClick: function () { userPreset(k); } }); });
-      preBtn.tour = ui.button(rowP, { label: 'tour', onClick: function () { startTour(); } });
+      preBtn.tour = ui.button(rowP, { label: T('tour'), onClick: function () { startTour(); } });
       var rowT = ui.el('div', 'kt-row rf-btns rf-tog'); pc.appendChild(rowT);
       /* one button, named for what a press does now: pause what is playing, resume it, or play this step again */
-      var btRun = ui.button(rowT, { label: 'pause', onClick: function () {
+      var RUN = { pause: T('pause'), resume: T('resume'), replay: T('replay') }, runIs = 'pause';
+      var btRun = ui.button(rowT, { label: RUN.pause, onClick: function () {
         if (!st.run) st.run = true; else if (playing()) st.run = false; else setScene(st.scene);
       } });
-      var tgG = ui.toggle(rowT, { label: 'gaussians', value: false, onChange: function (v) { st.gauss = v; st.densAuto = false; st.tour = null; relayout(); } });
+      var tgG = ui.toggle(rowT, { label: T('gaussians'), value: false, onChange: function (v) { st.gauss = v; st.densAuto = false; st.tour = null; relayout(); } });
       tgG.el.classList.add('rf-g');
-      var slBud = ui.slider(pc, { label: 'budget', min: 0, max: BUDGETS.length - 1, step: 1, value: BUDGETS.indexOf(CFG.BUDGET),
+      var slBud = ui.slider(pc, { label: T('budget'), min: 0, max: BUDGETS.length - 1, step: 1, value: BUDGETS.indexOf(CFG.BUDGET),
         fmt: function (i) { return thousands(BUDGETS[i]); },
         onInput: function (i) { st.budget = BUDGETS[i]; } });
       slBud.el.classList.add('rf-bud');
-      var slDens = ui.slider(pc, { label: 'samples', min: 0, max: DSTEPS, step: 1, value: densIdx(24),
+      var slDens = ui.slider(pc, { label: T('samples'), min: 0, max: DSTEPS, step: 1, value: densIdx(24),
         fmt: function (i) { return densOf(i) + '²'; },
         onInput: function (i) { st.dens = densOf(i); st.densAuto = false; st.tour = null; if (!st.gauss) { st.gauss = true; tgG.set(true); relayout(); } } });
       slDens.el.classList.add('rf-dens');
@@ -1089,8 +1101,8 @@
         st.op = { type: 'ins', w: w, phase: 0, t: 0, pace: pace, auto: !!auto };
         if (!auto) {
           var share = w.mse * (w.axis === 'u' ? ms.su : ms.sv)[w.idx].n / tg.G / (ms.rmse * ms.rmse);
-          setStatus('WORST SPAN · ' + w.axis + ' ∈ [' + w.a.toFixed(3) + ', ' + w.b.toFixed(3) + ']',
-                    'holds ' + Math.round(100 * share) + ' % of the squared error · knot goes at its midpoint', 'err');
+          setStatus(T('WORST SPAN · {span}', { span: w.axis + ' ∈ [' + w.a.toFixed(3) + ', ' + w.b.toFixed(3) + ']' }),
+                    T('holds {share} of the squared error · knot goes at its midpoint', { share: Math.round(100 * share) + ' %' }), 'err');
         }
         return true;
       }
@@ -1102,11 +1114,11 @@
         op.dz = r.dz; op.before = before; op.added = r.added;
         var where = w.axis + ' = ' + w.knot.toFixed(3);
         if (op.auto) {
-          setStatus('AUTO-INSERT · KNOT ' + st.inserted + ' · ' + where + ' · +' + r.added + ' CONTROL POINTS', '', 'ctrl',
-            function () { return 'surface unchanged (max |Δz| ' + expStr(op.dz) + ') · RMSE ' + pct(st.rmse0) + ' → ' + pctA(ms.rmse); });
+          setStatus(T('AUTO-INSERT · KNOT {k} · {where} · +{n} CONTROL POINTS', { k: st.inserted, where: where, n: r.added }), '', 'ctrl',
+            function () { return T('surface unchanged (max |Δz| {dz}) · RMSE {a} → {b}', { dz: expStr(op.dz), a: pct(st.rmse0), b: pctA(ms.rmse) }); });
         } else {
-          setStatus(r.dz <= 1e-9 ? 'SURFACE UNCHANGED · +' + r.added + ' CONTROL POINTS' : 'SURFACE MOVED — INSERTION BUG',
-                    'Boehm insertion at ' + where + ' · max |Δz| = ' + expStr(r.dz) + ' · RMSE still ' + pctA(before), r.dz <= 1e-9 ? 'ok' : 'err');
+          setStatus(r.dz <= 1e-9 ? T('SURFACE UNCHANGED · +{n} CONTROL POINTS', { n: r.added }) : T('SURFACE MOVED — INSERTION BUG'),
+                    T('Boehm insertion at {where} · max |Δz| = {dz} · RMSE still {rmse}', { where: where, dz: expStr(r.dz), rmse: pctA(before) }), r.dz <= 1e-9 ? 'ok' : 'err');
         }
       }
       function beginRemove(pace) {
@@ -1115,8 +1127,8 @@
         var r = nextRemoval(m, st.ceiling);
         if (!r.cand) { st.blocked = r.next; return false; }
         st.op = { type: 'rem', cand: r.cand, phase: 0, t: 0, pace: pace };
-        setStatus('REDUNDANT KNOT · ' + r.cand.axis + ' = ' + r.cand.knot.toFixed(3),
-                  're-fit without it → RMSE ' + pct(r.cand.rmse, 3) + ' · tolerance ' + pct(st.ceiling, 3), 'ctrl');
+        setStatus(T('REDUNDANT KNOT · {where}', { where: r.cand.axis + ' = ' + r.cand.knot.toFixed(3) }),
+                  T('re-fit without it → RMSE {rmse} · tolerance {tol}', { rmse: pct(r.cand.rmse, 3), tol: pct(st.ceiling, 3) }), 'ctrl');
         return true;
       }
       function doRemove(op) {
@@ -1124,13 +1136,13 @@
         fx.push({ kind: 'gone', axis: c.axis, knot: c.knot, age: 0, life: 1.1 });
         setModel(removeFrom(m, c.axis, c.idx)); st.pruned++;
         var ceil = st.ceiling;
-        setStatus('REMOVE + RE-FIT · ' + c.axis + ' = ' + c.knot.toFixed(3) + ' · −' + (n0 - m.nu * m.nv) + ' CONTROL POINTS', '', 'ctrl',
-          function () { return 'RMSE ' + pct(before, 3) + ' → ' + pct(ms.rmse, 3) + ' · tolerance ' + pct(ceil, 3); });
+        setStatus(T('REMOVE + RE-FIT · {where} · −{n} CONTROL POINTS', { where: c.axis + ' = ' + c.knot.toFixed(3), n: n0 - m.nu * m.nv }), '', 'ctrl',
+          function () { return T('RMSE {a} → {b} · tolerance {tol}', { a: pct(before, 3), b: pct(ms.rmse, 3), tol: pct(ceil, 3) }); });
       }
       function blockedStatus(head) {
         var b = st.blocked;
-        setStatus(head, b ? 'next cheapest removal → RMSE ' + pct(b.rmse, 3) + ' · over the ' + pct(st.ceiling, 3) + ' tolerance'
-                          : 'no interior knots left', st.pruned ? 'ok' : 'text');
+        setStatus(head, b ? T('next cheapest removal → RMSE {rmse} · over the {tol} tolerance', { rmse: pct(b.rmse, 3), tol: pct(st.ceiling, 3) })
+                          : T('no interior knots left'), st.pruned ? 'ok' : 'text');
       }
       function stepOp(dt) {
         var op = st.op; op.t += dt;
@@ -1138,8 +1150,8 @@
           if (op.phase === 0 && op.t >= op.pace.hi) { doInsert(op); op.phase = 1; op.t = 0; }
           else if (op.phase === 1 && op.t >= op.pace.hold) {
             st.rate = op.pace.rate; st.op = null;
-            if (!op.auto) setStatus('THE OPTIMIZER USES THE NEW FREEDOM', '', 'surf',
-              function () { return 'RMSE ' + pctA(op.before) + ' → ' + pctA(ms.rmse) + (m.cg.done ? ' · converged' : ''); });
+            if (!op.auto) setStatus(T('THE OPTIMIZER USES THE NEW FREEDOM'), '', 'surf',
+              function () { var v = { a: pctA(op.before), b: pctA(ms.rmse) }; return m.cg.done ? T('RMSE {a} → {b} · converged', v) : T('RMSE {a} → {b}', v); });
           }
         } else if (op.phase === 0 && op.t >= op.pace.hi) { doRemove(op); st.rate = op.pace.rate; st.op = null; }
       }
@@ -1154,22 +1166,24 @@
       }
       function onConverged() {
         if (st.scene === 'coarse' && st.mode === 'idle' && m.nu === CFG.N0 && m.nv === CFG.N0 && !st.inserted)
-          setStatus('SMOOTH GROUND FITS · THE CRATER DOES NOT', netStr(m) + ' net · RMSE ' + pct(ms.rmse) + ' · the error sits in one u-span and one v-span', 'text');
+          setStatus(T('SMOOTH GROUND FITS · THE CRATER DOES NOT'), T('{net} net · RMSE {rmse} · the error sits in one u-span and one v-span', { net: netStr(m), rmse: pct(ms.rmse) }), 'text');
       }
       function autoNext() {
         st.timer = 0;
         if (!beginInsert(autoPace(), true)) {
           st.mode = 'idle';
-          setStatus('BUDGET REACHED · ' + thousands(m.nu * m.nv) + ' / ' + thousands(st.budget) + ' CONTROL POINTS',
-                    'RMSE ' + pct(st.rmse0) + ' → ' + pctA(ms.rmse) + ' · ' + st.inserted + (m.nu * m.nv > 400 ? ' knots inserted' : ' knots, clustered over the crater'), 'ok');
+          var v = { a: pct(st.rmse0), b: pctA(ms.rmse), n: st.inserted };
+          setStatus(T('BUDGET REACHED · {n} / {budget} CONTROL POINTS', { n: thousands(m.nu * m.nv), budget: thousands(st.budget) }),
+                    m.nu * m.nv > 400 ? T('RMSE {a} → {b} · {n} knots inserted', v) : T('RMSE {a} → {b} · {n} knots, clustered over the crater', v), 'ok');
         }
       }
       function pruneNext() {
         st.timer = 0;
         if (!beginRemove(PACE.prune)) {
           st.mode = 'idle';
-          blockedStatus(st.pruned ? 'PRUNED ' + st.pruned + ' KNOT' + (st.pruned > 1 ? 'S' : '') + ' · ' + st.ptsFrom + ' → ' + m.nu * m.nv + ' CONTROL POINTS'
-                                  : 'NOTHING TO PRUNE WITHIN TOLERANCE');
+          var v = { n: st.pruned, a: st.ptsFrom, b: m.nu * m.nv };
+          blockedStatus(st.pruned > 1 ? T('PRUNED {n} KNOTS · {a} → {b} CONTROL POINTS', v) : st.pruned ? T('PRUNED {n} KNOT · {a} → {b} CONTROL POINTS', v)
+                                      : T('NOTHING TO PRUNE WITHIN TOLERANCE'));
         }
       }
 
@@ -1180,18 +1194,18 @@
         if (busy()) return; st.mode = 'idle'; st.pending = null; manual(); st.rmse0 = st.rmse0 || ms.rmse;
         if (!beginInsert(PACE.button, false)) {
           var w = worstSpan(ms, CFG.MIN_SAMPLES);
-          if (w) setStatus('CAP REACHED · ' + thousands(m.nu * m.nv) + ' OF ' + thousands(CFG.MAX_PTS) + ' CONTROL POINTS', 'one more knot would add ' + (w.axis === 'u' ? m.nv : m.nu) + ' control points', 'text');
-          else setStatus('NO SPAN LEFT TO SPLIT', 'every span is already down to ' + CFG.MIN_SAMPLES + ' sample lines', 'text');
+          if (w) setStatus(T('CAP REACHED · {n} OF {cap} CONTROL POINTS', { n: thousands(m.nu * m.nv), cap: thousands(CFG.MAX_PTS) }), T('one more knot would add {n} control points', { n: w.axis === 'u' ? m.nv : m.nu }), 'text');
+          else setStatus(T('NO SPAN LEFT TO SPLIT'), T('every span is already down to {n} sample lines', { n: CFG.MIN_SAMPLES }), 'text');
         }
       }
       function userRemove() {
         if (busy()) return; st.mode = 'idle'; st.pending = null; manual();
         if (!st.pruned) st.ptsFrom = m.nu * m.nv;
-        if (!beginRemove(PACE.button)) blockedStatus('NO KNOT CAN GO WITHIN TOLERANCE');
+        if (!beginRemove(PACE.button)) blockedStatus(T('NO KNOT CAN GO WITHIN TOLERANCE'));
       }
       function userAuto() {
         if (busy()) return; st.pending = null; manual(); st.mode = 'auto'; st.timer = autoPace().gap; st.rmse0 = st.rmse0 || ms.rmse;
-        if (m.nu * m.nv >= st.budget) setStatus('BUDGET ' + thousands(st.budget) + ' CONTROL POINTS', 'raise the budget (up to ' + thousands(CFG.MAX_PTS) + ') to keep inserting', 'text');
+        if (m.nu * m.nv >= st.budget) setStatus(T('BUDGET {n} CONTROL POINTS', { n: thousands(st.budget) }), T('raise the budget (up to {n}) to keep inserting', { n: thousands(CFG.MAX_PTS) }), 'text');
       }
       function userReset() { manual(); enterCoarse(true); }
       function manual() { st.tour = null; st.preset = ''; st.want = null; st.manual = true; markPreset(); }
@@ -1225,8 +1239,8 @@
         clearRun(); st.inserted = 0; st.pruned = 0; st.ceiling = null; st.blocked = null;
         if (animate) {
           var c = coarseModel(tg); setModel(c); st.rate = 9;
-          setStatus('COARSE NET · ' + netStr(c) + ' CONTROL HEIGHTS', '', 'ctrl',
-            function () { return 'conjugate gradients on the least-squares fit · RMSE ' + pct(ms.rmse); });
+          setStatus(T('COARSE NET · {net} CONTROL HEIGHTS', { net: netStr(c) }), '', 'ctrl',
+            function () { return T('conjugate gradients on the least-squares fit · RMSE {rmse}', { rmse: pct(ms.rmse) }); });
         } else setModel(S.restore(S.coarse()));
         S.coarse(); st.rmse0 = S.coarseRmse;
         st.barScale = 0;
@@ -1244,18 +1258,18 @@
         if (id === 'coarse') { enterCoarse(true); setView('fit'); setGauss(false); }
         else if (id === 'insert') {
           enterCoarse(false); setView('fit'); setGauss(false); st.holdScale = true;
-          setStatus('COARSE NET · ' + netStr(m) + ' · RMSE ' + pct(ms.rmse), 'where is the error? measured per u-span and per v-span', 'text');
+          setStatus(T('COARSE NET · {net} · RMSE {rmse}', { net: netStr(m), rmse: pct(ms.rmse) }), T('where is the error? measured per u-span and per v-span'), 'text');
           st.pending = { delay: PACE.sceneInsert.delay, fn: function () { beginInsert(PACE.sceneInsert, false); } };
         } else if (id === 'auto') {
           enterCoarse(false); setView('fit'); setGauss(false);
-          setStatus('AUTO-INSERT · BUDGET ' + st.budget + ' CONTROL POINTS', 'one knot every ' + PACE.auto.gap + ' s · midpoint of the span holding the most error', 'ctrl');
+          setStatus(T('AUTO-INSERT · BUDGET {n} CONTROL POINTS', { n: st.budget }), T('one knot every {s} s · midpoint of the span holding the most error', { s: PACE.auto.gap }), 'ctrl');
           st.mode = 'auto'; st.timer = PACE.auto.gap - 0.7;
         } else if (id === 'remove') {
           clearRun(); setModel(S.restore(S.auto())); setView('fit'); setGauss(false);
           st.inserted = S.autoHist.length - 1; st.pruned = 0; st.ptsFrom = m.nu * m.nv; st.rmse0 = S.autoHist[0].rmse;
           st.ceiling = S.autoRmse * CFG.TOL; st.blocked = null;
-          setStatus('PRUNE · ' + m.nu * m.nv + ' CONTROL POINTS · RMSE ' + pct(ms.rmse, 3),
-                    'drop the cheapest knot, re-fit · keep RMSE ≤ ' + pct(st.ceiling, 3) + ' (+' + Math.round((CFG.TOL - 1) * 100) + ' %)', 'ctrl');
+          setStatus(T('PRUNE · {n} CONTROL POINTS · RMSE {rmse}', { n: m.nu * m.nv, rmse: pct(ms.rmse, 3) }),
+                    T('drop the cheapest knot, re-fit · keep RMSE ≤ {tol} (+{more} %)', { tol: pct(st.ceiling, 3), more: Math.round((CFG.TOL - 1) * 100) }), 'ctrl');
           st.mode = 'prune'; st.timer = PACE.prune.gap - 1.0;
         } else if (id === 'balance') {
           setGauss(true); startTour();
@@ -1406,34 +1420,38 @@
       function font(w, px, fam) { return w + ' ' + px + 'px ' + (fam || F_MONO); }
       function txt(s, x, y, f, color, align, ls) {
         ctx.font = f; ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic';
-        if ('letterSpacing' in ctx) ctx.letterSpacing = ls || '0px';
+        if ('letterSpacing' in ctx) ctx.letterSpacing = trackOf(s, ls);
         ctx.fillText(s, x, y);
       }
       /* text with a dark halo, for labels that sit on a picture */
       function halo(s, x, y, f, color, align, ls) {
         ctx.font = f; ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic';
-        if ('letterSpacing' in ctx) ctx.letterSpacing = ls || '0px';
+        if ('letterSpacing' in ctx) ctx.letterSpacing = trackOf(s, ls);
         ctx.lineJoin = 'round'; ctx.lineWidth = 3.5; ctx.strokeStyle = HALO; ctx.strokeText(s, x, y);
         ctx.fillStyle = color; ctx.fillText(s, x, y);
       }
       /* text that must fit `maxW`: drop tracking, then size, then truncate */
       function fitTxt(s, x, y, w, px, color, align, ls, maxW) {
         var f = font(w, px), p = px;
-        ctx.font = f; if ('letterSpacing' in ctx) ctx.letterSpacing = ls || '0px';
+        ls = trackOf(s, ls);
+        ctx.font = f; if ('letterSpacing' in ctx) ctx.letterSpacing = ls;
         if (ctx.measureText(s).width > maxW) { ls = '0px'; ctx.letterSpacing = ls; }
         while (ctx.measureText(s).width > maxW && p > 11) { p -= 0.5; ctx.font = font(w, p); }
         if (ctx.measureText(s).width > maxW) { while (s.length > 4 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1); s += '…'; }
         txt(s, x, y, font(w, p), color, align, ls);
       }
-      /* secondary text: one line if it fits, else broken once at a ' · ' separator */
+      /* secondary text: one line if it fits, else broken once at a ' · ' separator. A line from T() comes inside the
+         marks of its direction (U+2067 or U+2066 .. U+2069, talk/i18n.js): each of the two lines gets them again */
       function flowTxt(s, x, y, px, color, maxW, lead) {
         ctx.font = font(500, px); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
         if (ctx.measureText(s).width <= maxW) { fitTxt(s, x, y, 500, px, color, 'left', '0.02em', maxW); return; }
-        var parts = s.split(' · '), a = parts[0], i = 1;
+        var open = s.charAt(0), marked = (open === '\u2067' || open === '\u2066') && s.charAt(s.length - 1) === '\u2069';
+        var parts = (marked ? s.slice(1, -1) : s).split(' · '), a = parts[0], i = 1;
+        function line(t) { return marked ? open + t + '\u2069' : t; }
         while (i < parts.length - 1 && ctx.measureText(a + ' · ' + parts[i]).width <= maxW) a += ' · ' + parts[i++];
         if (parts.length < 2) { fitTxt(s, x, y, 500, px, color, 'left', '0.02em', maxW); return; }
-        fitTxt(a, x, y, 500, px, color, 'left', '0.02em', maxW);
-        fitTxt(parts.slice(i).join(' · '), x, y + lead, 500, px, color, 'left', '0.02em', maxW);
+        fitTxt(line(a), x, y, 500, px, color, 'left', '0.02em', maxW);
+        fitTxt(line(parts.slice(i).join(' · ')), x, y + lead, 500, px, color, 'left', '0.02em', maxW);
       }
       function toneCol(t) { return t === 'ok' ? C.ok : t === 'err' ? C.err : t === 'ctrl' ? C.ctrl : t === 'splat' ? C.splat : t === 'surf' ? C.surf : C.text; }
 
@@ -1456,7 +1474,7 @@
       }
       function frame(x, y, s, h) { ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x) - 0.5, Math.round(y) - 0.5, s + 1, (h == null ? s : h) + 1); }
       function tag(s, x, y, color, maxW) {
-        var f = L.fs, ls = '0.1em';
+        var f = L.fs, ls = trackOf(s, '0.1em');
         ctx.font = font(600, f); if ('letterSpacing' in ctx) ctx.letterSpacing = ls;
         if (maxW && ctx.measureText(s).width + 14 > maxW) { ls = '0px'; ctx.letterSpacing = ls; }
         while (maxW && ctx.measureText(s).width + 14 > maxW && f > 8.5) { f -= 0.5; ctx.font = font(600, f); }
@@ -2062,7 +2080,7 @@
         if (st.bal || st.want) { if (!B.ready) S.balStep(KT.clamp(0.3 * gapMs, 8, 60)); if (st.want && B.cols) applyPreset(st.want); }
         if (st.run) step(dt);
         var lab = !st.run ? 'resume' : playing() ? 'pause' : 'replay';
-        if (btRun.textContent !== lab) btRun.textContent = lab;
+        if (lab !== runIs) { runIs = lab; btRun.textContent = RUN[lab]; }
         t0 = now(); draw(t, dt); perf.frame = now() - t0;
       });
 

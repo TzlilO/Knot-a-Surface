@@ -11,15 +11,18 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
+  /* T: a string in the page's language (talk/i18n.js; the English itself on a page without languages), for showing
+     only. A sentence with numbers in it is ONE template, so that it keeps its own word order and direction */
+  var T = KT.t;
   var N = 16000, KNN = 12, KEDGE = 3;
   /* a part is coloured with its chart's identity colour (talk/scenes.js, c.hex: the set that is not the semantic one);
      a k-means cluster takes the colour of the chart with its number */
 
   var SCENES = {
-    bag:        { cap: '<b>the same Gaussians, stored two ways</b> · colour = position in memory', mode: 'order' },
-    neighbours: { cap: '<b>nearest neighbours</b> · search the list, or read the next addresses', mode: 'near', hint: 'move over the scene to probe' },
-    mesh:       { cap: '<b>a mesh</b> · join each Gaussian to the next ones', mode: 'mesh' },
-    segments:   { cap: '<b>parts</b> · cluster the list, or read the chart', mode: 'parts' }
+    bag:        { cap: T('<b>the same Gaussians, stored two ways</b> · colour = position in memory'), mode: 'order' },
+    neighbours: { cap: T('<b>nearest neighbours</b> · search the list, or read the next addresses'), mode: 'near', hint: T('move over the scene to probe') },
+    mesh:       { cap: T('<b>a mesh</b> · join each Gaussian to the next ones'), mode: 'mesh' },
+    segments:   { cap: T('<b>parts</b> · cluster the list, or read the chart'), mode: 'parts' }
   };
 
   KT.register('structure', {
@@ -29,12 +32,13 @@
     tool: 'WebGL · three.js · one scene, two stores',
     scenes: [{ id: 'bag', label: 'Two stores' }, { id: 'neighbours', label: 'Neighbours' }, { id: 'mesh', label: 'Mesh' }, { id: 'segments', label: 'Parts' }],
     create: function (env) {
-      var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
-      var cam = new T.PerspectiveCamera(36, 1, 0.1, 160), R = G.renderer(root, cam), scene = new T.Scene();
+      var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
+      var cam = new THREE.PerspectiveCamera(36, 1, 0.1, 160), R = G.renderer(root, cam), scene = new THREE.Scene();
       var st = { scene: 'bag', sc: SCENES.bag, t: 0, probe: -1, auto: 0, autoT: 9, hover: false }, size = { w: 2, h: 2 }, need = true;
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
       var tagL = ui.el('div', 'kt-side'), tagR = ui.el('div', 'kt-side'), bar = ui.el('div', 'kt-divide');
+      if (KT.rtl) tagL.dir = tagR.dir = 'rtl';        // two lines of running text each: in a right-to-left language they are set from the right
       root.appendChild(tagL); root.appendChild(tagR); root.appendChild(bar);
 
       /* ---------- the scene, sampled once ---------- */
@@ -166,8 +170,8 @@
       var star = { L: G.lines(KNN * 2, C.text, 0.9), R: G.lines(KNN * 2, C.text, 0.9) }, near = { L: [], R: [], wrong: 0, looked: 0 };
       star.L.mat.depthTest = star.R.mat.depthTest = false; scene.add(star.L.obj); scene.add(star.R.obj);
       function dots(colour) {                                   // the neighbours themselves, as dots that stay visible
-        var g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(new Float32Array(KNN * 3), 3));
-        var o = new T.Points(g, new T.PointsMaterial({ color: colour, size: 9, sizeAttenuation: false, depthTest: false })); o.frustumCulled = false; o.visible = false; scene.add(o); return o;
+        var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(KNN * 3), 3));
+        var o = new THREE.Points(g, new THREE.PointsMaterial({ color: colour, size: 9, sizeAttenuation: false, depthTest: false })); o.frustumCulled = false; o.visible = false; scene.add(o); return o;
       }
       var dot = { ok: dots(C.surf), bad: dots(C.err), R: dots(C.surf) };
       function setDots(o, P, idx) { var a = o.geometry.attributes.position; idx.forEach(function (j, k) { a.array[k * 3] = P[j * 3]; a.array[k * 3 + 1] = P[j * 3 + 1]; a.array[k * 3 + 2] = P[j * 3 + 2]; }); a.needsUpdate = true; o.geometry.setDrawRange(0, idx.length); }
@@ -229,23 +233,26 @@
         var flat = mode === 'order' || mode === 'parts' || (LIGHT && dim < 1) ? 0.55 : 0;   // a scene faded towards the glass stays light in the shade too
         fL.uniforms.uFlat.value = fR.uniforms.uFlat.value = flat;
         var n = list.n.toLocaleString('en-US');
-        tagL.innerHTML = '<b>a list</b> · ' + n + ' Gaussians, unordered <i>(emulated)</i><br>' + ({
-          order: 'neighbours in memory are strangers in space',
-          near: 'computed <em>' + near.looked + '</em> distances through an index · <em class="bad">' + near.wrong + ' of ' + KNN + '</em> lie on another surface',
-          mesh: mesh && 'join the ' + KEDGE + ' nearest: ' + ((mesh.ok.length + mesh.bad.length) / 2).toLocaleString('en-US') + ' edges, <em class="bad">' + (mesh.bad.length / 2).toLocaleString('en-US') + '</em> bridge two surfaces · ' + mesh.ms.toFixed(0) + ' ms of searching',
-          parts: parts && 'k-means into ' + charts.length + ' clusters · <em class="bad">' + Math.round(parts.purity * 100) + ' %</em> of the Gaussians sit with their own part · ' + parts.ms.toFixed(0) + ' ms'
+        tagL.innerHTML = T('<b>a list</b> · {n} Gaussians, unordered <i>(emulated)</i>', { n: n }) + '<br>' + ({
+          order: T('neighbours in memory are strangers in space'),
+          near: T('computed <em>{n}</em> distances through an index · <em class="bad">{wrong} of {k}</em> lie on another surface', { n: near.looked, wrong: near.wrong, k: KNN }),
+          mesh: mesh && T('join the {k} nearest: {edges} edges, <em class="bad">{bad}</em> bridge two surfaces · {t} of searching',
+            { k: KEDGE, edges: ((mesh.ok.length + mesh.bad.length) / 2).toLocaleString('en-US'), bad: (mesh.bad.length / 2).toLocaleString('en-US'), t: mesh.ms.toFixed(0) + ' ms' }),
+          parts: parts && T('k-means into {k} clusters · <em class="bad">{p} %</em> of the Gaussians sit with their own part · {t}',
+            { k: charts.length, p: Math.round(parts.purity * 100), t: parts.ms.toFixed(0) + ' ms' })
         })[mode];
-        tagR.innerHTML = '<b>spline charts</b> · the same ' + ours.n.toLocaleString('en-US') + ', each with an address<br>' + ({
-          order: 'memory order is surface order: chart by chart, row by row',
-          near: 'read <em>' + near.R.length + '</em> addresses, computed <em>0</em> distances · <em>0</em> on another surface',
-          mesh: mesh && 'join (i, j) to (i+1, j) and (i, j+1): ' + mesh.tri.toLocaleString('en-US') + ' triangles · ' + (mesh.ms2 < 1 ? 'under 1' : mesh.ms2.toFixed(0)) + ' ms, no search',
-          parts: charts.length + ' parts, by construction: the chart is the label'
+        tagR.innerHTML = T('<b>spline charts</b> · the same {n}, each with an address', { n: ours.n.toLocaleString('en-US') }) + '<br>' + ({
+          order: T('memory order is surface order: chart by chart, row by row'),
+          near: T('read <em>{n}</em> addresses, computed <em>0</em> distances · <em>0</em> on another surface', { n: near.R.length }),
+          mesh: mesh && T('join (i, j) to (i+1, j) and (i, j+1): {n} triangles · {t}, no search',
+            { n: mesh.tri.toLocaleString('en-US'), t: mesh.ms2 < 1 ? T('under 1 ms') : mesh.ms2.toFixed(0) + ' ms' }),
+          parts: T('{n} parts, by construction: the chart is the label', { n: charts.length })
         })[mode];
       }
 
       /* ---------- camera, pointer ---------- */
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 2, maxRadius: 40 });
-      var ray = new T.Raycaster(), ndc = new T.Vector2(), rects = [[0, 0, 1, 1], [0, 0, 1, 1]];
+      var ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), rects = [[0, 0, 1, 1], [0, 0, 1, 1]];
       R.canvas.addEventListener('pointermove', function (e) {
         if (st.sc.mode !== 'near' || e.pointerType === 'touch') return;
         var r = R.canvas.getBoundingClientRect(), x = e.clientX - r.left, y = r.height - (e.clientY - r.top), q = x >= rects[1][0] && y >= rects[1][1] && x < rects[1][0] + rects[1][2] && y < rects[1][1] + rects[1][3] ? rects[1] : rects[0];
@@ -320,7 +327,9 @@
           ':root[data-theme="light"] .kt-sim-structure .kt-side{background:rgba(255,255,255,.84);border-color:transparent;' +
           'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
           '.kt-sim-structure.kt-embed .kt-hint{display:none}.kt-sim-structure .kt-gear{display:none}' +
-          '@media (max-width:640px){.kt-sim-structure .kt-side{font-size:9.5px;padding:6px 8px}}';
+          '@media (max-width:640px){.kt-sim-structure .kt-side{font-size:9.5px;padding:6px 8px}}' +
+          // Hebrew (talk/i18n.js sets <html lang>): nothing moves; only Hebrew is not letter-spaced
+          ':root[lang="he"] .kt-sim-structure :is(.kt-side,.kt-side b){letter-spacing:0}';
         document.head.appendChild(css);
       }
 

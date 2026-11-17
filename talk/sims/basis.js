@@ -5,7 +5,12 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color, LIGHT = KT.theme === 'light';
-  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
+  /* T: a string in the page's language (talk/i18n.js; the English itself on a page without languages). A sentence with a
+     number or a name in it is one template, never pieces joined in English order. In Hebrew the stage stays laid out
+     left to right (kit.css) and a string from T carries its own direction, in the SVG too. Never compare or parse what
+     T returns. */
+  var T = KT.t;
+  var CTRL_WORD = LIGHT ? T('orange') : T('amber');   // the control points' colour, as the copy names it (it goes into the hints)
   var NS = 'http://www.w3.org/2000/svg';
   /* the colour t of the way from h1 to h2, as #rrggbb (the same function in flatland.js: the hand-off's colours agree) */
   function hexMix(h1, h2, t) {
@@ -68,7 +73,7 @@
 
   var TEXTS = KT.ink.texts, MISSILE = KT.ink.missile;       // the drawings (talk/ink.js)
   var morphSets = KT.ink.morphSets;
-  var SHAPES = ['letters', 'handwriting', 'missile'];
+  var SHAPES = [T('letters'), T('handwriting'), T('missile')];
 
   /* ---------- how close is the estimate? ----------
      Ground truth = one of the drawings. Estimate = a least-squares cubic with fewer control points,
@@ -126,24 +131,24 @@
   var SWEEP = [12, 16, 22, 30, 42, 58, 80, 110, 150, 210];
 
   var SCENES = {
-    ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4, strip: 1 },
-    letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
-                 hint: 'drag any ' + CTRL_WORD + ' point' },
-    script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
-    morph:     { cap: '<b>morphing</b> · letters → handwriting → a missile · only the control points move', morph: 1 },
-    lens:      { cap: '<b>Gaussians on the tracks</b> · a fixed number, spread over what is in view · move closer: same count, finer', morph: 1, lens: 1,
-                 hint: 'zoom with the slider · drag to pan' },
-    fit:       { cap: '<b>how close?</b> · control points set what the curve can say · samples set how finely it is read', fit: 1 },
-    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any ' + CTRL_WORD + ' point' },
-    blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
-                 hint: 'scrub the plot to move u' },
-    local:     { cap: '<b>local support</b> · one point moves, only p + 1 spans change', basis: 1, local: 1, sel: 4, wiggle: 4 },
-    degree:    { cap: '<b>degree p</b> · smoothness C<sup>p−1</sup> across every knot', basis: 1, cycle: 1 },
-    knots:     { cap: '<b>knots</b> · where the polynomial pieces join', basis: 1, ticks: 1, knotAuto: 1,
-                 hint: 'drag the ' + CTRL_WORD + ' knots on the axis' },
-    rational:  { cap: '<b>rational weights</b> · the R in NURBS — exact conics', basis: 1, circle: 1, sel: 1,
-                 hint: 'select a point · change its weight' },
-    recursion: { cap: '<b>Cox–de Boor</b> · boxes → hats → parabolas → cubics', basis: 1, pyramid: 1, sel: 4 }
+    ducks:     { cap: T('<b>a spline</b> · a flexible strip, pinned by weights'), wiggle: 4, strip: 1 },
+    letters:   { cap: T('<b>one spline per letter</b> · twelve short curves, each with its own control points'), multi: 'letters', rate: 70,
+                 hint: T('drag any {colour} point', { colour: CTRL_WORD }) },
+    script:    { cap: T('<b>handwriting</b> · three strokes · the pen is a point sliding along the curve'), multi: 'script', rate: 26, again: 1 },
+    morph:     { cap: T('<b>morphing</b> · letters → handwriting → a missile · only the control points move'), morph: 1 },
+    lens:      { cap: T('<b>Gaussians on the tracks</b> · a fixed number, spread over what is in view · move closer: same count, finer'), morph: 1, lens: 1,
+                 hint: T('zoom with the slider · drag to pan') },
+    fit:       { cap: T('<b>how close?</b> · control points set what the curve can say · samples set how finely it is read'), fit: 1 },
+    drag:      { cap: T('<b>control points</b> steer · the curve follows'), wiggle: 5, hint: T('drag any {colour} point', { colour: CTRL_WORD }) },
+    blend:     { cap: T('<b>every curve point</b> is a weighted average of nearby control points'), basis: 1, blend: 1,
+                 hint: T('scrub the plot to move u') },
+    local:     { cap: T('<b>local support</b> · one point moves, only p + 1 spans change'), basis: 1, local: 1, sel: 4, wiggle: 4 },
+    degree:    { cap: T('<b>degree p</b> · smoothness C<sup>p−1</sup> across every knot'), basis: 1, cycle: 1 },
+    knots:     { cap: T('<b>knots</b> · where the polynomial pieces join'), basis: 1, ticks: 1, knotAuto: 1,
+                 hint: T('drag the {colour} knots on the axis', { colour: CTRL_WORD }) },
+    rational:  { cap: T('<b>rational weights</b> · the R in NURBS — exact conics'), basis: 1, circle: 1, sel: 1,
+                 hint: T('select a point · change its weight') },
+    recursion: { cap: T('<b>Cox–de Boor</b> · boxes → hats → parabolas → cubics'), basis: 1, pyramid: 1, sel: 4 }
   };
 
   KT.register('basis', {
@@ -174,37 +179,37 @@
       var W = 0, H = 0, dirty = true, drag = null, L = {}, rad = [];     // rad[i]: control point i's drawn radius, px
 
       /* ---------- controls ---------- */
-      var panel = ui.panel(root, { pos: 'tr', title: 'curve' });
-      var segDeg = ui.seg(panel, { label: 'degree p', value: 3,
+      var panel = ui.panel(root, { pos: 'tr', title: T('curve') });
+      var segDeg = ui.seg(panel, { label: T('degree p'), value: 3,
         options: [{ v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }],
         onChange: function (v) { st.touched = true; setDegree(v); } });
-      var segM = ui.seg(panel, { label: 'shape', value: 0, options: SHAPES.map(function (n, i) { return { v: i, label: n }; }),
+      var segM = ui.seg(panel, { label: T('shape'), value: 0, options: SHAPES.map(function (n, i) { return { v: i, label: n }; }),
         onChange: function (v) { st.touched = true; if (st.m && v !== st.m.from) { st.m.to = v; st.m.k = 0; st.m.hold = 0; } } });
-      var tgF = ui.toggle(panel, { label: 'freeze the shape', value: false, onChange: function (v) { st.frozen = v; } });
+      var tgF = ui.toggle(panel, { label: T('freeze the shape'), value: false, onChange: function (v) { st.frozen = v; } });
       /* the lens scene's controls: how many Gaussians, how close */
-      var slG = ui.slider(panel, { label: 'gaussians', min: 100, max: 1600, step: 50, value: 400, fmt: function (v) { return v.toFixed(0); },
+      var slG = ui.slider(panel, { label: T('gaussians'), min: 100, max: 1600, step: 50, value: 400, fmt: function (v) { return v.toFixed(0); },
         onInput: function (v) { st.z.n = v; dirty = true; } });
-      var slZ = ui.slider(panel, { label: 'zoom', min: 0, max: 1, step: 0.01, value: 0, fmt: function (v) { return '×' + Math.pow(12, v).toFixed(1); },
+      var slZ = ui.slider(panel, { label: T('zoom'), min: 0, max: 1, step: 0.01, value: 0, fmt: function (v) { return '×' + Math.pow(12, v).toFixed(1); },
         onInput: function (v) { st.z.user = true; st.z.zoom = Math.pow(12, v); dirty = true; } });
       /* the fit scene's controls */
-      var segT = ui.seg(panel, { label: 'truth', value: 'script', options: [{ v: 'script', label: 'handwriting' }, { v: 'missile', label: 'missile' }],
+      var segT = ui.seg(panel, { label: T('truth'), value: 'script', options: [{ v: 'script', label: T('handwriting') }, { v: 'missile', label: T('missile') }],
         onChange: function (v) { st.touched = true; setTruth(v); } });
-      var slN = ui.slider(panel, { label: 'control points', min: 12, max: 210, step: 1, value: 14, fmt: function (v) { return v.toFixed(0); },
+      var slN = ui.slider(panel, { label: T('control points'), min: 12, max: 210, step: 1, value: 14, fmt: function (v) { return v.toFixed(0); },
         onInput: function (v) { st.touched = true; st.f.n = v; refit(false); } });
-      var slM = ui.slider(panel, { label: 'samples', min: 0, max: 1, step: 0.005, value: 0, fmt: function (v) { return samples(v).toFixed(0); },
+      var slM = ui.slider(panel, { label: T('samples'), min: 0, max: 1, step: 0.005, value: 0, fmt: function (v) { return samples(v).toFixed(0); },
         onInput: function (v) { st.touched = true; st.f.m = samples(v); refit(true); } });
-      var segD = ui.seg(panel, { label: 'drawn as', value: 'lines', options: [{ v: 'lines', label: 'lines' }, { v: 'gauss', label: 'gaussians' }],
+      var segD = ui.seg(panel, { label: T('drawn as'), value: 'lines', options: [{ v: 'lines', label: T('lines') }, { v: 'gauss', label: T('gaussians') }],
         onChange: function (v) { st.touched = true; st.f.mode = v; dirty = true; } });
       function samples(v) { return Math.round(16 * Math.pow(75, v)); }       // 16 .. 1200, on a log scale
-      var slW = ui.slider(panel, { label: 'weight w', min: 0.1, max: 4, step: 0.05, value: 1,
+      var slW = ui.slider(panel, { label: T('weight w'), min: 0.1, max: 4, step: 0.05, value: 1,
         fmt: function (v) { return v.toFixed(2); },
         onInput: function (v) { st.touched = true; st.w[st.sel] = v; dirty = true; } });
       var rowB = ui.el('div', 'kt-row'); panel.appendChild(rowB);
-      ui.button(rowB, { label: 'all w = 1', onClick: function () {
+      ui.button(rowB, { label: T('all w = 1'), onClick: function () {
         for (var i = 0; i < st.w.length; i++) st.w[i] = 1; slW.set(1); dirty = true; } });
-      ui.button(rowB, { label: 'reset', onClick: function () { load(st.circle, true); } });
-      var rd = ui.readout(panel, { label: 'continuity', tone: 'surf' });
-      var rdErr = ui.readout(panel, { label: 'circle error', tone: 'ok' });
+      ui.button(rowB, { label: T('reset'), onClick: function () { load(st.circle, true); } });
+      var rd = ui.readout(panel, { label: T('continuity'), tone: 'surf' });
+      var rdErr = ui.readout(panel, { label: T('circle error'), tone: 'ok' });
 
       function load(circle, keepScene) {
         st.circle = circle;
@@ -308,9 +313,9 @@
         var w0 = Q([Z.cx - hw, Z.cy + hh]);
         h += '<path d="' + dots + '" stroke="' + C.splat + '" stroke-width="1.8" stroke-linecap="round"/>' +
              '<rect x="' + f(w0[0]) + '" y="' + f(w0[1]) + '" width="' + f(2 * hw * m) + '" height="' + f(2 * hh * m) + '" fill="none" stroke="' + C.text + '" stroke-width="1.2"/>' +
-             '<text x="' + f(ix + 6) + '" y="' + f(iy + 13) + '" fill="' + C.mute + '" class="kt-t">outside view</text>';
-        rd.el.querySelector('.kt-lab').textContent = 'in view';
-        rd.set(G.length + ' on ' + Math.round(len / all * 100) + ' % of the track');
+             '<text x="' + f(ix + 6) + '" y="' + f(iy + 13) + '" fill="' + C.mute + '" class="kt-t">' + T('outside view') + '</text>';
+        rd.el.querySelector('.kt-lab').textContent = T('in view');
+        rd.set(T('{n} on {pct} % of the track', { n: G.length, pct: Math.round(len / all * 100) }));
         rdErr.el.style.display = 'none'; slW.el.style.display = rowB.style.display = 'none';
         return h;
       }
@@ -383,8 +388,8 @@
           }
         });
         if (tip) h += '<circle cx="' + f(tip[0]) + '" cy="' + f(tip[1]) + '" r="6" fill="' + C.text + '" stroke="' + C.bg + '" stroke-width="2"/>';
-        rd.el.querySelector('.kt-lab').textContent = 'curves';
-        rd.set(st.multi.length + ' splines · ' + n + ' pts');
+        rd.el.querySelector('.kt-lab').textContent = T('curves');
+        rd.set(T('{n} splines · {m} pts', { n: st.multi.length, m: n }));
         rdErr.el.style.display = 'none'; slW.el.style.display = rowB.style.display = 'none';
         return h;
       }
@@ -425,11 +430,11 @@
           h += '<path d="' + line(F.floor) + '" fill="none" stroke="' + C.surf + '" stroke-width="1.4" stroke-dasharray="4 4" opacity=".8"/>';
           h += '<path d="' + line(F.curve) + '" fill="none" stroke="' + C.err + '" stroke-width="2"/>';
           h += '<circle cx="' + f(X(F.n)) + '" cy="' + f(Y(F.now.rms)) + '" r="5.5" fill="' + C.err + '" stroke="' + C.bg + '" stroke-width="2"/>';
-          h += '<text x="' + f(x1) + '" y="' + f(y0 + 4) + '" text-anchor="end" fill="' + C.mute + '" class="kt-t">mean gap against control points · ' +
-               '<tspan fill="' + C.err + '">with ' + F.m + ' samples</tspan> · <tspan fill="' + C.surf + '">with plenty</tspan></text>';
+          h += '<text x="' + f(x1) + '" y="' + f(y0 + 4) + '" text-anchor="end" fill="' + C.mute + '" class="kt-t">' +
+               T('mean gap against control points · <tspan fill="{err}">with {m} samples</tspan> · <tspan fill="{surf}">with plenty</tspan>', { err: C.err, m: F.m, surf: C.surf }) + '</text>';
         }
-        rd.el.querySelector('.kt-lab').textContent = 'mean gap';
-        rd.set((F.now.rms / F.h * 100).toFixed(2) + ' % · worst ' + (F.now.max / F.h * 100).toFixed(1) + ' %'); rd.tone('err');
+        rd.el.querySelector('.kt-lab').textContent = T('mean gap');
+        rd.set(T('{a} % · worst {b} %', { a: (F.now.rms / F.h * 100).toFixed(2), b: (F.now.max / F.h * 100).toFixed(1) })); rd.tone('err');
         rdErr.el.style.display = 'none'; slW.el.style.display = rowB.style.display = 'none';
         return h;
       }
@@ -548,15 +553,15 @@
         svg.innerHTML = h;
 
         // readouts
-        rd.el.querySelector('.kt-lab').textContent = 'continuity';
-        rd.set('C' + (p - 1 < 0 ? 0 : p - 1) + ' · ' + m + ' pts · ' + U.length + ' knots');
+        rd.el.querySelector('.kt-lab').textContent = T('continuity');
+        rd.set(T('C{c} · {m} pts · {k} knots', { c: p - 1 < 0 ? 0 : p - 1, m: m, k: U.length }));
         rdErr.el.style.display = sc.circle ? '' : 'none';
         slW.el.style.display = sc.circle || !env.embed ? '' : 'none';
         rowB.style.display = sc.circle || !env.embed ? '' : 'none';
         if (sc.circle) {
           var e = 0;
           for (i = 0; i <= 200; i++) { q = pt(i / 200); e = Math.max(e, Math.abs(Math.hypot(q[0] - CX, q[1] - CY) - R)); }
-          rdErr.set((e / R * 100).toFixed(e < 1e-9 ? 0 : 2) + ' % of r'); rdErr.tone(e < 1e-9 ? 'ok' : 'err');
+          rdErr.set(T('{e} % of r', { e: (e / R * 100).toFixed(e < 1e-9 ? 0 : 2) })); rdErr.tone(e < 1e-9 ? 'ok' : 'err');
         }
       }
 
@@ -607,7 +612,7 @@
           h += '<path d="M' + f(xk) + ' ' + f(y1 + 3 + (lvl - 1) * 7) + 'l5 8h-10z" fill="' + (inner && sc.ticks ? C.ctrl : 'none') + '" stroke="' + C.ctrl + '" stroke-width="1.2" opacity="' + (inner ? 1 : 0.55) + '"/>';
         }
         if (!sc.pyramid) h += '<text x="' + f(x1) + '" y="' + f(y0 + 11) + '" text-anchor="end" fill="' + C.mute + '" class="kt-t">' +
-             (st.circle || anyW() ? 'R' : 'N') + '<tspan baseline-shift="sub" font-size="9">i,' + p + '</tspan>(u) · basis functions</text>';
+             T('{f} · basis functions', { f: (st.circle || anyW() ? 'R' : 'N') + '<tspan baseline-shift="sub" font-size="9">i,' + p + '</tspan>(u)' }) + '</text>';
         return h;
       }
       function anyW() { for (var i = 0; i < st.w.length; i++) if (Math.abs(st.w[i] - 1) > 1e-6) return true; return false; }
@@ -809,6 +814,7 @@
       if (!document.getElementById('kt-basis-css')) {
         var css = document.createElement('style'); css.id = 'kt-basis-css';
         css.textContent = '.kt-sim-basis .kt-t{font:600 11px/1 var(--f-mono);letter-spacing:.04em}' +
+          ':root[lang="he"] .kt-sim-basis .kt-t{letter-spacing:0}' +      /* Hebrew (talk/i18n.js sets <html lang>) is not letter-spaced */
           '.kt-sim-basis.kt-embed .kt-panel{min-width:176px}' +
           /* the strip's intro (scene `ducks`): the module's chrome fades in with the marks (--bs-ui, set every frame) */
           '.kt-sim-basis .kt-caption,.kt-sim-basis .kt-hint,.kt-sim-basis .kt-panel,.kt-sim-basis .kt-gear{opacity:var(--bs-ui,1)}' +

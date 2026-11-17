@@ -25,7 +25,17 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
-  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
+  /* Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js): that string in the page's language,
+     or the English itself where there is no translation (the lab page). A sentence with a number or a name in it is
+     one template, T('{n} of {m}', { n: .., m: .. }); the numbers are formatted as before and passed in.
+     On a right-to-left page the stage stays a left-to-right island (the kit sets it): nothing in it moves, and a
+     string from T() carries its own direction, so it reads right in a label, a tag or on a canvas as it is. What is
+     left to this module: LTRH() around a formula with no words in it where it sits in the kit's panel (the one part of
+     the stage that runs right to left), the numbers under the caption as a right-to-left block, and no tracking on
+     Hebrew (the end of the stylesheet). A T() result is for display only: never a key, an id or a test. */
+  var T = KT.t;
+  function LTRH(html) { return KT.rtl ? '<span dir="ltr">' + html + '</span>' : html; }
+  var CTRL_WORD = window.KnotTalk.theme === 'light' ? T('orange') : T('amber');   // the control points' colour, as the copy names it
   var NU = 6, NV = 6, SPAN = 3.2, PER_CP = 16;      // 3 position + 12 SH1 colour + 1 opacity
   var NMAX = 160, FLOOR = -1.15;
   var VEC = 0.26;            // a tangent arrow is drawn at this fraction of its true length
@@ -59,29 +69,29 @@
   var STITCH_T = 10, STITCH_LEAD = 0.8;                   // the 2 x 2 window: seconds for the whole lattice, and a pause first
 
   var SCENES = {
-    net:      { show: 'net wire fit', fit: 1, cap: '<b>a spline fitted to a terrain</b> · 36 control heights, least squares',
-                hint: 'drag to orbit · drag an ' + CTRL_WORD + ' point to reshape' },
-    probe:    { show: 'net wire probe uv', cap: '<b>position</b> · μ = S(u, v)', hint: 'drag the cross in the (u,v) chart' },
+    net:      { show: 'net wire fit', fit: 1, cap: T('<b>a spline fitted to a terrain</b> · 36 control heights, least squares'),
+                hint: T('drag to orbit · drag an {colour} point to reshape', { colour: CTRL_WORD }) },
+    probe:    { show: 'net wire probe uv', cap: T('<b>position</b> · μ = S(u, v)'), hint: T('drag the cross in the (u,v) chart') },
     tangents: { show: 'wire probe tan iso plane face uv', rock: 1,
-                cap: '<b>tangents</b> · S<sub>u</sub> and S<sub>v</sub>, in closed form — two directions that span the tangent plane' },
+                cap: T('<b>tangents</b> · S<sub>u</sub> and S<sub>v</sub>, in closed form — two directions that span the tangent plane') },
     normal:   { show: 'wire probe tan nor iso plane face uv', rock: 1,
-                cap: '<b>rotation</b> · R = [ Ŝ<sub>u</sub> · Ŝ<sub>v</sub><sup>⊥</sup> · n ]' },
+                cap: T('<b>rotation</b> · R = [ Ŝ<sub>u</sub> · Ŝ<sub>v</sub><sup>⊥</sup> · n ]') },
     scale:    { show: 'probe tan nor ell nbr face uv tile', n: 9, rock: 0.55, fixed: [0.28, 0.5],
-                cap: '<b>scale</b> · s = ( ‖S<sub>u</sub>‖Δu , ‖S<sub>v</sub><sup>⊥</sup>‖Δv , ε ) — the step to the neighbouring samples',
-                hint: 'drag in the (u,v) chart · 4 / 8 neighbours · one size / own cell' },
+                cap: T('<b>scale</b> · s = ( ‖S<sub>u</sub>‖Δu , ‖S<sub>v</sub><sup>⊥</sup>‖Δv , ε ) — the step to the neighbouring samples'),
+                hint: T('drag in the (u,v) chart · 4 / 8 neighbours · one size / own cell') },
     derive:   { show: 'net probe tan nor ell nbr face', n: 9, wig: 1, fixed: [0.56, 0.44], rock: 0.4,
-                cap: '<b>nothing is learned per Gaussian</b> · move the surface, the splat and its neighbours re-derive' },
-    fill:     { show: 'field uv tile', n: 14, rim: 1, cap: '<b>fill the chart</b> · one Gaussian per (u,v) sample · outline = 1σ',
-                hint: 'one size / own cell · take the samples slider' },
+                cap: T('<b>nothing is learned per Gaussian</b> · move the surface, the splat and its neighbours re-derive') },
+    fill:     { show: 'field uv tile', n: 14, rim: 1, cap: T('<b>fill the chart</b> · one Gaussian per (u,v) sample · outline = 1σ'),
+                hint: T('one size / own cell · take the samples slider') },
     stitch:   { show: 'field uv stitch', n: 12, rim: 1, view: { th: 0.72, ph: 0.86, r: 6.9 },
-                cap: '<b>stitch</b> · a 2 × 2 window over the (u,v) lattice: two triangles per stop',
-                hint: 'take the samples slider to run it again' },
-    knob:     { show: 'field', sweep: 1, rim: 0.7, cap: '<b>the resolution knob</b> · re-evaluate, don’t retrain',
-                hint: 'take the Gaussians slider' },
+                cap: T('<b>stitch</b> · a 2 × 2 window over the (u,v) lattice: two triangles per stop'),
+                hint: T('take the samples slider to run it again') },
+    knob:     { show: 'field', sweep: 1, rim: 0.7, cap: T('<b>the resolution knob</b> · re-evaluate, don’t retrain'),
+                hint: T('take the Gaussians slider') },
     adaptive: { show: 'uv adapt', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
-                cap: '<b>adaptive sampling</b> · a fixed budget, warped towards what a camera sees',
-                hint: 'drag to orbit · we watch from the side' },
-    features: { show: 'net field feat', n: 72, rim: 0.4, cap: '<b>control features</b> · colour and opacity ride the same basis' },
+                cap: T('<b>adaptive sampling</b> · a fixed budget, warped towards what a camera sees'),
+                hint: T('drag to orbit · we watch from the side') },
+    features: { show: 'net field feat', n: 72, rim: 0.4, cap: T('<b>control features</b> · colour and opacity ride the same basis') },
     hero:     { show: 'wire field feat', n: 64, rim: 0.5, hero: 1, cap: '' }
   };
 
@@ -170,16 +180,16 @@
       { id: 'features', label: 'Control features' }
     ],
     create: function (env) {
-      var T = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
-      var cam = new T.PerspectiveCamera(34, 1, 0.1, 60);
-      var R = G.renderer(root, cam), scene = new T.Scene();
+      var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
+      var cam = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+      var R = G.renderer(root, cam), scene = new THREE.Scene();
       var W = 1, H = 1, fitR = 1;
 
       /* light and air: the same light direction as the splat shader, and a fog that follows the camera */
-      var LIGHT_DIR = new T.Vector3(0.35, 0.86, 0.36).normalize();
-      scene.fog = new T.Fog(LIGHT ? C.bg : 0x07090f, 5, 14);          // distance fades into the stage: dark, or the glass card
-      scene.add(new T.HemisphereLight(0xe6efff, 0x2a3650, 1.5));
-      var sun = new T.DirectionalLight(0xffffff, 2.6); sun.position.copy(LIGHT_DIR); scene.add(sun);
+      var LIGHT_DIR = new THREE.Vector3(0.35, 0.86, 0.36).normalize();
+      scene.fog = new THREE.Fog(LIGHT ? C.bg : 0x07090f, 5, 14);          // distance fades into the stage: dark, or the glass card
+      scene.add(new THREE.HemisphereLight(0xe6efff, 0x2a3650, 1.5));
+      var sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.copy(LIGHT_DIR); scene.add(sun);
 
       /* ---------- the patch: the terrain of chapter 05 (talk/terrain.js), held by this 6 x 6 net ----------
          The control points stand on a regular grid in x and z; only their heights are fitted. ground(x, z) is the
@@ -297,7 +307,7 @@
         resid.set(o / 3);
         fitStat.rms = Math.sqrt(se / (ws || 1)) / HS; fitStat.max = mx / HS;
         rdFit.set(pct(fitStat.rms)); rdMax.set(pct(fitStat.max));
-        rdIt.set(!c ? '—' : c.user ? 'stopped: a point was moved' : c.done ? 'converged · ' + c.it + ' CG steps' : 'CG step ' + (c.it + 1));
+        rdIt.set(!c ? '—' : c.user ? T('stopped: a point was moved') : c.done ? T('converged · {n} CG steps', { n: c.it }) : T('CG step {n}', { n: c.it + 1 }));
         hudDirty = true;
       }
       function fmtFps(ms) { var f = 1000 / ms; return (f < 9.95 ? f.toFixed(1) : Math.round(f)) + ' fps'; }
@@ -308,28 +318,30 @@
         var s = st.show, sc = st.sc, h = '', A, B, a;
         if (s.fit && st.fit) {
           var c = st.fit;
-          h = (c.user ? 'least squares · stopped: a control point was moved' : c.done ? 'least squares · converged in <b>' + c.it + '</b> conjugate-gradient steps'
-               : 'least squares · conjugate gradients, step <b>' + (c.it + 1) + '</b>') +
-              '<br>RMS error <b class="e">' + pct(fitStat.rms) + '</b> of the relief · largest <b class="e">' + pct(fitStat.max) + '</b>';
+          h = (c.user ? T('least squares · stopped: a control point was moved') : c.done ? T('least squares · converged in <b>{n}</b> conjugate-gradient steps', { n: c.it })
+               : T('least squares · conjugate gradients, step <b>{n}</b>', { n: c.it + 1 })) +
+              '<br>' + T('RMS error <b class="e">{rms}</b> of the relief · largest <b class="e">{max}</b>', { rms: pct(fitStat.rms), max: pct(fitStat.max) });
         } else if (s.tile && tl.own) {
           var one = tl.b >= 0.5; A = one ? tl.one : tl.own; B = one ? tl.own : tl.one;
-          h = '<b class="s">' + (one ? 'one size for all' : 'each sized to its cell') + '</b> · uncovered <b class="e">' + pct(A.unc) +
-              '</b> · 3+ deep <b>' + pct(A.pile) + '</b><br><span class="m">' + (one ? 'sized to cells' : 'one size') + ': uncovered ' + pct(B.unc) + ' · 3+ deep ' + pct(B.pile) + '</span>';
+          h = T('<b class="s">{size}</b> · uncovered <b class="e">{unc}</b> · 3+ deep <b>{pile}</b>',
+                { size: one ? T('one size for all') : T('each sized to its cell'), unc: pct(A.unc), pile: pct(A.pile) }) +
+              '<br>' + T('<span class="m">{size}: uncovered {unc} · 3+ deep {pile}</span>', { size: one ? T('sized to cells') : T('one size'), unc: pct(B.unc), pile: pct(B.pile) });
         } else if (s.stitch && sx.n) {
-          h = '<b class="u">' + (sx.q * 2) + '</b> / ' + (sx.Q * 2) + ' triangles · <b class="s">' + (sx.V - sx.passed) + '</b> / ' + sx.V + ' Gaussians still drawn';
+          h = T('<b class="u">{done}</b> / {all} triangles · <b class="s">{left}</b> / {n} Gaussians still drawn', { done: sx.q * 2, all: sx.Q * 2, left: sx.V - sx.passed, n: sx.V });
         } else if (sc.sweep) {
           var ft = kn.ft[kn.cur];
-          h = '<span class="big s">' + (kn.cur * kn.cur).toLocaleString('en-US') + '</span> Gaussians from <span class="big c">' + (NU * NV * PER_CP) + '</span> stored numbers' +
-              '<br>frame time ' + (ft == null ? 'measuring…' : '<b>' + ft.toFixed(1) + ' ms</b> (' + fmtFps(ft) + ')') + ' · re-evaluated in <b>' + fmtMs(kn.ev[kn.cur]) + '</b>';
+          h = T('<span class="big s">{n}</span> Gaussians from <span class="big c">{stored}</span> stored numbers', { n: (kn.cur * kn.cur).toLocaleString('en-US'), stored: NU * NV * PER_CP }) +
+              '<br>' + (ft == null ? T('frame time measuring… · re-evaluated in <b>{t}</b>', { t: fmtMs(kn.ev[kn.cur]) })
+                        : T('frame time <b>{ms}</b> ({fps}) · re-evaluated in <b>{t}</b>', { ms: ft.toFixed(1) + ' ms', fps: fmtFps(ft), t: fmtMs(kn.ev[kn.cur]) }));
         } else if (s.adapt && ad.stat) {
           a = ad.stat;
           var eq = a.sIn && a.uIn ? Math.round(a.n * (a.uIn / a.sIn) * (a.uIn / a.sIn)) : null;
-          h = '<b class="s">' + a.n.toLocaleString('en-US') + '</b> Gaussians, fixed · <b class="s">' + Math.round(100 * a.ins / a.n) + ' %</b> of them in the camera’s view' +
-              '<br>the view covers <b>' + Math.round(100 * a.view) + ' %</b> of the surface<br>cell side there <b>' + pctW(a.sIn) + '</b> of the width · even lattice <b>' +
-              pctW(a.uIn) + '</b>';
-          rdIn.set(a.ins.toLocaleString('en-US') + ' · ' + Math.round(100 * a.ins / a.n) + ' %'); rdFp.set(Math.round(100 * a.view) + ' % of the surface');
+          h = T('<b class="s">{n}</b> Gaussians, fixed · <b class="s">{share}</b> of them in the camera’s view', { n: a.n.toLocaleString('en-US'), share: Math.round(100 * a.ins / a.n) + ' %' }) +
+              '<br>' + T('the view covers <b>{share}</b> of the surface', { share: Math.round(100 * a.view) + ' %' }) +
+              '<br>' + T('cell side there <b>{side}</b> of the width · even lattice <b>{even}</b>', { side: pctW(a.sIn), even: pctW(a.uIn) });
+          rdIn.set(a.ins.toLocaleString('en-US') + ' · ' + Math.round(100 * a.ins / a.n) + ' %'); rdFp.set(T('{share} of the surface', { share: Math.round(100 * a.view) + ' %' }));
           rdSpc.el.lastChild.innerHTML = pctW(a.sIn) + ' <i>·</i> ' + pctW(a.sOut); rdUni.set(pctW(a.uIn));
-          rdEq.set(eq ? '≈ ' + eq.toLocaleString('en-US') + ' Gaussians' : '—');
+          rdEq.set(eq ? T('≈ {n} Gaussians', { n: eq.toLocaleString('en-US') }) : '—');
         }
         h = h.replace(/ %/g, '\u00a0%');                  // a number keeps its unit on its line
         if (h !== hudHtml) { hudHtml = h; hud.innerHTML = h; hud.style.display = h ? '' : 'none'; hudPlace(); }
@@ -346,15 +358,15 @@
       var a, b;
       function own(o, order) { o.frustumCulled = false; if (order != null) o.renderOrder = order; scene.add(o); return o; }
       function ghostLines(l, opacity, order) {              // the part of a line set that lies behind something
-        return own(new T.LineSegments(l.obj.geometry, G.hidden(l.mat.color, opacity, 'line')), order);
+        return own(new THREE.LineSegments(l.obj.geometry, G.hidden(l.mat.color, opacity, 'line')), order);
       }
 
       // the floor: a grid (on paper the line colour of the page, its centre lines a shade darker) and a soft pool of the
       // surface colour under the patch (on the dark stage a pale glow)
-      var grid = LIGHT ? new T.GridHelper(9, 18, mix(C.line, C.dim, 0.3), C.line) : new T.GridHelper(9, 18, 0x243652, 0x162238);
+      var grid = LIGHT ? new THREE.GridHelper(9, 18, mix(C.line, C.dim, 0.3), C.line) : new THREE.GridHelper(9, 18, 0x243652, 0x162238);
       grid.position.y = FLOOR; scene.add(grid);
       var glowC = LIGHT ? G.rgb(C.surf).map(function (x) { return x.toFixed(3); }).join(', ') + ', a * a * 0.06' : '0.20, 0.33, 0.52, a * a * 0.30';
-      var glow = own(new T.Mesh(new T.CircleGeometry(5.4, 48).rotateX(-Math.PI / 2), new T.ShaderMaterial({
+      var glow = own(new THREE.Mesh(new THREE.CircleGeometry(5.4, 48).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
         transparent: true, depthWrite: false,
         vertexShader: 'varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: 'varying vec2 vP; void main(){ float a = 1.0 - clamp(length(vP) / 5.4, 0.0, 1.0); gl_FragColor = vec4(' + glowC + '); }'
@@ -365,9 +377,9 @@
       var sg = { pos: sheet.pos, su: new Float32Array(FN * FN * 3), sv: new Float32Array(FN * FN * 3) };
       // the sheet's shadow: the same geometry flattened onto the floor along the light, three times for a soft edge
       // (black on the dark stage; on paper a light shade of ink, or the three layers make a slab)
-      var shadowMat = new T.MeshBasicMaterial({ color: LIGHT ? C.text : 0x000000, transparent: true, opacity: LIGHT ? 0.045 : 0.2, depthWrite: false, side: T.DoubleSide, fog: false });
+      var shadowMat = new THREE.MeshBasicMaterial({ color: LIGHT ? C.text : 0x000000, transparent: true, opacity: LIGHT ? 0.045 : 0.2, depthWrite: false, side: THREE.DoubleSide, fog: false });
       var shadows = [0.93, 1.0, 1.08].map(function (k, i) {
-        var m = own(new T.Mesh(sheet.geo, shadowMat), -4), sx = -LIGHT_DIR.x / LIGHT_DIR.y, sz = -LIGHT_DIR.z / LIGHT_DIR.y;
+        var m = own(new THREE.Mesh(sheet.geo, shadowMat), -4), sx = -LIGHT_DIR.x / LIGHT_DIR.y, sz = -LIGHT_DIR.z / LIGHT_DIR.y;
         m.matrixAutoUpdate = false; m.matrixWorldNeedsUpdate = true;
         m.matrix.set(k, sx, 0, -sx * FLOOR,   0, 1e-4, 0, FLOOR + 0.004 + 0.002 * i,   0, sz, k, -sz * FLOOR,   0, 0, 0, 1);
         return m;
@@ -376,10 +388,10 @@
       var WL = 13, WS = 40, wire = G.lines(2 * WL * WS * 2, C.surf, 0.55); own(wire.obj, 1);
       var net = G.lines(((NU - 1) * NV + NU * (NV - 1)) * 2, C.ctrl, 0.7); own(net.obj, 2);
       var netGhost = ghostLines(net, 0.2, 3);
-      var balls = [], ballGeo = new T.SphereGeometry(0.06, 20, 14), ballHid = G.hidden(C.ctrl, 0.3);
+      var balls = [], ballGeo = new THREE.SphereGeometry(0.06, 20, 14), ballHid = G.hidden(C.ctrl, 0.3);
       for (a = 0; a < NU * NV; a++) {
-        var m = new T.Mesh(ballGeo, new T.MeshLambertMaterial({ color: C.ctrl })); m.userData.i = a;
-        var mh = new T.Mesh(ballGeo, ballHid); mh.renderOrder = 3; m.add(mh);
+        var m = new THREE.Mesh(ballGeo, new THREE.MeshLambertMaterial({ color: C.ctrl })); m.userData.i = a;
+        var mh = new THREE.Mesh(ballGeo, ballHid); mh.renderOrder = 3; m.add(mh);
         balls.push(m); scene.add(m);
       }
 
@@ -387,20 +399,20 @@
       var violet = G.rgb(C.splat);
 
       // the probe and its frame
-      var probe = new T.Mesh(new T.SphereGeometry(0.05, 20, 14), new T.MeshLambertMaterial({ color: INK, emissive: LIGHT ? 0x000000 : 0x6a6a6a }));
-      var probeHid = new T.Mesh(probe.geometry, G.hidden(INK, 0.4)); probeHid.renderOrder = 8; probe.add(probeHid); scene.add(probe);
+      var probe = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 14), new THREE.MeshLambertMaterial({ color: INK, emissive: LIGHT ? 0x000000 : 0x6a6a6a }));
+      var probeHid = new THREE.Mesh(probe.geometry, G.hidden(INK, 0.4)); probeHid.renderOrder = 8; probe.add(probeHid); scene.add(probe);
       var aU = G.vector(COL_U), aV = G.vector(COL_V), aN = G.vector(INK);
       scene.add(aU.obj); scene.add(aV.obj); scene.add(aN.obj);
       var IS = 48, isoU = G.lines(IS * 2, COL_U, 0.95), isoV = G.lines(IS * 2, COL_V, 0.95); own(isoU.obj, 2); own(isoV.obj, 2);
       var ig = { pos: new Float32Array((IS + 1) * 3) }, isoT = lin(IS + 1);
 
       // the tangent plane: a faint patch of it, and the parallelogram the two tangents span
-      var plPos = new Float32Array(8 * 3), plGeo = new T.BufferGeometry();
-      plGeo.setAttribute('position', new T.BufferAttribute(plPos, 3)); plGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+      var plPos = new Float32Array(8 * 3), plGeo = new THREE.BufferGeometry();
+      plGeo.setAttribute('position', new THREE.BufferAttribute(plPos, 3)); plGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
       plGeo.addGroup(0, 6, 0); plGeo.addGroup(6, 6, 1);
-      function flat(color, opacity) { return new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: T.DoubleSide, depthWrite: false }); }
-      var plane = own(new T.Mesh(plGeo, [flat(C.surf, 0.09), flat(C.surf, 0.22)]), 4);
-      var planeHid = own(new T.Mesh(plGeo, G.hidden(C.surf, 0.045, 'flat')), 5);
+      function flat(color, opacity) { return new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: THREE.DoubleSide, depthWrite: false }); }
+      var plane = own(new THREE.Mesh(plGeo, [flat(C.surf, 0.09), flat(C.surf, 0.22)]), 4);
+      var planeHid = own(new THREE.Mesh(plGeo, G.hidden(C.surf, 0.045, 'flat')), 5);
       var plGrid = G.lines(40, C.surf, 0.26), plEdge = G.lines(8, SURF_HI, 0.85), mark = G.lines(8, INK, 0.9);
       own(plGrid.obj, 5); own(plEdge.obj, 6); own(mark.obj, 6);
       var plEdgeHid = ghostLines(plEdge, 0.25, 7);
@@ -409,10 +421,10 @@
       // estimates, flat in the tangent plane (ribbons: a 1 px line would vanish)
       var EL = 72;
       function ribbon(color, opacity, order) {
-        var pos = new Float32Array((EL + 1) * 2 * 3), g = new T.BufferGeometry(), ix = [], i;
+        var pos = new Float32Array((EL + 1) * 2 * 3), g = new THREE.BufferGeometry(), ix = [], i;
         for (i = 0; i < EL; i++) ix.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
-        g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setIndex(ix);
-        var mesh = own(new T.Mesh(g, flat(color, opacity)), order), hid = own(new T.Mesh(g, G.hidden(color, opacity * 0.3, 'flat')), order);
+        g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(ix);
+        var mesh = own(new THREE.Mesh(g, flat(color, opacity)), order), hid = own(new THREE.Mesh(g, G.hidden(color, opacity * 0.3, 'flat')), order);
         return { mesh: mesh, hid: hid,
           /* centre c, axes A and B (1 sigma), lifted by `lift` along nr, half-width hw as a fraction of the radius */
           set: function (c, A, B, nr, lift, hw) {
@@ -436,19 +448,19 @@
       var dotTex = (function () {
         var cv = document.createElement('canvas'); cv.width = cv.height = 32;
         var g = cv.getContext('2d'); g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 14, 0, 6.2832); g.fill();
-        return new T.CanvasTexture(cv);
+        return new THREE.CanvasTexture(cv);
       })();
-      var dotPos = new Float32Array(LATMAX * LATMAX * 3), dotGeo = new T.BufferGeometry();
-      dotGeo.setAttribute('position', new T.BufferAttribute(dotPos, 3)); dotGeo.setDrawRange(0, 0);
-      var dots = own(new T.Points(dotGeo, new T.PointsMaterial({ color: C.splat, size: 0.05, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.75 })), 2);
+      var dotPos = new Float32Array(LATMAX * LATMAX * 3), dotGeo = new THREE.BufferGeometry();
+      dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPos, 3)); dotGeo.setDrawRange(0, 0);
+      var dots = own(new THREE.Points(dotGeo, new THREE.PointsMaterial({ color: C.splat, size: 0.05, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.75 })), 2);
       var BS = 4, BN = 3 * BS + 1, bgd = { pos: new Float32Array(BN * BN * 3) };
       var blk = G.lines(8 * (BN - 1) * 2, SURF_HI, 0.8); own(blk.obj, 2);
-      var nbGeo = new T.SphereGeometry(0.036, 16, 12), cs = new T.Color(C.splat);
-      var nbOn = new T.MeshLambertMaterial({ color: cs, emissive: cs.clone().multiplyScalar(0.35) });
-      var nbOff = new T.MeshLambertMaterial({ color: cs.clone().multiplyScalar(0.42), emissive: cs.clone().multiplyScalar(0.1) });
+      var nbGeo = new THREE.SphereGeometry(0.036, 16, 12), cs = new THREE.Color(C.splat);
+      var nbOn = new THREE.MeshLambertMaterial({ color: cs, emissive: cs.clone().multiplyScalar(0.35) });
+      var nbOff = new THREE.MeshLambertMaterial({ color: cs.clone().multiplyScalar(0.42), emissive: cs.clone().multiplyScalar(0.1) });
       var nbHid = G.hidden(C.splat, 0.3), nbDot = [];
       for (a = 0; a < 8; a++) {
-        var nd = new T.Mesh(nbGeo, nbOn), nh = new T.Mesh(nbGeo, nbHid); nh.renderOrder = 8; nd.add(nh); nbDot.push(nd); scene.add(nd);
+        var nd = new THREE.Mesh(nbGeo, nbOn), nh = new THREE.Mesh(nbGeo, nbHid); nh.renderOrder = 8; nd.add(nh); nbDot.push(nd); scene.add(nd);
       }
       var NR = 40, nbRingA = G.lines(8 * NR * 2, C.splat, 0.5), nbRingI = G.lines(4 * NR * 2, C.splat, 0.18);
       own(nbRingA.obj, 11); own(nbRingI.obj, 11);
@@ -467,10 +479,10 @@
           tgtPos[o] = FIT.pos[s * 3]; tgtPos[o + 1] = FIT.tg[s]; tgtPos[o + 2] = FIT.pos[s * 3 + 2];
         }
       })();
-      var tgtGeo = new T.BufferGeometry(); tgtGeo.setAttribute('position', new T.BufferAttribute(tgtPos, 3));
-      var tgtDots = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.055, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.95 })), 2);
-      var tgtHid = own(new T.Points(tgtGeo, new T.PointsMaterial({ color: C.text, size: 0.055, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.3,
-        depthFunc: T.GreaterDepth, depthWrite: false })), 3);
+      var tgtGeo = new THREE.BufferGeometry(); tgtGeo.setAttribute('position', new THREE.BufferAttribute(tgtPos, 3));
+      var tgtDots = own(new THREE.Points(tgtGeo, new THREE.PointsMaterial({ color: C.text, size: 0.055, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.95 })), 2);
+      var tgtHid = own(new THREE.Points(tgtGeo, new THREE.PointsMaterial({ color: C.text, size: 0.055, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.3,
+        depthFunc: THREE.GreaterDepth, depthWrite: false })), 3);
       var resid = G.lines(TD * TD * 2, C.err, 0.85); own(resid.obj, 2);
       var residHid = ghostLines(resid, 0.25, 3);
 
@@ -478,15 +490,15 @@
          The depth is cleared and the surface's own depth written again (ovDepth), so what lies ON the surface — the
          Gaussians' 1-sigma outlines, the red of what they leave uncovered, a camera's footprint — shows over the
          rendered Gaussians and is hidden only by the surface itself. */
-      var ovl = new T.Scene(); ovl.fog = scene.fog;
+      var ovl = new THREE.Scene(); ovl.fog = scene.fog;
       function ovOwn(o, order) { o.frustumCulled = false; o.renderOrder = order; ovl.add(o); return o; }
-      var ovDepth = ovOwn(new T.Mesh(sheet.geo, new T.MeshBasicMaterial({ colorWrite: false, side: T.DoubleSide,
+      var ovDepth = ovOwn(new THREE.Mesh(sheet.geo, new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 })), -10);
       var maskTex = null, maskF = 0, maskData = null;
-      var ovMat = new T.ShaderMaterial({
-        transparent: true, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uFog: { value: new T.Vector2(4, 14) },
-                    uRed: { value: new T.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new T.Vector3().fromArray(G.rgb(C.text)) } },
+      var ovMat = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uFog: { value: new THREE.Vector2(4, 14) },
+                    uRed: { value: new THREE.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new THREE.Vector3().fromArray(G.rgb(C.text)) } },
         vertexShader: 'varying vec2 vUv; varying float vZ; void main(){ vUv = uv; vec4 e = modelViewMatrix * vec4(position, 1.0); vZ = -e.z; gl_Position = projectionMatrix * e; }',
         fragmentShader: [
           'uniform sampler2D tMask; uniform float uBlend; uniform float uGap; uniform float uTint; uniform vec2 uFog; uniform vec3 uRed; uniform vec3 uWhite;',
@@ -500,12 +512,12 @@
           '  gl_FragColor = vec4(g >= t ? uRed : uWhite, max(g, t) * (1.0 - 0.55 * f));',
           '}'].join('\n')
       });
-      var ovMesh = ovOwn(new T.Mesh(sheet.geo, ovMat), 0);
+      var ovMesh = ovOwn(new THREE.Mesh(sheet.geo, ovMat), 0);
       function maskSize(F) {
         if (F === maskF) return;
         if (maskTex) maskTex.dispose();
         maskF = F; maskData = new Uint8Array(F * F * 4);
-        maskTex = new T.DataTexture(maskData, F, F, T.RGBAFormat); maskTex.magFilter = maskTex.minFilter = T.LinearFilter;
+        maskTex = new THREE.DataTexture(maskData, F, F, THREE.RGBAFormat); maskTex.magFilter = maskTex.minFilter = THREE.LinearFilter;
         maskTex.needsUpdate = true; ovMat.uniforms.tMask.value = maskTex;
       }
       var EM = 36;                                // segments per outline
@@ -513,22 +525,22 @@
 
       // stitch: the triangles (flat-shaded, the surface's colour), their edges, the newest pair, and the window
       var SQ = (OUTMAX - 1) * (OUTMAX - 1);
-      var triGeo = new T.BufferGeometry();
-      triGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
-      triGeo.setAttribute('normal', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
+      var triGeo = new THREE.BufferGeometry();
+      triGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SQ * 18), 3));
+      triGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(SQ * 18), 3));
       triGeo.setDrawRange(0, 0);
       // (on paper the triangles take a light shade of the surface colour, so that its edges read on them)
-      var triCol = LIGHT ? new T.Color(mix(C.surf, C.bg, 0.55)) : new T.Color(0x2f8fbf);
-      var tri = own(new T.Mesh(triGeo, new T.MeshLambertMaterial({ color: triCol, emissive: LIGHT ? triCol.clone().multiplyScalar(0.12) : 0x0c3448, side: T.DoubleSide,
+      var triCol = LIGHT ? new THREE.Color(mix(C.surf, C.bg, 0.55)) : new THREE.Color(0x2f8fbf);
+      var tri = own(new THREE.Mesh(triGeo, new THREE.MeshLambertMaterial({ color: triCol, emissive: LIGHT ? triCol.clone().multiplyScalar(0.12) : 0x0c3448, side: THREE.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })), 1);
       var triEdge = G.lines(SQ * 10, C.surf, 0.9); own(triEdge.obj, 2);
       var triNew = G.lines(10, INK, 1); own(triNew.obj, 3);
-      var winGeo = new T.BufferGeometry(); winGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
-      var win = ovOwn(new T.LineLoop(winGeo, new T.LineBasicMaterial({ color: INK, depthTest: false, transparent: true, fog: false })), 6);
-      var winDot = ovOwn(new T.Points(winGeo, new T.PointsMaterial({ color: INK, size: 6, sizeAttenuation: false, depthTest: false, transparent: true, fog: false })), 6);
+      var winGeo = new THREE.BufferGeometry(); winGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+      var win = ovOwn(new THREE.LineLoop(winGeo, new THREE.LineBasicMaterial({ color: INK, depthTest: false, transparent: true, fog: false })), 6);
+      var winDot = ovOwn(new THREE.Points(winGeo, new THREE.PointsMaterial({ color: INK, size: 6, sizeAttenuation: false, depthTest: false, transparent: true, fog: false })), 6);
 
       // adaptive: a second camera (body + frustum, in the neutral colour) and the outline of what it sees on the surface
-      var obs = new T.PerspectiveCamera(21, 1.45, 0.05, 30);
+      var obs = new THREE.PerspectiveCamera(21, 1.45, 0.05, 30);
       var obsBody = G.lines(48, C.text, 0.95); ovOwn(obsBody.obj, -5);
       var obsRay = G.lines(16, C.text, 0.55); ovOwn(obsRay.obj, -5);
       var fpLine = G.lines(4096, C.text, 0.95); ovOwn(fpLine.obj, 3);
@@ -544,10 +556,10 @@
 
       // (u,v) chart, the tangent plane seen face-on, and the 4 / 8 switch above them
       var uvBox = ui.el('div', 'kt-uv'); root.appendChild(uvBox);
-      var uvLab = ui.el('span', 'kt-uv-lab', '(u, v) chart'); uvBox.appendChild(uvLab);
+      var uvLabHtml = T('(u, v) chart'), uvLab = ui.el('span', 'kt-uv-lab', uvLabHtml); uvBox.appendChild(uvLab);
       var uvc = ui.canvas(uvBox, 'kt-uv-cv');
       var fcBox = ui.el('div', 'kt-uv kt-face'); root.appendChild(fcBox);
-      fcBox.appendChild(ui.el('span', 'kt-uv-lab', 'tangent plane<span class="kt-wide"> · face-on</span>'));
+      fcBox.appendChild(ui.el('span', 'kt-uv-lab', T('tangent plane<span class="kt-wide"> · face-on</span>')));
       var fc = ui.canvas(fcBox, 'kt-uv-cv'); fc.cv.style.cursor = 'default';
       var nbBar = ui.el('div', 'kt-nbsw'); root.appendChild(nbBar);
 
@@ -555,59 +567,60 @@
       var st = { scene: 'net', sc: SCENES.net, show: {}, n: 14, gain: 0.75, u: 0.5, v: 0.5, t: 0, nb: 4, ci: 0, cj: 0,
                  touchedProbe: false, touchedN: false, wigI: -1,
                  nudge: true, nud: { th: 0, ph: 0 }, nudT: 0, autoR: null, userZoom: false, sparkT: 0, ins: 160, lift: 0, viewKey: '' };
-      var panel = ui.panel(root, { pos: 'tr', title: 'sampling' });
-      var slN = ui.slider(panel, { label: 'samples', min: 4, max: NMAX, step: 1, value: st.n,
+      var panel = ui.panel(root, { pos: 'tr', title: T('sampling') });
+      var slN = ui.slider(panel, { label: T('samples'), min: 4, max: NMAX, step: 1, value: st.n,
         fmt: function (v) { return v + '²'; },
         onInput: function (v) { st.n = v; st.touchedN = true; fieldDirty = true; uvDirty = true; latDirty = probeDirty = true; } });
-      var slG = ui.slider(panel, { label: 'σ / cell', min: 0.3, max: 1.1, step: 0.01, value: st.gain,
+      var slG = ui.slider(panel, { label: T('σ / cell'), min: 0.3, max: 1.1, step: 0.01, value: st.gain,
         fmt: function (v) { return v.toFixed(2); }, onInput: function (v) { st.gain = v; fieldDirty = true; probeDirty = true; } });
-      var rdG = ui.readout(panel, { label: 'Gaussians', tone: 'splat' });
-      var rdP = ui.readout(panel, { label: 'learnable params', tone: 'ctrl' });
-      var rdZ = ui.readout(panel, { label: 'params / Gaussian', tone: 'ok' });
+      var rdG = ui.readout(panel, { label: T('Gaussians'), tone: 'splat' });
+      var rdP = ui.readout(panel, { label: T('learnable params'), tone: 'ctrl' });
+      var rdZ = ui.readout(panel, { label: T('params / Gaussian'), tone: 'ok' });
       rdP.set((NU * NV * PER_CP).toLocaleString('en-US')); rdZ.set('0');
-      var rdAng = ui.readout(panel, { label: '∠ ( S<sub>u</sub> , S<sub>v</sub> )', tone: 'surf' });
-      var rdSn = ui.readout(panel, { label: 'σ from 4 neighbours', tone: 'splat' });
-      var rdSa = ui.readout(panel, { label: 'σ from derivatives' });
-      var rdGap = ui.readout(panel, { label: 'they differ by', tone: 'ok' });
-      var rdSh = ui.readout(panel, { label: 'shear the two lengths drop', tone: 'err' });
+      var rdAng = ui.readout(panel, { label: LTRH('∠ ( S<sub>u</sub> , S<sub>v</sub> )'), tone: 'surf' });
+      var rdSn = ui.readout(panel, { label: T('σ from {n} neighbours', { n: st.nb }), tone: 'splat' });
+      var rdSa = ui.readout(panel, { label: T('σ from derivatives') });
+      var rdGap = ui.readout(panel, { label: T('they differ by'), tone: 'ok' });
+      var rdSh = ui.readout(panel, { label: T('shear the two lengths drop'), tone: 'err' });
       var spBox = ui.el('div', 'kt-pl-spark'); panel.appendChild(spBox);
       var spc = ui.canvas(spBox, 'kt-pl-spark-cv');
       // scene net: the optimiser
-      var rdFit = ui.readout(panel, { label: 'fit error · RMS', tone: 'err' });
-      var rdMax = ui.readout(panel, { label: 'largest miss' });
-      var rdIt = ui.readout(panel, { label: 'optimiser' });
+      var rdFit = ui.readout(panel, { label: T('fit error · RMS'), tone: 'err' });
+      var rdMax = ui.readout(panel, { label: T('largest miss') });
+      var rdIt = ui.readout(panel, { label: T('optimiser') });
       // scenes scale and fill: one size for all, or each Gaussian sized to its own cell
-      var segSz = ui.seg(panel, { label: 'size', value: 'own', options: [{ v: 'one', label: 'one for all' }, { v: 'own', label: 'own cell' }],
+      var segSz = ui.seg(panel, { label: T('size'), value: 'own', options: [{ v: 'one', label: T('one for all') }, { v: 'own', label: T('own cell') }],
         onChange: function (v) { tl.auto = false; tl.goal = v === 'one' ? 1 : 0; } });
       segSz.el.classList.add('kt-pl-sz');
-      var rdUnc = ui.readout(panel, { label: 'uncovered <i>one · own</i>', tone: 'err' });
-      var rdPile = ui.readout(panel, { label: 'piled 3+ deep <i>one · own</i>' });
+      var rdUnc = ui.readout(panel, { label: T('uncovered <i>one · own</i>'), tone: 'err' });
+      var rdPile = ui.readout(panel, { label: T('piled 3+ deep <i>one · own</i>') });
       [segSz, rdUnc, rdPile].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
       // scene stitch
-      var rdTri = ui.readout(panel, { label: 'triangles', tone: 'surf' });
+      var rdTri = ui.readout(panel, { label: T('triangles'), tone: 'surf' });
       panel.insertBefore(rdTri.el, rdP.el);
       // scene knob: its own slider, Gaussians on a log scale, and what it costs, measured
-      var slK = ui.slider(panel, { label: 'Gaussians', min: 0, max: 1000, step: 1, value: 0,
+      var slK = ui.slider(panel, { label: T('Gaussians'), min: 0, max: 1000, step: 1, value: 0,
         fmt: function (v) { var n = knN(v); return (n * n).toLocaleString('en-US'); },
         onInput: function (v) { st.touchedN = true; knSet(knN(v)); } });
       panel.insertBefore(slK.el, slN.el);
-      var rdFt = ui.readout(panel, { label: 'frame time · measured' });
-      var rdEv = ui.readout(panel, { label: 're-evaluate · measured' });
-      var rdLim = ui.readout(panel, { label: 'turns back at' });
+      var rdFt = ui.readout(panel, { label: T('frame time · measured') });
+      var rdEv = ui.readout(panel, { label: T('re-evaluate · measured') });
+      var rdLim = ui.readout(panel, { label: T('turns back at') });
       var knBox = ui.el('div', 'kt-pl-spark'); panel.appendChild(knBox);
       var knc = ui.canvas(knBox, 'kt-pl-spark-cv');
       // scene adaptive
-      var rdIn = ui.readout(panel, { label: 'in the camera’s view', tone: 'splat' });
-      var rdFp = ui.readout(panel, { label: 'the view covers' });
-      var rdSpc = ui.readout(panel, { label: 'cell side <i>in · out</i>' });
-      var rdUni = ui.readout(panel, { label: 'even lattice, in view' });
-      var rdEq = ui.readout(panel, { label: 'that spacing everywhere' });
+      var rdIn = ui.readout(panel, { label: T('in the camera’s view'), tone: 'splat' });
+      var rdFp = ui.readout(panel, { label: T('the view covers') });
+      var rdSpc = ui.readout(panel, { label: T('cell side <i>in · out</i>') });
+      var rdUni = ui.readout(panel, { label: T('even lattice, in view') });
+      var rdEq = ui.readout(panel, { label: T('that spacing everywhere') });
       [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
       // the numbers that must stay readable when the panel is folded away (a phone, the deck): under the caption
       var hud = ui.el('div', 'kt-pl-hud'); root.appendChild(hud);
+      if (KT.rtl) hud.dir = 'rtl';                // a few lines of running text: on a right-to-left page they line up on the right
       var hudDirty = true, hudHtml = '';
-      var segNb = ui.seg(nbBar, { label: 'size from', value: st.nb,
-        options: [{ v: 4, label: '4 neighbours' }, { v: 8, label: '8' }],
+      var segNb = ui.seg(nbBar, { label: T('size from'), value: st.nb,
+        options: [{ v: 4, label: T('{n} neighbours', { n: 4 }) }, { v: 8, label: '8' }],
         onChange: function (v) { st.nb = v; probeDirty = uvDirty = latDirty = true; st.sparkT = 0; } });
 
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, theta: 0.72, phi: 1.0, radius: 7.2, target: [0, 0.05, 0],
@@ -616,7 +629,7 @@
       var surfDirty = true, fieldDirty = true, uvDirty = true, latDirty = true, probeDirty = true, faceDirty = true;
 
       /* ---------- drag a control point ---------- */
-      var ray = new T.Raycaster(), ndc = new T.Vector2(), dragPlane = new T.Plane(), hitP = new T.Vector3(), dragCP = null;
+      var ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), dragPlane = new THREE.Plane(), hitP = new THREE.Vector3(), dragCP = null;
       function setNdc(e) {
         var r = R.canvas.getBoundingClientRect();
         ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1));
@@ -635,7 +648,7 @@
         var i = findBall(e.clientX, e.clientY, e.pointerType === 'touch');
         if (i < 0) return false;
         dragCP = { i: i, id: e.pointerId, was: patch.P.slice(i * 3, i * 3 + 3) };
-        dragPlane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()), balls[i].position);
+        dragPlane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new THREE.Vector3()), balls[i].position);
         R.canvas.setPointerCapture(e.pointerId);
         return true;
       }
@@ -1048,8 +1061,9 @@
         kn.plotT -= dt;
         if (kn.plotT <= 0) {
           kn.plotT = 0.25;
-          rdFt.set(ft == null ? 'measuring…' : ft.toFixed(1) + ' ms · ' + fmtFps(ft));
-          rdLim.set(!kn.lim ? '—' : (kn.lim.n * kn.lim.n).toLocaleString('en-US') + (kn.lim.why === 'frame' ? ' · frame > ' + Math.round(kn.lim.cap) + ' ms' : ' · buffer full'));
+          rdFt.set(ft == null ? T('measuring…') : ft.toFixed(1) + ' ms · ' + fmtFps(ft));
+          rdLim.set(!kn.lim ? '—' : kn.lim.why === 'frame' ? T('{n} · frame > {ms} ms', { n: (kn.lim.n * kn.lim.n).toLocaleString('en-US'), ms: Math.round(kn.lim.cap) })
+                    : T('{n} · buffer full', { n: (kn.lim.n * kn.lim.n).toLocaleString('en-US') }));
           drawKnob(ft); hudDirty = true;
         }
       }
@@ -1061,7 +1075,7 @@
         function X(c) { return 8 + (Math.log(c) - lx0) / (lx1 - lx0) * (w - 16); }
         function Y(ms) { return h - 13 - Math.min(ms, ym) / ym * (h - 28); }
         g.font = '500 9px JetBrains Mono, ui-monospace, monospace'; g.textBaseline = 'middle';
-        [[1000 / 60, '60 fps', rgba(C.dim, 0.35)], [knCap(), 'turns back', rgba(C.err, 0.4)]].forEach(function (l) {
+        [[1000 / 60, '60 fps', rgba(C.dim, 0.35)], [knCap(), T('turns back'), rgba(C.err, 0.4)]].forEach(function (l) {
           g.strokeStyle = l[2]; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(8, Y(l[0])); g.lineTo(w - 8, Y(l[0])); g.stroke(); g.setLineDash([]);
           g.fillStyle = C.mute; g.textAlign = 'right'; g.fillText(l[1], w - 8, Y(l[0]) - 6);
         });
@@ -1074,7 +1088,7 @@
         }
         g.fillStyle = C.text; pts.forEach(function (p) { g.beginPath(); g.arc(X(p[0]), Y(p[1]), 2.4, 0, 6.2832); g.fill(); });
         if (ft != null) { g.fillStyle = C.splat; g.beginPath(); g.arc(X(kn.cur * kn.cur), Y(ft), 4, 0, 6.2832); g.fill(); }
-        g.fillStyle = C.dim; g.textAlign = 'left'; g.fillText('frame time vs Gaussians · measured', 8, 8);
+        g.fillStyle = C.dim; g.textAlign = 'left'; g.fillText(T('frame time vs Gaussians · measured'), 8, 8);
       }
 
       /* ---------- scene adaptive: a fixed budget, warped towards what a camera sees ----------
@@ -1097,7 +1111,7 @@
       var qa = { pos: new Float32Array(QA * QA * 3), su: new Float32Array(QA * QA * 3), sv: new Float32Array(QA * QA * 3), area: new Float32Array(QA * QA), nrm: new Float32Array(QA * QA * 3) };
       var ad = { ver: -1, fresh: true, w: new Float64Array(QA * QA), m: new Float64Array(QA * QA), tmp: new Float64Array(QA * QA), acc: 0,
                  n: 0, X: null, inG: null, fv: new Float32Array((VF + 1) * (VF + 1)), seg: [], uniVer: -1, uniIn: null, uniS: null, stat: null };
-      var aset = footSet(NMAX * NMAX), M4 = new T.Matrix4(), q4 = [0, 0, 0];
+      var aset = footSet(NMAX * NMAX), M4 = new THREE.Matrix4(), q4 = [0, 0, 0];
       aset.m = new Float32Array(NMAX * NMAX * 4);       // per Gaussian: the 1-sigma ellipse in the chart, (a, b) = M (cos, sin)
       function proj(x, y, z) {                        // NDC x, y and w of a world point in the observer camera
         var e = M4.elements, w = e[3] * x + e[7] * y + e[11] * z + e[15];
@@ -1260,7 +1274,7 @@
         var nr = [[-hw * dn, -hh * dn, -dn], [hw * dn, -hh * dn, -dn], [hw * dn, hh * dn, -dn], [-hw * dn, hh * dn, -dn]];
         nr.forEach(function (p, i2) { L.push([0, 0, 0], p, p, nr[(i2 + 1) % 4]); });
         L.push([-0.05, by, 0.19], [0, by + 0.08, 0.19], [0, by + 0.08, 0.19], [0.05, by, 0.19]);      // which way is up
-        var v3 = new T.Vector3(); o = 0;
+        var v3 = new THREE.Vector3(); o = 0;
         L.forEach(function (p) { v3.set(p[0], p[1], p[2]).applyMatrix4(obs.matrixWorld); obsBody.arr[o++] = v3.x; obsBody.arr[o++] = v3.y; obsBody.arr[o++] = v3.z; });
         obsBody.set(L.length);
         o = 0;
@@ -1279,7 +1293,7 @@
         var p = [0, 0, 0]; onSurf(inv(x), inv(z), 0, p, 0); return p[1];
       }
       function rayHit(nx, ny) {
-        var v = new T.Vector3(nx, ny, 0.5).unproject(obs).sub(obs.position).normalize(), E = obs.position, t = 0, step = 0.03, lo, hi, m, k;
+        var v = new THREE.Vector3(nx, ny, 0.5).unproject(obs).sub(obs.position).normalize(), E = obs.position, t = 0, step = 0.03, lo, hi, m, k;
         function under(t) { var x = E.x + v.x * t, z = E.z + v.z * t; return Math.abs(x) <= SPAN / 2 && Math.abs(z) <= SPAN / 2 && E.y + v.y * t <= heightAt(x, z); }
         for (k = 0; k < 400; k++) { t += step; if (under(t)) break; }
         if (k >= 400) return null;
@@ -1389,8 +1403,8 @@
           dots.material.size = 0.05 * gz;
 
           var eight = st.nb === 8;
-          label(rdSn, 'σ from ' + st.nb + ' neighbours');
-          label(rdSa, eight ? 'σ from J·diag(Δu,Δv)' : 'σ from ‖S<sub>u</sub>‖Δu , ‖S<sub>v</sub><sup>⊥</sup>‖Δv');
+          label(rdSn, T('σ from {n} neighbours', { n: st.nb }));
+          label(rdSa, eight ? T('σ from J·diag(Δu,Δv)') : T('σ from ‖S<sub>u</sub>‖Δu , ‖S<sub>v</sub><sup>⊥</sup>‖Δv'));
           rdSn.set(fmt3(est.s[0] * k) + ' × ' + fmt3(est.s[1] * k));
           rdSa.set(fmt3(ref.s[0] * k) + ' × ' + fmt3(ref.s[1] * k));
           rdGap.set(pct(pr.gap)); rdGap.tone(pr.gap < 0.01 ? 'ok' : pr.gap < 0.08 ? '' : 'err');
@@ -1409,7 +1423,7 @@
       }
       /* a label just beyond the tip, along the arrow as it appears on screen; it also says when the arrow
          points at the viewer or away (the one case where the drawing cannot) */
-      var camDir = new T.Vector3();
+      var camDir = new THREE.Vector3();
       function placeTip(el, from, tip, name, clear) {
         var qa = G.project(cam, from[0], from[1], from[2], W, H), qb = G.project(cam, tip[0], tip[1], tip[2], W, H);
         if (!qa || !qb) { el.style.opacity = 0; return null; }
@@ -1418,7 +1432,7 @@
         var d = add(tip, from, -1), l = len(d) || 1;
         camDir.copy(cam.position).sub(probe.position).normalize();
         var z = (d[0] * camDir.x + d[1] * camDir.y + d[2] * camDir.z) / l;
-        var html = name + (z > 0.9 ? '<i>⊙ towards you</i>' : z < -0.9 ? '<i>⊗ away</i>' : '');
+        var html = name + (z > 0.9 ? '<i>' + T('⊙ towards you') + '</i>' : z < -0.9 ? '<i>' + T('⊗ away') + '</i>' : '');
         if (el._html !== html) { el.innerHTML = html; el._html = html; }
         var x = qb[0] + dx * 20, y = qb[1] + dy * 15;
         if (clear && Math.abs(x - clear[0]) < 64 && Math.abs(y - clear[1]) < 24) y = clear[1] + (y < clear[1] ? -24 : 24);   // not on top of the other label
@@ -1539,9 +1553,9 @@
           }
         }
         // the label is set in capitals: a lower-case σ would turn into Σ, so it keeps its case
-        var lab = s.nbr ? (w < 150 ? '(u, v) · ' + st.nb + ' nbrs' : '(u, v) · ' + st.nb + ' neighbours') : s.stitch ? (w < 150 ? '2 × 2 window' : '(u, v) · 2 × 2 window') :
-                  s.adapt ? (w < 150 ? '(u, v) · warped' : '(u, v) · warped lattice') : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : '(u, v) · 1<i>σ</i> footprints') : '(u, v) chart';
-        if (uvLab.innerHTML !== lab) uvLab.innerHTML = lab;
+        var lab = s.nbr ? (w < 150 ? T('(u, v) · {n} nbrs', { n: st.nb }) : T('(u, v) · {n} neighbours', { n: st.nb })) : s.stitch ? (w < 150 ? T('2 × 2 window') : T('(u, v) · 2 × 2 window')) :
+                  s.adapt ? (w < 150 ? T('(u, v) · warped') : T('(u, v) · warped lattice')) : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : T('(u, v) · 1<i>σ</i> footprints')) : T('(u, v) chart');
+        if (lab !== uvLabHtml) { uvLabHtml = lab; uvLab.innerHTML = lab; }
       }
 
       /* ---------- the tangent plane, face-on ----------
@@ -1632,7 +1646,7 @@
           g.fillStyle = j === 4 ? INK : on ? C.splat : rgba(C.splat, 0.4);
           g.beginPath(); g.arc(X(m.d[j]), Y(m.d[j]), j === 4 ? 3 : on ? 3.4 : 2.4, 0, 6.2832); g.fill();
         }
-        foot((small ? '' : 'differ by ') + pct(m.gap), m.gap < 0.01 ? C.ok : C.text);
+        foot(small ? pct(m.gap) : T('differ by {gap}', { gap: pct(m.gap) }), m.gap < 0.01 ? C.ok : C.text);
         if (!small) { g.textAlign = 'right'; g.fillStyle = C.dim; g.fillText('∠ ' + m.ang.toFixed(0) + '°', w - 7, h - 7); }
       }
 
@@ -1665,7 +1679,7 @@
           g.stroke();
         }
         g.fillStyle = INK; g.beginPath(); g.arc(X(st.n), Y(pr.gap), 3.2, 0, 6.2832); g.fill();
-        g.fillStyle = C.dim; g.textAlign = 'left'; g.fillText('differ by, vs samples · dashed = 1/n²', 6, 9);
+        g.fillStyle = C.dim; g.textAlign = 'left'; g.fillText(T('differ by, vs samples · dashed = 1/n²'), 6, 9);
       }
 
       /* ---------- scenes ---------- */
@@ -1703,12 +1717,12 @@
         rdTri.el.style.display = s.stitch ? '' : 'none';
         slK.el.style.display = rdFt.el.style.display = rdEv.el.style.display = rdLim.el.style.display = knBox.style.display = sc.sweep ? '' : 'none';
         [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { r.el.style.display = s.adapt ? '' : 'none'; });
-        label(rdP, sc.sweep ? 'stored numbers' : 'learnable params');
+        label(rdP, sc.sweep ? T('stored numbers') : T('learnable params'));
         hudHtml = null; hudDirty = true;
         on(net.obj, s.net); on(netGhost, s.net);
         balls.forEach(function (m, i) {
           m.visible = !!s.net;
-          if (s.feat) m.material.color.setRGB(patch.C[i * 3], patch.C[i * 3 + 1], patch.C[i * 3 + 2], T.SRGBColorSpace);
+          if (s.feat) m.material.color.setRGB(patch.C[i * 3], patch.C[i * 3 + 1], patch.C[i * 3 + 2], THREE.SRGBColorSpace);
           else m.material.color.set(C.ctrl);
           m.material.emissive.copy(m.material.color).multiplyScalar(0.32);
           m.children[0].visible = !s.feat;
@@ -1836,7 +1850,7 @@
           g.th = view.th + (rk ? 0.36 * rk * Math.sin(t * 0.52) : 0.22 * Math.sin(t * 0.17)) + st.nud.th;
           g.ph = KT.clamp(view.ph + (rk ? 0.11 * rk * Math.sin(t * 0.37 + 1) : 0) + st.nud.ph, 0.12, 1.5);
         }
-        if (st.nudT > 0) { st.nudT -= dt; hint.textContent = st.nudT > 0 ? 'tangent plane edge-on · stepping aside' : (sc.hint || ''); }
+        if (st.nudT > 0) { st.nudT -= dt; hint.textContent = st.nudT > 0 ? T('tangent plane edge-on · stepping aside') : (sc.hint || ''); }
         orbit.update(dt);
         // on a small stage the insets cover the lower part: lift the picture into the free area above them
         var occ = s.face ? st.ins + 14 + (s.nbr ? 46 : 0) : 0, span = Math.max((s.uv ? 2 : 1) * (st.ins + 8) + 16, s.nbr ? 226 : 0) / W;
@@ -1945,7 +1959,9 @@
           'padding:4px 10px 5px;border-radius:12px;background:rgba(255,255,255,.66);text-shadow:none;' +
           'backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);' +
           'box-shadow:var(--glass-edge),0 10px 26px -16px rgba(88,56,24,.3)}' +
-          '[data-theme="light"] .kt-sim-planoid .kt-pl-hud .big{font-family:var(--f-ui);font-weight:700;letter-spacing:-.01em}';
+          '[data-theme="light"] .kt-sim-planoid .kt-pl-hud .big{font-family:var(--f-ui);font-weight:700;letter-spacing:-.01em}' +
+          /* a Hebrew page (talk.html?lang=he): this module's own labels are set without the tracking of the capitals they replace */
+          ':root[lang="he"] .kt-sim-planoid .kt-uv-lab,:root[lang="he"] .kt-sim-planoid .kt-pl-hud,:root[lang="he"] .kt-sim-planoid .kt-tag i{letter-spacing:0}';
         document.head.appendChild(css);
       }
 

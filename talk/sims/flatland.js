@@ -649,6 +649,11 @@
      2. BROWSER SECTION
      ===================================================================================== */
   var KT = root.KnotTalk, COL = KT.color, LIGHT = KT.theme === 'light';
+  /* T: a string in the page's language (talk/i18n.js; the English itself on a page without languages). A sentence with a
+     number in it is one template, never pieces joined in English order. In Hebrew the stage stays laid out left to right
+     (kit.css) and a string from T carries its own direction, so the canvas text below needs nothing more. Never compare
+     or parse what T returns. */
+  var T = KT.t;
   var SEED = 6, K_DEF = 3, K_MIN = 2, K_MAX = 8;
   var RATE = 360;                       // optimizer steps per second (time-based, not per frame)
   var SLIDE = 0.12;                     // probe distance of the `rays` scene (world units = metres)
@@ -770,7 +775,9 @@
       ':where(:root[data-theme="light"]) .kt-sim-flatland.fl-compact .fl-metrics{padding:7px 12px;border-radius:1rem}',
       ':where(:root[data-theme="light"]) .kt-sim-flatland :is(.fl-th,.fl-name,.fl-num){font-family:var(--f-ui)}',
       ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-th{letter-spacing:.04em}',
-      ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-name{letter-spacing:.02em}'
+      ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-name{letter-spacing:.02em}',
+      /* Hebrew (talk/i18n.js sets <html lang>) is not letter-spaced */
+      ':root[lang="he"] .kt-sim-flatland :is(.fl-th,.fl-name){letter-spacing:0}'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -831,26 +838,27 @@
       var cap = ui.el('div', 'kt-caption fl-cap'); rootEl.appendChild(cap);
       var met = ui.el('div', 'fl-metrics'); rootEl.appendChild(met);
       var table = ui.el('div', 'fl-table'); met.appendChild(table);
-      var HEAD = [['train', 'dB'], ['held-out', 'dB'], ['geom err', 'cm'], ['floaters', '>' + Math.round(CFG.tau * 100) + ' cm'], ['params', '']];
+      var HEAD = [[T('train'), 'dB'], [T('held-out'), 'dB'], [T('geom err'), 'cm'], [T('floaters'), '>' + Math.round(CFG.tau * 100) + ' cm'], [T('params'), '']];
+      var NAME = { free: T('free'), bound: T('bound') };       // the two models, as the table and the control name them
       var cells = { free: {}, bound: {} }, rowEls = { free: [], bound: [] };
       table.appendChild(ui.el('span', 'fl-th', ''));
       HEAD.forEach(function (h) { table.appendChild(ui.el('span', 'fl-th', h[0] + (h[1] ? ' <small>' + h[1] + '</small>' : ''))); });
       ['free', 'bound'].forEach(function (kind) {
-        var nm = ui.el('span', 'fl-name ' + kind, kind); table.appendChild(nm); rowEls[kind].push(nm);
+        var nm = ui.el('span', 'fl-name ' + kind, NAME[kind]); table.appendChild(nm); rowEls[kind].push(nm);
         ['train', 'novel', 'geo', 'fl', 'par'].forEach(function (k) {
           var c = ui.el('span', 'fl-num', '–'); table.appendChild(c); cells[kind][k] = c; rowEls[kind].push(c);
         });
       });
-      var stepOut = ui.readout(met, { label: 'step' });
+      var stepOut = ui.readout(met, { label: T('step') });
 
       var ctl = ui.panel(rootEl, { pos: 'bottom' }); ctl.classList.add('fl-ctl');
-      var segModel = ui.seg(ctl, { label: 'model', value: model,
-        options: [{ v: 'free', label: 'free' }, { v: 'bound', label: 'bound' }, { v: 'both', label: 'both' }],
+      var segModel = ui.seg(ctl, { label: T('model'), value: model,
+        options: [{ v: 'free', label: NAME.free }, { v: 'bound', label: NAME.bound }, { v: 'both', label: T('both') }],
         onChange: function (v) { model = v; showRows(); layout(); dirty = true; } });
-      var sldK = ui.slider(ctl, { label: 'views', min: K_MIN, max: K_MAX, step: 1, value: K,
+      var sldK = ui.slider(ctl, { label: T('views'), min: K_MIN, max: K_MAX, step: 1, value: K,
         onInput: function (v) { userK = v; if (v !== K) { K = v; reset(); setRun(true); } } });
-      ui.button(ctl, { label: 'reset', onClick: function () { reset(); setRun(true); } });
-      var tglRun = ui.toggle(ctl, { label: 'run', value: true, onChange: function (v) { running = v; } });
+      ui.button(ctl, { label: T('reset'), onClick: function () { reset(); setRun(true); } });
+      var tglRun = ui.toggle(ctl, { label: T('run'), value: true, onChange: function (v) { running = v; } });
       function setRun(v) { running = v; tglRun.set(v); }
       /* the deck owns arrows and space: never leave keyboard focus on a control after a pointer click */
       function dropFocus() { var a = document.activeElement; if (a && a !== document.body && ctl.contains(a) && a.blur) a.blur(); }
@@ -858,7 +866,7 @@
       sldK.input.addEventListener('change', dropFocus);
 
       var handles = [0, 1].map(function (vi) {
-        var h = ui.el('div', 'fl-handle'); h.title = 'drag the held-out camera'; rootEl.appendChild(h);
+        var h = ui.el('div', 'fl-handle'); h.title = T('drag the held-out camera'); rootEl.appendChild(h);
         var drag = false;
         function move(e) {
           var v = views[vi], r = rootEl.getBoundingClientRect();
@@ -911,18 +919,18 @@
       }
 
       var CAPS = {
-        free: function () { return '<b>Free Gaussians</b><br>' + CFG.G + ' splats, each with its own position, shape, colour, opacity — fitted to ' + K + ' photos.'; },
-        novel: function () { return '<b>Now a camera it never trained on</b><br>Same run. Drag the held-out camera along the arc.'; },
-        rays: function () { return '<b>Depth is not observed</b><br>With ' + K + ' views many floaters matter to one camera only: slide one along that ray and the photo barely changes.'; },
-        bound: function () { return '<b>Bound Gaussians</b><br>One cubic B-spline, ' + CFG.M + ' control points. Every splat is derived from the curve — none can leave it.'; },
-        versus: function () { return '<b>Same photos, same start, same steps</b><br>Only the parametrization differs.'; }
+        free: function () { return T('<b>Free Gaussians</b><br>{g} splats, each with its own position, shape, colour, opacity — fitted to {k} photos.', { g: CFG.G, k: K }); },
+        novel: function () { return T('<b>Now a camera it never trained on</b><br>Same run. Drag the held-out camera along the arc.'); },
+        rays: function () { return T('<b>Depth is not observed</b><br>With {k} views many floaters matter to one camera only: slide one along that ray and the photo barely changes.', { k: K }); },
+        bound: function () { return T('<b>Bound Gaussians</b><br>One cubic B-spline, {m} control points. Every splat is derived from the curve — none can leave it.', { m: CFG.M }); },
+        versus: function () { return T('<b>Same photos, same start, same steps</b><br>Only the parametrization differs.'); }
       };
       CAPS.handoff = CAPS.versus;                  // it fades out with the picture it belongs to
       function paintCaption() {
         var f = CAPS[scene] || CAPS.free;
         cap.innerHTML = f() +
-          '<i class="fl-long">start: both from the same ' + CFG.Ns + ' noisy points (+) · loss: MSE on the training strips · Adam, ' + CFG.maxSteps + ' steps</i>' +
-          '<i class="fl-short">same ' + CFG.Ns + ' noisy start points (+) · same loss · same ' + CFG.maxSteps + ' steps</i>';
+          '<i class="fl-long">' + T('start: both from the same {n} noisy points (+) · loss: MSE on the training strips · Adam, {steps} steps', { n: CFG.Ns, steps: CFG.maxSteps }) + '</i>' +
+          '<i class="fl-short">' + T('same {n} noisy start points (+) · same loss · same {steps} steps', { n: CFG.Ns, steps: CFG.maxSteps }) + '</i>';
       }
 
       function setScene(id) {
@@ -1052,7 +1060,9 @@
           c.par.textContent = E[kind].th.length; c.par.className = 'fl-num dim';
         });
         showRows();
-        stepOut.set(E.free.step + ' / ' + CFG.maxSteps + ' · ' + E.K + ' views × ' + CFG.W + ' px' + (E.free.step >= CFG.maxSteps ? ' · done' : running ? '' : ' · paused'));
+        var sv = { step: E.free.step, max: CFG.maxSteps, k: E.K, w: CFG.W };
+        stepOut.set(E.free.step >= CFG.maxSteps ? T('{step} / {max} · {k} views × {w} px · done', sv) :
+                    running ? T('{step} / {max} · {k} views × {w} px', sv) : T('{step} / {max} · {k} views × {w} px · paused', sv));
       }
       /* held-out PSNR from 33 viewpoints along the arc — drawn as the colour of the arc itself */
       function updateArc() {
@@ -1099,6 +1109,8 @@
 
       /* ---------- drawing ---------- */
       function font(px, wt) { return (wt || 500) + ' ' + px + 'px ' + MONO; }
+      /* the canvas labels are set in capitals; Hebrew has none, and there a unit inside a label keeps its case (dB, px, cm) */
+      function caps(s) { return KT.rtl ? s : s.toUpperCase(); }
       function drawCamera(v, cam, on, label, isNovel) {
         var X = v.ox + cam.px * v.s, Y = v.oy - cam.py * v.s, sz = compact ? 8 : 12, t = CFG.tanHalf * 0.75;
         // screen-space forward / image axis (y flips)
@@ -1245,10 +1257,10 @@
         ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
         if (compact) {
           if (P.ex.length) {
-            lines.push(['ALONG RAY ±' + cm + ' CM', base + ' → ' + P.ex[0].along.toFixed(1) + ' dB', COL.text]);
-            lines.push(['ACROSS RAY', base + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
+            lines.push([T('ALONG RAY ±{cm} CM', { cm: cm }), base + ' → ' + P.ex[0].along.toFixed(1) + ' dB', COL.text]);
+            lines.push([T('ACROSS RAY'), base + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
           }
-          lines.push(['ONE CAMERA ONLY', P.one.length + ' of ' + P.list.length + ' floaters', COL.dim]);
+          lines.push([T('ONE CAMERA ONLY'), T('{a} of {b} floaters', { a: P.one.length, b: P.list.length }), COL.dim]);
           for (i = 0; i < lines.length; i++) {
             ctx.font = font(11, 600); ctx.fillStyle = COL.mute; ctx.fillText(lines[i][0], B.x, B.y + 11 + i * 15);
             ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], B.x + 118, B.y + 11 + i * 15);
@@ -1256,13 +1268,13 @@
           return;
         }
         if (P.ex.length) {
-          lines.push(['slide ±' + cm + ' cm along its ray', 'train ' + base + ' → ' + P.ex[0].along.toFixed(1) + ' dB', COL.text]);
-          lines.push(['same slide across the ray', 'train ' + base + ' → ' + P.ex[0].across.toFixed(1) + ' dB', COL.err]);
+          lines.push([T('slide ±{cm} cm along its ray', { cm: cm }), T('train {a} → {b} dB', { a: base, b: P.ex[0].along.toFixed(1) }), COL.text]);
+          lines.push([T('same slide across the ray'), T('train {a} → {b} dB', { a: base, b: P.ex[0].across.toFixed(1) }), COL.err]);
         }
-        lines.push(['all ' + P.list.length + ' floaters, median', P.medAlong.toFixed(1) + ' along · ' + P.medAcross.toFixed(1) + ' across', COL.dim]);
-        lines.push(['matter to one camera only', P.one.length + ' of ' + P.list.length + ' floaters', COL.dim]);
+        lines.push([T('all {n} floaters, median', { n: P.list.length }), T('{a} along · {b} across', { a: P.medAlong.toFixed(1), b: P.medAcross.toFixed(1) }), COL.dim]);
+        lines.push([T('matter to one camera only'), T('{a} of {b} floaters', { a: P.one.length, b: P.list.length }), COL.dim]);
         for (i = 0; i < lines.length; i++) {
-          ctx.font = font(11, 600); ctx.fillStyle = COL.mute; ctx.fillText(lines[i][0].toUpperCase(), B.x, B.y + 11 + i * 36);
+          ctx.font = font(11, 600); ctx.fillStyle = COL.mute; ctx.fillText(caps(lines[i][0]), B.x, B.y + 11 + i * 36);
           ctx.font = font(13, 600); ctx.fillStyle = lines[i][2]; ctx.fillText(lines[i][1], B.x, B.y + 27 + i * 36);
         }
       }
@@ -1288,12 +1300,12 @@
         else drawGaussians(v, 'free');
         if (kind === 'free' && raysOn) drawRays(v, off);
         for (k = 0; k < E.K; k++) drawCamera(v, E.cams[k], sel === k, String(k + 1), false);
-        drawCamera(v, E.novel, sel === 'novel', 'HELD-OUT', true);
+        drawCamera(v, E.novel, sel === 'novel', T('HELD-OUT'), true);
         // pane title
         if (views.length > 1) {
           ctx.font = font(compact ? 11 : 13, 700); ctx.textBaseline = 'alphabetic';
           ctx.fillStyle = kind === 'free' ? COL.err : COL.surf;
-          ctx.fillText(kind === 'free' ? 'FREE · 3DGS-LIKE' : 'BOUND · OURS', v.x + (compact ? 10 : 16),
+          ctx.fillText(kind === 'free' ? T('FREE · 3DGS-LIKE') : T('BOUND · OURS'), v.x + (compact ? 10 : 16),
                        Math.min(v.y + v.h - (compact ? 6 : 10), v.oy - VIEW.y0 * v.s + 16));
         }
         ctx.restore();
@@ -1302,18 +1314,19 @@
         var B = stripBox, S = selCam(), W = CFG.W, x0 = B.x + B.labW, bw = B.w - B.labW - B.valW, pw = bw / W, y = B.y, j, rows, r, img, e, a;
         ctx.textBaseline = 'middle';
         ctx.font = font(11, 600); ctx.fillStyle = COL.dim;
-        var title = S.novel ? 'HELD-OUT VIEW — never trained on' : 'TRAINING VIEW — camera ' + (sel + 1) + ' of ' + E.K;
-        if (compact) title = S.novel ? 'HELD-OUT VIEW' : 'TRAINING VIEW ' + (sel + 1) + '/' + E.K;
-        ctx.fillText(title.toUpperCase(), x0, y + B.headH / 2 - 1);
+        var title = S.novel ? T('HELD-OUT VIEW — never trained on') : T('TRAINING VIEW — camera {i} of {k}', { i: sel + 1, k: E.K });
+        if (compact) title = S.novel ? T('HELD-OUT VIEW') : T('TRAINING VIEW {i}/{k}', { i: sel + 1, k: E.K });
+        title = caps(title);
+        ctx.fillText(title, x0, y + B.headH / 2 - 1);
         if (!compact) {
           // the note on the right, in the longest wording that leaves the title clear (a narrow stage gets a shorter one)
-          var room = bw - ctx.measureText(title.toUpperCase()).width - 18, notes, nt;
+          var room = bw - ctx.measureText(title).width - 18, notes, nt;
           if (raysOn && slideTrain === slideTrain) {      // live probe: the strip below is rendered with the floater displaced
-            ctx.fillStyle = COL.text; nt = slideTrain.toFixed(1) + ' dB';
-            notes = ['LIVE · FLOATER SLIDING ALONG ITS RAY · ALL TRAINING VIEWS ' + nt, 'LIVE · FLOATER SLIDING · ALL TRAINING VIEWS ' + nt, 'FLOATER SLIDING · TRAINING VIEWS ' + nt, 'TRAINING VIEWS ' + nt];
+            ctx.fillStyle = COL.text; nt = { v: slideTrain.toFixed(1) + ' dB' };
+            notes = [T('LIVE · FLOATER SLIDING ALONG ITS RAY · ALL TRAINING VIEWS {v}', nt), T('LIVE · FLOATER SLIDING · ALL TRAINING VIEWS {v}', nt), T('FLOATER SLIDING · TRAINING VIEWS {v}', nt), T('TRAINING VIEWS {v}', nt)];
           } else {
             ctx.fillStyle = COL.mute;
-            notes = ['1D IMAGE, ' + W + ' PX · RED UNDERLINE = ERROR', W + ' PX · RED UNDERLINE = ERROR', 'RED = ERROR'];
+            notes = [T('1D IMAGE, {w} PX · RED UNDERLINE = ERROR', { w: W }), T('{w} PX · RED UNDERLINE = ERROR', { w: W }), T('RED = ERROR')];
           }
           for (j = 0; j < notes.length && ctx.measureText(notes[j]).width > room; j++) {}
           ctx.textAlign = 'right';
@@ -1321,9 +1334,9 @@
           ctx.textAlign = 'left';
         }
         y += B.headH;
-        rows = [['gt', compact ? 'TRUE' : 'TRUE', COL.dim]];
-        if (shown('free')) rows.push(['free', 'FREE', COL.err]);
-        if (shown('bound')) rows.push(['bound', 'BOUND', COL.surf]);
+        rows = [['gt', T('TRUE'), COL.dim]];
+        if (shown('free')) rows.push(['free', T('FREE'), COL.err]);
+        if (shown('bound')) rows.push(['bound', T('BOUND'), COL.surf]);
         for (r = 0; r < rows.length; r++) {
           img = rows[r][0] === 'gt' ? S.tgt : IMG[rows[r][0]];
           var cv = CVR && (rows[r][0] === 'gt' ? S.cov : CVR[rows[r][0]]);
@@ -1355,10 +1368,12 @@
         if (!legendY) return;
         var x = 16, y = legendY, items, i, tw;
         ctx.font = font(11, 500); ctx.textBaseline = 'middle';
-        items = [['dash', 'true surface'], ['plus', 'shared start points'], ['ring', 'Gaussian, 1σ'], ['red', 'floater'], ['arc', 'held-out PSNR from that viewpoint, ' + ARC_LO + '–' + ARC_HI + ' dB']];
-        if (shown('bound')) items.splice(3, 0, ['ctrl', 'control point'], ['surf', 'spline']);
+        items = [['dash', T('true surface')], ['plus', T('shared start points')], ['ring', T('Gaussian, 1σ')], ['red', T('floater')],
+                 ['arc', T('held-out PSNR from that viewpoint, {lo}–{hi} dB', { lo: ARC_LO, hi: ARC_HI })]];
+        if (shown('bound')) items.splice(3, 0, ['ctrl', T('control point')], ['surf', T('spline')]);
         for (i = 0; i < items.length; i++) {
-          tw = ctx.measureText(items[i][1].toUpperCase().replace('Σ', 'σ')).width;
+          items[i][1] = caps(items[i][1]).replace('Σ', 'σ');     // capitals turn σ into Σ: put it back
+          tw = ctx.measureText(items[i][1]).width;
           if (x + 26 + tw > Wd - 12) break;
           switch (items[i][0]) {
             case 'dash': ctx.setLineDash([4, 3]); ctx.strokeStyle = COL.dim; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 18, y); ctx.stroke(); ctx.setLineDash([]); break;
@@ -1370,7 +1385,7 @@
             case 'arc': var g = ctx.createLinearGradient(x, 0, x + 18, 0); g.addColorStop(0, COL.err); g.addColorStop(1, COL.ok);
               ctx.strokeStyle = g; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 18, y); ctx.stroke(); break;
           }
-          ctx.fillStyle = COL.mute; ctx.fillText(items[i][1].toUpperCase().replace('Σ', 'σ'), x + 24, y + 0.5);
+          ctx.fillStyle = COL.mute; ctx.fillText(items[i][1], x + 24, y + 0.5);
           x += 24 + tw + 20;
         }
         ctx.textBaseline = 'alphabetic';

@@ -7,11 +7,13 @@
      garden      — Mip-NeRF 360 style (object in the middle of an unbounded surround)
      studio      — the abstract still life (vase, cloth, torus knot)
      scan        — the one REAL object: a DTU scan fitted offline (only when talk/dtu-data.js is loaded first)
-   Exposed as KnotTalk.scenes[key] = { label, suite, build() -> { charts, views, tour, rig, edit } }.
+   Exposed as KnotTalk.scenes[key] = { label, suite, build() -> { charts, views, tour, rig, edit } }; label, suite and
+   note are in the page's language, `en` holds them in English (see entry(), at the end).
    Depends on nurbs.js + kit.js. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, TAU = 6.283185307;
+  var T = KT.t;                              // what a viewer reads is in the page's language (talk/i18n.js); ids and chart names stay as written
   /* the folder this file was loaded from: a scan's own files lie beside it, in dtu/ (see features() in scan(), below) */
   var HERE = (document.currentScript && document.currentScript.src || '').replace(/[^\/]*$/, '');
   var SUN =(function () { var v = [0.35, 0.86, 0.36], l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; })();
@@ -535,20 +537,20 @@
   /* light: true marks a material whose colours are light: on a light page the renderer keeps its rim shading low, which
      would otherwise draw a dark outline around it */
   var MATS = {
-    stone: { label: 'stone' },                                    // the photograph's own colours: nothing is changed
-    snowy: { label: 'snowy owl', light: true, beak: [0.09, 0.085, 0.08], lid: [0.80, 0.79, 0.76],
+    stone: { label: T('stone') },                                    // the photograph's own colours: nothing is changed
+    snowy: { label: T('snowy owl'), light: true, beak: [0.09, 0.085, 0.08], lid: [0.80, 0.79, 0.76],
       p: { albedo: 0.9, barring: 0.5 },
-      knobs: [{ k: 'albedo', label: 'albedo', min: 0.4, max: 1, step: 0.01 }, { k: 'barring', label: 'barring', min: 0, max: 1, step: 0.01 }],
+      knobs: [{ k: 'albedo', label: T('albedo'), min: 0.4, max: 1, step: 0.01 }, { k: 'barring', label: T('barring'), min: 0, max: 1, step: 0.01 }],
       // white where the stone is bright, dark bars where the carving has grooves (fewer of them on the head)
       colour: function (s, p) {
         var b = 2 * p.barring, t = s.head ? ss(0.06 * b, 0.3 * b + 1e-3, s.sh) : ss(0.2 * b, 0.62 * b + 1e-3, s.sh), w = p.albedo * (0.45 + 0.55 * s.sh);
         s.r = 0.15 + (w - 0.15) * t; s.g = 0.12 + (0.99 * w - 0.12) * t; s.b = 0.10 + (0.955 * w - 0.10) * t;
       },
       eye: function (d) { return d < 0.42 ? [0.02, 0.02, 0.02] : d < 0.86 ? [0.95, 0.70, 0.08] : [0.08, 0.07, 0.06]; } },
-    jelly: { label: 'alien jelly', view: 'through', beak: [0.03, 0.40, 0.12], lid: [0.12, 0.72, 0.22],
+    jelly: { label: T('alien jelly'), view: 'through', beak: [0.03, 0.40, 0.12], lid: [0.12, 0.72, 0.22],
       p: { opacity: 0.34, gloss: 1, stiffness: 1 },
-      knobs: [{ k: 'opacity', label: 'opacity', min: 0.08, max: 1, step: 0.01 }, { k: 'gloss', label: 'gloss', min: 0, max: 2, step: 0.02 },
-              { k: 'stiffness', label: 'stiffness', min: 0.25, max: 4, step: 0.05 }],
+      knobs: [{ k: 'opacity', label: T('opacity'), min: 0.08, max: 1, step: 0.01 }, { k: 'gloss', label: T('gloss'), min: 0, max: 2, step: 0.02 },
+              { k: 'stiffness', label: T('stiffness'), min: 0.25, max: 4, step: 0.05 }],
       // a green gel you can see through: a third opaque where you look straight into it, more where it thins out
       // towards the rim (lime there), the carving's relief smoothed over, and two painted highlights (a lamp up
       // and to the left, a broad sheen from above), which are solid
@@ -573,10 +575,10 @@
      that reflectance is what makes glass visible, so it sets both the brightness and the opacity. On top: a soft
      box up and to the left as a sharp highlight, a bright "window" on what faces upwards, and the carving's
      grooves as faint lines, the way facets catch the light. All of it painted, none of it traced. */
-  MATS.glass = { label: 'clear glass', view: 'through', light: true, beak: [0.80, 0.90, 1.0], lid: [0.82, 0.90, 0.97],
+  MATS.glass = { label: T('clear glass'), view: 'through', light: true, beak: [0.80, 0.90, 1.0], lid: [0.82, 0.90, 0.97],
     p: { opacity: 0.07, index: 1.5, gloss: 1 },
-    knobs: [{ k: 'opacity', label: 'opacity', min: 0.02, max: 0.6, step: 0.01 }, { k: 'index', label: 'refractive index', min: 1.05, max: 2.4, step: 0.01 },
-            { k: 'gloss', label: 'gloss', min: 0, max: 2, step: 0.02 }],
+    knobs: [{ k: 'opacity', label: T('opacity'), min: 0.02, max: 0.6, step: 0.01 }, { k: 'index', label: T('refractive index'), min: 1.05, max: 2.4, step: 0.01 },
+            { k: 'gloss', label: T('gloss'), min: 0, max: 2, step: 0.02 }],
     colour: function (s, p) {
       var c = Math.abs(s.nz), f0 = Math.pow((p.index - 1) / (p.index + 1), 2), F = f0 + (1 - f0) * Math.pow(1 - c, 5);
       var hl = p.gloss * Math.pow(Math.max(0, -0.22 * s.nx + 0.44 * s.ny + 0.87 * c), 90);
@@ -588,17 +590,17 @@
     eye: function (d, lx, ly) { return Math.hypot(lx + 0.3, ly - 0.32) < 0.22 ? [1, 1, 1] : d < 0.8 ? [0.04, 0.10, 0.22] : [0.75, 0.88, 1]; } };
   Object.keys(MATS).forEach(function (k) { MATS[k].rev = 0; });
   /* where a material may go; `selection` needs the Hands layer (talk/hands.js), which the host offers or not */
-  var TARGETS = [{ v: 'object', label: 'object' }, { v: 'owl', label: 'owl' }, { v: 'selection', label: 'selection' }];
+  var TARGETS = [{ v: 'object', label: T('object') }, { v: 'owl', label: T('owl') }, { v: 'selection', label: T('selection') }];
   var FEET = 1.45;                           // the owl stands on the book at this height: its motion is measured from here
   function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
   /* a 0..1 weight per control point with a soft edge: two 3 x 3 box blurs over the lattice, edges clamped (the way
      talk/dtu/owlmask122.js feathers the owl when it loads) */
   function feather(src, nu, nv, out) {
-    var T = new Float32Array(src.length), i, j, a, q, v, pass;
+    var tmp = new Float32Array(src.length), i, j, a, q, v, pass;
     out.set(src);
     for (pass = 0; pass < 2; pass++) {
-      for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { for (v = 0, a = -1; a <= 1; a++) v += out[j * nu + Math.min(nu - 1, Math.max(0, i + a))]; T[j * nu + i] = v / 3; }
-      for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { for (v = 0, q = -1; q <= 1; q++) v += T[Math.min(nv - 1, Math.max(0, j + q)) * nu + i]; out[j * nu + i] = v / 3; }
+      for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { for (v = 0, a = -1; a <= 1; a++) v += out[j * nu + Math.min(nu - 1, Math.max(0, i + a))]; tmp[j * nu + i] = v / 3; }
+      for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { for (v = 0, q = -1; q <= 1; q++) v += tmp[Math.min(nv - 1, Math.max(0, j + q)) * nu + i]; out[j * nu + i] = v / 3; }
     }
     return out;
   }
@@ -770,7 +772,7 @@
       // features of a pretrained model baked onto the control points, when their file (talk/dtu/features<N>.js) is loaded
       c.feat = featOf(D, d.name);
     });
-    var T = D.target, ty = T[1], tz = T[2], M = KT.dtuMasks && KT.dtuMasks[D.scan];
+    var tgt = D.target, ty = tgt[1], tz = tgt[2], M = KT.dtuMasks && KT.dtuMasks[D.scan];
     return {
       charts: C, photo: true,
       /* every view lies inside the dome of real cameras (azimuth -60..60 degrees, 16..70 degrees above the table);
@@ -780,7 +782,7 @@
                through: { th: -0.55, ph: 1.14, r: 5.0, tx: 0.1, ty: 2.3, tz: 0.2 },        // close, three-quarter: the books behind the body
                near: { th: 0.30, ph: 1.2, r: 5.8, tx: 0.05, ty: 2.2, tz: 0.2 } },             // the owl and its books fill the frame, from the front
       tour: D.tour || ['wide', 'close', 'a', 'b'],
-      rig: { cams: D.cams, target: T },              // the scan's own camera positions, in the object's frame
+      rig: { cams: D.cams, target: tgt },              // the scan's own camera positions, in the object's frame
       /* scan 122 only: the owl alive and repainted (owlLife), on a target; another scan has none of it. The owl's mask
          (talk/dtu/owlmask122.js, segmented offline) is used where it is loaded and was made for this chart */
       animate: D.scan === 122 ? owlLife(C[0], M && M.chart === C[0].name && M.nu === C[0].patch.nu && M.nv === C[0].patch.nv ? M.mask : null) : null,
@@ -812,36 +814,43 @@
     });
     var C = objs.concat(rab);
     C.forEach(function (c) { var P = c.patch.P, j, q; for (j = 0; j < P.length; j += 3) for (q = 0; q < 3; q++) { lo[q] = Math.min(lo[q], P[j + q]); hi[q] = Math.max(hi[q], P[j + q]); } });
-    var T = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+    var mid = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
     return {
       charts: C, photo: true, animate: a.animate,
-      box: { c: T, h: [(hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2] },
-      views: { wide: { th: 0.12, ph: 1.24, r: 9.6, tx: T[0], ty: T[1], tz: T[2] }, close: { th: 0.05, ph: 1.2, r: 5.2, tx: T[0] - 0.4, ty: 2.4, tz: T[2] },
-               a: { th: -0.3, ph: 1.18, r: 8.8, tx: T[0], ty: T[1], tz: T[2] }, b: { th: 0.42, ph: 1.1, r: 8.8, tx: T[0], ty: T[1], tz: T[2] } },
+      box: { c: mid, h: [(hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2] },
+      views: { wide: { th: 0.12, ph: 1.24, r: 9.6, tx: mid[0], ty: mid[1], tz: mid[2] }, close: { th: 0.05, ph: 1.2, r: 5.2, tx: mid[0] - 0.4, ty: 2.4, tz: mid[2] },
+               a: { th: -0.3, ph: 1.18, r: 8.8, tx: mid[0], ty: mid[1], tz: mid[2] }, b: { th: 0.42, ph: 1.1, r: 8.8, tx: mid[0], ty: mid[1], tz: mid[2] } },
       tour: ['wide', 'a', 'b'],
-      rig: { cams: a.rig.cams.concat(b.rig.cams.map(place)), target: T }
+      rig: { cams: a.rig.cams.concat(b.rig.cams.map(place)), target: mid }
     };
   }
 
+  /* A scene's entry. Its label, suite and note are what a viewer reads, so they are in the page's language (KnotTalk.t;
+     `vars` fills a {name} of the suite). `en` keeps the three as they are written here, in English: that is what goes
+     into a file, whose name and comments stay Latin and 7-bit (the mesh export of the manifold module, talk/meshio.js) */
+  function entry(label, suite, vars, o) {
+    var en = { label: label, suite: suite.replace(/\{(\w+)\}/g, function (m, k) { return vars[k]; }), note: o.note };
+    return Object.assign(o, { label: T(label), suite: T(suite, vars), note: o.note == null ? o.note : T(o.note), en: en });
+  }
   KT.scenes = {
-    barn:   { label: 'Barn',   suite: 'Tanks and Temples style', build: barn },
-    truck:  { label: 'Truck',  suite: 'Tanks and Temples style', build: truck },
-    bust:   { label: 'Bust',   suite: 'DTU style', build: bust },
-    garden: { label: 'Garden', suite: 'Mip-NeRF 360 style', build: garden },
-    studio: { label: 'Studio', suite: 'abstract still life', build: studio },
+    barn:   entry('Barn', 'Tanks and Temples style', null, { build: barn }),
+    truck:  entry('Truck', 'Tanks and Temples style', null, { build: truck }),
+    bust:   entry('Bust', 'DTU style', null, { build: bust }),
+    garden: entry('Garden', 'Mip-NeRF 360 style', null, { build: garden }),
+    studio: entry('Studio', 'abstract still life', null, { build: studio }),
     /* hidden: not offered in the lab's scene picker or on the landing page; the Hebrew deck loads it by name.
        light: its surfaces are light-coloured (on a light page the renderer keeps their rim shading low) */
-    breakfast: { label: 'Breakfast', suite: 'illustration', hidden: true, light: true, build: breakfast }
+    breakfast: entry('Breakfast', 'illustration', null, { hidden: true, light: true, build: breakfast })
   };
   /* the real object, when its data file was loaded before this one. `note` is what a caption may say about it */
   var NOTE = 'fitted offline, not trained';
-  if (KT.dtu) KT.scenes.scan = { label: KT.dtu.label || 'Scan', suite: 'DTU scan ' + KT.dtu.scan, photo: true, note: NOTE,
-                                 build: function () { return scan(KT.dtu); } };
+  if (KT.dtu) KT.scenes.scan = entry(KT.dtu.label || 'Scan', 'DTU scan {n}', { n: KT.dtu.scan }, { photo: true, note: NOTE,
+                                 build: function () { return scan(KT.dtu); } });
   /* further scans (talk/dtu/scan<N>.js), offered by the lab page's scene picker only */
   Object.keys(KT.dtuScans || {}).forEach(function (n) {
     var D = KT.dtuScans[n];
-    KT.scenes['scan' + n] = { label: D.label, suite: 'DTU scan ' + n, photo: true, note: NOTE, build: function () { return scan(D); } };
+    KT.scenes['scan' + n] = entry(D.label, 'DTU scan {n}', { n: n }, { photo: true, note: NOTE, build: function () { return scan(D); } });
   });
   /* the cover's pair: not offered in the lab page's scene picker */
-  if (KT.dtu && KT.dtuScans && KT.dtuScans[55]) KT.scenes.duo = { label: 'Owl and rabbit', suite: 'DTU scans 122 and 55', photo: true, hidden: true, note: NOTE, build: duo };
+  if (KT.dtu && KT.dtuScans && KT.dtuScans[55]) KT.scenes.duo = entry('Owl and rabbit', 'DTU scans 122 and 55', null, { photo: true, hidden: true, note: NOTE, build: duo });
 })();
