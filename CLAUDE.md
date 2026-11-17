@@ -297,7 +297,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the
   old dithered look. A new 3D module must use it too.
 - Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
-  (`talk/audio/tracks.js`, empty by default: no recording is in the repo) while the step is active; M mutes; the
+  (`talk/audio/tracks.js`, empty by default: no recording is in the repo; `talk.html?song=on`, saved as `kt-song`, points `touch` at the presenter's own file `talk/audio/local/touch.mp3`, a git-ignored folder: never commit or publish a recording) while the step is active; M mutes; the
   `.credit` line of a step shows only when a track has loaded. `data-sfx` marks a step whose simulation makes
   its own synthesized sound effects (chapter 09); the ♪ button shows there too and `KnotTalk.muted` carries
   the mute to the module.

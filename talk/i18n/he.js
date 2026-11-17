@@ -34,6 +34,7 @@
   "A Gaussian is a blob with a centre, a size, a direction, an opacity and a colour. <b>Still explicit: a list of items, now soft ones that blend.</b>": "גאוסיאן הוא כתם עם מרכז, גודל, כיוון, שקיפות וצבע. <b>עדיין ייצוג מפורש: רשימה של פריטים, עכשיו רכים ומתמזגים.</b>",
   "Explicit representation · Gaussians": "ייצוג מפורש · גאוסיאנים",
   "Explicit, soft": "מפורש, רך",
+  "♪ MC Hammer, “U Can’t Touch This” (1990) · the presenter’s own copy, not part of this page": "♪ \u2066MC Hammer, “U Can’t Touch This” (1990)\u2069 · עותק של המציג, לא חלק מהדף הזה",
   "Gaussians · 3D Gaussian Splatting": "גאוסיאנים · <span dir=\"ltr\">3D Gaussian Splatting</span>",
   "And the computer <span>learns</span> where to put them": "והמחשב <span>לומד לבד</span> היכן לשים אותם",
   "Start from random blobs and compare with the picture. At every step each blob moves a little, until the picture comes into focus.": "מתחילים מכתמים אקראיים ומשווים לתמונה. בכל צעד כל כתם זז מעט, עד שהתמונה מתבהרת.",
