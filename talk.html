@@ -601,10 +601,10 @@
     </article>
     <article class="step nav" data-scene="mesh" data-depth="deep" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>A mesh from a list <em>has to search</em></h2>
-      <p>First the same Gaussians the way 3DGS stores them: an unordered list. To mesh it, every Gaussian has to find its nearest neighbours, fit a plane through them and triangulate there; a triangle stays where its corners agree.</p>
-      <p>The board counts the cost: some 70 distances per Gaussian, millions at the talk’s budget, and still <b class="c-err">bridges</b> between parts of the surface that only lie close together, non‑manifold edges and holes.</p>
-      <p class="aside">The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained. Every count and time on the board is measured in this page.</p>
+      <h2>Three ways to a mesh, <em>side by side</em></h2>
+      <p>The same Gaussians, meshed three times at the same budget. <b class="c-surf">Ours</b> stitches the lattice: every sample already knows its neighbours. A <b>list</b>, the way 3DGS stores them, has to search for each Gaussian’s neighbours and triangulate around it. <b>TSDF fusion</b>, the usual route from 3DGS to a mesh, draws a depth map from each of the scan’s 64 cameras, fuses them in a voxel grid and extracts the zero level set.</p>
+      <p>The board has what each one cost here. The lattice is one pass, <span data-tex="O(N)"></span>, and keeps nothing but the triangles. The list pays <span data-tex="O(N\,k)"></span>, some 70 distances per Gaussian, and still leaves <b class="c-err">bridges</b>, non‑manifold edges and holes. The fusion pays for the box, not the surface: <span data-tex="O(V\,R^3)"></span> time and <span data-tex="O(R^3)"></span> memory. At the talk’s budget its grid is capped, at 4 million voxels on a desktop and 1.5 million on a phone, so a voxel is wider than the spacing of the samples: its mesh has no non‑manifold edges, but it is soft, off the surface by the distance the board gives, sewn to the table, and open where no camera looked.</p>
+      <p class="aside">The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained, and the depth maps are drawn from it. Every count, time and byte on the board is measured in this page; the bytes are those of the arrays each technique allocated, not process memory. Production fusion hashes blocks of voxels near the surface, which brings its memory down to about <span data-tex="R^2"></span>; a k‑d tree searches a list in <span data-tex="O(N\log N)"></span>.</p>
     </article>
     <article class="step nav" data-scene="stitch" data-depth="deep" data-replay>
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -660,7 +660,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>A mesh, <em>for the asking</em></h2>
       <p>Join each address to the next and there are the triangles, at whatever resolution was sampled: the lattice is the tessellation. Joining a list’s nearest neighbours gives a scribble, with <b class="c-err">red</b> edges bridging separate surfaces.</p>
-      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors, which is not run here.</p>
+      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors. Chapter 07 runs TSDF fusion on this owl, next to a proper mesh of the list and to ours.</p>
     </article>
     <article class="step nav" data-scene="segments" data-depth="deep">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -807,6 +807,7 @@
 <script src="talk/dtu/owlmask122.js"></script>
 <script src="talk/scenes.js"></script>
 <script src="talk/meshlist.js"></script>
+<script src="talk/meshtsdf.js"></script>
 <script src="talk/meshio.js"></script>
 <script src="talk/terrain.js"></script>
 <script src="talk/sims/flatland.js"></script>

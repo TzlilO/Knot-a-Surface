@@ -44,7 +44,8 @@
     lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: T('level of detail · the same budget, with and without view-adaptive sampling') },
     /* the same Gaussians meshed three ways, side by side: on the charts' lattices, by a 2 x 2 window; as an (emulated)
        list, by neighbour search; and by TSDF fusion of that list's depth maps */
-    mesh:   { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, cmp: 1, cap: T('tessellation · the same Gaussians, three ways to a mesh') },
+    mesh:   { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, cmp: 1, cap: KT.meshTsdf ? T('tessellation · the same Gaussians, three ways to a mesh')
+                                                                                         : T('tessellation · the same Gaussians as a list (emulated) and on the lattice') },
     /* one of them on the whole stage: the lattice, as it is stitched (the deck's second mesh step; all three are still on the board) */
     stitch: { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, from: 'lattice', cap: T('tessellation · on the lattice: no search, two triangles per stop of a 2 × 2 window') },
     edit:   { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, tools: 1, cap: T('editable by construction · move control points, the Gaussians follow'),
@@ -872,8 +873,8 @@
         if (F) html += '<p class="mf-grid">' + (F.grid.capped
           ? T('voxel {a} against {b} between Gaussians: the grid is capped at {cap} voxels, {want} would hold what the samples hold',
               { a: '<span dir="ltr">' + len(F.grid.h) + '</span>', b: '<span dir="ltr">' + len(F.spacing) + '</span>', cap: '<span dir="ltr">' + (VOXELS / 1e6) + ' M</span>', want: '<span dir="ltr">' + (F.grid.wanted.voxels / 1e6).toFixed(1) + ' M</span>' })
-          : T('voxel {a}, the spacing of the Gaussians', { a: '<span dir="ltr">' + len(F.grid.h) + '</span>' })) + '</p>';
-        html += '<p class="mf-x">' + T('time: inside each job, not the replay · memory: the bytes of its arrays, working + mesh, not process memory · off surface: its vertices to the spline charts, which ours is on by construction') + '</p>';
+          : T('voxel {a}, the spacing of the Gaussians; the grid may take up to {cap} voxels', { a: '<span dir="ltr">' + len(F.grid.h) + '</span>', cap: '<span dir="ltr">' + (VOXELS / 1e6) + ' M</span>' })) + '</p>';
+        html += '<p class="mf-x">' + T('time: inside each job, not the replay · memory: array bytes, working + mesh, not process memory · off surface: vertices to the spline charts; ours is on them by construction') + '</p>';
         if (F) html += '<p class="mf-x">' + T('production fusion hashes voxel blocks near the surface: memory about <span dir="ltr">R²</span>, not <span dir="ltr">R³</span>; a k-d tree searches in <span dir="ltr">O(N log N)</span>') + '</p>';
         board.innerHTML = html + '</div>';
         M.settled = done.list && (!TS || done.tsdf) && !M.queue.length;
@@ -1217,7 +1218,9 @@
           '.kt-sim-manifold.mf-cmp.mf-narrow .mf-board :is(th,td){padding:1px 0 1px 6px}.kt-sim-manifold.mf-cmp.mf-narrow .mf-board th:first-child{padding-left:0}' +
           '.kt-sim-manifold.mf-cmp.mf-narrow .mf-board thead th{font-size:8px;letter-spacing:0;padding-bottom:2px}' +
           '.kt-sim-manifold.mf-cmp.mf-narrow .mf-notes{font-size:8.5px;line-height:1.3;margin-top:3px}.kt-sim-manifold.mf-cmp.mf-narrow .mf-notes p{margin:0 0 2px}' +
+          '.kt-sim-manifold.mf-cmp.mf-narrow :is(.mf-deck1,.mf-tog){display:none}' +       // a narrow lab page: the panel keeps the scene and the budget
           '.kt-sim-manifold.mf-narrow .mf-vp{padding:3px 5px;font-size:8.5px;line-height:1.25;border-radius:6px}.kt-sim-manifold.mf-narrow .mf-vp b{font-size:8.5px;letter-spacing:.02em}' +
+          '.kt-sim-manifold .kt-panel .mf-tri.kt-seg .kt-seg-btn{white-space:nowrap;padding-left:2px;padding-right:2px}' +
           '.kt-sim-manifold .mf-io{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);margin-top:2px;padding-top:7px}' +
           '.kt-sim-manifold .mf-io-note{font:500 10px/1.4 var(--f-mono);color:var(--mute);max-width:280px}.kt-sim-manifold .mf-io-note.bad{color:var(--err)}' +
           '@media (max-width:640px){.kt-sim-manifold .mf-board{left:6px;bottom:6px;max-width:calc(100% - 12px);padding:6px 8px;font-size:9.5px}' +

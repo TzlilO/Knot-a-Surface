@@ -19,10 +19,10 @@ HERE = os.path.dirname(os.path.abspath(__file__)); TALK = os.path.join(HERE, '..
 FILES = {122: os.path.join(TALK, 'dtu-data.js'), 55: os.path.join(TALK, 'dtu', 'scan55.js')}
 # for orientation only: what the talk prints per scan (DTU in talk/deck.js: Table 1 of the paper; Chamfer, mm)
 PRINTED = {55: dict(pgsr=0.28, ours=0.329), 122: dict(pgsr=0.31, ours=0.341)}
-HONEST = ('OFFLINE FITS, NOT TRAINED. The charts were fitted by tools/dtu/fit.py to the depth maps of the Hugging Face copy Y1ue/DTU, '
-          'which are MVSNet\'s `Depths_raw`: depth rendered from a surface reconstructed from the SAME structured-light reference these numbers are '
-          'measured against. They say how well a spline chart of that size holds the reference surface, not how well anything was reconstructed '
-          'from photographs, and they are not comparable with the rows of published DTU tables.')
+HONEST = ('OFFLINE FITS, NOT TRAINED. The charts were fitted by tools/dtu/fit.py to the depth maps of the Hugging Face copy Y1ue/DTU. Those are '
+          'MVSNet\'s `Depths_raw` (tools/eval/README.md: the evidence): depth rendered from a surface reconstructed from the SAME structured-light '
+          'reference these numbers are measured against. They say how well a spline chart of this size holds the reference surface, not how well '
+          'anything was reconstructed from photographs. They are not results of the thesis method and not comparable with the rows of published DTU tables.')
 
 
 def main():
@@ -60,7 +60,7 @@ def main():
     with open(os.path.join(a.out, 'summary.json'), 'w') as f: json.dump(S, f, indent=1)
     f3 = lambda x: '-' if x is None else '%.3f' % x
     md = ['# DTU Chamfer distance of the offline fits', '', HONEST, '']
-    if missing: md += ['**No distances were measured for a scan whose reference cloud is missing.** ' + ' '.join(missing), '']
+    if missing: md += ['**No distances were measured where a reference file is missing; nothing was put in its place.**', ''] + ['- ' + m for m in missing] + ['']
     md += ['| scan | lattice | charts | vertices | accuracy, mm | completeness, mm | overall, mm | input points in the mask | reference points above the plane |', '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |']
     for r in rows:
         md.append('| %d | %s | %s | %s | %s | %s | %s | %s | %s |' % (r['scan'], r['lattice'], ' + '.join('%s %d x %d' % (c['name'], c['na'], c['nb']) for c in r['charts']), format(r['vertices'], ','),

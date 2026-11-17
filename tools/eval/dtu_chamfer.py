@@ -50,9 +50,9 @@ from scipy.spatial import cKDTree
 VERSION = '1.0'
 PROTOCOL = ('DTU MVS evaluation (Jensen et al., CVPR 2014; MATLAB code in the dataset\'s SampleSet.zip), '
             'as implemented by DTUeval-python (github.com/jzhangbs/DTUeval-python, eval.py)')
-OFFICIAL = ('the DTU MVS data set, roboimagedata.compute.dtu.dk -> "MVS Data Set - 2014": SampleSet.zip (6.3 GB; '
-            'ObsMask/ObsMask{N}_10.mat and ObsMask/Plane{N}.mat for every scan) and Points.zip (6.3 GB; '
-            'stl/stl{N:03d}_total.ply for every scan)')
+OFFICIAL = ('the DTU MVS data set (roboimagedata.compute.dtu.dk, "MVS Data Set - 2014"): SampleSet.zip (6.9 GB; holds '
+            '"MVS Data/ObsMask/ObsMask{N}_10.mat" and "Plane{N}.mat" for every scan) and Points.zip (7.0 GB; holds '
+            '"stl/stl{N:03d}_total.ply" for every scan)')
 # where the three files of a scan may sit under --data: DTUeval-python's layout, the dataset's own, or flat
 FIND = dict(obsmask=['ObsMask', 'SampleSet/MVS Data/ObsMask', 'SampleSet/MVS_Data/ObsMask', 'MVS Data/ObsMask', 'MVS_Data/ObsMask', 'SampleSet/mvs_data/ObsMask', ''],
             stl=['Points/stl', 'SampleSet/MVS Data/Points/stl', 'SampleSet/MVS_Data/Points/stl', 'MVS Data/Points/stl', 'MVS_Data/Points/stl', 'stl', ''])
@@ -220,10 +220,13 @@ def reduce_points(P, density, seed, guard, workers, chunk=200000):
     return P[keep]
 
 
-def nearest(tree, Q, guard, workers, what, chunk=500000):
+def nearest(tree, Q, cap, guard, workers, what, chunk=500000):
+    """Distance to the nearest point of the tree, searched only up to `cap`: a distance at or over the cap is an outlier
+    whatever its value (MaxDistCP.m caps its search too), and comes back as inf. Without the bound a query far from
+    everything walks most of the tree."""
     out = np.empty(len(Q))
     for a in range(0, len(Q), chunk):
-        guard.check(what); out[a:a + chunk] = tree.query(Q[a:a + chunk], workers=workers)[0]
+        guard.check(what); out[a:a + chunk] = tree.query(Q[a:a + chunk], distance_upper_bound=cap, workers=workers)[0]
     return out
 
 
@@ -309,10 +312,10 @@ def evaluate(mesh, scan, data, mode='mesh', density=0.2, patch=60.0, max_dist=20
         R['reference']['stl'] = dict(path=os.path.abspath(ref['stl']), bytes=os.path.getsize(ref['stl']), sha256=sha256(ref['stl']), points=int(len(S)), above_plane=int(above.sum()))
         stage('read_reference', t); log('    %d points, %d above the ground plane' % (len(S), int(above.sum())))
         t = time.time(); log('5. accuracy: %d points of the input -> nearest of %d reference points' % (len(Pobs), len(S)))
-        tree = cKDTree(S); d2s = nearest(tree, Pobs, guard, workers, 'the accuracy search'); del tree; stage('accuracy', t)
+        tree = cKDTree(S); d2s = nearest(tree, Pobs, max_dist, guard, workers, 'the accuracy search'); del tree; stage('accuracy', t)
         t = time.time(); log('6. completeness: %d reference points above the plane -> nearest of %d input points' % (int(above.sum()), len(Pin)))
-        tree = cKDTree(Pin); s2d = nearest(tree, S[above], guard, workers, 'the completeness search'); del tree; stage('completeness', t)
-        if not (np.isfinite(d2s).all() and np.isfinite(s2d).all()): raise Stop('non_finite_result', 'a distance is NaN or Inf')
+        tree = cKDTree(Pin); s2d = nearest(tree, S[above], max_dist, guard, workers, 'the completeness search'); del tree; stage('completeness', t)
+        if np.isnan(d2s).any() or np.isnan(s2d).any(): raise Stop('non_finite_result', 'a distance is NaN')
         acc, comp = stats(d2s, max_dist), stats(s2d, max_dist)
         if acc['mean_mm'] is None or comp['mean_mm'] is None: raise Stop('no_distance_below_cap', 'no distance below %g mm: is the mesh in the DTU world frame, in mm?' % max_dist)
         R['result'] = dict(accuracy_mm=acc['mean_mm'], completeness_mm=comp['mean_mm'], overall_mm=(acc['mean_mm'] + comp['mean_mm']) / 2,
@@ -386,6 +389,11 @@ def self_test(data=None, scan=None, max_minutes=30.0, workers=-1):
             a = np.zeros(len(V), [('p', '>f4', 3), ('q', 'u1')]); a['p'] = V; f.write(a.tobytes())
             a = np.zeros(len(F), [('g', 'u1'), ('n', 'u1'), ('i', '>u4', 3)]); a['n'] = 3; a['i'] = F; f.write(a.tobytes())
         V4, F4 = read_ply(p); check('PLY big-endian, CRLF header, extra properties', float(np.abs(V4 - V.astype('f4')).max() + np.abs(F4 - F).max()), 0, 1e-9, '')
+        p = os.path.join(d, 'mix.ply')
+        with open(p, 'wb') as f:
+            f.write(b'ply\nformat binary_little_endian 1.0\nelement vertex 5\nproperty double x\nproperty double y\nproperty double z\nelement face 3\nproperty list uchar int vertex_indices\nend_header\n')
+            f.write(np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [2, 0, 0]], '<f8').tobytes()); f.write(struct.pack('<B3iB4iB3i', 3, 0, 1, 2, 4, 0, 1, 2, 3, 3, 1, 4, 2))
+        V5, F5 = read_ply(p); check('PLY with triangles and a quad mixed: 4 triangles', float(len(F5)) + float(np.abs(F5[1:3] - [[0, 1, 2], [0, 2, 3]]).max()), 4, 0, 'triangles')
         # b. the sampler: area per point = density^2 on big triangles; nothing further than the lattice allows from a sample
         g = Guard(0); Vb = np.array([[0, 0, 0], [40, 0, 0], [0, 30, 0.0]]); Pb, info = sample_mesh(Vb, np.array([[0, 1, 2]]), 0.2, g, 10 ** 8)
         check('sampler: one 40 x 30 mm triangle gives area / 0.2^2 * (|v1||v2| / 2A) points', float(len(Pb) - 3), 600 / 0.04, 600 / 0.04 * 0.01, 'points')
@@ -446,6 +454,12 @@ def self_test(data=None, scan=None, max_minutes=30.0, workers=-1):
                     p = os.path.join(d, 'moved.ply'); write_ply(p, S + off * n); r, _ = run(p, scan, data, mode='pcd'); got = r['accuracy_mm']
                     check('scan %d: reference moved rigidly by %g mm along the table normal: accuracy (above 0, at most %g)' % (scan, off, off), got, off / 2, off / 2 + 1e-4)
                     check('scan %d: the same, completeness (above 0, at most %g)' % (scan, off), r['completeness_mm'], off / 2, off / 2 + 0.2)
+                # the part of a real reference that does face the shift: its table (the points under the ground plane)
+                T = S[(np.c_[S, np.ones(len(S))] @ P) <= 0]
+                for off in (1.0, 3.0):
+                    p = os.path.join(d, 'table.ply'); write_ply(p, T + off * n); r, R8 = run(p, scan, data, mode='pcd'); med = R8['result']['accuracy']['median_mm'] if 'result' in R8 else None
+                    check('scan %d: its table alone (%d points) moved rigidly by %g mm along its normal: accuracy, median' % (scan, len(T), off), med, off, 0.1 * off)
+                    check('scan %d: the same, mean (the board is not flat to better than 0.5 mm)' % scan, r['accuracy_mm'], 0.925 * off, 0.075 * off + 1e-4)
     print('%d checks, %d failed' % (len(rows), len(fails)), flush=True)
     return dict(tool='tools/eval/dtu_chamfer.py', version=VERSION, self_test=rows, failed=fails)
 

@@ -1,6 +1,7 @@
 /* Knot-a-Surface talk — Hebrew. KnotTalk.i18nData.he = { "English, exactly as the page or the module has it": "עברית" }.
-   See talk/i18n.js for how a key is formed, and tools/i18n/ for the checks (coverage, markup, numbers) and for
-   merge.js, which writes this file from the translators' parts. Direction marks are written as \u2066 … \u2069. */
+   See talk/i18n.js for how a key is formed, and tools/i18n/ for the checks (coverage, markup, numbers) and the
+   glossary. This file is edited by hand and was read through as a whole: change values here, do not regenerate it
+   from parts. Direction marks are written as \u2066 … \u2069. */
 (function () {
   var KT = window.KnotTalk = window.KnotTalk || {}; KT.i18nData = KT.i18nData || {};
   var D = KT.i18nData.he = KT.i18nData.he || {};
@@ -270,10 +271,10 @@
   "Level of detail, <em>without retraining</em>": "רמת פירוט, <em>בלי&nbsp;אימון&nbsp;מחדש</em>",
   "The same budget, two ways. <b class=\"c-err\">Off</b>: spread by surface area, and the close‑up is built from coarse scales. <b class=\"c-ok\">On</b>: spent where the camera looks.": "אותו תקציב, בשתי דרכים. <b class=\"c-err\">כבויה</b>: התקציב מפוזר לפי שטח הפנים, והתקריב בנוי מקשקשים גסים. <b class=\"c-ok\">פועלת</b>: התקציב מושקע היכן שהמצלמה מביטה.",
   "Nothing was optimised between the two. Only the sampling changed.": "שום דבר לא עבר אופטימיזציה בין השניים. רק הדגימה השתנתה.",
-  "A mesh from a list <em>has to search</em>": "רשת משולשים מרשימה <em>מחייבת חיפוש</em>",
-  "First the same Gaussians the way 3DGS stores them: an unordered list. To mesh it, every Gaussian has to find its nearest neighbours, fit a plane through them and triangulate there; a triangle stays where its corners agree.": "תחילה, אותם גאוסיאנים כפי ש‑3DGS שומר אותם: רשימה לא מסודרת. כדי לבנות ממנה רשת משולשים, כל גאוסיאן צריך למצוא את השכנים הקרובים אליו, להתאים להם מישור ולבצע בו טריאנגולציה; משולש נשאר היכן שקודקודיו מסכימים.",
-  "The board counts the cost: some 70 distances per Gaussian, millions at the talk’s budget, and still <b class=\"c-err\">bridges</b> between parts of the surface that only lie close together, non‑manifold edges and holes.": "הלוח סופר את המחיר: כ‑70 מרחקים לכל גאוסיאן, מיליונים בתקציב של ההרצאה, ועדיין נשארים <b class=\"c-err\">גשרים</b> בין חלקי משטח שרק קרובים זה לזה, צלעות לא־יריעתיות וחורים.",
-  "The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained. Every count and time on the board is measured in this page.": "הרשימה מדומה מאותן מפות: כל דגימה הוזזה בתוך התא שלה, הוסטה מעט מהמשטח, סובבה ושונתה בגודלה באקראי, ואז הרשימה עורבבה. היא לא אומנה. כל ספירה וכל זמן שעל הלוח נמדדים בדף הזה.",
+  "Three ways to a mesh, <em>side by side</em>": "שלוש דרכים לרשת משולשים, <em>זו לצד זו</em>",
+  "The same Gaussians, meshed three times at the same budget. <b class=\"c-surf\">Ours</b> stitches the lattice: every sample already knows its neighbours. A <b>list</b>, the way 3DGS stores them, has to search for each Gaussian’s neighbours and triangulate around it. <b>TSDF fusion</b>, the usual route from 3DGS to a mesh, draws a depth map from each of the scan’s 64 cameras, fuses them in a voxel grid and extracts the zero level set.": "אותם גאוסיאנים, שלוש רשתות משולשים, באותו תקציב. <b class=\"c-surf\">השיטה שלנו</b> תופרת את הסריג: כל דגימה כבר מכירה את שכניה. <b>רשימה</b>, כפי ש‑3DGS שומר אותם, מחייבת לחפש את שכניו של כל גאוסיאן ולבצע סביבו טריאנגולציה. <b>מיזוג TSDF</b>, הדרך המקובלת מ‑3DGS לרשת משולשים, מצייר מפת עומק מכל אחת מ‑64 המצלמות של הסריקה, ממזג אותן ברשת ווקסלים ומחלץ את משטח הרמה אפס.",
+  "The board has what each one cost here. The lattice is one pass, <span data-tex=\"O(N)\"></span>, and keeps nothing but the triangles. The list pays <span data-tex=\"O(N\\,k)\"></span>, some 70 distances per Gaussian, and still leaves <b class=\"c-err\">bridges</b>, non‑manifold edges and holes. The fusion pays for the box, not the surface: <span data-tex=\"O(V\\,R^3)\"></span> time and <span data-tex=\"O(R^3)\"></span> memory. At the talk’s budget its grid is capped, at 4 million voxels on a desktop and 1.5 million on a phone, so a voxel is wider than the spacing of the samples: its mesh has no non‑manifold edges, but it is soft, off the surface by the distance the board gives, sewn to the table, and open where no camera looked.": "הלוח מציג כמה עלתה כאן כל אחת. הסריג הוא מעבר אחד, <span data-tex=\"O(N)\"></span>, ואינו שומר דבר מלבד המשולשים. הרשימה משלמת <span data-tex=\"O(N\\,k)\"></span>, כ‑70 מרחקים לכל גאוסיאן, ועדיין משאירה <b class=\"c-err\">גשרים</b>, צלעות לא־יריעתיות וחורים. המיזוג משלם על התיבה, לא על המשטח: זמן של <span data-tex=\"O(V\\,R^3)\"></span> וזיכרון של <span data-tex=\"O(R^3)\"></span>. בתקציב של ההרצאה רשת הווקסלים שלו מוגבלת, ל‑4 מיליון ווקסלים במחשב ול‑1.5 מיליון בטלפון, ולכן ווקסל רחב מהמרווח שבין הדגימות: ברשת המשולשים שלו אין צלעות לא־יריעתיות, אבל היא רכה, רחוקה מהמשטח במרחק שהלוח מציג, תפורה לשולחן, ופתוחה במקומות שאף מצלמה לא ראתה.",
+  "The list is emulated from the same charts: each sample moved inside its cell, nudged off the surface, turned and resized at random, then shuffled. It was not trained, and the depth maps are drawn from it. Every count, time and byte on the board is measured in this page; the bytes are those of the arrays each technique allocated, not process memory. Production fusion hashes blocks of voxels near the surface, which brings its memory down to about <span data-tex=\"R^2\"></span>; a k‑d tree searches a list in <span data-tex=\"O(N\\log N)\"></span>.": "הרשימה מדומה מאותן מפות: כל דגימה הוזזה בתוך התא שלה, הוסטה מעט מהמשטח, סובבה ושונתה בגודלה באקראי, ואז הרשימה עורבבה. היא לא אומנה, ומפות העומק מצוירות ממנה. כל ספירה, כל זמן וכל בית שעל הלוח נמדדים בדף הזה; הבתים הם של המערכים שכל שיטה הקצתה, לא זיכרון התהליך. מימושים מעשיים של מיזוג מגבבים בלוקים של ווקסלים ליד המשטח, וכך הזיכרון שלהם יורד לבערך <span data-tex=\"R^2\"></span>; עץ k-d מחפש ברשימה ב‑<span data-tex=\"O(N\\log N)\"></span>.",
   "A mesh from the lattice is <em class=\"c-surf\">stitched</em>": "רשת משולשים מהסריג <em class=\"c-surf\">נתפרת</em>",
   "Each chart is sampled on a lattice, so every sample already knows its neighbours. A 2 × 2 window runs over it and stitches two triangles at every stop; the Gaussian at each stitched point is removed.": "כל מפה נדגמת על סריג, ולכן כל דגימה כבר מכירה את שכניה. חלון של <span dir=\"ltr\">2 × 2</span> עובר על הסריג ותופר שני משולשים בכל עצירה; הגאוסיאן שבכל נקודה שנתפרה מוסר.",
   "No search, and no bridges or holes inside a chart. The connectivity was there all along.": "בלי חיפוש, ובלי גשרים או חורים בתוך מפה. הקישוריות הייתה שם כל הזמן.",
@@ -301,7 +302,7 @@
   "Move over the scene": "הזיזו את הסמן מעל הסצנה",
   "A mesh, <em>for the asking</em>": "רשת משולשים, <em>רק תבקשו</em>",
   "Join each address to the next and there are the triangles, at whatever resolution was sampled: the lattice is the tessellation. Joining a list’s nearest neighbours gives a scribble, with <b class=\"c-err\">red</b> edges bridging separate surfaces.": "מחברים כל כתובת לבאה אחריה, והנה המשולשים, בכל רזולוציה שנדגמה: הסריג הוא הטסלציה. חיבור השכנים הקרובים ברשימה נותן שרבוט, עם צלעות <b class=\"c-err\">אדומות</b> שמגשרות בין משטחים נפרדים.",
-  "Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors, which is not run here.": "צינורות עיבוד אמיתיים לא עוצרים בשרבוט הזה. הם מחלצים רשת משולשים מרשימה בעזרת מיזוג TSDF או שחזור Poisson: אלגוריתם נפרד, עם שגיאות משלו, שלא מורץ כאן.",
+  "Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors. Chapter 07 runs TSDF fusion on this owl, next to a proper mesh of the list and to ours.": "צינורות עיבוד אמיתיים לא עוצרים בשרבוט הזה. הם מחלצים רשת משולשים מרשימה בעזרת מיזוג TSDF או שחזור Poisson: אלגוריתם נפרד, עם שגיאות משלו. פרק 07 מריץ מיזוג TSDF על הינשוף הזה, לצד רשת משולשים של ממש מהרשימה ולצד הרשת שלנו.",
   "Parts: <em>cluster</em>, or <em>look up</em>": "חלקים: <em>לקבץ</em>, או <em>לשלוף</em>",
   "Clustering the list by position cuts the table in two and hands one half to the owl. On charts the part is the chart, and any finer cut is a 2D image operation in (u, v).": "קיבוץ הרשימה לאשכולות לפי מיקום חוצה את השולחן לשניים ונותן חצי אחד לינשוף. על מפות, החלק הוא המפה, וכל חיתוך עדין יותר הוא פעולת תמונה דו־ממדית ב‑<span dir=\"ltr\">(u, v)</span>.",
   "What the address <em>buys</em>": "מה הכתובת <em>קונה</em> לנו",
@@ -789,13 +790,9 @@
   "the lattice": "הסריג",
   "export": "ייצוא",
   "download the lattice mesh": "הורידו את רשת המשולשים של הסריג",
-  "the same {n} Gaussians, meshed two ways": "אותם {n} גאוסיאנים, רשת משולשים בשתי דרכים",
   "a list <i>emulated</i>": "רשימה <i>מדומה</i>",
-  "neighbour search": "חיפוש שכנים",
   "emulating the list · {n} %": "מדמים את הרשימה · {n}%",
-  "{n} distances · {t}": "\u2067<span dir=\"ltr\">{n}</span> מרחקים · <span dir=\"ltr\">{t}</span>\u2069",
   "none": "אין",
-  "triangulation": "טריאנגולציה",
   "bridges": "גשרים",
   "non-manifold edges": "צלעות לא־יריעתיות",
   "holes": "חורים",
@@ -906,8 +903,8 @@
   "<span dir=\"ltr\"><b>N</b> = {N}</span> Gaussians · <span dir=\"ltr\"><b>k</b> = {k}</span> neighbours each": "<span dir=\"ltr\"><b>N</b> = {N}</span> גאוסיאנים · <span dir=\"ltr\"><b>k</b> = {k}</span> שכנים לכל אחד",
   "<span dir=\"ltr\"><b>V</b> = {V}</span> views · <span dir=\"ltr\"><b>P</b> = {S} × {S}</span> pixels a view · <span dir=\"ltr\"><b>R³</b> = {R}</span> voxels": "<span dir=\"ltr\"><b>V</b> = {V}</span> מבטים · <span dir=\"ltr\"><b>P</b> = {S} × {S}</span> פיקסלים למבט · <span dir=\"ltr\"><b>R³</b> = {R}</span> ווקסלים",
   "voxel {a} against {b} between Gaussians: the grid is capped at {cap} voxels, {want} would hold what the samples hold": "ווקסל של {a} מול {b} בין גאוסיאנים: הרשת מוגבלת ל‑{cap} ווקסלים, {want} היו מחזיקים את מה שהדגימות מחזיקות",
-  "voxel {a}, the spacing of the Gaussians": "ווקסל של {a}, המרווח בין הגאוסיאנים",
-  "time: inside each job, not the replay · memory: the bytes of its arrays, working + mesh, not process memory · off surface: its vertices to the spline charts, which ours is on by construction": "זמן: בתוך כל משימה, לא ההילוך החוזר · זיכרון: הבייטים של המערכים שלה, עבודה + רשת משולשים, לא זיכרון התהליך · מרחק מהמשטח: מהקודקודים שלה אל מפות הספליין, ששלנו נמצאת עליהן מעצם הבנייה",
+  "voxel {a}, the spacing of the Gaussians; the grid may take up to {cap} voxels": "ווקסל של {a}, כמרווח שבין הגאוסיאנים; רשת הווקסלים יכולה להגיע עד {cap} ווקסלים",
+  "time: inside each job, not the replay · memory: array bytes, working + mesh, not process memory · off surface: vertices to the spline charts; ours is on them by construction": "זמן: בתוך כל משימה, לא ההילוך החוזר · זיכרון: בתים של מערכים, עבודה + רשת משולשים, לא זיכרון התהליך · מרחק מהמשטח: מהקודקודים אל מפות הספליין; הרשת שלנו נמצאת עליהן מעצם הבנייה",
   "production fusion hashes voxel blocks near the surface: memory about <span dir=\"ltr\">R²</span>, not <span dir=\"ltr\">R³</span>; a k-d tree searches in <span dir=\"ltr\">O(N log N)</span>": "מימושים מעשיים של מיזוג מגבבים בלוקים של ווקסלים ליד המשטח: זיכרון של בערך <span dir=\"ltr\">R²</span>, לא <span dir=\"ltr\">R³</span>; עץ k-d מחפש ב‑<span dir=\"ltr\">O(N log N)</span>",
   /* sims-m4.json · 144 */
   "Gaussians": "גאוסיאנים",

@@ -134,18 +134,34 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   become scenes `scan<N>` in the lab page's picker only; one sheet around an axis suits a compact single body, and
   `tools/dtu/README.md` lists the scans that failed. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
   points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` meshes the same
-  Gaussians twice at the budget the slider sets, and a board compares them, every number measured in the page. The
-  list: `talk/meshlist.js` (`KnotTalk.meshList`, node-requirable) EMULATES an unstructured 3DGS list from the charts'
-  lattices (never call it trained) and meshes it as a list must: hash grid + 12-nearest search (distances counted),
-  PCA normal, local Delaunay star in the tangent plane, a triangle kept where 2 of 3 corners propose it; emulator,
-  mesher and auditor are jobs stepped a few ms per frame. The lattice: one even lattice per chart with as many points
-  as the budget (`sizeLattices`: area x gain, square cells), stitched by a running 2 x 2 window (instances in reverse
-  window order so `setCount` retires the stitched ones). One audit grades both (bridges, non-manifold edges, holes).
-  `mesh` plays the list, then the lattice; `stitch` starts at the lattice and keeps the mesh; a new budget rebuilds
-  once the slider rests. Export: `talk/meshio.js` (`KnotTalk.meshio`) writes the stitched lattice as PLY / GLB / OBJ
-  / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename, blob)` -> promise, defined
-  only if absent and looked up at click time (a host page may replace it). Tests: `api.meshStats()`,
-  `meshFile(fmt)`, `meshSeek(t)`.
+  Gaussians THREE ways at the budget the slider sets, side by side: three viewports of the one renderer, one camera,
+  one orbit (`drawMesh` sets viewport, scissor and aspect per technique; `layoutMesh` places them between the caption
+  and the board), each with its own Gaussians (the main field for the lattice, two extra `gl.splats` for the list in
+  list order and in slab order), triangles, red defect edges and a tag with its job's own time. The board has one
+  column per technique: complexity as implemented, measured time and array bytes (working + mesh, not process
+  memory), triangles, bridges, non-manifold edges, holes, and the distance of the mesh's vertices from the spline
+  charts (mean and 95th percentile); its notes give N, k, V, P, R³ and say when the voxel cap binds. Every number is
+  measured in the page; the step's copy names only the two caps, never a measured value. Ours, the lattice: one even
+  lattice per chart with as many points as the budget (`sizeLattices`: area x gain, square cells), stitched by a
+  running 2 x 2 window (instances in reverse window order so `setCount` retires the stitched ones). The list:
+  `talk/meshlist.js` (`KnotTalk.meshList`, node-requirable) EMULATES an unstructured 3DGS list from the charts'
+  lattices (never call it or its depth maps trained) and meshes it as a list must: hash grid + 12-nearest search
+  (distances counted), PCA normal, local Delaunay star in the tangent plane, a triangle kept where 2 of 3 corners
+  propose it. It also has `addresser` (the nearest lattice sample as the address of a vertex made in space, so ONE
+  audit grades all three, with `rim` in lattice cells), `gauge` (closest point on the chart by Gauss-Newton) and the
+  byte accounting. TSDF fusion: `talk/meshtsdf.js` (`KnotTalk.meshTsdf`, node-requirable, loads before manifold.js;
+  without it the comparison has two columns): depth maps of the emulated list from `def.rig.cams` (at most 64) by a
+  CPU z-buffer, each Gaussian a flat disc in its own plane; a dense voxel grid over the list's box (voxel = the
+  Gaussians' spacing unless that passes the cap: 4 M voxels, 1.5 M on a small screen, mount option `voxels`;
+  truncation 3 voxels, weight 1 per view, 6 bytes a voxel), views fused one at a time; marching cubes whose 256 cases
+  are generated from one rule per face and proved by `checkCubes()`, cells seen by fewer than 3 views left out. All
+  are jobs: the list's mesher and the fusion share 12-30 ms a frame (mount option `slice` fixes it for tests; under a
+  virtual clock a job finishes in one frame and its shown time is capped), grading waits in a queue, and a new budget
+  rebuilds all three once the slider rests. `stitch` shows one technique on the whole stage (the lattice; `mesh from`
+  picks the list or TSDF) and has the downloads. Export: `talk/meshio.js` (`KnotTalk.meshio`) writes the stitched
+  lattice as PLY / GLB / OBJ / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename,
+  blob)` -> promise, defined only if absent and looked up at click time (a host page may replace it). Tests:
+  `api.meshStats()` (everything on the board), `meshFile(fmt)`, `meshSeek(t)`.
   The owl's `animate(t, paint, material, from, target, fromTarget)` (`owlLife` in
   `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as control-point edits of the owl alone, and
   `paint` wipes a MATERIAL in (scene `paint`) over a TARGET, from the top of what is painted to its foot: one entry
