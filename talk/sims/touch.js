@@ -1834,6 +1834,7 @@
         var m = model(), onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && !FIG && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
         var soft = m === 'elastic' || (m === 'flight' && (!FIG || netShown())), k, i, o, q, bm = ballMesh.material, see = m === 'moment';
         ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
+        bm.depthTest = !(FIG && m === 'flight' && holding());   // flight: in the pouch the ball is drawn over the bowl's Gaussians (the near wall would hide it)
         if (bm.transparent !== see) { bm.transparent = see; bm.opacity = see ? 0.3 : 1; bm.depthWrite = !see; bm.needsUpdate = true; }   // close up: see under the ball
         dot.scale.setScalar(see ? 0.35 : 1);
         low.visible = see && ball.on; low.position.set(ball.p[0], ball.p[1] - BR, ball.p[2]);
