@@ -5,8 +5,8 @@
    Then fill the chart — every Gaussian's 1-sigma outline drawn crisp, one size for all against each sized to its
    own cell, with the uncovered share measured (`scale`, `fill`) — stitch the samples into a mesh with a sliding
    2 x 2 window (`stitch`), turn the resolution knob from 64 to 1,048,576 Gaussians with the frame time measured
-   (`knob`), and warp a fixed budget towards what a second camera sees (`adaptive`). The learnable parameters
-   never change.
+   (`knob`), warp a fixed budget towards what a second camera sees (`adaptive`), or spend all of it inside the
+   camera's view plus a margin and none outside (`window`). The learnable parameters never change.
 
    Reading the picture in 3D:
      - the surface is a lit sheet (darker underneath), it casts a soft shadow on the floor, and distance
@@ -91,6 +91,9 @@
     adaptive: { show: 'uv adapt', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
                 cap: T('<b>adaptive sampling</b> · a fixed budget, warped towards what a camera sees'),
                 hint: T('drag to orbit · we watch from the side') },
+    window:   { show: 'uv adapt win', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.72 },
+                cap: T('<b>view window</b> · every Gaussian inside what a camera sees, plus a margin'),
+                hint: T('drag to orbit · take the buffer slider') },
     features: { show: 'net field feat', n: 72, rim: 0.4, cap: T('<b>control features</b> · colour and opacity ride the same basis') },
     hero:     { show: 'wire field feat', n: 64, rim: 0.5, hero: 1, cap: '' }
   };
@@ -177,7 +180,7 @@
       { id: 'scale', label: 'Scale' }, { id: 'derive', label: 'Derived, not learned' },
       { id: 'fill', label: 'Fill the chart' }, { id: 'stitch', label: 'Stitch a mesh' },
       { id: 'knob', label: 'Resolution knob' }, { id: 'adaptive', label: 'Adaptive sampling' },
-      { id: 'features', label: 'Control features' }
+      { id: 'window', label: 'View window' }, { id: 'features', label: 'Control features' }
     ],
     create: function (env) {
       var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
@@ -333,6 +336,15 @@
           h = T('<span class="big s">{n}</span> Gaussians from <span class="big c">{stored}</span> stored numbers', { n: (kn.cur * kn.cur).toLocaleString('en-US'), stored: NU * NV * PER_CP }) +
               '<br>' + (ft == null ? T('frame time measuring… · re-evaluated in <b>{t}</b>', { t: fmtMs(kn.ev[kn.cur]) })
                         : T('frame time <b>{ms}</b> ({fps}) · re-evaluated in <b>{t}</b>', { ms: ft.toFixed(1) + ' ms', fps: fmtFps(ft), t: fmtMs(kn.ev[kn.cur]) }));
+        } else if (s.win && vw.stat) {
+          a = vw.stat;
+          h = T('<b class="s">{n}</b> Gaussians, fixed · <b class="s">{share}</b> of them in the camera’s view', { n: a.n.toLocaleString('en-US'), share: Math.round(100 * a.ins / a.n) + ' %' }) +
+              '<br>' + T('the view covers <b>{view}</b> of the surface · the window <b>{win}</b>', { view: Math.round(100 * a.view) + ' %', win: Math.round(100 * a.win) + ' %' }) +
+              '<br>' + T('cell side in view <b class="s">{side}</b> · spring net <b>{spring}</b> · even <b>{even}</b>', { side: pctW(a.sIn), spring: pctW(a.sSpring), even: pctW(a.uIn) }) +
+              '<br>' + T('<b class="e">{bare}</b> of the surface carries no Gaussian', { bare: Math.round(100 * a.bare) + ' %' });
+          rdIn.set(a.ins.toLocaleString('en-US') + ' · ' + Math.round(100 * a.ins / a.n) + ' %'); rdFp.set(T('{share} of the surface', { share: Math.round(100 * a.view) + ' %' }));
+          rdWin.set(T('{share} of the surface', { share: Math.round(100 * a.win) + ' %' })); rdWs.set(pctW(a.sIn)); rdSpr.set(pctW(a.sSpring)); rdUni.set(pctW(a.uIn));
+          rdEq.set(a.eq ? T('≈ {n} Gaussians', { n: a.eq.toLocaleString('en-US') }) : '—'); rdBare.set(T('{share} of the surface', { share: Math.round(100 * a.bare) + ' %' }));
         } else if (s.adapt && ad.stat) {
           a = ad.stat;
           var eq = a.sIn && a.uIn ? Math.round(a.n * (a.uIn / a.sIn) * (a.uIn / a.sIn)) : null;
@@ -497,19 +509,21 @@
       var maskTex = null, maskF = 0, maskData = null;
       var ovMat = new THREE.ShaderMaterial({
         transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uFog: { value: new THREE.Vector2(4, 14) },
-                    uRed: { value: new THREE.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new THREE.Vector3().fromArray(G.rgb(C.text)) } },
+        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uOut: { value: 0 }, uFog: { value: new THREE.Vector2(4, 14) },
+                    uRed: { value: new THREE.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new THREE.Vector3().fromArray(G.rgb(C.text)) },
+                    uBg: { value: new THREE.Vector3().fromArray(G.rgb(C.bg)) } },
         vertexShader: 'varying vec2 vUv; varying float vZ; void main(){ vUv = uv; vec4 e = modelViewMatrix * vec4(position, 1.0); vZ = -e.z; gl_Position = projectionMatrix * e; }',
         fragmentShader: [
-          'uniform sampler2D tMask; uniform float uBlend; uniform float uGap; uniform float uTint; uniform vec2 uFog; uniform vec3 uRed; uniform vec3 uWhite;',
+          'uniform sampler2D tMask; uniform float uBlend; uniform float uGap; uniform float uTint; uniform float uOut; uniform vec2 uFog; uniform vec3 uRed; uniform vec3 uWhite; uniform vec3 uBg;',
           'varying vec2 vUv; varying float vZ;',
           'void main(){',
           '  vec4 m = texture2D(tMask, vUv);',
           '  float g = 0.85 * uGap * smoothstep(0.3, 0.7, mix(m.g, m.r, uBlend));',    // uncovered: own cell (g) or one size (r)
           '  float t = 0.17 * uTint * m.b;',                                          // inside a camera's footprint
-          '  if (max(g, t) < 0.01) discard;',
+          '  float o = uOut * m.g;',                                                   // outside a view window: the bare surface, veiled
+          '  if (max(max(g, t), o) < 0.01) discard;',
           '  float f = clamp((vZ - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);',
-          '  gl_FragColor = vec4(g >= t ? uRed : uWhite, max(g, t) * (1.0 - 0.55 * f));',
+          '  gl_FragColor = o > max(g, t) ? vec4(uBg, o * (1.0 - 0.3 * f)) : vec4(g >= t ? uRed : uWhite, max(g, t) * (1.0 - 0.55 * f));',
           '}'].join('\n')
       });
       var ovMesh = ovOwn(new THREE.Mesh(sheet.geo, ovMat), 0);
@@ -544,6 +558,9 @@
       var obsBody = G.lines(48, C.text, 0.95); ovOwn(obsBody.obj, -5);
       var obsRay = G.lines(16, C.text, 0.55); ovOwn(obsRay.obj, -5);
       var fpLine = G.lines(4096, C.text, 0.95); ovOwn(fpLine.obj, 3);
+      // view window: its polygon on the surface, dashed, in the Gaussians' colour (they live inside it); on paper a deep
+      // violet, or it would vanish into the outlines along its edge
+      var wnLine = G.lines(4096, LIGHT ? OUTL_ON : C.splat, 1); ovOwn(wnLine.obj, 4);
 
       // floating labels
       function tag(html, tone, color) {
@@ -615,6 +632,16 @@
       var rdUni = ui.readout(panel, { label: T('even lattice, in view') });
       var rdEq = ui.readout(panel, { label: T('that spacing everywhere') });
       [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
+      // scene window: the margin around the view, and what the window costs
+      var slB = ui.slider(panel, { label: T('buffer'), min: 0, max: 0.15, step: 0.005, value: 0.04,
+        fmt: function (v) { return (v * 100).toFixed(1) + ' %'; }, onInput: function (v) { vw.buf = v; } });
+      var rdWin = ui.readout(panel, { label: T('the window covers') });
+      var rdWs = ui.readout(panel, { label: T('cell side in view'), tone: 'splat' });
+      var rdSpr = ui.readout(panel, { label: T('spring net, in view') });
+      var rdBare = ui.readout(panel, { label: T('no Gaussians at all'), tone: 'err' });
+      panel.insertBefore(slB.el, rdIn.el);
+      [rdWin, rdWs, rdSpr].forEach(function (r) { panel.insertBefore(r.el, rdUni.el); });
+      panel.insertBefore(rdBare.el, rdP.el);
       // the numbers that must stay readable when the panel is folded away (a phone, the deck): under the caption
       var hud = ui.el('div', 'kt-pl-hud'); root.appendChild(hud);
       if (KT.rtl) hud.classList.add('kt-text');   // a few lines of running text: on a right-to-left page they take its direction (kit.css)
@@ -1129,8 +1156,8 @@
         var x = KT.clamp(u * QA - 0.5, 0, QA - 1.001), y = KT.clamp(v * QA - 0.5, 0, QA - 1.001), i = x | 0, j = y | 0, s = x - i, t = y - j, m = ad.m;
         return 1 + AD_ALPHA * ((m[j * QA + i] * (1 - s) + m[j * QA + i + 1] * s) * (1 - t) + (m[(j + 1) * QA + i] * (1 - s) + m[(j + 1) * QA + i + 1] * s) * t);
       }
-      function relax() {                              // one Gauss-Seidel sweep over the corners
-        var n = ad.n, N = n + 1, X = ad.X, a, b, i, j, su, sv, sw, w, onU, onV, q;
+      function relax(X) {                             // one Gauss-Seidel sweep over the corners of net X (ad.n x ad.n cells)
+        var n = ad.n, N = n + 1, a, b, i, j, su, sv, sw, w, onU, onV, q;
         var nb = [[-1, 0], [1, 0], [0, -1], [0, 1]];
         for (b = 0; b < N; b++) for (a = 0; a < N; a++) {
           onU = a === 0 || a === n; onV = b === 0 || b === n;
@@ -1168,6 +1195,7 @@
           ad.n = n; ad.X = new Float64Array(N * N * 2); ad.inG = new Uint8Array(n * n);
           for (b = 0; b < N; b++) for (a = 0; a < N; a++) { ad.X[(b * N + a) * 2] = a / n; ad.X[(b * N + a) * 2 + 1] = b / n; }
           ad.fresh = false; ad.acc = 0; ad.uniVer = -1;
+          if (st.show.win) { vw.X2 = new Float64Array(ad.X); vw.inG2 = new Uint8Array(n * n); vw.P = null; }
         }
         obsAt(st.t);
         var E = obs.position, mx = 0, seenA = 0, allA = 0, ins = 0;
@@ -1187,9 +1215,30 @@
         }
         ad.acc += AD_RATE * dt;
         var sw = Math.min(40, Math.floor(ad.acc)); ad.acc -= sw;
-        for (i = 0; i < sw; i++) relax();
-        // the Gaussians: one per cell, at its centre, sized to it
-        var X = ad.X, P = [0, 0, 0], SU = [0, 0, 0], SV = [0, 0, 0], S = aset;
+        if (st.show.win) {                            // scene window: the border on the window, the inside solved; the springs alongside
+          footprint(); winPoly(); winSolve(n);
+          if (n <= WIN_SPRING) for (i = 0; i < sw; i++) relax(vw.X2);
+        } else for (i = 0; i < sw; i++) relax(ad.X);
+        var S = aset;
+        placeNet(ad.X, n, S);
+        if (st.show.field) { writeSet(field, S, 1, 0, 0, violet); st.fieldN = n; }
+        if (n <= OUTMAX) outlineM(S);
+        // which Gaussians are in the view, and how big their cells are, in it and out of it
+        for (i = 0; i < n * n; i++) { t = i * 3; ad.inG[i] = seen(S.cx[t], S.cx[t + 1], S.cx[t + 2]) ? 1 : 0; ins += ad.inG[i]; }
+        var sp = cellSide(S, ad.inG, st.gain);
+        if (ad.uniVer !== surfVer) {                  // the same budget on an even lattice
+          NB.patchGrid(patch, centres(n), centres(n), fg); ad.uniS = footSet(n * n); fillSet(ad.uniS, fg, centres(n), centres(n), n, n, evenD(n), evenD(n));
+          ad.uniIn = new Uint8Array(n * n); ad.uniVer = surfVer;
+        }
+        for (i = 0; i < n * n; i++) { t = i * 3; ad.uniIn[i] = seen(ad.uniS.cx[t], ad.uniS.cx[t + 1], ad.uniS.cx[t + 2]) ? 1 : 0; }
+        var su = cellSide(ad.uniS, ad.uniIn, st.gain);
+        ad.stat = { n: n * n, ins: ins, view: seenA / allA, sIn: sp.in, sOut: sp.out, uIn: su.in, uAll: su.all };
+        if (st.show.win) winStat(n, ins, seenA, allA, sp, su); else footprint();
+        uvDirty = true; hudDirty = true;
+      }
+      /* the Gaussians of net X: one per cell, at its centre, sized to it */
+      function placeNet(X, n, S) {
+        var N = n + 1, a, b, t, P = [0, 0, 0], SU = [0, 0, 0], SV = [0, 0, 0];
         for (b = 0; b < n; b++) for (a = 0; a < n; a++) {
           var c00 = (b * N + a) * 2, c10 = c00 + 2, c01 = c00 + N * 2, c11 = c01 + 2, k = b * n + a;
           var u = (X[c00] + X[c10] + X[c01] + X[c11]) / 4, v = (X[c00 + 1] + X[c10 + 1] + X[c01 + 1] + X[c11 + 1]) / 4;
@@ -1205,20 +1254,228 @@
           S.m[k * 4] = kk * esu; S.m[k * 4 + 1] = kk * (etu - lam * esu); S.m[k * 4 + 2] = kk * esv; S.m[k * 4 + 3] = kk * (etv - lam * esv);
         }
         S.n = n * n;
-        if (st.show.field) { writeSet(field, S, 1, 0, 0, violet); st.fieldN = n; }
-        if (n <= OUTMAX) outlineM(S);
-        // which Gaussians are in the view, and how big their cells are, in it and out of it
-        for (i = 0; i < n * n; i++) { t = i * 3; ad.inG[i] = seen(S.cx[t], S.cx[t + 1], S.cx[t + 2]) ? 1 : 0; ins += ad.inG[i]; }
-        var sp = cellSide(S, ad.inG, st.gain);
-        if (ad.uniVer !== surfVer) {                  // the same budget on an even lattice
-          NB.patchGrid(patch, centres(n), centres(n), fg); ad.uniS = footSet(n * n); fillSet(ad.uniS, fg, centres(n), centres(n), n, n, evenD(n), evenD(n));
-          ad.uniIn = new Uint8Array(n * n); ad.uniVer = surfVer;
+      }
+      /* ---------- scene window: the whole budget inside what the camera sees, plus a margin ----------
+         The same camera, the same n x n net of cells, but its border corners no longer slide on the square: they sit
+         on a convex polygon, the window, and nothing lies outside it.
+           window   the region of (u,v) the camera sees (the footprint's contour on the fine grid, with the square's
+                    border where the view reaches it), its CONVEX HULL, dilated by the buffer (a disc of radius `buf`
+                    in (u,v), a share of the chart's side, its corners rounded with 16-gons that enclose the disc),
+                    clipped to the unit square. Convex, so it holds its centroid; for WIN_IN s after the scene
+                    opens it is the hull of that polygon and the square shrunk towards that centroid, so the net is
+                    led in from the even lattice without a jump.
+           border   the four lattice corners where the rays from the window's centroid along the camera's image
+                    diagonals (its right and forward axes laid on (u,v)) leave the polygon: they turn with the camera
+                    and never meet; each side's n + 1 corners spread evenly by arc length between two of them.
+           inside   the barycentric (Tutte) embedding of the interior corners with the border fixed, SOLVED each frame
+                    (Jacobi-preconditioned conjugate gradients from the last frame's net) rather than relaxed
+                    towards: a border that moves as the camera flies would otherwise leave a lagging corner outside
+                    the window. Positive weights and a convex border: no cell can fold, every corner and so every
+                    cell centre is inside. Weights: 1 + WIN_IMP x the importance (scene adaptive's stiffness at a
+                    quarter of its strength, WIN_IMP = 3 against AD_ALPHA = 12). Chosen by looking and measuring over
+                    a round at buffer 0.04: uniform weights give even cells but 69-83 % of the Gaussians in the view;
+                    the full stiffness 85-91 %, but the buffer's cells stretch into long slivers and the smallest cell
+                    is half a percent of an even one; a quarter gives 79-89 % with cells that still read as cells.
+         The spring net of scene adaptive runs alongside (vw.X2, the same sweeps), only to be measured against (up to
+         WIN_SPRING cells a side: on a larger lab net it would double the cost of a frame, and its number shows '—').
+         Measured: Gaussians with their centre in the true view (not the window), the view's and the window's share
+         of the surface's area (QA grid), the cell side in the view for this net, the spring net and the even
+         lattice, and the share of the surface that carries no Gaussian at all (outside the window). */
+      var WIN_IN = 1.8, WIN_IMP = 3, WIN_DASH = 0.018, WIN_SPRING = 64;      // the spring net alongside: up to 64 x 64 cells
+      var vw = { buf: 0.04, P: null, X2: null, inG2: null, set2: null, stat: null, its: 0, mask: 'outside' };
+      function cr2(ax, ay, bx, by) { return ax * by - ay * bx; }
+      function hull(pts) {                            // Andrew's monotone chain: counter-clockwise, no collinear points
+        pts.sort(function (p, q) { return p[0] - q[0] || p[1] - q[1]; });
+        var lo = [], hi = [], i, p;
+        function turn(H, p) { while (H.length >= 2 && cr2(H[H.length - 1][0] - H[H.length - 2][0], H[H.length - 1][1] - H[H.length - 2][1], p[0] - H[H.length - 2][0], p[1] - H[H.length - 2][1]) <= 1e-12) H.pop(); H.push(p); }
+        for (i = 0; i < pts.length; i++) turn(lo, pts[i]);
+        for (i = pts.length - 1; i >= 0; i--) turn(hi, pts[i]);
+        lo.pop(); hi.pop(); p = lo.concat(hi);
+        return p.length >= 3 ? p : null;
+      }
+      function clipSquare(P) {                        // Sutherland-Hodgman against 0 <= u, v <= 1
+        [[0, 0, 1], [0, 1, -1], [1, 0, 1], [1, 1, -1]].forEach(function (h) {      // axis, bound, sign: s (p[axis] - bound) >= 0
+          var out = [], i, a, b, da, db, k = h[0];
+          for (i = 0; i < P.length; i++) {
+            a = P[i]; b = P[(i + 1) % P.length]; da = h[2] * (a[k] - h[1]); db = h[2] * (b[k] - h[1]);
+            if (da >= 0) out.push(a);
+            if ((da >= 0) !== (db >= 0)) { var t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+          }
+          P = out;
+        });
+        return hull(P);                                // drops the duplicates and collinear points the clip leaves
+      }
+      function centroid(P) {
+        var A = 0, x = 0, y = 0, i, a, b, c;
+        for (i = 0; i < P.length; i++) { a = P[i]; b = P[(i + 1) % P.length]; c = cr2(a[0], a[1], b[0], b[1]); A += c; x += (a[0] + b[0]) * c; y += (a[1] + b[1]) * c; }
+        return [x / (3 * A), y / (3 * A)];
+      }
+      /* the u-interval [lo, hi] the convex polygon P holds on the line v = y (lo > hi: none) */
+      function rowSpan(P, y) {
+        var lo = 2, hi = -1, i, a, b, t, x;
+        for (i = 0; i < P.length; i++) {
+          a = P[i]; b = P[(i + 1) % P.length];
+          if ((a[1] - y) * (b[1] - y) > 0 || a[1] === b[1]) continue;
+          t = (y - a[1]) / (b[1] - a[1]); x = a[0] + (b[0] - a[0]) * t; if (x < lo) lo = x; if (x > hi) hi = x;
         }
-        for (i = 0; i < n * n; i++) { t = i * 3; ad.uniIn[i] = seen(ad.uniS.cx[t], ad.uniS.cx[t + 1], ad.uniS.cx[t + 2]) ? 1 : 0; }
-        var su = cellSide(ad.uniS, ad.uniIn, st.gain);
-        ad.stat = { n: n * n, ins: ins, view: seenA / allA, sIn: sp.in, sOut: sp.out, uIn: su.in, uAll: su.all };
-        footprint();
-        uvDirty = true; hudDirty = true;
+        return [lo, hi];
+      }
+      function inPoly(P, u, v) {                       // inside or on the convex, counter-clockwise polygon P
+        for (var i = 0; i < P.length; i++) { var a = P[i], b = P[(i + 1) % P.length]; if (cr2(b[0] - a[0], b[1] - a[1], u - a[0], v - a[1]) < -1e-9) return false; }
+        return true;
+      }
+      /* the point of the polygon's edge nearest (u, v), moved a hair towards the centroid c so it counts as inside */
+      function nearestOn(P, u, v, c) {
+        var best = 1e9, bu = u, bv = v, i, a, b, ex, ey, t, x, y, d;
+        for (i = 0; i < P.length; i++) {
+          a = P[i]; b = P[(i + 1) % P.length]; ex = b[0] - a[0]; ey = b[1] - a[1];
+          t = KT.clamp(((u - a[0]) * ex + (v - a[1]) * ey) / (ex * ex + ey * ey || 1), 0, 1); x = a[0] + ex * t; y = a[1] + ey * t;
+          d = (x - u) * (x - u) + (y - v) * (y - v); if (d < best) { best = d; bu = x; bv = y; }
+        }
+        return [bu + (c[0] - bu) * 1e-6, bv + (c[1] - bv) * 1e-6];
+      }
+      function winPoly() {
+        var N = VF + 1, f = ad.fv, seg = ad.seg, pts = [], i, k, P;
+        for (i = 0; i + 1 < seg.length; i += 2) pts.push([seg[i], seg[i + 1]]);
+        for (k = 0; k <= VF; k++) [[k, 0], [k, VF], [0, k], [VF, k]].forEach(function (q) { if (f[q[1] * N + q[0]] > 0) pts.push([q[0] / VF, q[1] / VF]); });
+        P = pts.length >= 3 ? hull(pts) : null;
+        if (!P) P = vw.P || [[0, 0], [1, 0], [1, 1], [0, 1]];         // the camera sees nothing: keep the last window
+        else {
+          if (vw.buf > 0) {
+            var r = vw.buf / Math.cos(Math.PI / 16), D = [];
+            P.forEach(function (p) { for (var m = 0; m < 16; m++) D.push([p[0] + r * Math.cos(m * Math.PI / 8), p[1] + r * Math.sin(m * Math.PI / 8)]); });
+            P = hull(D);
+          }
+          P = clipSquare(P) || [[0, 0], [1, 0], [1, 1], [0, 1]];
+          var e = KT.ease(st.t / WIN_IN);
+          if (e < 1) { var c = centroid(P); P = hull(P.concat([[0, 0], [1, 0], [1, 1], [0, 1]].map(function (q) { return [c[0] + (q[0] - c[0]) * (1 - e), c[1] + (q[1] - c[1]) * (1 - e)]; }))); }
+        }
+        vw.P = P;
+        // the bare surface: mask G = 1 at the texels whose centre lies outside the window
+        var j, t, s;
+        for (j = 0; j < VF; j++) {
+          s = rowSpan(P, (j + 0.5) / VF);
+          for (i = 0; i < VF; i++) { var u = (i + 0.5) / VF; t = (j * VF + i) * 4; maskData[t + 1] = u >= s[0] && u <= s[1] ? 0 : 255; }
+        }
+        maskTex.needsUpdate = true;
+        // its outline on the surface, dashed by arc length in (u,v)
+        var A = wnLine.arr, o = 0, arc = 0;
+        for (i = 0; i < P.length; i++) {
+          var a = P[i], b = P[(i + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]), m = Math.max(1, Math.ceil(L / 0.006));
+          for (k = 0; k < m && o + 6 <= A.length; k++, arc += L / m) {
+            if (Math.floor(arc / WIN_DASH) % 2) continue;
+            onSurf(a[0] + (b[0] - a[0]) * k / m, a[1] + (b[1] - a[1]) * k / m, LIFT * 2, A, o);
+            onSurf(a[0] + (b[0] - a[0]) * (k + 1) / m, a[1] + (b[1] - a[1]) * (k + 1) / m, LIFT * 2, A, o + 3); o += 6;
+          }
+        }
+        wnLine.set(o / 3);
+      }
+      /* the border corners on the window, then the inside solved */
+      function winSolve(n) {
+        var N = n + 1, X = ad.X, P = vw.P, np = P.length, cum = [0], i, k, m, a, b;
+        for (i = 0; i < np; i++) { var q = P[(i + 1) % np]; cum.push(cum[i] + Math.hypot(q[0] - P[i][0], q[1] - P[i][1])); }
+        var L = cum[np], c = centroid(P), e = obs.matrixWorld.elements;
+        var rx = e[0], ry = e[2], fx = -e[8], fy = -e[10], l1 = Math.hypot(rx, ry) || 1, l2 = Math.hypot(fx, fy) || 1;
+        rx /= l1; ry /= l1; fx /= l2; fy /= l2;
+        if (cr2(rx, ry, fx, fy) < 0) { fx = -fx; fy = -fy; }
+        var corner = [[-rx - fx, -ry - fy], [rx - fx, ry - fy], [rx + fx, ry + fy], [-rx + fx, -ry + fy]].map(function (d) {
+          for (var i = 0; i < np; i++) {                 // where the ray c + t d leaves the polygon, as an arc length
+            var p = P[i], q = P[(i + 1) % np], ex = q[0] - p[0], ey = q[1] - p[1], den = cr2(d[0], d[1], ex, ey);
+            if (Math.abs(den) < 1e-15) continue;
+            var t = cr2(p[0] - c[0], p[1] - c[1], ex, ey) / den, s = cr2(p[0] - c[0], p[1] - c[1], d[0], d[1]) / den;
+            if (t > 0 && s >= 0 && s <= 1) return cum[i] + s * (cum[i + 1] - cum[i]);
+          }
+          return 0;
+        });
+        function at(sArc, out) {                        // the point at arc length sArc along the polygon
+          sArc = ((sArc % L) + L) % L;
+          var lo = 0, hi = np; while (hi - lo > 1) { var md = (lo + hi) >> 1; if (cum[md] <= sArc) lo = md; else hi = md; }
+          var p = P[lo], q = P[(lo + 1) % np], t = (sArc - cum[lo]) / ((cum[lo + 1] - cum[lo]) || 1);
+          out[0] = p[0] + (q[0] - p[0]) * t; out[1] = p[1] + (q[1] - p[1]) * t;
+        }
+        var pt = [0, 0];
+        for (k = 0; k < 4; k++) {
+          var g = ((corner[(k + 1) % 4] - corner[k]) % L + L) % L;
+          for (m = 0; m < n; m++) {
+            a = k === 0 ? m : k === 1 ? n : k === 2 ? n - m : 0; b = k === 0 ? 0 : k === 1 ? m : k === 2 ? n : n - m;
+            at(corner[k] + g * m / n, pt); X[(b * N + a) * 2] = pt[0]; X[(b * N + a) * 2 + 1] = pt[1];
+          }
+        }
+        if (n < 2) return;
+        // the springs: uniform, or the importance stiffness at their middles
+        if (!vw.wH || vw.wH.length < N * N) { vw.wH = new Float64Array(N * N); vw.wV = new Float64Array(N * N); vw.D = new Float64Array(N * N);
+          vw.x = new Float64Array(N * N); vw.r = new Float64Array(N * N); vw.z = new Float64Array(N * N); vw.p = new Float64Array(N * N); vw.Ap = new Float64Array(N * N); }
+        var wH = vw.wH, wV = vw.wV, D = vw.D, x = vw.x, r = vw.r, z = vw.z, p = vw.p, Ap = vw.Ap;
+        for (b = 0; b < N; b++) for (a = 0; a < N; a++) {
+          i = b * N + a;
+          if (a < n) wH[i] = 1 + WIN_IMP / AD_ALPHA * (stiff((X[i * 2] + X[i * 2 + 2]) / 2, (X[i * 2 + 1] + X[i * 2 + 3]) / 2) - 1);
+          if (b < n) wV[i] = 1 + WIN_IMP / AD_ALPHA * (stiff((X[i * 2] + X[(i + N) * 2]) / 2, (X[i * 2 + 1] + X[(i + N) * 2 + 1]) / 2) - 1);
+        }
+        for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; D[i] = wH[i - 1] + wH[i] + wV[i - N] + wV[i]; }
+        function lap(y, out) {                          // the interior block of the weighted Laplacian
+          for (var b = 1; b < n; b++) for (var a = 1; a < n; a++) {
+            var i = b * N + a, s = D[i] * y[i];
+            if (a > 1) s -= wH[i - 1] * y[i - 1]; if (a < n - 1) s -= wH[i] * y[i + 1];
+            if (b > 1) s -= wV[i - N] * y[i - N]; if (b < n - 1) s -= wV[i] * y[i + N];
+            out[i] = s;
+          }
+        }
+        // a work budget per frame: at the talk's 32 x 32 the solve always converges (about 120 steps a coordinate); a large
+        // lab net (up to 160 x 160) converges over a few frames from the last one instead of stalling the page
+        var its = 0, cap = Math.min(8 * N, Math.max(30, Math.floor(3e5 / ((n - 1) * (n - 1)))));
+        vw.conv = true;
+        for (var cc = 0; cc < 2; cc++) {
+          var bb = 0, rz = 0, rr;
+          for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; x[i] = X[i * 2 + cc]; }
+          lap(x, Ap);
+          for (b = 1; b < n; b++) for (a = 1; a < n; a++) {
+            i = b * N + a;
+            var rhs = (a === 1 ? wH[i - 1] * X[(i - 1) * 2 + cc] : 0) + (a === n - 1 ? wH[i] * X[(i + 1) * 2 + cc] : 0) +
+                      (b === 1 ? wV[i - N] * X[(i - N) * 2 + cc] : 0) + (b === n - 1 ? wV[i] * X[(i + N) * 2 + cc] : 0);
+            bb += rhs * rhs; r[i] = rhs - Ap[i]; z[i] = r[i] / D[i]; p[i] = z[i]; rz += r[i] * z[i];
+          }
+          for (k = 0; ; k++) {
+            rr = 0; for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; rr += r[i] * r[i]; }
+            if (rr <= 1e-18 * bb) break;
+            if (k >= cap) { vw.conv = false; break; }
+            lap(p, Ap);
+            var pAp = 0; for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; pAp += p[i] * Ap[i]; }
+            if (!(pAp > 0)) break;
+            var al = rz / pAp, rz2 = 0;
+            for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; x[i] += al * p[i]; r[i] -= al * Ap[i]; z[i] = r[i] / D[i]; rz2 += r[i] * z[i]; }
+            var be = rz2 / rz; rz = rz2;
+            for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; p[i] = z[i] + be * p[i]; }
+            its++;
+          }
+          for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; X[i * 2 + cc] = x[i]; }
+        }
+        vw.its = its;
+        if (!vw.conv) for (b = 1; b < n; b++) for (a = 1; a < n; a++) {      // not converged yet: a corner the window left behind goes to its edge
+          i = (b * N + a) * 2;
+          if (!inPoly(P, X[i], X[i + 1])) { var cl = nearestOn(P, X[i], X[i + 1], c); X[i] = cl[0]; X[i + 1] = cl[1]; }
+        }
+      }
+      /* the window's numbers, and the checks the tests read: centres outside the window, the smallest cell */
+      function winStat(n, ins, seenA, allA, sp, su) {
+        var P = vw.P, N = n + 1, i, a, b, s, winA = 0, out = 0, minA = 1e9, X = ad.X;
+        for (b = 0; b < QA; b++) { s = rowSpan(P, (b + 0.5) / QA); for (a = 0; a < QA; a++) { var u = (a + 0.5) / QA; if (u >= s[0] && u <= s[1]) winA += qa.area[b * QA + a]; } }
+        for (i = 0; i < n * n; i++) if (!inPoly(P, aset.u[i], aset.v[i])) out++;
+        for (b = 0; b < n; b++) for (a = 0; a < n; a++) {            // signed area of each cell (corners 00, 10, 11, 01)
+          var q = [(b * N + a) * 2, (b * N + a + 1) * 2, ((b + 1) * N + a + 1) * 2, ((b + 1) * N + a) * 2], ar = 0;
+          for (i = 0; i < 4; i++) ar += cr2(X[q[i]], X[q[i] + 1], X[q[(i + 1) % 4]], X[q[(i + 1) % 4] + 1]);
+          if (ar / 2 < minA) minA = ar / 2;
+        }
+        // the spring net of scene adaptive at the same budget, in the same view
+        if (!vw.set2) { vw.set2 = footSet(NMAX * NMAX); vw.set2.m = new Float32Array(NMAX * NMAX * 4); }
+        var ins2 = null, s2 = { in: null };
+        if (n <= WIN_SPRING) {
+          placeNet(vw.X2, n, vw.set2); ins2 = 0;
+          for (i = 0; i < n * n; i++) { var t = i * 3; vw.inG2[i] = seen(vw.set2.cx[t], vw.set2.cx[t + 1], vw.set2.cx[t + 2]) ? 1 : 0; ins2 += vw.inG2[i]; }
+          s2 = cellSide(vw.set2, vw.inG2, st.gain);
+        }
+        vw.stat = { n: n * n, ins: ins, view: seenA / allA, win: winA / allA, bare: 1 - winA / allA, sIn: sp.in, sWin: sp.all, sSpring: s2.in, insSpring: ins2,
+                    uIn: su.in, eq: sp.in && su.in ? Math.round(n * n * (su.in / sp.in) * (su.in / sp.in)) : null, buffer: vw.buf,
+                    outside: out, minCell: minA * n * n, cg: vw.its, converged: vw.conv, corners: P.length, intro: st.t < WIN_IN };
       }
       /* the outlines of a set whose chart ellipses are stored as M (scene adaptive) */
       function outlineM(S) {
@@ -1513,6 +1770,15 @@
           g.strokeStyle = C.text; g.lineWidth = 1.3; g.beginPath();
           for (aa = 0; aa + 3 < ad.seg.length; aa += 4) { g.moveTo(ad.seg[aa] * w, (1 - ad.seg[aa + 1]) * h); g.lineTo(ad.seg[aa + 2] * w, (1 - ad.seg[aa + 3]) * h); }
           g.stroke();
+          if (s.win && vw.P) {                             // the window: the chart outside it greyed (no Gaussians there), its edge dashed
+            var WP = vw.P;
+            g.beginPath(); g.rect(0, 0, w, h); g.moveTo(WP[0][0] * w, (1 - WP[0][1]) * h);
+            for (aa = 1; aa < WP.length; aa++) g.lineTo(WP[aa][0] * w, (1 - WP[aa][1]) * h);
+            g.closePath(); g.fillStyle = rgba(C.mute, LIGHT ? 0.16 : 0.24); g.fill('evenodd');
+            g.beginPath(); g.moveTo(WP[0][0] * w, (1 - WP[0][1]) * h);
+            for (aa = 1; aa < WP.length; aa++) g.lineTo(WP[aa][0] * w, (1 - WP[aa][1]) * h);
+            g.closePath(); g.setLineDash([5, 3]); g.strokeStyle = C.splat; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
+          }
         }
         function cells(x0, y0, cw, ch, ci, cj) {          // the cell (ci, cj) and its neighbourhood, cell size cw x ch at (x0, y0) for cell (0, 0)
           for (b2 = -1; b2 <= 1; b2++) for (a2 = -1; a2 <= 1; a2++) {
@@ -1554,7 +1820,7 @@
         }
         // the label is set in capitals: a lower-case σ would turn into Σ, so it keeps its case
         var lab = s.nbr ? (w < 150 ? T('(u, v) · {n} nbrs', { n: st.nb }) : T('(u, v) · {n} neighbours', { n: st.nb })) : s.stitch ? (w < 150 ? T('2 × 2 window') : T('(u, v) · 2 × 2 window')) :
-                  s.adapt ? (w < 150 ? T('(u, v) · warped') : T('(u, v) · warped lattice')) : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : T('(u, v) · 1<i>σ</i> footprints')) : T('(u, v) chart');
+                  s.win ? (w < 150 ? T('(u, v) · window') : T('(u, v) · view window')) : s.adapt ? (w < 150 ? T('(u, v) · warped') : T('(u, v) · warped lattice')) : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : T('(u, v) · 1<i>σ</i> footprints')) : T('(u, v) chart');
         if (lab !== uvLabHtml) { uvLabHtml = lab; uvLab.innerHTML = lab; }
       }
 
@@ -1707,6 +1973,7 @@
         if (sc.sweep) knSet(KN_LEVELS[0]);
         on(tgtDots, s.fit); on(tgtHid, s.fit); on(resid.obj, s.fit); on(residHid, s.fit);
         on(ovMesh, s.tile || s.adapt); ovMat.uniforms.uGap.value = s.tile ? 1 : 0; ovMat.uniforms.uTint.value = s.adapt ? 1 : 0;
+        ovMat.uniforms.uOut.value = s.win ? (LIGHT ? 0.45 : 0.6) : 0; on(wnLine.obj, s.win); vw.stat = null; vw.P = null;
         on(ovDepth, s.tile || s.stitch || s.adapt);
         outl.mat.color.set(s.field ? OUTL_ON : C.splat); outl.mat.opacity = s.field ? 0.85 : 0.95;   // on the violet Gaussians: a deep violet
         [tri, triEdge.obj, triNew.obj, win, winDot].forEach(function (o) { on(o, s.stitch); });
@@ -1717,6 +1984,8 @@
         rdTri.el.style.display = s.stitch ? '' : 'none';
         slK.el.style.display = rdFt.el.style.display = rdEv.el.style.display = rdLim.el.style.display = knBox.style.display = sc.sweep ? '' : 'none';
         [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { r.el.style.display = s.adapt ? '' : 'none'; });
+        if (s.win) rdSpc.el.style.display = 'none';
+        [slB, rdWin, rdWs, rdSpr, rdBare].forEach(function (r) { r.el.style.display = s.win ? '' : 'none'; });
         label(rdP, sc.sweep ? T('stored numbers') : T('learnable params'));
         hudHtml = null; hudDirty = true;
         on(net.obj, s.net); on(netGhost, s.net);
@@ -1749,6 +2018,9 @@
         nbBar.style.display = s.nbr ? '' : 'none';
         panel.style.display = sc.hero ? 'none' : ''; cap.style.display = sc.hero ? 'none' : '';
         slG.el.style.display = rdG.el.style.display = (s.field || s.ell || s.adapt) ? '' : 'none';
+        // scene window has five more rows: σ / cell and the two parameter counts make room, or the panel covers the window
+        if (s.win) slG.el.style.display = 'none';
+        rdP.el.style.display = rdZ.el.style.display = s.win ? 'none' : '';
         slN.el.style.display = (s.field || s.ell || s.adapt) && !sc.sweep ? '' : 'none';
         rdAng.el.style.display = s.tan ? '' : 'none';
         rdSn.el.style.display = rdSa.el.style.display = rdGap.el.style.display = spBox.style.display = s.nbr ? '' : 'none';
@@ -1991,6 +2263,12 @@
         stitch: function () { return sx.n && { n: sx.n, triangles: sx.q * 2, of: sx.Q * 2, gaussiansLeft: sx.V - sx.passed }; },
         knob: function () { return { n: kn.cur, gaussians: kn.cur * kn.cur, frame: Object.assign({}, kn.ft), evaluate: Object.assign({}, kn.ev), limit: kn.lim, big: !!big }; },
         adaptive: function () { return ad.stat; },
+        /* scene window: its numbers ({ n, ins, view, win, bare, sIn, sSpring, uIn, eq, buffer, outside, minCell, cg, ... }),
+           and for tests the polygon and the net's corners in (u,v); setBuffer(share of the chart's side) */
+        window: function () { return vw.stat; },
+        windowNet: function () { return vw.P && { n: ad.n, poly: vw.P.map(function (p) { return p.slice(); }), X: Array.prototype.slice.call(ad.X),
+          centres: Array.prototype.slice.call(aset.u, 0, ad.n * ad.n).map(function (u, i) { return [u, aset.v[i]]; }) }; },
+        setBuffer: function (b) { vw.buf = KT.clamp(+b || 0, 0, 0.15); slB.set(vw.buf); },
         resize: function (w, h) {
           W = w; H = h; R.resize(w, h); uvDirty = faceDirty = true; st.sparkT = Math.min(st.sparkT, 0.05);
           fitR = Math.max(1, 1.32 / (w / h));               // back off on narrow stages so the patch stays in frame
