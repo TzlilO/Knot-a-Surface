@@ -62,6 +62,10 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 .step:first-child{min-height:100vh}
 .step:last-child{min-height:100vh}
 body.cut-20 .step[data-depth="deep"]{display:none}
+/* parts switched off leave the flow the same way (deck.js "parts": kt-on / kt-off on steps, kt-gone on a section with
+   nothing left, its rail entry and an empty .prelude). data-off = off until the presenter turns it on in the slide
+   master (talk/master.js); the [data-off] rules hold before deck.js runs */
+.nav.kt-off,section.kt-gone,.prelude.kt-gone,.rail a.kt-gone,section[data-off]:not(.kt-on),.nav[data-off]:not(.kt-on){display:none!important}
 
 .lvl{display:inline-flex;align-items:center;gap:.5rem;margin-bottom:1.1rem;font:600 .6rem/1 var(--f-mono);letter-spacing:.16em;
   text-transform:uppercase;color:var(--mute)}
@@ -72,6 +76,8 @@ body.cut-20 .step[data-depth="deep"]{display:none}
 .step h2 em{font-size:1.1em;line-height:.9}
 .step p{margin:0 0 .9rem;max-width:34em;font-size:1.02rem;line-height:1.55;color:var(--dim);text-wrap:pretty}
 .step p b,.step li b{color:var(--text);font-weight:600}
+/* a colour word keeps its colour inside a step paragraph (the rule above would otherwise win) */
+.step p b.c-surf,.step li b.c-surf{color:var(--surf)}.step p b.c-ctrl,.step li b.c-ctrl{color:var(--ctrl)}.step p b.c-splat,.step li b.c-splat{color:var(--splat)}.step p b.c-err,.step li b.c-err{color:var(--err)}.step p b.c-ok,.step li b.c-ok{color:var(--ok)}
 .step ul{margin:0 0 .9rem;padding:0;list-style:none;max-width:34em}
 .step li{position:relative;padding:.5rem 0 .5rem 1.3rem;border-top:1px solid var(--line);font-size:.95rem;line-height:1.45;color:var(--dim)}
 .step li:before{content:"";position:absolute;left:0;top:1.05rem;width:.5rem;height:1px;background:var(--dim)}
@@ -170,6 +176,10 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   .exhibits{grid-template-columns:minmax(0,1fr)}
   .props{grid-template-columns:repeat(2,minmax(0,1fr))}
   .labs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* room below the end of the talk: the reading line sits at 62 % of the screen here (deck.js) and the full-width
+     steps are short, so without it the last step on screen (whichever it is: the slide master may hide the ones
+     after it) could never reach the line and become active. 40 % of the largest viewport is always enough */
+  body:not(.kt-presenter)::after{content:"";display:block;height:40vh;height:40lvh}
 }
 /* ---------- touch ---------- */
 .rail a,.hud,.stage-tools,.keys{touch-action:manipulation}          /* one tap = one click, no double-tap zoom */
@@ -189,3 +199,139 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 .step table.cmp thead th{font:600 .62rem/1.2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
 .step table.cmp tbody th{font-weight:600;color:var(--text);white-space:nowrap}
 .step table.cmp td{color:var(--dim)}.step table.cmp td:last-child{color:var(--surf)}
+
+/* =====================================================================================================================
+   The light theme (talk.html: <html data-theme="light">): the whole talk in the opening's look — warm paper, the room
+   of slow light behind everything, stages as liquid-glass cards, Inter with heavy headlines, tags as glass pills, the
+   coloured word of a headline in its semantic colour (c-surf / c-ctrl / c-splat / c-err / c-ok) instead of an italic
+   serif. The tokens (kit.css) already turn every colour above light; these rules change shapes and type.
+   `:where(…)` keeps each rule as light as the base rule it restyles, so it wins by coming later. Rules for the talk's own
+   sections go through B = `:where([data-theme="light"] body>section)`: the opening's sections sit inside .prelude, so
+   these never reach them (prelude.css styles the opening).
+   ===================================================================================================================== */
+:root[data-theme="light"] body{background:transparent}            /* the page colour is html's; the room sits between */
+
+/* the room: slow, warm light behind the whole talk, fixed to the screen (the opening's, now page-wide) */
+.room{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.room>div{position:absolute;inset:0}
+.room i{position:absolute;border-radius:50%;filter:blur(70px);opacity:.75;will-change:transform;animation:drift 26s var(--ease) infinite alternate}
+.room i:nth-child(1){width:46vw;height:46vw;left:-10vw;top:-14vw;background:#ffd8bd}
+.room i:nth-child(2){width:40vw;height:40vw;right:-8vw;top:22vh;background:#e2d8ff;animation-duration:32s;animation-delay:-8s}
+.room i:nth-child(3){width:44vw;height:44vw;left:14vw;bottom:-22vw;background:#ffeab6;animation-duration:38s;animation-delay:-15s}
+.room i:nth-child(4){width:30vw;height:30vw;right:24vw;top:-12vw;background:#cfe9ff;animation-duration:30s;animation-delay:-4s}
+@keyframes drift{to{transform:translate3d(-4vw,5vh,0) scale(1.12)}}
+:root:not([data-theme="light"]) .room{display:none}
+
+/* type: Inter everywhere (kit.css points --f-display and --f-serif at it); emphasis is upright in a headline */
+:where(:root[data-theme="light"]) em{font-family:inherit;font-weight:inherit;letter-spacing:inherit}
+:where(:root[data-theme="light"]) :is(h1,h2,h3,.thesis,.qa) em{font-style:normal}
+
+/* ---------- stages: glass cards (the opening's, for every chapter) ---------- */
+:where(:root[data-theme="light"]) .stage{padding:2rem 2.2rem 2rem .8rem}
+:where(:root[data-theme="light"]) .stage-frame{border:0;border-radius:2rem;overflow:hidden;background:var(--panel);
+  backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);box-shadow:var(--glass-edge),var(--glass-drop)}
+:where(:root[data-theme="light"]) .stage-frame .sim-mount{border-radius:inherit;overflow:hidden}
+:where(:root[data-theme="light"]) .stage-tools{right:1rem;bottom:1rem}
+:where(:root[data-theme="light"]) .stage-tools a,:where(:root[data-theme="light"]) .stage-tools button{font:600 .66rem/1 var(--f-ui);letter-spacing:.02em;
+  text-transform:none;color:var(--text);background:rgba(255,255,255,.72);border:0;border-radius:999px;padding:.5rem .8rem;box-shadow:var(--glass-edge),0 6px 18px -10px rgba(88,56,24,.4);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+:where(:root[data-theme="light"]) .stage-tools a:hover,:where(:root[data-theme="light"]) .stage-tools button:hover{color:var(--text);background:#fff;text-decoration:none}
+:where(:root[data-theme="light"]) .chapter[data-sim="manifold"] .stage-tools,:where(:root[data-theme="light"]) .chapter[data-sim="planoid"] .stage-tools{top:1rem}
+:where(:root[data-theme="light"]) body.focus .stage-frame.is-current{background:rgba(251,248,245,.94)}
+
+/* ---------- steps ---------- */
+:where([data-theme="light"] body>section) .step h2{font:800 2.3rem/1.08 var(--f-ui);letter-spacing:-.028em}
+:where([data-theme="light"] body>section) .step h2 em{font-size:1em;line-height:inherit}
+:where([data-theme="light"] body>section) .step p{font-size:1.04rem;line-height:1.58}
+:where([data-theme="light"] body>section) .step p.aside{font:400 .84rem/1.5 var(--f-ui);letter-spacing:0;color:var(--mute)}
+:where([data-theme="light"] body>section) .step p.credit{font:500 .72rem/1.4 var(--f-ui);letter-spacing:0}
+/* a tag: the opening's glass pill. .lvl keeps its depth dots (intuition, mechanism, math) */
+:where([data-theme="light"] body>section) .lvl{align-self:flex-start;display:inline-flex;align-items:center;gap:.55rem;margin-bottom:1.3rem;
+  padding:.42rem .85rem .42rem .7rem;border-radius:999px;font:600 .72rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;
+  color:var(--dim);background:rgba(255,255,255,.6);box-shadow:var(--glass-edge)}
+:where([data-theme="light"] body>section) .lvl i{gap:3px}
+:where([data-theme="light"] body>section) .lvl i:before,:where([data-theme="light"] body>section) .lvl i:after,
+:where([data-theme="light"] body>section) .lvl i b{width:.48rem;height:.48rem;border-color:var(--dim)}
+:where([data-theme="light"] body>section) .eq{margin:.5rem 0 1.1rem;padding:.95rem 1.15rem;border:0;border-radius:1.1rem;background:rgba(255,255,255,.62);
+  color:var(--text);box-shadow:var(--glass-edge),0 12px 30px -22px rgba(88,56,24,.4)}
+:where([data-theme="light"] body>section) .do{font:600 .82rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--surf)}
+:where([data-theme="light"] body>section) .step li{border-top-color:var(--line)}
+
+/* chapter opener: a big outlined number, the kicker as a tag, a heavy title */
+:where([data-theme="light"] body>section) .opener .num{font:800 7.2rem/.82 var(--f-ui);letter-spacing:-.06em;color:transparent;
+  -webkit-text-stroke:1.5px rgba(60,45,30,.24)}
+:where([data-theme="light"] body>section) .opener .kick{align-self:flex-start;display:inline-flex;align-items:center;gap:.5rem;margin-bottom:1.2rem;
+  padding:.42rem .85rem;border-radius:999px;font:600 .72rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;
+  color:var(--surf);background:rgba(255,255,255,.6);box-shadow:var(--glass-edge)}
+:where([data-theme="light"] body>section) .opener .kick:before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:currentColor}
+:where([data-theme="light"] body>section) .opener h2{font-size:3.2rem;line-height:1;letter-spacing:-.035em}
+:where([data-theme="light"] body>section) .opener p{font-size:1.22rem;line-height:1.45;color:var(--dim)}
+:where([data-theme="light"] body>section) .opener .time{font:500 .82rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--mute)}
+
+/* the two-question card (chapter 01) */
+:where([data-theme="light"] body>section) .flip div{border:0;border-radius:1.2rem;background:rgba(255,255,255,.55);
+  box-shadow:var(--glass-edge),0 12px 30px -22px rgba(88,56,24,.4)}
+:where([data-theme="light"] body>section) .flip div b{font:700 .72rem/1 var(--f-ui);letter-spacing:.02em;text-transform:none}
+:where([data-theme="light"] body>section) .flip .new{background:rgba(255,255,255,.78);
+  box-shadow:inset 0 0 0 1.5px rgba(var(--surf-rgb),.5),0 14px 34px -20px rgba(var(--surf-rgb),.45)}
+
+/* a small two-way table */
+:where([data-theme="light"] body>section) .step table.cmp{font-size:.84rem}
+:where([data-theme="light"] body>section) .step table.cmp thead th{font:600 .72rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--mute)}
+
+/* ---------- full-width pages: how to read, evidence, takeaways ---------- */
+:where([data-theme="light"] body>section) .step .thesis{font:800 clamp(1.9rem,3.5vw,3.4rem)/1.07 var(--f-ui);letter-spacing:-.032em}
+:where([data-theme="light"] body>section) .step .thesis em{font-size:1em}
+/* cards on the page: glass, with the opening's soft sheen on the larger ones */
+:where([data-theme="light"] body>section) :is(.legend>div,.props>div,.exhibit){position:relative;border:0;border-radius:1.6rem;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%);
+  box-shadow:var(--glass-edge),var(--glass-drop)}
+:where([data-theme="light"] body>section) :is(.legend>div,.props>div):before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(155deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 28%,rgba(255,255,255,0) 72%,rgba(255,255,255,.28) 100%);mix-blend-mode:soft-light}
+:where([data-theme="light"] body>section) .legend{gap:1.1rem}
+:where([data-theme="light"] body>section) .legend div{padding:1.3rem 1.3rem 1.4rem}
+:where([data-theme="light"] body>section) .legend b{display:flex;align-items:center;gap:.55rem;font:800 1.2rem/1.15 var(--f-ui);letter-spacing:-.015em}
+:where([data-theme="light"] body>section) .legend b:before{content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--c)}
+:where([data-theme="light"] body>section) .depths .lvl{margin:0 .5rem 0 0}
+/* evidence */
+:where([data-theme="light"] body>section) .exhibit{padding:1.4rem 1.5rem 1.2rem}
+:where([data-theme="light"] body>section) .exhibit h3{font:700 1.12rem/1.25 var(--f-ui);letter-spacing:-.012em}
+:where([data-theme="light"] body>section) .exhibit .src{font:500 .74rem/1.5 var(--f-ui);letter-spacing:0;color:var(--mute)}
+:where([data-theme="light"] body>section) .stats div{font:500 .72rem/1.4 var(--f-ui);letter-spacing:0;text-transform:none}
+:where([data-theme="light"] body>section) .stats b{font:800 1.75rem/1 var(--f-ui);letter-spacing:-.03em}
+:where([data-theme="light"] body>section) .chart-key{font:500 .74rem/1 var(--f-ui)}
+:where([data-theme="light"] body>section) .tip{font:500 .72rem/1.5 var(--f-ui);border:0;border-radius:.8rem;background:rgba(255,255,255,.94);
+  box-shadow:var(--glass-edge),0 10px 30px -12px rgba(88,56,24,.45)}
+:where([data-theme="light"] body>section) .step p.scope{border:1px dashed rgba(60,45,30,.22);border-radius:1.1rem;background:rgba(255,255,255,.32)}
+/* takeaways */
+:where([data-theme="light"] body>section) .props{gap:1rem}
+:where([data-theme="light"] body>section) .props div{padding:1.2rem 1.15rem 1.3rem}
+:where([data-theme="light"] body>section) .props b{font:800 1.08rem/1.2 var(--f-ui);letter-spacing:-.012em}
+:where([data-theme="light"] body>section) .labs{gap:.7rem}
+:where([data-theme="light"] body>section) .labs a{border:0;border-radius:1.1rem;background:rgba(255,255,255,.55);box-shadow:var(--glass-edge),0 10px 26px -20px rgba(88,56,24,.45);
+  font:700 .86rem/1.25 var(--f-ui);letter-spacing:-.005em;transition:background .3s var(--ease),transform .3s var(--ease)}
+:where([data-theme="light"] body>section) .labs a small{font:500 .7rem/1.3 var(--f-ui);letter-spacing:0;text-transform:none}
+:where([data-theme="light"] body>section) .labs a:hover{background:#fff;transform:translateY(-1px);text-decoration:none}
+:where([data-theme="light"] body>section) .step p.qa{font:800 clamp(3rem,9vw,9rem)/.9 var(--f-ui);letter-spacing:-.055em}
+
+/* ---------- the fixed chrome: glass ---------- */
+:where(:root[data-theme="light"]) .rail a span{border:0;border-radius:999px;background:rgba(255,255,255,.88);box-shadow:var(--glass-edge),0 6px 18px -10px rgba(88,56,24,.4)}
+:where(:root[data-theme="light"]) .hud button,:where(:root[data-theme="light"]) .hud .cut,:where(:root[data-theme="light"]) .hud .clock{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+:where(:root[data-theme="light"]) .keys{border:0;border-radius:1.2rem;background:rgba(255,255,255,.9);box-shadow:var(--glass-edge),var(--glass-drop);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+
+/* ---------- small screens: the pinned stage is a glass card too (as in the opening) ---------- */
+@media (max-width:900px){
+  :where(:root[data-theme="light"]) .stage{padding:.7rem .7rem .3rem;background:var(--bg)}
+  :where(:root[data-theme="light"]) .stage-frame{border-radius:1.5rem}
+  :where([data-theme="light"] body>section) .step h2{font-size:1.75rem}
+  :where([data-theme="light"] body>section) .step p{font-size:1rem}
+  :where([data-theme="light"] body>section) .opener .num{font-size:4.2rem}
+  :where([data-theme="light"] body>section) .opener h2{font-size:2.2rem}
+  :where([data-theme="light"] body>section) .opener p{font-size:1.04rem}
+  :where([data-theme="light"] body>section) .legend div,:where([data-theme="light"] body>section) .props div{border-radius:1.3rem;padding:1rem .95rem 1.1rem}
+}
+@media (max-width:560px){
+  :where([data-theme="light"] body>section) .props{grid-template-columns:minmax(0,1fr)}   /* a card holds its title on one line */
+}
+@media (prefers-reduced-motion:reduce){.room i{animation:none}}

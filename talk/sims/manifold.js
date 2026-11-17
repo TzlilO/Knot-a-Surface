@@ -12,6 +12,7 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
+  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
   var PER_CP = 16;                  // 3 position + 12 SH1 colour + 1 opacity per control point
   var CAP0 = 320000, FLOOR = 0.10;  // the most Gaussians a mount holds (opts.cap may lower it); FLOOR = share of the budget kept as view-independent coverage
   var DENSE = 96;                   // a control net longer than this along either side is drawn thinned out
@@ -20,6 +21,10 @@
                { v: 'normal', label: 'normal', name: 'normals' }, { v: 'gauss', label: 'gauss', name: 'Gaussians' },
                { v: 'charts', label: 'chart', name: 'charts' }];
   var ROLL = 0.03, SLANT = 0.2;     // split screen: band travel in stage widths per second, and the lean of its dividers
+  /* rim shading darkens the fringe of every Gaussian (uRim: 0.3 unless a scene asks for more). On a light page that fringe
+     draws a dark outline around a light-coloured surface: there a light scene (KT.scenes[..].light) or a light material
+     (talk/scenes.js, MATS[..].light) is shaded with LIGHT_RIM. A dark page keeps the scene's own rim */
+  var LIGHT = KT.theme === 'light', LIGHT_RIM = 0.12;
   function wrap(x, m) { return ((x % m) + m) % m; }
 
   /* The talk runs on ONE subject: `scan`, a real DTU object (talk/dtu-data.js; without that file the barn
@@ -28,11 +33,13 @@
     scene:  { scn: 'scan', view: 'splats', cam: 'wide', cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
     modes:  { scn: 'scan', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
     charts: { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
-    nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
+    nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the ' + CTRL_WORD + ' points' },
     budget: { scn: 'scan', view: 'splats', tour: 1, atlas: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
     lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
     /* the same Gaussians meshed twice: as an (emulated) list, by neighbour search, and on the charts' lattices, by a 2 x 2 window */
     mesh:   { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, cap: 'tessellation · the same Gaussians as a list (emulated) and on the lattice' },
+    /* the same, from the lattice's turn on (the deck's second mesh step; the list is still meshed for the board) */
+    stitch: { scn: 'scan', view: 'gauss', cam: 'wide', mesh: 1, from: 'lattice', cap: 'tessellation · on the lattice: no search, two triangles per stop of a 2 × 2 window' },
     edit:   { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, tools: 1, cap: 'editable by construction · move control points, the Gaussians follow',
               hint: 'turn on nets to drag a control point' },
     paint:  { scn: 'scan', view: 'splats', cam: 'wide', breathe: 1, paint: 1, cap: 'material edit · the same net, new control colours' },
@@ -55,7 +62,7 @@
     tool: 'WebGL · three.js · instanced planoids',
     scenes: [
       { id: 'scene', label: 'The object' }, { id: 'modes', label: 'All modalities' }, { id: 'charts', label: 'Atlas of charts' }, { id: 'nets', label: 'Control nets' },
-      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'mesh', label: 'Stitch a mesh' },
+      { id: 'budget', label: 'Fixed budget' }, { id: 'lod', label: 'Level of detail' }, { id: 'mesh', label: 'List vs lattice' }, { id: 'stitch', label: 'Stitch a mesh' },
       { id: 'edit', label: 'Edit' }, { id: 'paint', label: 'Materials' }, { id: 'hands', label: 'Hands' }
     ],
     create: function (env) {
@@ -331,6 +338,9 @@
       /* per Gaussian of the last frame: its chart and the control point nearest to it (for picking, and for what
          a chart stores per control point: opacity, the tool layer's selection and holds) */
       var instC = new Uint8Array(CAP), instK = new Int32Array(CAP), keptL = new Int32Array(CAP);
+      /* the tool layer's marks on the Gaussians: a selection tints towards the surface colour, a hold towards the control
+         points' (on a dark page their cyan and amber, as they have always been written) */
+      var SELT = LIGHT ? G.rgb(C.surf) : [0.31, 0.76, 0.97], HOLDT = LIGHT ? G.rgb(C.ctrl) : [1.0, 0.65, 0.15];
       function emit() {
         allocate();
         var n = 0, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 }, thin = false, track = !!st.sc.hands || selecting();
@@ -351,8 +361,8 @@
               l = keptL[k - t0]; q = Math.round(tl.vs[(l / tl.na) | 0] * (p.nv - 1)) * p.nu + Math.round(tl.us[l % tl.na] * (p.nu - 1));
               instC[k] = ci; instK[k] = q;
               if (AL) field.alpha[k] = AL[q];
-              if (SE && SE[q] > 0.5) { o = k * 3; K[o] = K[o] * 0.5 + 0.155; K[o + 1] = K[o + 1] * 0.5 + 0.38; K[o + 2] = K[o + 2] * 0.5 + 0.485; }   // selected: towards cyan
-              if (PN && (s = PN[q] * 0.5) > 0) { o = k * 3; K[o] += (1.0 - K[o]) * s; K[o + 1] += (0.65 - K[o + 1]) * s; K[o + 2] += (0.15 - K[o + 2]) * s; }   // held: towards amber
+              if (SE && SE[q] > 0.5) { o = k * 3; K[o] = K[o] * 0.5 + SELT[0] * 0.5; K[o + 1] = K[o + 1] * 0.5 + SELT[1] * 0.5; K[o + 2] = K[o + 2] * 0.5 + SELT[2] * 0.5; }   // selected: towards the surface colour
+              if (PN && (s = PN[q] * 0.5) > 0) { o = k * 3; K[o] += (HOLDT[0] - K[o]) * s; K[o + 1] += (HOLDT[1] - K[o + 1]) * s; K[o + 2] += (HOLDT[2] - K[o + 2]) * s; }   // held: towards the control points' colour
             }
             if (AL) thin = true;
           });
@@ -413,7 +423,8 @@
          them. Its triangles then appear in the order the list made them, which is no order at all; bridges and
          non-manifold edges in red, the rims of its holes in faint red.
          The board compares the two, graded by the same audit; every number on it is measured on the page. The step plays
-         the list first, then the lattice; picking one (`mesh from`) stops that. A new budget, or the ground put away,
+         the list first, then the lattice; picking one (`mesh from`) stops that, and scene `stitch` starts at the lattice
+         (between the two scenes the mesh is kept, not rebuilt). A new budget, or the ground put away,
          rebuilds both once the slider has rested for REST seconds. The stitched lattice downloads as PLY, GLB, OBJ or
          STL (talk/meshio.js), in metres where the scene has a physical scale. ---------- */
       var ML = KT.meshList, IO = KT.meshio, mesh = null;
@@ -432,7 +443,15 @@
         ioNote = ui.el('div', 'mf-io-note'); io.appendChild(ioNote);
       }
       function remesh() { if (mesh) mesh.due = mesh.age + REST; }    // the budget moved: rebuild once it rests
-      function syncMesh() { if (st.sc.mesh) buildMesh(); else dropMesh(); }
+      /* what a mesh is built from: the scene, the budget and the charts that are on */
+      function meshKey() { return st.scn + ' ' + Math.min(st.budget, CAP) + ' ' + charts.map(function (c) { return c.off ? 0 : 1; }).join(''); }
+      /* a scene with `mesh` builds one and plays the list, then the lattice; one with `from: 'lattice'` starts there.
+         Between such scenes on the same Gaussians nothing is rebuilt or measured again: the play starts over */
+      function syncMesh() {
+        if (!st.sc.mesh) { dropMesh(); return; }
+        if (mesh && !mesh.due && mesh.key === meshKey()) { mesh.auto = !st.sc.from; showPhase(st.sc.from || 'list'); }
+        else { if (mesh) mesh.due = 0; buildMesh(); }          // a new scene starts where it starts, even with a budget change pending
+      }
       function dropMesh() {
         if (!mesh) return;
         [mesh.tri, mesh.wire, mesh.fresh, mesh.win, mesh.dot].concat(mesh.lobj || []).forEach(function (o) { scene.remove(o); o.material.dispose(); o.geometry.dispose(); });
@@ -503,7 +522,7 @@
         wgeo.setAttribute('position', tri.geometry.attributes.position); wgeo.setIndex(new T.BufferAttribute(lat.edge, 1));
         kgeo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
         mesh = { parts: parts, lat: lat, V: V, Q: lat.Q, pos: pos, col: col, nrm: nrm, t: 0, rt: 0, hold: 0, age: 0, due: 0, done: false, latA: null,
-          auto: was ? was.auto : true, phase: 'lattice', hex: charts.map(function (c) { return G.rgb(c.hex); }), tri: tri,
+          auto: was ? was.auto : !st.sc.from, phase: 'lattice', key: meshKey(), hex: charts.map(function (c) { return G.rgb(c.hex); }), tri: tri,
           // every edge faintly, the ones just stitched brightly, and the window itself: its four samples and a dot
           wire: new T.LineSegments(wgeo, new T.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0.1 })),
           fresh: new T.LineSegments(wgeo.clone(), new T.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0.6 })),
@@ -511,8 +530,9 @@
           dot: new T.Points(kgeo, new T.PointsMaterial({ color: C.text, size: 5, sizeAttenuation: false, depthTest: false })) };
         [mesh.tri, mesh.wire, mesh.fresh, mesh.win, mesh.dot].forEach(function (o) { o.frustumCulled = false; scene.add(o); });
         mesh.win.renderOrder = mesh.dot.renderOrder = 6; root.classList.add('mf-mesh');
-        mesh.L = ML.emulate(parts, 7); mesh.job = ML.mesher(mesh.L);     // the list: the same samples as a 3DGS list holds them, and its mesher
-        showPhase(was ? was.phase : 'list');
+        // the list (the same samples as a 3DGS list would hold them, emulated over a few frames, then meshed) and the lattice's audit
+        mesh.L = null; mesh.job = null; mesh.ejob = ML.emulator(parts, 7); mesh.ajob = ML.auditor(lat.tri, lat.nTri, lat);
+        showPhase(was ? was.phase : st.sc.from || 'list');
         paintIO();
       }
       function writeLattice() {
@@ -538,7 +558,7 @@
         if (!M) return;
         M.phase = p; M.t = 0; M.rt = 0; M.hold = 0; M.done = false;
         if (segH) segH.set(p);
-        if (L) writeList(); else writeLattice();
+        if (!L) writeLattice(); else if (M.L) writeList(); else field.setCount(0);
         [M.tri, M.wire, M.fresh, M.win, M.dot].forEach(function (o) { o.visible = !L; });
         (M.lobj || []).forEach(function (o) { o.visible = L; });
         rdM.el.firstChild.textContent = L ? 'triangles made' : 'triangles stitched';
@@ -556,13 +576,15 @@
         var M = mesh;
         M.age += dt;
         if (M.due && M.age >= M.due) { buildMesh(); return; }        // a new budget, and the slider has rested
-        if (!M.latA) { M.latA = ML.audit(M.lat.tri, M.lat.nTri, M.lat); paintBoard(); }          // the lattice, graded like the list
-        else if (!M.job.done) { M.job.step(SLICE); if (M.job.done) listReady(); paintBoard(); }
+        // one piece of work per frame, SLICE ms at most: emulate the list, grade the lattice, mesh the list (graded alike)
+        if (!M.L) { if (M.ejob.step(SLICE)) { M.L = M.ejob.list; M.job = ML.mesher(M.L); if (M.phase === 'list') writeList(); } paintBoard(); }
+        else if (!M.latA) { if (M.ajob.step(SLICE)) M.latA = M.ajob.stats; paintBoard(); }
+        else if (!M.job.done) { if (M.job.step(SLICE)) listReady(); paintBoard(); }
         if (M.phase === 'list') stepList(dt); else stepLattice(dt);
       }
       function stepList(dt) {
-        var M = mesh, J = M.job, n = M.L.n;
-        if (!J.done) { field.setCount(n); rdG.set(n.toLocaleString('en-US')); rdM.set(Math.round(J.progress * 100) + ' %'); return; }
+        var M = mesh, J = M.job, n = M.L ? M.L.n : 0;
+        if (!J || !J.done) { field.setCount(n); rdG.set(n.toLocaleString('en-US')); rdM.set(J ? Math.round(J.progress * 100) + ' %' : '…'); return; }
         M.rt += dt;
         var f = Math.min(1, M.rt / LIST_T), q = Math.min(J.nTri, Math.floor(f * f * J.nTri)), gone = f >= 1 ? n : q ? J.tri[(q - 1) * 3] + 1 : 0;
         M.ltri.geometry.setDrawRange(0, q * 3);
@@ -595,7 +617,7 @@
       /* the board: one column per store, the numbers as they are measured */
       function paintBoard() {
         if (!mesh || !ML) { board.innerHTML = ''; return; }
-        var M = mesh, J = M.job, A = J.done ? J.stats : null, B = M.latA;
+        var M = mesh, J = M.job, A = J && J.done ? J.stats : null, B = M.latA, E = J ? J.ms : {};
         function num(x) { return x.toLocaleString('en-US'); }
         function big(x) { return x >= 1e6 ? (x / 1e6).toFixed(1) + ' M' : x >= 1e4 ? Math.round(x / 1e3) + ' k' : num(x); }
         function ms(x) { return x < 1 ? '&lt; 1 ms' : num(Math.round(x)) + ' ms'; }
@@ -603,8 +625,9 @@
         function row(name, k) { return '<tr><th>' + name + '</th>' + td(A && A[k], 1) + td(B && B[k], 1) + '</tr>'; }
         board.innerHTML = '<b>the same ' + num(M.V) + ' Gaussians, meshed two ways</b><table>' +
           '<thead><tr><th></th><th' + (M.phase === 'list' ? ' class="on"' : '') + '>a list <i>emulated</i></th><th' + (M.phase === 'list' ? '' : ' class="on"') + '>the lattice</th></tr></thead><tbody>' +
-          '<tr><th>neighbour search</th><td>' + (J.phase === 'index' ? '…' : big(J.tests) + ' distances · ' + ms(J.ms.index + J.ms.search)) + '</td><td class="ok">none</td></tr>' +
-          '<tr><th>triangulation</th><td>' + (A ? ms(J.ms.mesh) : Math.round(J.progress * 100) + ' %') + '</td><td>' + ms(M.lat.ms) + '</td></tr>' +
+          '<tr><th>neighbour search</th><td>' + (!J ? 'emulating the list · ' + Math.round(M.ejob.progress * 100) + ' %' : J.phase === 'index' ? '…' :
+            big(J.tests) + ' distances · ' + ms((E.index || 0) + (E.search || 0))) + '</td><td class="ok">none</td></tr>' +
+          '<tr><th>triangulation</th><td>' + (A ? ms((E.normal || 0) + (E.fan || 0) + (E.vote || 0)) : J ? Math.round(J.progress * 100) + ' %' : '…') + '</td><td>' + ms(M.lat.ms) + '</td></tr>' +
           '<tr><th>triangles</th>' + td(A && A.triangles) + td(B && B.triangles) + '</tr>' +
           row('bridges', 'bridges') + row('non-manifold edges', 'nonManifold') + row('holes', 'holes') +
           '</tbody></table><span class="mf-key"><i></i>bridge or non-manifold edge <i class="f"></i>edge of a hole · times measured here</span>';
@@ -744,9 +767,12 @@
       function selecting() { return !!(hands && st.sc.paint && st.target === 'selection' && def && def.targets); }
       function showHands() {
         if (!hands) return;
-        var sel = selecting(); hands.show(!!st.sc.hands || sel, sel ? 'select' : 'hands');
+        var sel = selecting(), on = !!st.sc.hands || sel;
+        hands.show(on, sel ? 'select' : 'hands'); root.classList.toggle('mf-handson', on);
         hint.textContent = sel ? 'select on the atlas or on the object: the material follows the selection' : st.sc.hint || '';
         need = true;
+        // a page without the scan's DINOv3 features (the talk) fetches them the first time a selection is wanted; the atlas offers them then
+        if (sel && def.features && !def.featAsked) { def.featAsked = true; def.features(showHands); }
       }
       /* one slider per property the chosen material lets the simulator turn */
       function showKnobs() {
@@ -761,6 +787,15 @@
       }
       function paintBadge() {
         badge.innerHTML = 'view-adaptive sampling <b class="' + (st.adaptive ? 'on' : 'off') + '">' + (st.adaptive ? 'ON' : 'OFF') + '</b>';
+      }
+      /* the rim shading of what is on the stage (see LIGHT_RIM); a material that wipes in takes over from the one before it */
+      function rim() {
+        var base = st.sc.rim || 0.3;
+        if (!LIGHT || st.sc.rim) return base;                  // a scene that asks for its own rim keeps it (lod: the fringes show the sampling)
+        if (KT.scenes[st.scn] && KT.scenes[st.scn].light) return LIGHT_RIM;
+        if (!st.sc.paint || !def || !def.materials) return base;
+        function of(v) { var m = def.materials.filter(function (k) { return k.v === v; })[0]; return m && m.light ? LIGHT_RIM : base; }
+        return of(st.from) + (of(st.mat) - of(st.from)) * KT.clamp(st.paint, 0, 1);
       }
       function paintCap() {
         var s = KT.scenes[st.scn];
@@ -863,6 +898,7 @@
           if (st.nets) updateNets();
           need = true;
         }
+        if (LIGHT) field.uniforms.uRim.value = rim();
         var home = def.views[matView()];
         if (!orbit.touched && !sc.tour && !sc.teaser && !sc.cover && (sc.cam || 'wide') === 'wide') orbit.goal.th = home.th + 0.14 * Math.sin(t * 0.16);
         orbit.update(dt, sc.tour ? 1.5 : 3);
@@ -894,7 +930,7 @@
           '.kt-sim-manifold.kt-embed .mf-pick,.kt-sim-manifold.kt-embed:not(.mf-tools) .mf-tog{display:none}' +
           '.kt-sim-manifold:not(.mf-mesh) .mf-tri,.kt-sim-manifold.mf-mesh .mf-samp,.kt-sim-manifold:not(.mf-paint) .mf-mat,.kt-sim-manifold:not(.mf-paint) .mf-target{display:none}' +
           // scene `mesh`: the board (list against lattice, bottom left) and the export rows of the panel
-          '.kt-sim-manifold .mf-board{position:absolute;z-index:5;left:12px;bottom:12px;max-width:calc(100% - 24px);padding:9px 11px 8px;pointer-events:none;' +
+          '.kt-sim-manifold .mf-board{position:absolute;z-index:4;left:12px;bottom:12px;max-width:calc(100% - 24px);padding:9px 11px 8px;pointer-events:none;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
           'font:500 11px/1.3 var(--f-mono);color:var(--dim)}.kt-sim-manifold:not(.mf-mesh) .mf-board,.kt-sim-manifold.kt-bare .mf-board{display:none}' +
           '.kt-sim-manifold .mf-board>b{display:block;color:var(--text);font-weight:600;margin-bottom:6px}' +
@@ -912,7 +948,21 @@
           '@media (max-width:640px){.kt-sim-manifold .mf-board{left:6px;bottom:6px;max-width:calc(100% - 12px);padding:6px 8px;font-size:9.5px}' +
           '.kt-sim-manifold .mf-board>b{margin-bottom:3px}.kt-sim-manifold .mf-board th,.kt-sim-manifold .mf-board td{padding:1px 0 1px 9px}' +
           '.kt-sim-manifold .mf-board thead th{font-size:8.5px;letter-spacing:.03em}.kt-sim-manifold .mf-key{display:none}}' +
+          // the panel stays above the board: on a folded stage the board steps aside while the controls are open, and on a
+          // narrow page the panel ends above it (and scrolls), so the export is never under the board
+          '.kt-sim-manifold.kt-compact.kt-open .mf-board{display:none}' +
+          '@media (max-width:640px){.kt-sim-manifold.mf-mesh:not(.kt-embed) .kt-tr{max-height:calc(100% - 160px);overflow:auto}' +
+          '.kt-sim-manifold.mf-mesh:not(.kt-embed) .kt-tr>*{flex-shrink:0}}' +
           '.kt-sim-manifold .mf-knobs{border-top:1px solid var(--line);margin-top:6px;padding-top:4px}' +
+          // with the tool layer's panel on a narrow stage, this panel keeps to the upper half (it scrolls), that one to the lower
+          '.kt-sim-manifold.kt-compact.kt-open.mf-handson .kt-tr{max-height:calc(50% - 48px);overflow:auto}' +
+          '@media (max-width:640px){.kt-sim-manifold.mf-handson .kt-tr{max-height:calc(50% - 24px);overflow:auto}}' +
+          '.kt-sim-manifold.mf-handson .kt-tr>*{flex-shrink:0}' +          // its rows keep their height: the panel scrolls, they never overlap
+          // on a narrow stage the paint scene's own controls come first: the material, where it goes, its knobs
+          '.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.kt-panel-title{order:-2}' +
+          '.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.mf-mat,.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.mf-target,.kt-sim-manifold.mf-paint.kt-compact .kt-tr>.mf-knobs{order:-1}' +
+          '@media (max-width:640px){.kt-sim-manifold.mf-paint .kt-tr>.kt-panel-title{order:-2}' +
+          '.kt-sim-manifold.mf-paint .kt-tr>.mf-mat,.kt-sim-manifold.mf-paint .kt-tr>.mf-target,.kt-sim-manifold.mf-paint .kt-tr>.mf-knobs{order:-1}}' +
           '.kt-sim-manifold .mf-tog{flex-wrap:wrap}' +
 
           '.kt-sim-manifold.kt-bare .kt-panel,.kt-sim-manifold.kt-bare .kt-atlas,.kt-sim-manifold.kt-bare .kt-caption,' +
@@ -929,6 +979,16 @@
           'font:600 13px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:9px 14px;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:999px}' +
           '.kt-sim-manifold .kt-ab b{margin-left:8px}.kt-sim-manifold .kt-ab .on{color:var(--ok)}.kt-sim-manifold .kt-ab .off{color:var(--err)}' +
+          // the light theme: what lies over the object (the board, the atlas, the badge, the band labels) is glass that hides
+          // what is behind it, since a clear one turns grey over the owl and its dark text stops reading; a chart's name in
+          // its identity colour is taken towards the text colour, so that it reads on white glass
+          ':root[data-theme="light"] .kt-sim-manifold :is(.mf-board,.kt-atlas,.kt-ab,.kt-split span){background:rgba(255,255,255,.84);' +
+          'border-color:transparent;box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
+          ':root[data-theme="light"] .kt-sim-manifold .kt-tile-name{color:color-mix(in srgb,var(--c) 62%,var(--text))}' +
+          // and the dividers of the split screen are dark lines on the light card (the same rule is in talk/prelude.css); the
+          // badge of `lod` goes under the caption, where the wider glass panel does not cover its ON / OFF
+          ':root[data-theme="light"] .kt-sim-manifold .kt-split i{background:color-mix(in srgb,var(--text) 22%,transparent)}' +
+          ':root[data-theme="light"] .kt-sim-manifold .kt-ab{left:14px;transform:none}' +
           '@media (max-width:640px){.kt-sim-manifold .kt-atlas{gap:4px;padding:6px}.kt-sim-manifold .kt-tile-box{aspect-ratio:2}' +
           '.kt-sim-manifold .kt-tile-s{display:none}.kt-sim-manifold .kt-tile-name{font-size:8px;letter-spacing:.04em}.kt-sim-manifold .kt-tile-n{font-size:9px}}';
         document.head.appendChild(css);
@@ -955,6 +1015,7 @@
                    list: J && { done: J.done, progress: J.progress, tests: J.tests, ms: J.ms, cell: J.cell, audit: lean(J.stats) } };
         },
         meshFile: function (fmt) { return mesh && IO ? meshFile(fmt) : null; },
+        meshSeek: function (t) { if (mesh) { mesh.t = mesh.rt = t; } },                  // for tests: jump the running animation to t seconds
         resize: function (w, h) {
           R.resize(w, h); need = true; size.w = w; size.h = h;
           R.renderer.getDrawingBufferSize(field.uniforms.uRes.value);

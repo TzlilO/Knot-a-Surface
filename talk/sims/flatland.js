@@ -176,20 +176,22 @@
     }
     return NaN;
   }
-  /* ground-truth strip: ray–curve intersection, 8 sub-rays per pixel (box filter), black background */
+  /* ground-truth strip: ray–curve intersection, 8 sub-rays per pixel (box filter), black background.
+     cov (optional): receives per pixel the share of its sub-rays that hit the curve (for drawing only) */
   var _c3 = [0, 0, 0];
-  function renderGT(cam, out) {
-    var W = cam.W, S = 8, j, s, u, vx, vy, hx, r, g, b;
+  function renderGT(cam, out, cov) {
+    var W = cam.W, S = 8, j, s, u, vx, vy, hx, r, g, b, k;
     out = out || new Float32Array(W * 3);
     for (j = 0; j < W; j++) {
-      r = g = b = 0;
+      r = g = b = 0; k = 0;
       for (s = 0; s < S; s++) {
         u = (j + (s + 0.5) / S - W / 2) / cam.f;
         vx = cam.dx + u * cam.rx; vy = cam.dy + u * cam.ry;
         hx = rayHit(cam.px, cam.py, vx, vy);
-        if (hx === hx) { gtColor(hx, _c3); r += _c3[0]; g += _c3[1]; b += _c3[2]; }
+        if (hx === hx) { gtColor(hx, _c3); r += _c3[0]; g += _c3[1]; b += _c3[2]; k++; }
       }
       out[j * 3] = r / S; out[j * 3 + 1] = g / S; out[j * 3 + 2] = b / S;
+      if (cov) cov[j] = k / S;
     }
     return out;
   }
@@ -215,6 +217,7 @@
      compositing, the projection and the projected variance. Only the depth ORDER is treated as
      constant (its derivative is zero almost everywhere). */
   var SC = { n: 0 }, VIS = null;   // VIS: optional per-Gaussian record of the peak blending weight alpha*T
+  var COV = null;                  // COV: optional per-pixel record of the coverage 1 - T (for drawing over a backdrop)
   function scratch(n) {
     if (SC.n >= n) return;
     SC.n = n;
@@ -262,6 +265,7 @@
         if (T < T_MIN) break;
       }
       if (img) { img[j * 3] = R; img[j * 3 + 1] = Gc; img[j * 3 + 2] = B; }
+      if (COV) COV[j] = 1 - T;
       if (!tgt) continue;
       var er = R - tgt[j * 3], eg = Gc - tgt[j * 3 + 1], eb = B - tgt[j * 3 + 2];
       sse += er * er + eg * eg + eb * eb;
@@ -619,15 +623,17 @@
   function makeExperiment(o) {
     var K = o.K, rnd = o.rng(o.seed), E = { K: K, seed: o.seed };
     E.cams = trainAngles(K).map(function (a) { return makeCamera(a); });
-    E.tgts = E.cams.map(function (c) { return renderGT(c); });
+    // o.cover: also keep each true strip's coverage (renderGT's cov), for drawing it over a backdrop; null otherwise
+    E.cov = o.cover ? { train: E.cams.map(function () { return new Float32Array(CFG.W); }), novel: new Float32Array(CFG.W) } : null;
+    E.tgts = E.cams.map(function (c, k) { return renderGT(c, null, E.cov && E.cov.train[k]); });
     E.novel = makeCamera(o.novel != null ? o.novel : defaultNovelAngle(K));
-    E.novelTgt = renderGT(E.novel);
+    E.novelTgt = renderGT(E.novel, null, E.cov && E.cov.novel);
     E.pts = makePoints(rnd);
     E.free = makeModel('free', initFree(E.pts, rnd));
     E.bound = makeModel('bound', initBound(E.pts));
     return E;
   }
-  function setNovel(E, theta) { makeCamera(theta, E.novel); renderGT(E.novel, E.novelTgt); }
+  function setNovel(E, theta) { makeCamera(theta, E.novel); renderGT(E.novel, E.novelTgt, E.cov && E.cov.novel); }
 
   var core = {
     CFG: CFG, FREE_P: FREE_P, GT_N: GT_N, GT_X: GT_X, GT_Y: GT_Y, HANDOFF: HANDOFF,
@@ -642,7 +648,7 @@
   /* =====================================================================================
      2. BROWSER SECTION
      ===================================================================================== */
-  var KT = root.KnotTalk, COL = KT.color;
+  var KT = root.KnotTalk, COL = KT.color, LIGHT = KT.theme === 'light';
   var SEED = 6, K_DEF = 3, K_MIN = 2, K_MAX = 8;
   var RATE = 360;                       // optimizer steps per second (time-based, not per frame)
   var SLIDE = 0.12;                     // probe distance of the `rays` scene (world units = metres)
@@ -668,9 +674,15 @@
      px, s = px per world unit of that layout; round caps and joins. Under the core a soft glow of nine strokes in
      the surface colour, 8 / 7 / 6 / 5.1 / 4.3 / 3.6 / 3 / 2.4 / 1.9 w wide at alpha .018 / .022 / .028 / .034 /
      .042 / .052 / .064 / .08 / .11 (HO_GLOW: plain strokes, no blur filter, so Canvas and SVG draw it alike); over
-     the core a highlight 0.4 w wide in #dcf6ff at alpha .9. */
-  var HO_W = 0.76, HO_H = 0.40, HO_HI = '#dcf6ff';
+     the core a highlight 0.4 w wide in #dcf6ff at alpha .9.
+     On a light page (KnotTalk.theme, the talk) the tube lies on paper instead: a glow of the surface colour would only
+     tint the paper into a pale band, so the same nine strokes become a soft shadow under the curve, in the text colour
+     at HO_SHADE times their alpha, moved down HO_DROP w; the highlight is the surface colour taken HO_TINT of the way
+     to the card colour (bg), at alpha HO_HA, moved up HO_LIFT w (lit from above). */
+  var HO_W = 0.76, HO_H = 0.40;
   var HO_GLOW = [[8, 0.018], [7, 0.022], [6, 0.028], [5.1, 0.034], [4.3, 0.042], [3.6, 0.052], [3, 0.064], [2.4, 0.08], [1.9, 0.11]];
+  var HO_SHADE = 0.45, HO_DROP = 0.8, HO_TINT = 0.45, HO_LIFT = 0.18;
+  var HO_HI = LIGHT ? hexMix(COL.surf, COL.bg, HO_TINT) : '#dcf6ff', HO_HA = LIGHT ? 0.35 : 0.9;
   var HO_FADE = 1.5, HO_MOVE = [0.3, 1.8];      // s: everything else fades over [0, 1.5]; the curve moves over [0.3, 1.8]
   function handoffFrame(W, H) {                 // screen point of world (x, y) = (ox + s x, oy - s y)
     var s = Math.min(HO_W * W / (2 * CFG.L), HO_H * H / (HANDOFF.y1 - HANDOFF.y0));
@@ -689,6 +701,17 @@
     function ch(s) { return Math.round(((p >> s) & 255) * (1 - t) + ((q >> s) & 255) * t); }
     return 'rgba(' + ch(16) + ',' + ch(8) + ',' + ch(0) + ',' + a + ')';
   }
+  /* the colour t of the way from h1 to h2, as #rrggbb (the same function in basis.js: the hand-off's colours agree) */
+  function hexMix(h1, h2, t) {
+    var p = parseInt(h1.slice(1), 16), q = parseInt(h2.slice(1), 16), s, c, o = '#';
+    for (s = 16; s >= 0; s -= 8) { c = Math.round(((p >> s) & 255) * (1 - t) + ((q >> s) & 255) * t); o += (c < 16 ? '0' : '') + c.toString(16); }
+    return o;
+  }
+  /* The 1-D photos are taken against black: that is the experiment, on every page. On a light page each pixel is drawn
+     over a light backdrop instead (the card colour taken BACK_K of the way to the line colour, so that "nothing there"
+     stays apart from the true curve's white band), by its coverage: 1 - T as the renderer records it, for the truth
+     the share of its sub-rays that hit the curve. The red underline still measures the error the loss sees. */
+  var BACK_K = 0.7, BACK = LIGHT ? (function (h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; })(hexMix(COL.bg, COL.line, BACK_K)) : null;
 
   function injectCSS() {
     if (document.getElementById('kt-flatland-css')) return;
@@ -739,7 +762,15 @@
         '.kt-sim-flatland.fl-handoff .kt-gear{opacity:var(--fl-keep,1);pointer-events:none}',
       '.kt-sim-flatland.fl-handoff .fl-handle{pointer-events:none}',
       '.kt-sim-flatland.fl-gone .fl-cap,.kt-sim-flatland.fl-gone .fl-metrics,.kt-sim-flatland.fl-gone .fl-ctl,' +
-        '.kt-sim-flatland.fl-gone .kt-gear{visibility:hidden}'
+        '.kt-sim-flatland.fl-gone .kt-gear{visibility:hidden}',
+      /* a light page (the talk): the readouts as one of the kit's glass panels, its numbers in the page's type */
+      ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-metrics{border:0;border-radius:1.2rem;padding:12px 16px 10px;' +
+        'box-shadow:var(--glass-edge),var(--glass-drop);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}',
+      ':where(:root[data-theme="light"]) .kt-sim-flatland.fl-mid .fl-metrics{padding:10px 14px 8px}',
+      ':where(:root[data-theme="light"]) .kt-sim-flatland.fl-compact .fl-metrics{padding:7px 12px;border-radius:1rem}',
+      ':where(:root[data-theme="light"]) .kt-sim-flatland :is(.fl-th,.fl-name,.fl-num){font-family:var(--f-ui)}',
+      ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-th{letter-spacing:.04em}',
+      ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-name{letter-spacing:.02em}'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -777,6 +808,8 @@
         bound: { train: NaN, novel: NaN, geo: NaN, fl: 0, dist: new Float64Array(n), vis: new Float64Array(n) }
       };
       var IMG = { free: new Float32Array(CFG.W * 3), bound: new Float32Array(CFG.W * 3) }, ROWP = { free: NaN, bound: NaN };
+      // the models' coverage of the shown strip, for drawing it over the light backdrop (BACK); the truth's is E.cov
+      var CVR = BACK && { free: new Float32Array(CFG.W), bound: new Float32Array(CFG.W) };
       var arcCam = [], arcGT = [], ARC = { free: new Float64Array(ARC_N), bound: new Float64Array(ARC_N) }, arcStep = -1;
       var probe = null, probeStep = -1, slideTrain = NaN;
       var drawTab = null;                // basis table for drawing the bound curve
@@ -863,7 +896,7 @@
 
       /* ---------- experiment control ---------- */
       function reset() {
-        E = makeExperiment({ K: K, seed: seed, rng: KT.rng, novel: userTheta });
+        E = makeExperiment({ K: K, seed: seed, rng: KT.rng, novel: userTheta, cover: !!BACK });
         acc = 0; probe = null; probeStep = -1; arcStep = -1; slideTrain = NaN;
         ARC.free.fill(NaN); ARC.bound.fill(NaN);
         if (typeof sel === 'number' && sel >= K) sel = K - 1;
@@ -997,8 +1030,8 @@
 
       /* ---------- measurements ---------- */
       function selCam() {
-        if (sel === 'novel') return { cam: E.novel, tgt: E.novelTgt, novel: true };
-        return { cam: E.cams[sel], tgt: E.tgts[sel], novel: false };
+        if (sel === 'novel') return { cam: E.novel, tgt: E.novelTgt, novel: true, cov: E.cov && E.cov.novel };
+        return { cam: E.cams[sel], tgt: E.tgts[sel], novel: false, cov: E.cov && E.cov.train[sel] };
       }
       function fmt(v, d) { return v === v ? v.toFixed(d) : '–'; }
       function updateMetrics() {
@@ -1055,9 +1088,12 @@
           saved = probe.ex.map(function (r) { return shiftGaussian(gsF, r.i, E.cams[r.cam], off, 0); });
           slideTrain = psnr(E.free, E.cams, E.tgts);
         } else slideTrain = NaN;
+        COV = CVR && CVR.free;
         sse = renderCam(S.cam, gsF, IMG.free, S.tgt, null, 0); ROWP.free = psnrOf(sse / (CFG.W * 3));
         if (saved) for (i = 0; i < saved.length; i++) unshift(gsF, probe.ex[i].i, saved[i]);
+        COV = CVR && CVR.bound;
         sse = renderCam(S.cam, E.bound.gs, IMG.bound, S.tgt, null, 0); ROWP.bound = psnrOf(sse / (CFG.W * 3));
+        COV = null;
         return off;
       }
 
@@ -1270,14 +1306,18 @@
         if (compact) title = S.novel ? 'HELD-OUT VIEW' : 'TRAINING VIEW ' + (sel + 1) + '/' + E.K;
         ctx.fillText(title.toUpperCase(), x0, y + B.headH / 2 - 1);
         if (!compact) {
-          ctx.textAlign = 'right';
+          // the note on the right, in the longest wording that leaves the title clear (a narrow stage gets a shorter one)
+          var room = bw - ctx.measureText(title.toUpperCase()).width - 18, notes, nt;
           if (raysOn && slideTrain === slideTrain) {      // live probe: the strip below is rendered with the floater displaced
-            ctx.fillStyle = COL.text;
-            ctx.fillText('LIVE · FLOATER SLIDING ALONG ITS RAY · ALL TRAINING VIEWS ' + slideTrain.toFixed(1) + ' dB', x0 + bw, y + B.headH / 2 - 1);
+            ctx.fillStyle = COL.text; nt = slideTrain.toFixed(1) + ' dB';
+            notes = ['LIVE · FLOATER SLIDING ALONG ITS RAY · ALL TRAINING VIEWS ' + nt, 'LIVE · FLOATER SLIDING · ALL TRAINING VIEWS ' + nt, 'FLOATER SLIDING · TRAINING VIEWS ' + nt, 'TRAINING VIEWS ' + nt];
           } else {
             ctx.fillStyle = COL.mute;
-            ctx.fillText('1D IMAGE, ' + W + ' PX · RED UNDERLINE = ERROR', x0 + bw, y + B.headH / 2 - 1);
+            notes = ['1D IMAGE, ' + W + ' PX · RED UNDERLINE = ERROR', W + ' PX · RED UNDERLINE = ERROR', 'RED = ERROR'];
           }
+          for (j = 0; j < notes.length && ctx.measureText(notes[j]).width > room; j++) {}
+          ctx.textAlign = 'right';
+          if (j < notes.length) ctx.fillText(notes[j], x0 + bw, y + B.headH / 2 - 1);
           ctx.textAlign = 'left';
         }
         y += B.headH;
@@ -1286,8 +1326,12 @@
         if (shown('bound')) rows.push(['bound', 'BOUND', COL.surf]);
         for (r = 0; r < rows.length; r++) {
           img = rows[r][0] === 'gt' ? S.tgt : IMG[rows[r][0]];
+          var cv = CVR && (rows[r][0] === 'gt' ? S.cov : CVR[rows[r][0]]);
           for (j = 0; j < W; j++) {
-            ctx.fillStyle = 'rgb(' + c255(img[j * 3]) + ',' + c255(img[j * 3 + 1]) + ',' + c255(img[j * 3 + 2]) + ')';
+            if (cv) {                          // light page: over the backdrop, by coverage (see BACK)
+              a = 1 - cv[j];
+              ctx.fillStyle = 'rgb(' + c255(img[j * 3] + a * BACK[0]) + ',' + c255(img[j * 3 + 1] + a * BACK[1]) + ',' + c255(img[j * 3 + 2] + a * BACK[2]) + ')';
+            } else ctx.fillStyle = 'rgb(' + c255(img[j * 3]) + ',' + c255(img[j * 3 + 1]) + ',' + c255(img[j * 3 + 2]) + ')';
             ctx.fillRect(x0 + j * pw, y, pw + 0.6, B.rowH);
           }
           ctx.strokeStyle = COL.line; ctx.lineWidth = 1; ctx.strokeRect(x0 - 0.5, y - 0.5, bw + 1, B.rowH + 1);
@@ -1338,6 +1382,7 @@
         var F = handoffFrame(Wd, Hd), k = HO.k, th = HO.from, G = HO.goal, T = drawTab, v = null, i, r, j, N, x, y, ax, ay, w0, w;
         for (i = 0; i < views.length; i++) if (views[i].kind === 'bound') v = views[i];
         if (!v) v = F;                       // no BOUND pane (never in the deck): start in the hand-off frame
+        var path = LIGHT ? new Path2D() : null;   // a light page also strokes the curve moved (shadow, highlight)
         ctx.beginPath();
         for (i = 0; i < T.n; i++) {
           x = y = 0;
@@ -1345,14 +1390,26 @@
           ax = v.ox + x * v.s; ay = v.oy - y * v.s;
           x = ax + (F.ox + G[2 * i] * F.s - ax) * k; y = ay + (F.oy - G[2 * i + 1] * F.s - ay) * k;
           if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+          if (path) { if (i) path.lineTo(x, y); else path.moveTo(x, y); }
         }
         w0 = compact ? 1.3 : 1.6; w = w0 + (handoffWidth(F.s) - w0) * k;
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        if (k > 0) for (i = 0; i < HO_GLOW.length; i++) {
+        if (k > 0 && path) {                 // light: the glow's strokes as a soft shadow, moved down
+          ctx.save(); ctx.translate(0, HO_DROP * w);
+          for (i = 0; i < HO_GLOW.length; i++) {
+            ctx.lineWidth = w * HO_GLOW[i][0]; ctx.strokeStyle = rgba(COL.text, (HO_GLOW[i][1] * HO_SHADE * k).toFixed(4)); ctx.stroke(path);
+          }
+          ctx.restore();
+        } else if (k > 0) for (i = 0; i < HO_GLOW.length; i++) {
           ctx.lineWidth = w * HO_GLOW[i][0]; ctx.strokeStyle = rgba(COL.surf, (HO_GLOW[i][1] * k).toFixed(4)); ctx.stroke();
         }
         ctx.lineWidth = w; ctx.strokeStyle = COL.surf; ctx.stroke();
-        if (k > 0) { ctx.lineWidth = 0.4 * w; ctx.strokeStyle = rgba(HO_HI, (0.9 * k).toFixed(4)); ctx.stroke(); }
+        if (k > 0) {
+          ctx.save(); if (path) ctx.translate(0, -HO_LIFT * w);
+          ctx.lineWidth = 0.4 * w; ctx.strokeStyle = rgba(HO_HI, (HO_HA * k).toFixed(4));
+          if (path) ctx.stroke(path); else ctx.stroke();
+          ctx.restore();
+        }
         ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
       }
       function draw() {

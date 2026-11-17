@@ -4,8 +4,15 @@
    Standalone: talk/sims/basis.html. Depends on talk/nurbs.js, talk/kit.js and talk/ink.js. */
 (function () {
   'use strict';
-  var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
+  var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color, LIGHT = KT.theme === 'light';
+  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
   var NS = 'http://www.w3.org/2000/svg';
+  /* the colour t of the way from h1 to h2, as #rrggbb (the same function in flatland.js: the hand-off's colours agree) */
+  function hexMix(h1, h2, t) {
+    var p = parseInt(h1.slice(1), 16), q = parseInt(h2.slice(1), 16), s, c, o = '#';
+    for (s = 16; s >= 0; s -= 8) { c = Math.round(((p >> s) & 255) * (1 - t) + ((q >> s) & 255) * t); o += (c < 16 ? '0' : '') + c.toString(16); }
+    return o;
+  }
 
   /* world box is x in [0,2], y in [0,1] (y up) */
 
@@ -23,6 +30,7 @@
   /* in this module's world box the strip spans x 0.1 .. 1.9 and the middle of its y range sits at y 0.5 */
   var HK = 0.9 / 1.4, HYC = (HANDOFF.y0 + HANDOFF.y1) / 2;
   var STRIP = HANDOFF.P.map(function (q) { return [1 + q[0] * HK, 0.5 + (q[1] - HYC) * HK]; });
+  function strip() { return STRIP.map(function (q) { return q.slice(); }); }      // a pristine copy of the 14 points
   /* HANDOFF LAYOUT, the same rule as in flatland.js, so that chapter 01's last picture and chapter 02's first one
      coincide on stages of the same size: the curve's x range (flatland -1.4 .. 1.4) spans the middle 76 % of the
      stage width; y uses the same scale; the middle of the curve's y range sits at the vertical centre of the stage.
@@ -33,9 +41,15 @@
      w = clamp(0.02 s, 2.5, 6) px (s = handoffScale); round caps and joins. Under the core a soft glow of nine strokes
      in the surface colour, 8 / 7 / 6 / 5.1 / 4.3 / 3.6 / 3 / 2.4 / 1.9 w wide at alpha .018 / .022 / .028 / .034 /
      .042 / .052 / .064 / .08 / .11 (HO_GLOW: plain strokes, no blur filter, so Canvas and SVG draw it alike);
-     over the core a highlight 0.4 w wide in #dcf6ff at alpha .9. */
-  var HO_W = 0.76, HO_H = 0.40, HO_HI = '#dcf6ff';
+     over the core a highlight 0.4 w wide in #dcf6ff at alpha .9.
+     On a light page (KnotTalk.theme, the talk) the tube lies on paper instead: a glow of the surface colour would only
+     tint the paper into a pale band, so the same nine strokes become a soft shadow under the curve, in the text colour
+     at HO_SHADE times their alpha, moved down HO_DROP w; the highlight is the surface colour taken HO_TINT of the way
+     to the card colour (bg), at alpha HO_HA, moved up HO_LIFT w (lit from above). */
+  var HO_W = 0.76, HO_H = 0.40;
   var HO_GLOW = [[8, 0.018], [7, 0.022], [6, 0.028], [5.1, 0.034], [4.3, 0.042], [3.6, 0.052], [3, 0.064], [2.4, 0.08], [1.9, 0.11]];
+  var HO_SHADE = 0.45, HO_DROP = 0.8, HO_TINT = 0.45, HO_LIFT = 0.18;
+  var HO_HI = LIGHT ? hexMix(C.surf, C.bg, HO_TINT) : '#dcf6ff', HO_HA = LIGHT ? 0.35 : 0.9;
   var HX = HANDOFF.P[HANDOFF.P.length - 1][0] - HANDOFF.P[0][0];     // 2.8: the curve's x range (from end point to end point)
   function handoffScale(W, H) { return Math.min(HO_W * W / HX, HO_H * H / (HANDOFF.y1 - HANDOFF.y0)); }
   /* `ducks` first shows the strip alone, exactly as chapter 01 left it; then the draughtsman's marks arrive
@@ -114,19 +128,19 @@
   var SCENES = {
     ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4, strip: 1 },
     letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
-                 hint: 'drag any amber point' },
+                 hint: 'drag any ' + CTRL_WORD + ' point' },
     script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
     morph:     { cap: '<b>morphing</b> · letters → handwriting → a missile · only the control points move', morph: 1 },
     lens:      { cap: '<b>Gaussians on the tracks</b> · a fixed number, spread over what is in view · move closer: same count, finer', morph: 1, lens: 1,
                  hint: 'zoom with the slider · drag to pan' },
     fit:       { cap: '<b>how close?</b> · control points set what the curve can say · samples set how finely it is read', fit: 1 },
-    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any amber point' },
+    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any ' + CTRL_WORD + ' point' },
     blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
                  hint: 'scrub the plot to move u' },
     local:     { cap: '<b>local support</b> · one point moves, only p + 1 spans change', basis: 1, local: 1, sel: 4, wiggle: 4 },
     degree:    { cap: '<b>degree p</b> · smoothness C<sup>p−1</sup> across every knot', basis: 1, cycle: 1 },
     knots:     { cap: '<b>knots</b> · where the polynomial pieces join', basis: 1, ticks: 1, knotAuto: 1,
-                 hint: 'drag the amber knots on the axis' },
+                 hint: 'drag the ' + CTRL_WORD + ' knots on the axis' },
     rational:  { cap: '<b>rational weights</b> · the R in NURBS — exact conics', basis: 1, circle: 1, sel: 1,
                  hint: 'select a point · change its weight' },
     recursion: { cap: '<b>Cox–de Boor</b> · boxes → hats → parabolas → cubics', basis: 1, pyramid: 1, sel: 4 }
@@ -155,8 +169,9 @@
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
 
       var st = { P: [], w: [], U: [], p: 3, sel: 3, u: 0.37, scene: null, sc: SCENES.ducks,
-                 bh: 0, ghost: null, userU: false, touched: false, t: 0, cycleT: 0, circle: false, intro: 0 };
-      var W = 0, H = 0, dirty = true, drag = null, L = {};
+                 bh: 0, ghost: null, userU: false, touched: false, t: 0, cycleT: 0, circle: false, intro: 0,
+                 vis: true, away: false };       // vis: the stage is on screen; away: it has left it since the last scene (see `seen`)
+      var W = 0, H = 0, dirty = true, drag = null, L = {}, rad = [];     // rad[i]: control point i's drawn radius, px
 
       /* ---------- controls ---------- */
       var panel = ui.panel(root, { pos: 'tr', title: 'curve' });
@@ -197,7 +212,7 @@
           st.P = CIRCLE.P.map(function (q) { return q.slice(); });
           st.w = CIRCLE.w.slice(); st.U = CIRCLE.U.slice(); st.p = 2;
         } else {
-          st.P = STRIP.map(function (q) { return q.slice(); });
+          st.P = strip();
           st.w = STRIP.map(function () { return 1; }); st.p = 3;
           st.U = NB.clampedKnots(st.P.length, st.p);
         }
@@ -424,11 +439,14 @@
       function tube(d, v, dim) {
         var w = KT.lerp(3.2, KT.clamp(0.02 * handoffScale(W, H), 2.5, 6), v), id = uid + 's', h;
         h = '<defs><path id="' + id + '" d="' + d + '"/></defs><g fill="none" stroke-linecap="round" stroke-linejoin="round">';
+        if (LIGHT) h += '<g transform="translate(0 ' + (HO_DROP * w).toFixed(3) + ')">';      // light: the glow as a soft shadow
         HO_GLOW.forEach(function (g) {
-          h += '<use href="#' + id + '" stroke="' + C.surf + '" stroke-opacity="' + (g[1] * v * dim).toFixed(4) + '" stroke-width="' + (w * g[0]).toFixed(2) + '"/>';
+          h += '<use href="#' + id + '" stroke="' + (LIGHT ? C.text : C.surf) + '" stroke-opacity="' + (g[1] * (LIGHT ? HO_SHADE : 1) * v * dim).toFixed(4) + '" stroke-width="' + (w * g[0]).toFixed(2) + '"/>';
         });
+        if (LIGHT) h += '</g>';
         return h + '<use href="#' + id + '" stroke="' + C.surf + '" stroke-opacity="' + dim + '" stroke-width="' + w.toFixed(2) + '"/>' +
-               '<use href="#' + id + '" stroke="' + HO_HI + '" stroke-opacity="' + (0.9 * v * dim).toFixed(4) + '" stroke-width="' + (0.4 * w).toFixed(2) + '"/></g>';
+               '<use href="#' + id + '" stroke="' + HO_HI + '" stroke-opacity="' + (HO_HA * v * dim).toFixed(4) + '" stroke-width="' + (0.4 * w).toFixed(2) + '"' +
+               (LIGHT ? ' transform="translate(0 ' + (-HO_LIFT * w).toFixed(3) + ')"' : '') + '/></g>';
       }
       /* how far weight i of the strip has arrived (the intro of `ducks`) */
       function weightIn(i) { return st.sc.strip ? KT.ease((st.intro - INTRO.hold - INTRO.stagger * i) / INTRO.weight) : 1; }
@@ -490,16 +508,20 @@
         }
 
         // the strip's weights (scenes without a basis plot): lit amber beads with a soft amber halo, set down one by one
-        // during the intro of `ducks`
+        // during the intro of `ducks`. On a light page an amber halo only stains the paper: there the bead is lit from
+        // above like the strip, and rests on the paper with a soft shadow under it (the text colour, fading out)
         var beads = !sc.basis;
         if (beads) {
-          h += '<defs><radialGradient id="' + uid + 'w" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="#ffe3bd"/>' +
-               '<stop offset=".45" stop-color="#ffbe5c"/><stop offset="1" stop-color="' + C.ctrl + '"/></radialGradient></defs>';
+          h += '<defs><radialGradient id="' + uid + 'w" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="' + (LIGHT ? hexMix(C.ctrl, C.bg, 0.72) : '#ffe3bd') + '"/>' +
+               '<stop offset=".45" stop-color="' + (LIGHT ? hexMix(C.ctrl, C.bg, 0.36) : '#ffbe5c') + '"/><stop offset="1" stop-color="' + C.ctrl + '"/></radialGradient>' +
+               (LIGHT ? '<radialGradient id="' + uid + 'd"><stop offset="0" stop-color="' + C.text + '" stop-opacity=".2"/><stop offset=".55" stop-color="' + C.text + '" stop-opacity=".09"/>' +
+                        '<stop offset="1" stop-color="' + C.text + '" stop-opacity="0"/></radialGradient>' : '') + '</defs>';
           for (i = 0; i < m; i++) {
             a = weightIn(i); if (a <= 0) continue;
-            // a bead settles from a little larger; smaller on small stages (the touch target is KT.HIT either way)
-            q = px(st.P[i]); var rb = KT.clamp(0.033 * L.s, 5, 7.5) * (1.45 - 0.45 * a);
-            h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb * 1.8) + '" fill="' + C.ctrl + '" opacity="' + (0.2 * a).toFixed(3) + '"/>' +
+            // a bead settles from a little larger; smaller on small stages (a finger's reach is set in reach())
+            q = px(st.P[i]); var rb = rad[i] = KT.clamp(0.033 * L.s, 5, 7.5) * (1.45 - 0.45 * a);
+            h += (LIGHT ? '<circle cx="' + f(q[0]) + '" cy="' + f(q[1] + rb * 0.45) + '" r="' + f(rb * 1.6) + '" fill="url(#' + uid + 'd)" opacity="' + a.toFixed(3) + '"/>'
+                        : '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb * 1.8) + '" fill="' + C.ctrl + '" opacity="' + (0.2 * a).toFixed(3) + '"/>') +
                  '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb) + '" fill="url(#' + uid + 'w)" stroke="' + C.bg + '" stroke-width="2" opacity="' + a.toFixed(3) + '"/>';
           }
         }
@@ -509,6 +531,7 @@
           var rr = 7 + (act[i] != null ? 13 * act[i] : 0) + (sc.circle ? 5 * (st.w[i] - 1) : 0);
           rr = KT.clamp(rr, 4, 26);
           var on = (sc.local || sc.circle || sc.pyramid) && i === st.sel;
+          rad[i] = on ? rr + 7 : rr;
           if (on) h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rr + 7) + '" fill="none" stroke="' + C.ctrl + '" stroke-width="1.2" opacity=".7"/>';
           h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rr) + '" fill="' + C.ctrl + '" stroke="' + C.bg + '" stroke-width="2"' +
                (sc.blend && act[i] == null ? ' opacity=".35"' : '') + '/>';
@@ -591,7 +614,20 @@
 
       /* ---------- interaction ---------- */
       function local(e) { var r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-      function hit(x, y, touch) {        // touch widens the knot targets; points are already 52 px across
+      /* In the deck, how far from control point i (screen positions Q) a finger still takes it: KT.HIT, but in a dense
+         row only 0.4 of the way to the nearest other point, and never less than 4 px beyond what is drawn (rad). A finger
+         that lands there keeps the page from scrolling (KT.touchGuard below), so the reach must leave room between the
+         points: on a phone the strip's 14 weights sit 9-40 px apart in a near-straight row, and a fixed 26 px claimed a
+         band some 50 px tall right across the stage; now a vertical swipe that starts between two weights scrolls the
+         deck. The lab page does not scroll: there a finger reaches 26 px, as the mouse does. */
+      function reach(i, Q) {
+        var nn = 1e9, j;
+        for (j = 0; j < Q.length; j++) if (j !== i) nn = Math.min(nn, Math.hypot(Q[j][0] - Q[i][0], Q[j][1] - Q[i][1]));
+        return Math.max((rad[i] || 7) + 4, Math.min(KT.HIT, 0.4 * nn));
+      }
+      /* what a pointer at client-local (x, y) takes: a mouse, a control point within 26 px; a finger in the deck, within
+         reach(); touch widens the knot targets */
+      function hit(x, y, touch) {
         var best = null, bd = 26, i, q, d;
         if (st.f) return null;
         if (st.multi) {
@@ -603,9 +639,11 @@
           });
           return best;
         }
-        for (i = 0; i < st.P.length; i++) {
+        var Q = st.P.map(px), bp = 1e9;
+        for (i = 0; i < Q.length; i++) {
           if (weightIn(i) < 0.5) continue;       // a weight not yet set down (the strip's intro) cannot be grabbed
-          q = px(st.P[i]); d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = { kind: 'pt', i: i }; }
+          d = Math.hypot(Q[i][0] - x, Q[i][1] - y);
+          if (d < (touch && env.embed ? reach(i, Q) : 26) && d < bp) { bp = d; best = { kind: 'pt', i: i }; }
         }
         if (best) return best;
         if (L.bh > 30) {
@@ -638,7 +676,8 @@
       }
       svg.addEventListener('pointerdown', function (e) {
         if (drag) return;                  // one drag at a time: a second finger does not start another
-        var q = local(e), d = hit(q[0], q[1], e.pointerType === 'touch');
+        var q = local(e), d = hit(q[0], q[1], e.pointerType !== 'mouse');   // a pen as a finger: the same as KT.touchGuard
+
         if (!d) return;
         drag = d; d.id = e.pointerId; if (d.kind !== 'pan') st.touched = true;
         if (d.kind === 'pt') { st.sel = d.i; slW.set(st.w[d.i]); }
@@ -649,7 +688,7 @@
         if (drag) { if (e.pointerId === drag.id) apply(drag, q[0], q[1]); }   // a second finger does not steal the handle
         else svg.style.cursor = hit(q[0], q[1]) ? 'grab' : '';
       });
-      function end(e) { if (drag && e.pointerId === drag.id) drag = null; }
+      function end(e) { if (drag && e.pointerId === drag.id) { drag = null; if (!st.vis) away(); } }   // let go off screen
       svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
       // on touch screens, only claim the gesture when it starts on a handle (else let the page scroll)
       KT.touchGuard(svg, { hit: function (x, y) { var q = local({ clientX: x, clientY: y }); return !!hit(q[0], q[1], true); } });
@@ -657,12 +696,17 @@
       /* ---------- scenes ---------- */
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
+        // an arrival: the first scene, or the first since the stage left the screen (see `seen`). Only an arrival plays
+        // the strip's intro; stepping back to `ducks` from a later step of the chapter shows it at once, marks and all
+        var arrive = st.scene == null || st.away;
+        st.away = false;
         // the deck selects `ducks` on mount and again on entry: a second call must not restart the strip's intro
         if (id === st.scene && sc.strip && !st.touched) return;
         st.scene = id; st.sc = sc; st.touched = false; st.userU = false; st.t = 0; st.cycleT = 0;
         if (!!sc.circle !== st.circle) load(!!sc.circle);
         else if (sc.circle) load(true);
-        else {                               // same control polygon, clean knots/weights/degree
+        else {                               // same control polygon (pristine on an arrival), clean knots/weights/degree
+          if (arrive) st.base = strip();
           st.P = st.base.map(function (q) { return q.slice(); });
           st.w = st.P.map(function () { return 1; });
           st.p = 3; st.U = NB.clampedKnots(st.P.length, 3); segDeg.set(3);
@@ -679,7 +723,7 @@
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
         st.ghost = null; dirty = true;
         if (sc.local) { st.bhSnap = true; }
-        intro(!!sc.strip);
+        intro(!!sc.strip && arrive);
       }
       /* the strip's intro: start it (the strip alone, as chapter 01 left it) or skip it */
       function intro(on) { st.intro = on ? 0 : 1e3; quiet(on ? 0 : 1); }
@@ -688,14 +732,27 @@
         root.style.setProperty('--bs-ui', a.toFixed(3));
         root.classList.toggle('bs-quiet', a < 0.5);
       }
-      /* Arriving from chapter 01 must always start on chapter 01's last picture: whenever the stage leaves the
-         screen while `ducks` is shown and untouched, the intro is re-armed (and drawn at once, so the stage is
-         ready before it is seen again). */
+      /* Arriving from chapter 01 must always start on chapter 01's last picture, whatever was done here before. A drag
+         lasts while the presenter moves between this chapter's steps; once the stage has left the screen (the presenter
+         went to another chapter, up or down: the module cannot tell where they will come back) it is forgotten:
+         away() puts the strip's 14 points back as they were handed over and marks the next scene as an arrival
+         (st.away). If `ducks` is the scene shown, its intro is re-armed at once, drawn at once so the stage is ready
+         before it is seen again; else it plays when `ducks` is next entered, as the deck does on the chapter's first
+         step. Stepping back to `ducks` within the chapter does not replay it (setScene). */
       var seen = new IntersectionObserver(function (es) {
-        if (es[es.length - 1].isIntersecting || !st.sc.strip || st.touched || drag) return;
-        st.t = 0; st.P = st.base.map(function (q) { return q.slice(); }); intro(true);
-        if (W && H) { draw(); dirty = false; }
+        st.vis = es[es.length - 1].isIntersecting;
+        if (!st.vis && !drag) away();              // a drag still held: when it ends (end())
       });
+      function away() {
+        st.away = true;
+        if (!st.circle) {
+          st.base = strip(); st.P = strip(); st.ghost = null;
+          if (!st.multi && !st.f) st.touched = st.userU = false;   // a single-curve scene starts over (its idle motion)
+        }
+        if (st.sc.strip) { st.t = 0; intro(true); }
+        dirty = true;
+        if (W && H) { draw(); dirty = false; }
+      }
       seen.observe(root);
 
       env.loop(function (t, dt) {

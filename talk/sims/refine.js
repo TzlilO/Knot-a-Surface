@@ -568,7 +568,24 @@
      ===================================================================================== */
   var KT = root.KnotTalk, C = KT.color;
   function rgbOf(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
-  function rgba(key, a) { var c = rgbOf(C[key]); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  function rgbaOf(hex, a) { var c = rgbOf(hex); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  function rgba(key, a) { return rgbaOf(C[key], a); }
+  function mix(a, b, t) {                  // '#rrggbb' between a (t = 0) and b (t = 1)
+    var p = rgbOf(a), q = rgbOf(b);
+    return '#' + p.map(function (x, i) { return ('0' + Math.round(x + (q[i] - x) * t).toString(16)).slice(-2); }).join('');
+  }
+  /* The page's theme. The dark stage (the lab page) keeps the colours it always had; on a light page (the talk) every
+     colour comes from KT.color, or is mixed from two of its entries where the dark stage used a shade it has no entry
+     for: the maps run from the paper (low) to the deep hue (high), what is white on the dark stage is ink, a dark halo
+     or chip is the glass card's colour. */
+  var LIGHT = KT.theme === 'light';
+  var INK = LIGHT ? C.text : '#ffffff';
+  var SPLAT_INK = mix(C.splat, C.text, 0.45);                      // light page: the Gaussian colour, set off from it
+  var HALO = LIGHT ? rgbaOf(C.bg, 0.9) : 'rgba(7,9,15,.88)';         // behind a label that sits on a picture
+  var CHIP = LIGHT ? rgbaOf(C.bg, 0.86) : 'rgba(7,9,15,.72)';        // a label's own backing
+  var TGT_LINE = LIGHT ? rgbaOf(C.dim, 0.9) : 'rgba(221,229,240,.82)';   // the target in the side view: grey
+  var GAP_INK = LIGHT ? mix(C.err, C.text, 0.25) : '#ffd9d2';      // the largest gap, dimensioned on the side view
+  var GRIP_EDGE = LIGHT ? rgbaOf(C.text, 0.8) : 'rgba(7,9,15,.8)';   // the outline of the cut's grip
   function pct(x, d) { return (100 * x).toFixed(d == null ? 2 : d) + ' %'; }
   function pctA(x) { return pct(x, x < 0.00095 ? 3 : x < 0.0995 ? 2 : 1); }       // as many digits as the size needs
   function expStr(x) { return x === 0 ? '0' : x.toExponential(1).replace('e-', 'e−'); }
@@ -590,10 +607,19 @@
     }
     return lut;
   }
-  var PAL_FIT = ramp([[0, '#0a2236'], [0.30, '#0f3c5c'], [0.58, '#1f739f'], [0.80, '#4fc3f7'], [1, '#dcf4ff']]);
-  var PAL_TGT = ramp([[0, '#161c26'], [0.30, '#2c3644'], [0.58, '#58677b'], [0.80, '#96a5b9'], [1, '#ecf0f6']]);
-  var PAL_GSS = ramp([[0, '#1a1230'], [0.30, '#35235a'], [0.58, '#74509b'], [0.80, '#ce93d8'], [1, '#f8e9fb']]);   // what the Gaussians draw
-  var PAL_ERR = ramp([[0, '#2a0c0e', 0], [0.14, '#521819', 0.46], [0.42, '#b93b39', 0.92], [0.72, '#ef5350', 1], [1, '#ffd9d2', 1]]);
+  /* Height maps, low -> high. The dark stage: from the dark up to a pale tint of the hue. A light page: from the paper
+     up to the hue and a shade deeper, so the higher ground carries more ink; the relief shading stays on top of both. */
+  function sequential(hue) {
+    return [[0, mix(C.bg, hue, 0.05)], [0.30, mix(C.bg, hue, 0.19)], [0.58, mix(C.bg, hue, 0.44)], [0.80, mix(C.bg, hue, 0.78)], [1, mix(hue, C.text, 0.3)]];
+  }
+  var PAL_FIT = ramp(LIGHT ? sequential(C.surf) : [[0, '#0a2236'], [0.30, '#0f3c5c'], [0.58, '#1f739f'], [0.80, '#4fc3f7'], [1, '#dcf4ff']]);
+  var PAL_TGT = ramp(LIGHT ? [[0, mix(C.bg, C.text, 0.03)], [0.30, mix(C.bg, C.text, 0.11)], [0.58, mix(C.bg, C.text, 0.25)], [0.80, mix(C.bg, C.text, 0.42)], [1, mix(C.bg, C.text, 0.6)]]
+                           : [[0, '#161c26'], [0.30, '#2c3644'], [0.58, '#58677b'], [0.80, '#96a5b9'], [1, '#ecf0f6']]);
+  var PAL_GSS = ramp(LIGHT ? sequential(C.splat) : [[0, '#1a1230'], [0.30, '#35235a'], [0.58, '#74509b'], [0.80, '#ce93d8'], [1, '#f8e9fb']]);   // what the Gaussians draw
+  /* the error heat over a neutral relief: red throughout, from clear (no error) to the deepest red (a light page) or a pale glow (dark) */
+  var PAL_ERR = ramp(LIGHT ? [[0, mix(C.bg, C.err, 0.12), 0], [0.14, mix(C.bg, C.err, 0.32), 0.46], [0.42, mix(C.bg, C.err, 0.75), 0.92], [0.72, C.err, 1], [1, mix(C.err, C.text, 0.45), 1]]
+                           : [[0, '#2a0c0e', 0], [0.14, '#521819', 0.46], [0.42, '#b93b39', 0.92], [0.72, '#ef5350', 1], [1, '#ffd9d2', 1]]);
+  var ERR_BASE = LIGHT ? rgbOf(mix(C.bg, C.text, 0.07)) : null;     // light page: the paper the error heat lies on
   var EGAM = 0.9;                         // display gamma of the error heat
   var LX = -0.50, LY = -0.62, LZ = 0.62, ZS = 0.55, GSAT = 1.15;
   (function () { var n = Math.sqrt(LX * LX + LY * LY + LZ * LZ); LX /= n; LY /= n; LZ /= n; })();
@@ -605,7 +631,7 @@
 
   /* Hill-shaded relief of H (n x n) into RGBA px. E (optional) = signed error field -> red heat. */
   function shade(px, H, n, pal, E, escale) {
-    var x, y, i, o, gx, gy, inv, s, lum, t, li, r, g, b, k = n * 0.5 * ZS, e, a, hi, c0;
+    var x, y, i, o, gx, gy, inv, s, lum, t, li, r, g, b, k = n * 0.5 * ZS, e, a, hi, c0, q;
     for (y = 0; y < n; y++) for (x = 0; x < n; x++) {
       i = y * n + x; o = i * 4;
       gx = (H[x < n - 1 ? i + 1 : i] - H[x > 0 ? i - 1 : i]) * (x > 0 && x < n - 1 ? k : 2 * k);
@@ -619,7 +645,18 @@
       // faint contour every 0.1 of relief
       if (!E && x < n - 1 && y < n - 1) { c0 = Math.floor(H[i] * 10); if (c0 !== Math.floor(H[i + 1] * 10) || c0 !== Math.floor(H[i + n] * 10)) lum *= 0.88; }
       li = ((t * 255) | 0) * 4;
-      if (E) {
+      if (LIGHT) {
+        /* a light page: flat ground shows the palette's own colour (lum 0.78 there), slopes turned from the light are
+           shaded darker, slopes facing it lighten towards white; the error heat lies on a paper-coloured relief */
+        q = 1 + (lum / 0.78 - 1) * 0.8;
+        if (E) { r = ERR_BASE[0]; g = ERR_BASE[1]; b = ERR_BASE[2]; } else { r = pal[li]; g = pal[li + 1]; b = pal[li + 2]; }
+        if (q < 1) { r *= q; g *= q; b *= q; } else { hi = (q - 1) * 0.9; r += (255 - r) * hi; g += (255 - g) * hi; b += (255 - b) * hi; }
+        if (E) {
+          e = Math.abs(E[i]) / escale; e = e > 1 ? 1 : e; e = Math.pow(e, EGAM);
+          li = ((e * 255) | 0) * 4; a = PAL_ERR[li + 3];
+          r += (PAL_ERR[li] - r) * a; g += (PAL_ERR[li + 1] - g) * a; b += (PAL_ERR[li + 2] - b) * a;
+        }
+      } else if (E) {
         r = 15 * lum; g = 20 * lum; b = 29 * lum;
         e = Math.abs(E[i]) / escale; e = e > 1 ? 1 : e; e = Math.pow(e, EGAM);
         li = ((e * 255) | 0) * 4; a = PAL_ERR[li + 3];
@@ -653,7 +690,9 @@
   function normalCss(nx, ny, nz) { return 'rgb(' + Math.round(127.5 + 127.5 * nx) + ',' + Math.round(127.5 - 127.5 * ny) + ',' + Math.round(127.5 + 127.5 * nz) + ')'; }
   /* balance-map colour of a drawn error: half-decade bands, so equal errors read as one colour and the
      iso-error contours (L-shaped: neither knob helps alone) are the band edges */
-  var MAP_BANDS = ['#0f2233', '#1c2c47', '#3a2643', '#6c2536', '#a3302f', '#de463f', '#ffb3a6'];
+  var MAP_BANDS = LIGHT ? [mix(C.bg, C.surf, 0.07), mix(C.bg, C.surf, 0.17), mix(C.bg, C.err, 0.2), mix(C.bg, C.err, 0.42),
+                           mix(C.bg, C.err, 0.7), C.err, mix(C.err, C.text, 0.45)]      // paper -> red -> deep red
+                        : ['#0f2233', '#1c2c47', '#3a2643', '#6c2536', '#a3302f', '#de463f', '#ffb3a6'];
   function mapCss(e) {
     var k = Math.floor(2 * Math.log(Math.max(e, 1e-12) / MAP_LO) / Math.LN10 + 1e-9);
     return MAP_BANDS[k < 0 ? 0 : k > 6 ? 6 : k];
@@ -733,7 +772,10 @@
       /* kit "compact" (small embedded stage): the readout strip stays, the controls fold behind the
          kit's own "controls" button and open as an overlay so the figure never reflows */
       '.kt-sim-refine.kt-compact .rf-col .rf-read{display:grid}',
-      '.kt-sim-refine.kt-compact .rf-col .rf-ctrl{position:absolute;left:8px;right:8px;top:40px;z-index:7}'
+      '.kt-sim-refine.kt-compact .rf-col .rf-ctrl{position:absolute;left:8px;right:8px;top:40px;z-index:7}',
+      /* a light page: the pressed preset and the Gaussians switch as the kit's light controls show a choice */
+      '[data-theme="light"] .kt-sim-refine .rf-pre .kt-btn.on{color:var(--text);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}',
+      '[data-theme="light"] .kt-sim-refine .kt-toggle.rf-g.on{color:#fff;background:var(--splat)}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -1371,7 +1413,7 @@
       function halo(s, x, y, f, color, align, ls) {
         ctx.font = f; ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic';
         if ('letterSpacing' in ctx) ctx.letterSpacing = ls || '0px';
-        ctx.lineJoin = 'round'; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(7,9,15,.88)'; ctx.strokeText(s, x, y);
+        ctx.lineJoin = 'round'; ctx.lineWidth = 3.5; ctx.strokeStyle = HALO; ctx.strokeText(s, x, y);
         ctx.fillStyle = color; ctx.fillText(s, x, y);
       }
       /* text that must fit `maxW`: drop tracking, then size, then truncate */
@@ -1419,7 +1461,7 @@
         if (maxW && ctx.measureText(s).width + 14 > maxW) { ls = '0px'; ctx.letterSpacing = ls; }
         while (maxW && ctx.measureText(s).width + 14 > maxW && f > 8.5) { f -= 0.5; ctx.font = font(600, f); }
         var w = ctx.measureText(s).width + 14, h = f + 10;
-        ctx.fillStyle = 'rgba(7,9,15,.72)'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = CHIP; ctx.fillRect(x, y, w, h);
         txt(s, x + 7, y + h - 6, font(600, f), color, 'left', ls);
         return w;
       }
@@ -1437,7 +1479,7 @@
         d.width = Math.round(s * dpr); d.height = rh; dc = d.getContext('2d'); dc.setTransform(dpr, 0, 0, dpr, 0, 0);
         dc.beginPath();
         for (a = 0; a < n; a++) { cx = (a + 0.5) * sp; dc.moveTo(cx + r0, rh / dpr / 2); dc.arc(cx, rh / dpr / 2, r0, 0, 6.2832); }
-        dc.strokeStyle = 'rgba(248,233,251,' + (sp > 11 ? 0.7 : 0.5) + ')'; dc.lineWidth = lw; dc.stroke();
+        dc.strokeStyle = LIGHT ? rgbaOf(SPLAT_INK, sp > 11 ? 0.6 : 0.42) : 'rgba(248,233,251,' + (sp > 11 ? 0.7 : 0.5) + ')'; dc.lineWidth = lw; dc.stroke();
         for (b = 0; b < n; b++) g.drawImage(d, 0, (b + 0.5) * sp - rh / dpr / 2, s, rh / dpr);
         if (sp < 9) return;
         // its normal S_u x S_v, seen from above
@@ -1446,8 +1488,8 @@
           o = b * n + a; cx = (a + 0.5) * sp; cy = (b + 0.5) * sp;
           g.moveTo(cx, cy); g.lineTo(cx + gs.nx[o] * len, cy + gs.ny[o] * len);
         }
-        g.strokeStyle = 'rgba(7,9,15,.5)'; g.lineWidth = (sp > 14 ? 1.5 : 1.1) + 1.6; g.lineCap = 'round'; g.stroke();
-        g.strokeStyle = '#ffffff'; g.lineWidth = sp > 14 ? 1.5 : 1.1; g.stroke();
+        g.strokeStyle = LIGHT ? rgbaOf(C.bg, 0.6) : 'rgba(7,9,15,.5)'; g.lineWidth = (sp > 14 ? 1.5 : 1.1) + 1.6; g.lineCap = 'round'; g.stroke();
+        g.strokeStyle = INK; g.lineWidth = sp > 14 ? 1.5 : 1.1; g.stroke();
       }
       function drawGauss(x, y, s) {
         if (s / st.dens < 6.5) return;
@@ -1551,7 +1593,7 @@
         function Y(z) { return R.y + R.h - (z - ZLO) / ZSPAN * R.h; }
         function path(arr) { ctx.beginPath(); ctx.moveTo(X(0), Y(arr[0])); for (var q = 1; q <= K; q++) ctx.lineTo(X(xs[q]), Y(arr[q])); }
         ctx.save(); ctx.beginPath(); ctx.rect(R.x, R.y, R.w, R.h); ctx.clip();
-        ctx.fillStyle = 'rgba(255,255,255,.02)'; ctx.fillRect(R.x, R.y, R.w, R.h);
+        ctx.fillStyle = LIGHT ? rgba('text', 0.025) : 'rgba(255,255,255,.02)'; ctx.fillRect(R.x, R.y, R.w, R.h);
         // relief 0 and 1
         ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.setLineDash([2, 5]); ctx.beginPath();
         ctx.moveTo(R.x, Math.round(Y(0)) + 0.5); ctx.lineTo(R.x + R.w, Math.round(Y(0)) + 0.5);
@@ -1573,7 +1615,7 @@
         for (k = K; k >= 0; k--) ctx.lineTo(X(xs[k]), Y(shown[k]));
         ctx.closePath(); ctx.fillStyle = rgba('err', 0.42); ctx.fill();
         // target, then the surface
-        path(d.tgt); ctx.strokeStyle = 'rgba(221,229,240,.82)'; ctx.lineWidth = tiny ? 1 : 1.3; ctx.stroke();
+        path(d.tgt); ctx.strokeStyle = TGT_LINE; ctx.lineWidth = tiny ? 1 : 1.3; ctx.stroke();
         path(d.fit); ctx.strokeStyle = o.color || C.surf; ctx.lineWidth = tiny ? 1.6 : 2.1; ctx.stroke();
         // the control polygon of this cut
         var ca = o.dimCtrl ? 0.4 : 1;
@@ -1601,7 +1643,7 @@
             }
             ctx.strokeStyle = rgba('splat', 0.25 + 0.75 * wn); ctx.lineWidth = sp >= 9 ? 2.8 : 1.8; ctx.lineCap = 'butt'; ctx.stroke();
           }
-          path(d.drawn); ctx.strokeStyle = sp >= 3 ? 'rgba(248,233,251,.75)' : C.splat; ctx.lineWidth = sp >= 3 ? 1 : 2; ctx.stroke();
+          path(d.drawn); ctx.strokeStyle = sp >= 3 ? (LIGHT ? rgbaOf(SPLAT_INK, 0.8) : 'rgba(248,233,251,.75)') : C.splat; ctx.lineWidth = sp >= 3 ? 1 : 2; ctx.stroke();
           // normal needles on the row nearest the cut: S_u x S_v, projected into the cut plane
           step = Math.max(1, Math.ceil(7 / sp)); Ln = KT.clamp(sp * 1.1, 9, tiny ? 13 : 20);
           for (a = (step >> 1); a < n; a += step) {
@@ -1610,9 +1652,9 @@
             if (normals) {
               tn = targetNormalAt(gs.xs[a], st.cut);
               var ty0 = Y(targetAt(tg, gs.xs[a], st.cut));
-              ctx.strokeStyle = 'rgba(221,229,240,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px0, ty0); ctx.lineTo(px0 + tn[0] * Ln, ty0 - tn[2] * Ln); ctx.stroke();
+              ctx.strokeStyle = LIGHT ? rgba('dim', 0.7) : 'rgba(221,229,240,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px0, ty0); ctx.lineTo(px0 + tn[0] * Ln, ty0 - tn[2] * Ln); ctx.stroke();
             }
-            ctx.strokeStyle = normals ? normalCss(gs.nx[oo], gs.ny[oo], gs.nz[oo]) : '#f3d9f7'; ctx.lineWidth = normals ? 2 : 1.2;
+            ctx.strokeStyle = normals ? normalCss(gs.nx[oo], gs.ny[oo], gs.nz[oo]) : LIGHT ? SPLAT_INK : '#f3d9f7'; ctx.lineWidth = normals ? 2 : 1.2;
             ctx.beginPath(); ctx.moveTo(px0, py0); ctx.lineTo(px0 + gs.nx[oo] * Ln, py0 - gs.nz[oo] * Ln); ctx.stroke();
             if (sp >= 7) { ctx.fillStyle = C.splat; ctx.beginPath(); ctx.arc(px0, py0, sp >= 12 ? 2.3 : 1.6, 0, 6.2832); ctx.fill(); }
           }
@@ -1622,17 +1664,17 @@
           for (k = (step >> 1); k <= K; k += step) {
             var len = 1 / Math.sqrt(1 + CFG.ZW * CFG.ZW * (d.fu[k] * d.fu[k] + d.fv[k] * d.fv[k]));
             nrm = [-CFG.ZW * d.fu[k] * len, -CFG.ZW * d.fv[k] * len, len]; tn = targetNormalAt(xs[k], st.cut);
-            ctx.strokeStyle = 'rgba(221,229,240,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(xs[k]), Y(d.tgt[k])); ctx.lineTo(X(xs[k]) + tn[0] * Ln, Y(d.tgt[k]) - tn[2] * Ln); ctx.stroke();
+            ctx.strokeStyle = LIGHT ? rgba('dim', 0.7) : 'rgba(221,229,240,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(xs[k]), Y(d.tgt[k])); ctx.lineTo(X(xs[k]) + tn[0] * Ln, Y(d.tgt[k]) - tn[2] * Ln); ctx.stroke();
             ctx.strokeStyle = normalCss(nrm[0], nrm[1], nrm[2]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(xs[k]), Y(d.fit[k])); ctx.lineTo(X(xs[k]) + nrm[0] * Ln, Y(d.fit[k]) - nrm[2] * Ln); ctx.stroke();
           }
         }
         // the largest gap on this cut, dimensioned
         if (d.gap > 0.012 && !o.noGap) {
           var gx0 = Math.round(X(xs[d.gapK])) + 0.5, ya = Y(d.tgt[d.gapK]), yb = Y(shown[d.gapK]);
-          ctx.strokeStyle = '#ffd9d2'; ctx.lineWidth = 1.2; ctx.beginPath();
+          ctx.strokeStyle = GAP_INK; ctx.lineWidth = 1.2; ctx.beginPath();
           ctx.moveTo(gx0, ya); ctx.lineTo(gx0, yb); ctx.moveTo(gx0 - 3, ya); ctx.lineTo(gx0 + 3, ya); ctx.moveTo(gx0 - 3, yb); ctx.lineTo(gx0 + 3, yb); ctx.stroke();
           var right = gx0 < R.x + R.w * 0.72;
-          halo(pct(d.gap, d.gap < 0.0995 ? 1 : 0), gx0 + (right ? 6 : -6), KT.clamp((ya + yb) / 2 + 4, R.y + 12, R.y + R.h - 4), font(600, tiny ? 10 : L.fs), '#ffd9d2', right ? 'left' : 'right', '0.02em');
+          halo(pct(d.gap, d.gap < 0.0995 ? 1 : 0), gx0 + (right ? 6 : -6), KT.clamp((ya + yb) / 2 + 4, R.y + 12, R.y + R.h - 4), font(600, tiny ? 10 : L.fs), GAP_INK, right ? 'left' : 'right', '0.02em');
         }
         ctx.restore();
         frame(R.x, R.y, R.w, R.h);
@@ -1641,7 +1683,7 @@
       function sideCaption(R, useG, y) {
         var f = font(600, L.fs), f5 = font(500, L.fs), x, parts, i, w, tot = 0, lw;
         var long = 'SIDE VIEW · CUT AT v = ' + st.cut.toFixed(3), short = 'SIDE · v = ' + st.cut.toFixed(2);
-        parts = [['target', 'rgba(221,229,240,.9)'], ['surface', C.surf], ['control', C.ctrl]];
+        parts = [['target', LIGHT ? C.dim : 'rgba(221,229,240,.9)'], ['surface', C.surf], ['control', C.ctrl]];
         if (useG) parts.push(['Gaussians', C.splat]);
         parts.push(['error', C.err]);
         ctx.font = f5; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.02em';
@@ -1659,15 +1701,15 @@
       function cutY() { return L.my + st.cut * L.ms; }
       function drawCut() {
         var x = L.mx, s = L.ms, y = Math.round(cutY()) + 0.5;
-        ctx.strokeStyle = 'rgba(7,9,15,.55)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = LIGHT ? rgba('bg', 0.75) : 'rgba(7,9,15,.55)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y); ctx.stroke();
+        ctx.strokeStyle = LIGHT ? rgba('text', 0.85) : 'rgba(255,255,255,.92)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y); ctx.stroke(); ctx.setLineDash([]);
         var gx = x + (tiny ? 9 : 12), r = tiny ? 4.5 : 5.5;
-        ctx.fillStyle = drag != null ? '#ffffff' : 'rgba(255,255,255,.95)'; ctx.strokeStyle = 'rgba(7,9,15,.8)'; ctx.lineWidth = 1.5;
+        ctx.fillStyle = LIGHT ? (drag != null ? C.bg : rgba('bg', 0.95)) : drag != null ? '#ffffff' : 'rgba(255,255,255,.95)'; ctx.strokeStyle = GRIP_EDGE; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(gx, y, r, 0, 6.2832); ctx.fill(); ctx.stroke();
-        ctx.strokeStyle = 'rgba(7,9,15,.8)'; ctx.lineWidth = 1.2; ctx.beginPath();
+        ctx.strokeStyle = GRIP_EDGE; ctx.lineWidth = 1.2; ctx.beginPath();
         ctx.moveTo(gx - 2.2, y - 1.2); ctx.lineTo(gx, y - 3.2); ctx.lineTo(gx + 2.2, y - 1.2);
         ctx.moveTo(gx - 2.2, y + 1.2); ctx.lineTo(gx, y + 3.2); ctx.lineTo(gx + 2.2, y + 1.2); ctx.stroke();
-        if (!tiny) halo('CUT', x + s - 7, y - 5, font(600, L.fs - 1), 'rgba(255,255,255,.92)', 'right', '0.14em');
+        if (!tiny) halo('CUT', x + s - 7, y - 5, font(600, L.fs - 1), LIGHT ? rgba('text', 0.85) : 'rgba(255,255,255,.92)', 'right', '0.14em');
       }
 
       /* ---------- the balance map ---------- */
@@ -1696,7 +1738,7 @@
           if (!B.ready) txt('measuring ' + Math.round(100 * B.done) + ' %', g.x + g.w, g.y - 8, f, C.mute, 'right', '0.04em');
         }
         // cells
-        ctx.fillStyle = 'rgba(255,255,255,.025)'; ctx.fillRect(g.x, g.y, g.w, g.h);
+        ctx.fillStyle = LIGHT ? rgba('text', 0.03) : 'rgba(255,255,255,.025)'; ctx.fillRect(g.x, g.y, g.w, g.h);
         if (B.cols) for (ci = 0; ci < nc; ci++) for (ri = 0; ri < nr; ri++) {
           v = B.E[ci * nr + ri]; if (v !== v) continue;
           ctx.fillStyle = mapCss(v); ctx.fillRect(g.x + ci * cell, g.y + (nr - 1 - ri) * cell, cell - (cell > 9 ? 1 : 0.5), cell - (cell > 9 ? 1 : 0.5));
@@ -1705,7 +1747,7 @@
         // the balance line: sampling error = surface error
         if (B.ready) {
           ctx.save(); ctx.beginPath(); ctx.rect(g.x, g.y, g.w, g.h); ctx.clip();
-          ctx.strokeStyle = 'rgba(7,9,15,.6)'; ctx.lineWidth = 4; ctx.beginPath();
+          ctx.strokeStyle = LIGHT ? rgba('bg', 0.75) : 'rgba(7,9,15,.6)'; ctx.lineWidth = 4; ctx.beginPath();
           for (i = 0; i < nc; i++) { var lx = g.x + (i + 0.5) * cell, ly = balY(g, B.nstar[i]); if (i) ctx.lineTo(lx, ly); else ctx.moveTo(lx, ly); }
           ctx.stroke();
           ctx.strokeStyle = C.ok; ctx.lineWidth = 1.6; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
@@ -1761,12 +1803,12 @@
         var ox = balX(g, m.nu * m.nv), pulse = 0.5 + 0.5 * Math.sin(t * 4);
         if (d) {
           var oy = balY(g, st.dens), rr = Math.max(tiny ? 4.5 : 6, Math.min(cell * 0.5, 11));
-          ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.beginPath();
+          ctx.strokeStyle = LIGHT ? rgba('text', 0.35) : 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.beginPath();
           ctx.moveTo(ox, oy + rr); ctx.lineTo(ox, g.y + g.h); ctx.moveTo(ox - rr, oy); ctx.lineTo(g.x, oy); ctx.stroke();
-          ctx.strokeStyle = 'rgba(7,9,15,.85)'; ctx.lineWidth = 4.5; ctx.beginPath(); ctx.arc(ox, oy, rr, 0, 6.2832); ctx.stroke();
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ox, oy, rr + pulse * 1.5, 0, 6.2832); ctx.stroke();
+          ctx.strokeStyle = LIGHT ? rgba('bg', 0.9) : 'rgba(7,9,15,.85)'; ctx.lineWidth = 4.5; ctx.beginPath(); ctx.arc(ox, oy, rr, 0, 6.2832); ctx.stroke();
+          ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ox, oy, rr + pulse * 1.5, 0, 6.2832); ctx.stroke();
           var onRight = ox > g.x + g.w * 0.62, below = oy < g.y + 26;
-          halo(pctA(d.rmse), ox + (onRight ? -rr - 6 : rr + 6), oy + (below ? rr + fs + 2 : -rr - 3), font(600, fs + 2), '#ffffff', onRight ? 'right' : 'left', '0.02em');
+          halo(pctA(d.rmse), ox + (onRight ? -rr - 6 : rr + 6), oy + (below ? rr + fs + 2 : -rr - 3), font(600, fs + 2), INK, onRight ? 'right' : 'left', '0.02em');
         } else {
           ctx.strokeStyle = rgba('ctrl', 0.9); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(ox, g.y); ctx.lineTo(ox, g.y + g.h); ctx.stroke();
         }
@@ -1853,9 +1895,9 @@
         // knot about to be removed
         if (op && op.type === 'rem') {
           k = op.cand; var bl = 0.5 + 0.5 * Math.sin(t * 12), hw = tiny ? 4 : 7;
-          ctx.fillStyle = 'rgba(255,255,255,' + (0.10 + 0.10 * bl) + ')';
+          ctx.fillStyle = LIGHT ? rgba('text', 0.08 + 0.08 * bl) : 'rgba(255,255,255,' + (0.10 + 0.10 * bl) + ')';
           if (k.axis === 'u') ctx.fillRect(x + k.knot * s - hw, y, 2 * hw, s); else ctx.fillRect(x, y + k.knot * s - hw, s, 2 * hw);
-          ctx.strokeStyle = 'rgba(255,255,255,' + (0.6 + 0.4 * bl) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]); ctx.beginPath();
+          ctx.strokeStyle = LIGHT ? rgba('text', 0.55 + 0.4 * bl) : 'rgba(255,255,255,' + (0.6 + 0.4 * bl) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]); ctx.beginPath();
           if (k.axis === 'u') { p = x + k.knot * s; ctx.moveTo(p, y); ctx.lineTo(p, y + s); } else { p = y + k.knot * s; ctx.moveTo(x, p); ctx.lineTo(x + s, p); }
           ctx.stroke(); ctx.setLineDash([]);
         }
@@ -1881,7 +1923,7 @@
         if (L.labS) sideCaption(L.side, st.gauss, L.side.y - 8);
         else halo('SIDE · v = ' + st.cut.toFixed(2), L.side.x + 5, L.side.y + L.side.h - 5, font(600, 9), C.dim, 'left', '0.06em');
         if (L.arr === 'col' && !tiny) {     // the cut, carried down from the map to the side view
-          ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath();
+          ctx.strokeStyle = LIGHT ? rgba('text', 0.22) : 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath();
           ctx.moveTo(x - 6.5, cutY()); ctx.lineTo(x - 6.5, L.side.y + L.side.h * 0.5); ctx.lineTo(x - 1, L.side.y + L.side.h * 0.5);
           ctx.moveTo(x - 6.5, cutY()); ctx.lineTo(x - 1, cutY()); ctx.stroke(); ctx.setLineDash([]);
         }
@@ -1892,7 +1934,7 @@
       }
       function legend(x, y, scale, deg) {
         var w = 92, h = L.fs + 10, i;
-        ctx.fillStyle = 'rgba(7,9,15,.72)'; ctx.fillRect(x, y, w + 86, h);
+        ctx.fillStyle = CHIP; ctx.fillRect(x, y, w + 86, h);
         for (i = 0; i < w; i++) {
           var li = ((Math.pow(i / (w - 1), EGAM) * 255) | 0) * 4;
           ctx.fillStyle = 'rgba(' + (PAL_ERR[li] | 0) + ',' + (PAL_ERR[li + 1] | 0) + ',' + (PAL_ERR[li + 2] | 0) + ',' + PAL_ERR[li + 3] + ')';
@@ -1919,7 +1961,7 @@
         if (st.gauss && st.view !== 'target') drawGauss(xa, y, sp);
         // one cut through both
         var yc = Math.round(y + st.cut * sp) + 0.5;
-        ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]); ctx.beginPath();
+        ctx.strokeStyle = LIGHT ? rgba('text', 0.7) : 'rgba(255,255,255,.8)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]); ctx.beginPath();
         ctx.moveTo(xa, yc); ctx.lineTo(xa + sp, yc); ctx.moveTo(xb, yc); ctx.lineTo(xb + sp, yc); ctx.stroke(); ctx.setLineDash([]);
         fitTxt((tiny ? 'ADAPTIVE · ' : 'ADAPTIVE KNOTS · ') + netStr(m), xa, y - 9, 600, fs, C.ctrl, 'left', '0.12em', sp);
         fitTxt((tiny ? 'UNIFORM · ' : 'UNIFORM KNOTS · ') + netStr(base), xb, y - 9, 600, fs, C.dim, 'left', '0.12em', sp);

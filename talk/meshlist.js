@@ -1,25 +1,26 @@
 /* Knot-a-Surface talk — a mesh from a LIST of Gaussians, and the same audit for a lattice (KnotTalk.meshList).
    What an unstructured 3DGS store has to do before it has triangles, run for real on the page:
-     emulate(parts, seed)  the list: the samples of the charts' lattices, each moved to a random place inside its
-                           cell, nudged off the surface along the normal, turned and resized at random, then
-                           shuffled. EMULATED from the same surfaces, never trained. Each entry keeps its true
-                           chart and lattice cell, used ONLY to grade the result (a list does not know them).
-     mesher(list, o)       meshing it the way a list must: a spatial hash and a k-nearest-neighbour search for every
-                           Gaussian (every distance computed is counted), a normal from the neighbours (PCA), the
-                           neighbours projected to that tangent plane and triangulated there (the local Delaunay
-                           star: the Voronoi cell clipped by each neighbour's bisector), and a triangle kept where at
-                           least two of its three corners proposed it (consensus of the local triangulations, after
-                           Gopi, Krishnan & Silva 2000). Neighbour rules in the spirit of PCL's greedy projection: of
-                           the k = 12 nearest, those within mu = 1.6 x the distance to the 6th nearest (a radius that
-                           follows the local density without trusting one lucky close pair) and whose normals differ
-                           by less than 45 degrees. A job: step(ms) works for about ms
-                           milliseconds and returns true when it is finished, run() to the end; the time spent in
-                           each phase is measured inside the steps, so a page can spread the work over frames.
-     lattice(parts)        the charts' own lattices, stitched: a 2 x 2 window, two triangles per stop, no search.
-     audit(...)            one grading for both: edges, boundary edges, non-manifold edges (three or more
-                           triangles on one edge), bridges (edges between points that are not neighbours on the
-                           surface: on another chart, or across a fold of the same one), and boundary loops beyond
-                           the charts' own rims (holes).
+     emulator(parts, seed)  the list: the samples of the charts' lattices, each moved to a random place inside its
+                            cell, nudged off the surface along the normal, turned and resized at random, then
+                            shuffled. EMULATED from the same surfaces, never trained. Each entry keeps its true
+                            chart and lattice cell, used ONLY to grade the result (a list does not know them).
+     mesher(list, o)        meshing it the way a list must: a spatial hash and a k-nearest-neighbour search for every
+                            Gaussian (every distance computed is counted), a normal from the neighbours (PCA), the
+                            neighbours projected to that tangent plane and triangulated there (the local Delaunay
+                            star: the Voronoi cell clipped by each neighbour's bisector), and a triangle kept where at
+                            least two of its three corners proposed it (consensus of the local triangulations, after
+                            Gopi, Krishnan & Silva 2000). Neighbour rules in the spirit of PCL's greedy projection: of
+                            the k = 12 nearest, those within mu = 1.6 x the distance to the 6th nearest (a radius that
+                            follows the local density without trusting one lucky close pair) and whose normals differ
+                            by less than 45 degrees. The hash cell is twice the gap the list's own Gaussians suggest
+                            (their sizes), the fastest of the sizes tried.
+     lattice(parts)         the charts' own lattices, stitched: a 2 x 2 window, two triangles per stop, no search.
+     auditor(tri, nTri, M)  one grading for both: edges, boundary edges, non-manifold edges (three or more triangles
+                            on one edge), bridges (edges between points that are not neighbours on the surface: on
+                            another chart, or across a fold or groove of the same one) and holes.
+   emulator, mesher and auditor are JOBS: step(ms) works for about ms milliseconds and returns true when finished,
+   run() goes to the end. Each measures the time spent inside its steps, so a page can spread the work over frames
+   and still report what it cost. emulate(...) and audit(...) are the same, run at once.
    parts = [{ patch, na, nb, chart }]: chart `chart` sampled on an even na x nb lattice (u = (a + 0.5) / na).
    Plain functions; also require()-able under node (tests). Depends on talk/nurbs.js. */
 (function (root) {
@@ -29,12 +30,31 @@
   function nurbs() { return NB || (NB = KT.nurbs || (typeof require === 'function' ? require('./nurbs.js') : null)); }
   var now = function () { return root.performance && root.performance.now ? root.performance.now() : Date.now(); };
 
-  function rng(seed) {     // the kit's deterministic generator (KnotTalk.rng), here so the file stands alone under node
+  function rng(seed) {      // the kit's deterministic generator (KnotTalk.rng), here so the file stands alone under node
     var s = seed >>> 0;
     return function () { s = (s + 0x6D2B79F5) | 0; var t = Math.imul(s ^ (s >>> 15), 1 | s);
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   }
   function wraps(p) { return { u: !!p.periodicU, v: !!p.periodicV }; }
+  /* a job from a list of phases: each phase is fn(budgetEnd) -> true when that phase is finished */
+  function job(J, phases) {
+    var k = 0;
+    J.done = false; J.ms = J.ms || {};
+    J.step = function (budget) {
+      var end = now() + (budget == null ? 1e9 : budget);
+      while (!J.done) {
+        var ph = phases[k], a = now(), fin = ph.fn(end);
+        J.ms[ph.name] = (J.ms[ph.name] || 0) + now() - a;
+        if (fin && ++k === phases.length) J.done = true;
+        J.phase = J.done ? 'done' : phases[k].name;
+        if (now() >= end) break;
+      }
+      return J.done;
+    };
+    J.run = function () { while (!J.step(1e9)); return J; };
+    J.phase = phases[0].name;
+    return J;
+  }
 
   /* ---------- a point of a patch at any (u, v): position, both tangents, colour ---------- */
   var Nu = new Float64Array(8), Du = new Float64Array(8), Nv = new Float64Array(8), Dv = new Float64Array(8);
@@ -57,54 +77,66 @@
   }
 
   /* ---------- the list ---------- */
-  function emulate(parts, seed) {
-    var rnd = rng(seed == null ? 7 : seed), n = 0, k, a, b;
+  function emulator(parts, seed) {
+    var rnd = rng(seed == null ? 7 : seed), n = 0, t = 0, pi = 0, a = 0, b = 0, e = new Float64Array(12);
     parts.forEach(function (m) { n += m.na * m.nb; });
     var tmp = { pos: new Float32Array(n * 3), col: new Float32Array(n * 3), u: new Float32Array(n * 3), v: new Float32Array(n * 3),
-                chart: new Uint16Array(n), part: new Uint16Array(n), ca: new Int32Array(n), cb: new Int32Array(n), sp: new Float32Array(n) };
-    var e = new Float64Array(12), t = 0;
-    parts.forEach(function (m, pi) {
-      var w = wraps(m.patch);
-      for (b = 0; b < m.nb; b++) for (a = 0; a < m.na; a++) {
-        var u = (a + rnd()) / m.na, v = (b + rnd()) / m.nb;
-        u = w.u ? u % 1 : Math.min(u, 0.99999); v = w.v ? v % 1 : Math.min(v, 0.99999);
-        evalAt(m.patch, u, v, e);
-        // the edges of this sample's cell, its normal, and its size
-        var sx = e[3] / m.na, sy = e[4] / m.na, sz = e[5] / m.na, tx = e[6] / m.nb, ty = e[7] / m.nb, tz = e[8] / m.nb;
-        var nx = sy * tz - sz * ty, ny = sz * tx - sx * tz, nz = sx * ty - sy * tx, nl = Math.hypot(nx, ny, nz) || 1e-12, sp = Math.sqrt(nl);
-        var off = (rnd() - 0.5) * 0.5 * sp, an = rnd() * 6.283185, ca = Math.cos(an), sa = Math.sin(an);
-        var f1 = sp * 0.72 * (0.6 + 0.7 * rnd()), f2 = sp * 0.72 * (0.6 + 0.7 * rnd());
-        var sl = Math.hypot(sx, sy, sz) || 1e-12, e1x = sx / sl, e1y = sy / sl, e1z = sz / sl;
-        nx /= nl; ny /= nl; nz /= nl;
-        var e2x = ny * e1z - nz * e1y, e2y = nz * e1x - nx * e1z, e2z = nx * e1y - ny * e1x, o = t * 3;
-        tmp.pos[o] = e[0] + nx * off; tmp.pos[o + 1] = e[1] + ny * off; tmp.pos[o + 2] = e[2] + nz * off;
-        tmp.col[o] = e[9]; tmp.col[o + 1] = e[10]; tmp.col[o + 2] = e[11];
-        tmp.u[o] = (e1x * ca + e2x * sa) * f1; tmp.u[o + 1] = (e1y * ca + e2y * sa) * f1; tmp.u[o + 2] = (e1z * ca + e2z * sa) * f1;
-        tmp.v[o] = (e2x * ca - e1x * sa) * f2; tmp.v[o + 1] = (e2y * ca - e1y * sa) * f2; tmp.v[o + 2] = (e2z * ca - e1z * sa) * f2;
-        tmp.chart[t] = m.chart; tmp.part[t] = pi; tmp.ca[t] = a; tmp.cb[t] = b; tmp.sp[t] = sp; t++;
-      }
-    });
-    var ord = new Uint32Array(n);                     // no order at all
-    for (k = 0; k < n; k++) ord[k] = k;
-    for (k = n - 1; k > 0; k--) { var j = Math.floor(rnd() * (k + 1)), s = ord[k]; ord[k] = ord[j]; ord[j] = s; }
-    var L = { n: n, pos: new Float32Array(n * 3), col: new Float32Array(n * 3), axU: new Float32Array(n * 3), axV: new Float32Array(n * 3),
-              chart: new Uint16Array(n), part: new Uint16Array(n), ca: new Int32Array(n), cb: new Int32Array(n),
-              grid: parts.map(function (m) { var w = wraps(m.patch); return { na: m.na, nb: m.nb, wu: w.u, wv: w.v, patch: m.patch }; }) };
-    for (k = 0; k < n; k++) {
-      var f = ord[k], q;
-      for (q = 0; q < 3; q++) { L.pos[k * 3 + q] = tmp.pos[f * 3 + q]; L.col[k * 3 + q] = tmp.col[f * 3 + q]; L.axU[k * 3 + q] = tmp.u[f * 3 + q]; L.axV[k * 3 + q] = tmp.v[f * 3 + q]; }
-      L.chart[k] = tmp.chart[f]; L.part[k] = tmp.part[f]; L.ca[k] = tmp.ca[f]; L.cb[k] = tmp.cb[f];
+                chart: new Uint16Array(n), part: new Uint16Array(n), ca: new Int32Array(n), cb: new Int32Array(n) };
+    var J = { n: n, list: null, progress: 0 };
+    function one(m) {
+      var w = wraps(m.patch), u = (a + rnd()) / m.na, v = (b + rnd()) / m.nb;
+      u = w.u ? u % 1 : Math.min(u, 0.99999); v = w.v ? v % 1 : Math.min(v, 0.99999);
+      evalAt(m.patch, u, v, e);
+      // the edges of this sample's cell, its normal, and its size
+      var sx = e[3] / m.na, sy = e[4] / m.na, sz = e[5] / m.na, tx = e[6] / m.nb, ty = e[7] / m.nb, tz = e[8] / m.nb;
+      var nx = sy * tz - sz * ty, ny = sz * tx - sx * tz, nz = sx * ty - sy * tx, nl = Math.hypot(nx, ny, nz) || 1e-12, sp = Math.sqrt(nl);
+      var off = (rnd() - 0.5) * 0.5 * sp, an = rnd() * 6.283185, ca = Math.cos(an), sa = Math.sin(an);
+      var f1 = sp * 0.72 * (0.6 + 0.7 * rnd()), f2 = sp * 0.72 * (0.6 + 0.7 * rnd());
+      var sl = Math.hypot(sx, sy, sz) || 1e-12, e1x = sx / sl, e1y = sy / sl, e1z = sz / sl;
+      nx /= nl; ny /= nl; nz /= nl;
+      var e2x = ny * e1z - nz * e1y, e2y = nz * e1x - nx * e1z, e2z = nx * e1y - ny * e1x, o = t * 3;
+      tmp.pos[o] = e[0] + nx * off; tmp.pos[o + 1] = e[1] + ny * off; tmp.pos[o + 2] = e[2] + nz * off;
+      tmp.col[o] = e[9]; tmp.col[o + 1] = e[10]; tmp.col[o + 2] = e[11];
+      tmp.u[o] = (e1x * ca + e2x * sa) * f1; tmp.u[o + 1] = (e1y * ca + e2y * sa) * f1; tmp.u[o + 2] = (e1z * ca + e2z * sa) * f1;
+      tmp.v[o] = (e2x * ca - e1x * sa) * f2; tmp.v[o + 1] = (e2y * ca - e1y * sa) * f2; tmp.v[o + 2] = (e2z * ca - e1z * sa) * f2;
+      tmp.chart[t] = m.chart; tmp.part[t] = pi; tmp.ca[t] = a; tmp.cb[t] = b; t++;
     }
-    return L;
+    return job(J, [
+      { name: 'sample', fn: function (end) {
+        while (pi < parts.length) {
+          var m = parts[pi];
+          for (var c = 0; c < 2048 && pi < parts.length; c++) { one(m); if (++a === m.na) { a = 0; if (++b === m.nb) { b = 0; m = parts[++pi]; } } }
+          J.progress = 0.9 * t / Math.max(1, n);
+          if (now() >= end) return pi >= parts.length;
+        }
+        return true;
+      } },
+      { name: 'shuffle', fn: function () {
+        var ord = new Uint32Array(n), k, q;               // no order at all
+        for (k = 0; k < n; k++) ord[k] = k;
+        for (k = n - 1; k > 0; k--) { var j = Math.floor(rnd() * (k + 1)), s = ord[k]; ord[k] = ord[j]; ord[j] = s; }
+        var L = { n: n, pos: new Float32Array(n * 3), col: new Float32Array(n * 3), axU: new Float32Array(n * 3), axV: new Float32Array(n * 3),
+                  chart: new Uint16Array(n), part: new Uint16Array(n), ca: new Int32Array(n), cb: new Int32Array(n),
+                  grid: parts.map(function (m) { var w = wraps(m.patch); return { na: m.na, nb: m.nb, wu: w.u, wv: w.v, patch: m.patch }; }) };
+        for (k = 0; k < n; k++) {
+          var f = ord[k];
+          for (q = 0; q < 3; q++) { L.pos[k * 3 + q] = tmp.pos[f * 3 + q]; L.col[k * 3 + q] = tmp.col[f * 3 + q]; L.axU[k * 3 + q] = tmp.u[f * 3 + q]; L.axV[k * 3 + q] = tmp.v[f * 3 + q]; }
+          L.chart[k] = tmp.chart[f]; L.part[k] = tmp.part[f]; L.ca[k] = tmp.ca[f]; L.cb[k] = tmp.cb[f];
+        }
+        J.list = L; J.progress = 1; tmp = null;
+        return true;
+      } }
+    ]);
   }
+  function emulate(parts, seed) { return emulator(parts, seed).run().list; }
 
   /* ---------- a spatial hash over the points: what a list needs before it can ask "who is near me" ---------- */
   function hashGrid(P, n, cell) {
     var lo = [1e30, 1e30, 1e30], hi = [-1e30, -1e30, -1e30], i, q;
     for (i = 0; i < n; i++) for (q = 0; q < 3; q++) { var x = P[i * 3 + q]; if (x < lo[q]) lo[q] = x; if (x > hi[q]) hi[q] = x; }
     var DX = Math.floor((hi[0] - lo[0]) / cell) + 3, DY = Math.floor((hi[1] - lo[1]) / cell) + 3, DZ = Math.floor((hi[2] - lo[2]) / cell) + 3;
-    var RMAX = Math.max(DX, DY, DZ);
-    var S = 1; while (S < n * 2) S <<= 1;
+    var RMAX = Math.max(DX, DY, DZ), S = 1;
+    while (S < n * 2) S <<= 1;
     var mask = S - 1, keys = new Float64Array(S).fill(-1), cnt = new Int32Array(S), start = new Int32Array(S), slot = new Int32Array(n), ord = new Int32Array(n);
     function cx(i) { return Math.floor((P[i * 3] - lo[0]) / cell) + 1; }
     function cy(i) { return Math.floor((P[i * 3 + 1] - lo[1]) / cell) + 1; }
@@ -116,16 +148,15 @@
       keys[h] = key; return h;
     }
     for (i = 0; i < n; i++) { slot[i] = find(cx(i), cy(i), cz(i), true); cnt[slot[i]]++; }
-    var sum = 0;
+    var sum = 0, fill = new Int32Array(S);
     for (i = 0; i < S; i++) { start[i] = sum; sum += cnt[i]; }
-    var fill = new Int32Array(S);
     for (i = 0; i < n; i++) { ord[start[slot[i]] + fill[slot[i]]++] = i; }
     return {
       tests: 0,
       /* the k nearest points to point i (not i itself), nearest first, into nbI / nbD (squared distances) at off;
          shells of cells around i's cell until the k-th distance is inside what was searched. Returns how many. */
       knn: function (i, k, nbI, nbD, off) {
-        var x0 = cx(i), y0 = cy(i), z0 = cz(i), px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2], m = 0, r, a, b, c, h, j, t, d, e, s;
+        var x0 = cx(i), y0 = cy(i), z0 = cz(i), px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2], m = 0, r, a, b, c, h, j, t, d, e, s, w;
         for (r = 1; r <= RMAX; r++) {
           for (c = -r; c <= r; c++) for (b = -r; b <= r; b++) for (a = -r; a <= r; a++) {
             if (r > 1 && Math.max(Math.abs(a), Math.abs(b), Math.abs(c)) !== r) continue;     // shell 1 is the whole 3 x 3 x 3 block
@@ -135,7 +166,7 @@
               s = j * 3; d = (P[s] - px) * (P[s] - px) + (P[s + 1] - py) * (P[s + 1] - py) + (P[s + 2] - pz) * (P[s + 2] - pz);
               this.tests++;
               if (m < k) m++; else if (d >= nbD[off + k - 1]) continue;
-              var w = m - 1;                                   // insertion into the sorted list
+              w = m - 1;                                       // insertion into the sorted list
               while (w > 0 && nbD[off + w - 1] > d) { nbD[off + w] = nbD[off + w - 1]; nbI[off + w] = nbI[off + w - 1]; w--; }
               nbD[off + w] = d; nbI[off + w] = j;
             }
@@ -166,26 +197,19 @@
     out[0] = ax / la; out[1] = ay / la; out[2] = az / la;
   }
 
-  /* ---------- meshing a list ---------- */
+  /* ---------- meshing a list ----------
+     J.tests = distances computed; J.ms = { index, search, normal, fan, vote, audit } in ms; J.tri / J.nTri = the kept
+     triangles, each listed once, by the first Gaussian (in list order) that proposed it, in that order; J.stats = the audit. */
   function mesher(L, o) {
     o = o || {};
     var n = L.n, P = L.pos, K = o.k || 12, MU = o.mu || 1.6, RI = o.ri == null ? 5 : o.ri, DEV = Math.cos((o.dev == null ? 45 : o.dev) * Math.PI / 180), KEEP = o.keep || 2;
     var nbI = new Int32Array(n * K), nbD = new Float32Array(n * K), nbN = new Uint8Array(n), NRM = new Float32Array(n * 3);
-    var star = new Int32Array(Math.max(1024, n * 14)), sStart = new Int32Array(n + 1), sLen = 0, grid = null;
-    var job = { n: n, phase: 'index', done: false, i: 0, tests: 0, ms: { index: 0, search: 0, mesh: 0, audit: 0 }, tri: null, nTri: 0, stats: null };
-    var X = new Float64Array(K + 1), Y = new Float64Array(K + 1), J = new Int32Array(K + 1);
+    var star = new Int32Array(Math.max(1024, n * 14)), sStart = new Int32Array(n + 1), sLen = 0, grid = null, i = 0, out = null, m = 0, aud = null;
+    var J = { n: n, tests: 0, tri: null, nTri: 0, stats: null, progress: 0, cell: 0, normals: NRM };
+    var X = new Float64Array(K + 1), Y = new Float64Array(K + 1), Jx = new Int32Array(K + 1);
     var PX = new Float64Array(2 * K + 16), PY = new Float64Array(2 * K + 16), PL = new Int32Array(2 * K + 16);
     var QX = new Float64Array(2 * K + 16), QY = new Float64Array(2 * K + 16), QL = new Int32Array(2 * K + 16), nv3 = [0, 0, 0];
 
-    function index() {                  // the cell: about the size the list's own Gaussians say the gaps are
-      var s = 0, i, m = Math.min(n, 4096);
-      for (i = 0; i < m; i++) {
-        var k = Math.floor(i * n / m) * 3;
-        s += Math.hypot(L.axU[k], L.axU[k + 1], L.axU[k + 2]) + Math.hypot(L.axV[k], L.axV[k + 1], L.axV[k + 2]);
-      }
-      job.cell = (o.cellK || 2) * s / (2 * m * 0.72 * 0.95);
-      grid = hashGrid(P, n, job.cell);
-    }
     function search(i) { nbN[i] = grid.knn(i, K, nbI, nbD, i * K); }
     function normal(i) {
       var m = nbN[i], s, k, q, mx = P[i * 3], my = P[i * 3 + 1], mz = P[i * 3 + 2];
@@ -207,7 +231,7 @@
       sStart[i] = sLen;
       if (m < 2) return;
       var ax = Math.abs(nx) < 0.9 ? 1 : 0, ay = ax ? 0 : 1;      // a tangent basis e1, e2
-      var e1x = ay * nz - 0 * ny, e1y = 0 * nx - ax * nz, e1z = ax * ny - ay * nx, l1 = Math.hypot(e1x, e1y, e1z);
+      var e1x = ay * nz, e1y = -ax * nz, e1z = ax * ny - ay * nx, l1 = Math.hypot(e1x, e1y, e1z);
       e1x /= l1; e1y /= l1; e1z /= l1;
       var e2x = ny * e1z - nz * e1y, e2y = nz * e1x - nx * e1z, e2z = nx * e1y - ny * e1x;
       var ri = Math.min(m - 1, RI), r2 = MU * MU * nbD[i * K + ri], R = Math.max(1e-9, MU * Math.sqrt(nbD[i * K + ri]));
@@ -216,7 +240,7 @@
         j = nbI[i * K + k]; s = j * 3;
         if (Math.abs(nx * NRM[s] + ny * NRM[s + 1] + nz * NRM[s + 2]) < DEV) continue;    // the surface turns too much in between
         var dx = P[s] - P[o3], dy = P[s + 1] - P[o3 + 1], dz = P[s + 2] - P[o3 + 2];
-        X[c] = dx * e1x + dy * e1y + dz * e1z; Y[c] = dx * e2x + dy * e2y + dz * e2z; J[c] = j; c++;
+        X[c] = dx * e1x + dy * e1y + dz * e1z; Y[c] = dx * e2x + dy * e2y + dz * e2z; Jx[c] = j; c++;
       }
       if (c < 2) return;
       var np = 4, q, t;
@@ -239,54 +263,64 @@
       if (sLen + np * 2 > star.length) { var big = new Int32Array(star.length * 2); big.set(star); star = big; }
       for (q = 0; q < np; q++) {
         var a = PL[q], b = PL[(q + 1) % np];
-        if (a >= 0 && b >= 0 && a !== b) { star[sLen++] = J[a]; star[sLen++] = J[b]; }
+        if (a >= 0 && b >= 0 && a !== b) { star[sLen++] = Jx[a]; star[sLen++] = Jx[b]; }
       }
     }
     function has(x, a, b) {             // does point x's star hold the triangle (x, a, b)?
       for (var t = sStart[x], e = sStart[x + 1]; t < e; t += 2) if ((star[t] === a && star[t + 1] === b) || (star[t] === b && star[t + 1] === a)) return true;
       return false;
     }
-    function vote() {
-      var out = new Uint32Array(Math.max(3, sLen * 3 / 2)), m = 0, i, t, a, b;
-      for (i = 0; i < n; i++) for (t = sStart[i]; t < sStart[i + 1]; t += 2) {
-        a = star[t]; b = star[t + 1];
-        var va = has(a, i, b), vb = has(b, i, a);
+    function vote(i) {
+      for (var t = sStart[i]; t < sStart[i + 1]; t += 2) {
+        var a = star[t], b = star[t + 1], va = has(a, i, b), vb = has(b, i, a);
         if (1 + va + vb < KEEP) continue;
         if ((va && a < i) || (vb && b < i)) continue;          // listed once: by the first of its proposers
         out[m * 3] = i; out[m * 3 + 1] = a; out[m * 3 + 2] = b; m++;
       }
-      job.tri = out.subarray(0, m * 3); job.nTri = m;
     }
-    var PH = ['index', 'search', 'normal', 'fan', 'vote', 'audit'];
-    job.step = function (budget) {
-      var t0 = now(), tEnd = t0 + (budget == null ? 1e9 : budget);
-      while (!job.done) {
-        var a = now(), ph = job.phase, i, e;
-        if (ph === 'index') { index(); job.ms.index += now() - a; job.phase = 'search'; job.i = 0; }
-        else if (ph === 'vote') { sStart[n] = sLen; vote(); job.ms.mesh += now() - a; job.phase = 'audit'; }
-        else if (ph === 'audit') {
-          job.stats = audit(job.tri, job.nTri, L);
-          job.ms.audit += now() - a; job.done = true; job.phase = 'done'; job.progress = 1;
-        } else {
-          for (i = job.i, e = Math.min(n, i + 512); i < e; i++) (ph === 'search' ? search : ph === 'normal' ? normal : fan)(i);
-          job.i = e;
-          if (ph === 'search') { job.ms.search += now() - a; job.tests = grid.tests; } else job.ms.mesh += now() - a;
-          if (e === n) { job.phase = PH[PH.indexOf(ph) + 1]; job.i = 0; }
+    /* one pass over all points in chunks, as a phase */
+    function each(fn, w, before) {
+      return function (end) {
+        if (i === 0 && before) before();
+        while (i < n) {
+          for (var e = Math.min(n, i + 256); i < e; i++) fn(i);
+          J.progress = (w + i / n) / 4.4;
+          if (now() >= end) break;
         }
-        if (!job.done) job.progress = Math.min(0.999, Math.max(0, (PH.indexOf(job.phase) - 1 + job.i / n) / 4));
-        if (now() >= tEnd) break;
-      }
-      return job.done;
-    };
-    job.run = function () { while (!job.step(1e9)); return job; };
-    job.normals = NRM;
-    return job;
+        J.tests = grid ? grid.tests : 0;
+        if (i < n) return false;
+        i = 0; return true;
+      };
+    }
+    return job(J, [
+      { name: 'index', fn: function () {     // the cell: twice the gap that the list's own Gaussians suggest (their size)
+        var s = 0, k, c = Math.min(n, 4096);
+        for (k = 0; k < c; k++) {
+          var q = Math.floor(k * n / c) * 3;
+          s += Math.hypot(L.axU[q], L.axU[q + 1], L.axU[q + 2]) + Math.hypot(L.axV[q], L.axV[q + 1], L.axV[q + 2]);
+        }
+        J.cell = (o.cellK || 2) * s / (2 * c * 0.72 * 0.95);
+        grid = hashGrid(P, n, J.cell);
+        return true;
+      } },
+      { name: 'search', fn: each(search, 0) },
+      { name: 'normal', fn: each(normal, 1) },
+      { name: 'fan', fn: each(fan, 2) },
+      { name: 'vote', fn: each(vote, 3, function () { sStart[n] = sLen; out = new Uint32Array(Math.max(3, sLen * 3 / 2)); m = 0; }) },
+      { name: 'audit', fn: function (end) {
+        if (!aud) { J.tri = out.subarray(0, m * 3); J.nTri = m; aud = auditor(J.tri, m, L); }
+        var fin = aud.step(Math.max(1, end - now()));
+        J.progress = (4 + 0.4 * aud.progress) / 4.4;
+        if (fin) { J.stats = aud.stats; J.progress = 1; }
+        return fin;
+      } }
+    ]);
   }
 
   /* ---------- the charts' own lattices, stitched ----------
      parts in the window's order; vertex (a, b) of part m is m.off + b * na + a (offsets assigned here). Returns the
      triangles (two per window stop, in the window's order), three edges per stop for drawing, and per vertex its chart
-     and lattice cell (for the audit). No search: the neighbours are the next addresses. */
+     and lattice cell (for the audit). No search: the neighbours are the next addresses. ms = the time it took. */
   function lattice(parts) {
     var t0 = now(), V = 0, Q = 0, a, b, t = 0, e = 0;
     parts.forEach(function (m) {
@@ -315,7 +349,7 @@
      is measured along the straight line in (u, v) between the two cells; pairs within two cells of each other are
      neighbours). A HOLE is a loop of boundary edges (edges on one triangle only) that does not reach the chart's own
      rim (the outermost two rows of cells): a sheet's border is not a hole, and a gap that runs into it is not counted.
-     Returns the counts and, for drawing, edges as (a, b, first triangle holding it), in the order of that triangle:
+     stats: the counts, and for drawing, edges as (a, b, first triangle holding it), in the order of that triangle:
      bridges and non-manifold edges in `bad`, the edges around holes in `hole`. */
   var ea = new Float64Array(12);
   function along(g, a0, b0, a1, b1) {        // [path along the surface, chord] between the centres of two cells of one lattice
@@ -331,18 +365,19 @@
     }
     return [len, Math.hypot(x - x0, y - y0, z - z0)];
   }
-  function audit(tri, nTri, M) {
-    var nV = M.n, chart = M.chart, part = M.part, ca = M.ca, cb = M.cb, grid = M.grid;
-    var S = 1; while (S < nTri * 3) S <<= 1;
+  function auditor(tri, nTri, M) {
+    var nV = M.n, chart = M.chart, part = M.part, ca = M.ca, cb = M.cb, grid = M.grid, S = 1;
+    while (S < nTri * 3) S <<= 1;
     var mask = S - 1, K1 = new Int32Array(S).fill(-1), K2 = new Int32Array(S), CNT = new Int32Array(S), FIRST = new Int32Array(S), used = [];
+    var par = new Int32Array(nV).fill(-1), rimE = [], t = 0, i = 0;
+    var r = { points: nV, triangles: nTri, edges: 0, boundary: 0, nonManifold: 0, bridges: 0, loops: 0, holes: 0, unused: 0, bad: [], hole: [] };
+    var J = { stats: null, progress: 0 };
     function add(a, b, t) {
       if (a > b) { var s = a; a = b; b = s; }
       var h = (Math.imul(a, 0x9E3779B1) ^ Math.imul(b, 0x85EBCA77)) & mask;
       while (K1[h] !== -1) { if (K1[h] === a && K2[h] === b) { CNT[h]++; return; } h = (h + 1) & mask; }
       K1[h] = a; K2[h] = b; CNT[h] = 1; FIRST[h] = t; used.push(h);
     }
-    var t, i;
-    for (t = 0; t < nTri; t++) { add(tri[t * 3], tri[t * 3 + 1], t); add(tri[t * 3 + 1], tri[t * 3 + 2], t); add(tri[t * 3 + 2], tri[t * 3], t); }
     function far(a, b) {
       if (chart[a] !== chart[b] || part[a] !== part[b]) return true;
       var g = grid[part[a]], da = Math.abs(ca[a] - ca[b]), db = Math.abs(cb[a] - cb[b]);
@@ -352,33 +387,51 @@
       var w = along(g, ca[a], cb[a], ca[b], cb[b]);
       return w[0] > 2 * w[1];
     }
-    var par = new Int32Array(nV).fill(-1), rimE = [];
     function root(x) { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; }
     function join(a, b) { if (par[a] < 0) par[a] = a; if (par[b] < 0) par[b] = b; a = root(a); b = root(b); if (a !== b) par[a] = b; }
     function border(x) {
       var g = grid[part[x]];
       return (!g.wu && (ca[x] <= 1 || ca[x] >= g.na - 2)) || (!g.wv && (cb[x] <= 1 || cb[x] >= g.nb - 2));
     }
-    var r = { points: nV, triangles: nTri, edges: used.length, boundary: 0, nonManifold: 0, bridges: 0, loops: 0, holes: 0, bad: [], hole: [] };
-    for (i = 0; i < used.length; i++) {
-      var h = used[i], a = K1[h], b = K2[h], c = CNT[h], br = far(a, b);
-      if (c === 1) { r.boundary++; join(a, b); rimE.push(a, b, FIRST[h]); }
-      if (c >= 3) r.nonManifold++;
-      if (br) r.bridges++;
-      if (br || c >= 3) r.bad.push(a, b, FIRST[h]);
-    }
-    var open = new Uint8Array(nV);            // 1: this loop reaches the rim
-    for (i = 0; i < nV; i++) if (par[i] >= 0) { var q = root(i); if (border(i)) open[q] = 1; }
-    for (i = 0; i < nV; i++) if (par[i] === i) { r.loops++; if (!open[i]) r.holes++; }
-    for (i = 0; i < rimE.length; i += 3) if (!open[root(rimE[i])]) r.hole.push(rimE[i], rimE[i + 1], rimE[i + 2]);
-    // the points that ended up in no triangle at all
-    var inT = new Uint8Array(nV);
-    for (t = 0; t < nTri * 3; t++) inT[tri[t]] = 1;
-    r.unused = 0; for (i = 0; i < nV; i++) if (!inT[i]) r.unused++;
-    return r;
+    return job(J, [
+      { name: 'edges', fn: function (end) {
+        while (t < nTri) {
+          for (var e = Math.min(nTri, t + 4096); t < e; t++) { add(tri[t * 3], tri[t * 3 + 1], t); add(tri[t * 3 + 1], tri[t * 3 + 2], t); add(tri[t * 3 + 2], tri[t * 3], t); }
+          J.progress = 0.4 * t / Math.max(1, nTri);
+          if (now() >= end) break;
+        }
+        return t >= nTri;
+      } },
+      { name: 'grade', fn: function (end) {
+        while (i < used.length) {
+          for (var e = Math.min(used.length, i + 4096); i < e; i++) {
+            var h = used[i], a = K1[h], b = K2[h], c = CNT[h], br = far(a, b);
+            if (c === 1) { r.boundary++; join(a, b); rimE.push(a, b, FIRST[h]); }
+            if (c >= 3) r.nonManifold++;
+            if (br) r.bridges++;
+            if (br || c >= 3) r.bad.push(a, b, FIRST[h]);
+          }
+          J.progress = 0.4 + 0.5 * i / Math.max(1, used.length);
+          if (now() >= end) break;
+        }
+        return i >= used.length;
+      } },
+      { name: 'loops', fn: function () {
+        var open = new Uint8Array(nV), inT = new Uint8Array(nV), k;     // open: this loop reaches the rim
+        r.edges = used.length;
+        for (k = 0; k < nV; k++) if (par[k] >= 0 && border(k)) open[root(k)] = 1;
+        for (k = 0; k < nV; k++) if (par[k] === k) { r.loops++; if (!open[k]) r.holes++; }
+        for (k = 0; k < rimE.length; k += 3) if (!open[root(rimE[k])]) r.hole.push(rimE[k], rimE[k + 1], rimE[k + 2]);
+        for (k = 0; k < nTri * 3; k++) inT[tri[k]] = 1;                // the points that ended up in no triangle at all
+        for (k = 0; k < nV; k++) if (!inT[k]) r.unused++;
+        J.stats = r; J.progress = 1; K1 = K2 = CNT = FIRST = used = null;
+        return true;
+      } }
+    ]);
   }
+  function audit(tri, nTri, M) { return auditor(tri, nTri, M).run().stats; }
 
-  var api = { emulate: emulate, mesher: mesher, lattice: lattice, audit: audit, evalAt: evalAt };
+  var api = { emulator: emulator, emulate: emulate, mesher: mesher, lattice: lattice, auditor: auditor, audit: audit, evalAt: evalAt };
   KT.meshList = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

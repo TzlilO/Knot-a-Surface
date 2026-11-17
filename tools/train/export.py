@@ -1,0 +1,435 @@
+#!/usr/bin/env python3
+"""Snapshots of a plain 3DGS run on DTU scan 122 -> talk/dtu/train122.js (KnotTalk.dtuTrain[122]), for the `train`
+scene of the talk's pipeline chapter (talk/sims/pipeline.js).
+
+    python3 -I tools/train/export.py <run-dir> [-o talk/dtu/train122.js] [--budget 60000] [--seed 0] [--rule area]
+
+<run-dir> is what tools/train/train3dgs.py wrote with graphdeco-inria/gaussian-splatting:
+  point_cloud/iteration_<k>/point_cloud.ply   the Gaussians, graphdeco's vertex layout: x, y, z, nx, ny, nz,
+                                              f_dc_0..2, f_rest_*, opacity, scale_0..2, rot_0..3 (log-scales, logit
+                                              opacity, unnormalised quaternion w x y z, COLMAP frame)
+  log.csv, run.json                           the wrapper's log and the run's facts (implementation, GPU, date, why and
+                                              where it stopped, which snapshots it left)
+  cameras.json, input.ply                     graphdeco's own copies of the cameras and of the SfM points it started from
+A run of graphdeco's own train.py works too: no log then, and the note says what is unknown. A run that stopped early
+exports the same way: the snapshots it reached, its final and best ones, and its stop record (README, "When it stops").
+
+STOP. run.json's stop record goes into the file as an optional field, stop: {reason, iter, best_psnr, best_iter}, and
+into the note. When run.json lists the run's snapshots, only those are exported (one left on disk by an earlier run in
+the same folder, or a save cut off, is not).
+
+FRAME. The Gaussians live in the COLMAP frame of the dataset's sparse/0 model. tools/dtu/pipeline.py maps that frame
+into the owl's (talk/dtu-data.js: +y up, the table at y = 0, 1 unit = 80 mm): X_mm = X * s + c (scale_mat_0 of
+cameras.npz), L = (X_mm - base) @ A (fit.py's table frame), P = (L - o) / 80 (o: the owl's axis). That is a similarity
+P = k R X + T. pipeline.py wrote the 64 cameras into talk/dtu/pipeline122.js in the owl's frame (centre, rotation);
+the run holds the same cameras in the COLMAP frame (cameras.json; or images.txt with --data). R comes from the
+rotations, k and T from the centres. Then a check that does not use the cameras: every one of the dataset's SfM points
+(input.ply, or points3D.txt with --data), mapped, has to land on the copy of it that pipeline122.js holds in the owl's
+frame, within that file's own rounding. If not, nothing is written.
+
+PER GAUSSIAN: centre k R x + T; rotation q_R * q (q normalised; Hamilton product, w x y z); sigma = exp(scale) * k
+per axis; colour = 0.5 + 0.28209479 * f_dc, clamped, 8 bits (the DC term: no view dependence); opacity = sigmoid,
+8 bits. Rows with a non-finite number are left out (counted in ntotal, reported).
+
+BUDGET. A snapshot with more than --budget Gaussians keeps --budget of them, drawn without replacement with
+probability growing with opacity x (s1 s2 + s2 s3 + s3 s1), the Gaussian's mean footprint on screen up to a constant
+(Efraimidis-Spirakis keys log(u) / w, u from numpy's PCG64 seeded with [seed, iteration]). --rule uniform draws
+uniformly. Kept Gaussians stay in the checkpoint's order. Same input, seed and numpy: the same bytes.
+
+STORAGE (the file decodes itself at load, like talk/dtu-data.js): centres as 16-bit integers over a box per snapshot
+(pipeline.py's box for the SfM points, 10 x 5 x 10 units around the owl, where the steps are 0.012 mm, stretched to
+hold all but the outermost 0.2 % of the Gaussians on each side of each axis), those outside it as float32; sigmas as
+8-bit logarithms over the snapshot's range; quaternions as their three smallest components at 8 bits each plus 2 bits
+naming the one left out; colour and opacity as bytes. About 16.3 bytes per Gaussian, 21.7 in base64.
+
+Standard library and numpy only, no GPU. Nothing here trains anything; it converts what a run left behind."""
+import argparse, base64, csv, json, math, os, re, sys
+import numpy as np
+
+C0 = 0.28209479177387814                                  # SH band 0: colour = 0.5 + C0 * f_dc
+BOX = np.array([[-5.0, -0.5, -5.0], [5.0, 4.5, 5.0]])    # owl units: pipeline.py's box for the SfM points
+FLOOR = math.log(1e-5)                                    # sigmas below 1e-5 units (0.0008 mm) are stored as that
+NEED = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3']
+TALK = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'talk'))
+
+
+def say(*a): print(*a, flush=True)
+
+
+# ------------------------------------------------------------------ input
+PLY_TYPES = {'char': 'i1', 'int8': 'i1', 'uchar': 'u1', 'uint8': 'u1', 'short': 'i2', 'int16': 'i2', 'ushort': 'u2',
+             'uint16': 'u2', 'int': 'i4', 'int32': 'i4', 'uint': 'u4', 'uint32': 'u4', 'float': 'f4', 'float32': 'f4',
+             'double': 'f8', 'float64': 'f8'}
+
+def read_ply(path):
+    """The vertex element of a binary PLY with scalar properties (what 3DGS writes) as a structured array."""
+    with open(path, 'rb') as f:
+        if f.readline().strip() != b'ply': raise SystemExit('%s: not a PLY file' % path)
+        fmt, elems = None, []
+        while True:
+            line = f.readline()
+            if not line: raise SystemExit('%s: no end_header' % path)
+            t = line.decode('ascii', 'replace').split()
+            if not t or t[0] in ('comment', 'obj_info'): continue
+            if t[0] == 'end_header': break
+            if t[0] == 'format': fmt = t[1]
+            elif t[0] == 'element': elems.append((t[1], int(t[2]), []))
+            elif t[0] == 'property':
+                if t[1] == 'list': raise SystemExit('%s: list properties are not supported' % path)
+                elems[-1][2].append((t[2], PLY_TYPES[t[1]]))
+        if fmt not in ('binary_little_endian', 'binary_big_endian'): raise SystemExit('%s: %s PLY, only binary is supported' % (path, fmt))
+        data = f.read()
+    e, off = '<' if fmt == 'binary_little_endian' else '>', 0
+    for name, n, props in elems:
+        dt = np.dtype([(p, e + t) for p, t in props])
+        if name == 'vertex':
+            if len(data) < off + n * dt.itemsize: raise SystemExit('%s: file ends before its %d vertices' % (path, n))
+            return np.frombuffer(data, dt, count=n, offset=off)
+        off += n * dt.itemsize
+    raise SystemExit('%s: no vertex element' % path)
+
+def read_gaussians(path):
+    v = read_ply(path); miss = [k for k in NEED if k not in v.dtype.names]
+    if miss: raise SystemExit('%s: not the 3DGS vertex layout, no %s' % (path, ', '.join(miss)))
+    col = lambda *k: np.stack([v[i].astype(np.float64) for i in k], 1)
+    return dict(x=col('x', 'y', 'z'), dc=col('f_dc_0', 'f_dc_1', 'f_dc_2'), op=v['opacity'].astype(np.float64),
+                sc=col('scale_0', 'scale_1', 'scale_2'), rot=col('rot_0', 'rot_1', 'rot_2', 'rot_3'))
+
+def read_pipeline(path):
+    m = re.search(r'\|\| \{\}\)\[(\d+)\] = (\{.*\});\n', open(path).read())
+    if not m: raise SystemExit('%s: not a file written by tools/dtu/pipeline.py' % path)
+    return int(m.group(1)), json.loads(m.group(2))
+
+def photo_index(name): return int(os.path.splitext(os.path.basename(name))[0])     # 0000.png -> 0, as pipeline.py counts
+
+def cameras_run(run):
+    """graphdeco's cameras.json: per camera the centre ('position') and the camera-to-world rotation, COLMAP frame."""
+    return {photo_index(c['img_name']): (np.array(c['rotation'], float).T, np.array(c['position'], float))
+            for c in json.load(open(os.path.join(run, 'cameras.json')))}
+
+def cameras_colmap(data):
+    L = [l for l in open(os.path.join(data, 'sparse', '0', 'images.txt')) if not l.startswith('#')]
+    out = {}
+    for l in L[0::2]:
+        t = l.split(); R = qmat(np.array([float(v) for v in t[1:5]])); tv = np.array([float(v) for v in t[5:8]])
+        out[photo_index(t[9])] = (R, -R.T @ tv)                         # world -> camera rotation, centre
+    return out
+
+def sfm_points(path):
+    if path.endswith('.ply'):
+        v = read_ply(path); return np.stack([v['x'], v['y'], v['z']], 1).astype(np.float64)
+    return np.array([[float(a) for a in l.split()[1:4]] for l in open(path) if l.strip() and not l.startswith('#')])
+
+
+# ------------------------------------------------------------------ rotations (w, x, y, z), Hamilton
+def qmat(q):
+    """Unit quaternion(s) -> rotation matrix: COLMAP's qvec2rotmat, 3DGS's build_rotation."""
+    w, x, y, z = np.moveaxis(np.asarray(q, float), -1, 0)
+    return np.stack([np.stack([1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)], -1),
+                     np.stack([2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)], -1),
+                     np.stack([2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)], -1)], -2)
+
+def qmul(a, b):
+    """a * b: rotate by b, then by a (qmat(a * b) = qmat(a) @ qmat(b))."""
+    aw, ax, ay, az = np.moveaxis(np.asarray(a, float), -1, 0); bw, bx, by, bz = np.moveaxis(np.asarray(b, float), -1, 0)
+    return np.stack([aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw], -1)
+
+def quat(R):
+    """Rotation matrix -> unit quaternion with w >= 0."""
+    t = np.trace(R)
+    if t > 0:
+        s = 2 * math.sqrt(t + 1); q = [s / 4, (R[2, 1] - R[1, 2]) / s, (R[0, 2] - R[2, 0]) / s, (R[1, 0] - R[0, 1]) / s]
+    else:
+        i = int(np.argmax(np.diag(R))); j, k = (i + 1) % 3, (i + 2) % 3
+        s = 2 * math.sqrt(1 + R[i, i] - R[j, j] - R[k, k]); q = [0.0] * 4
+        q[0] = (R[k, j] - R[j, k]) / s; q[1 + i] = s / 4; q[1 + j] = (R[j, i] + R[i, j]) / s; q[1 + k] = (R[k, i] + R[i, k]) / s
+    q = np.array(q) / np.linalg.norm(q)
+    q = -q if q[0] < 0 else q
+    assert np.abs(qmat(q) - R).max() < 1e-9
+    return q
+
+
+# ------------------------------------------------------------------ the frame: pipeline.py's similarity, read back
+def similarity(pipe, cams):
+    L = pipe['cameras']['list']; ids = [c['id'] for c in L]; miss = [i for i in ids if i not in cams]
+    if miss: raise SystemExit('cameras %s of pipeline122.js are not in the run: not the same photographs' % miss[:8])
+    Rs = np.array([np.reshape(c['R'], (3, 3)) for c in L]); Cs = np.array([c['c'] for c in L], float)
+    Rc = np.array([cams[i][0] for i in ids]); Cc = np.array([cams[i][1] for i in ids])
+    each = np.einsum('kji,kjl->kil', Rs, Rc)              # R_owl^T R_colmap: the same rotation for every camera
+    u, _, vt = np.linalg.svd(each.sum(0)); R = u @ vt
+    if np.linalg.det(R) < 0: raise SystemExit('the two frames differ by a reflection: not the model pipeline.py read')
+    deg = np.degrees(2 * np.arcsin(np.minimum(1, np.linalg.norm(each - R, axis=(1, 2)) / (2 * math.sqrt(2))))).max()   # |R1 - R2|_F = 2 sqrt2 sin(angle / 2)
+    Y = Cc @ R.T; my, mc = Y.mean(0), Cs.mean(0)
+    k = float(((Y - my) * (Cs - mc)).sum() / ((Y - my) ** 2).sum()); T = mc - k * my
+    res = np.linalg.norm(k * Y + T - Cs, axis=1).max()
+    return k, R, T, dict(cameras=len(ids), rotation_deg=float(deg), centre_units=float(res))
+
+def unpack12(s, n):
+    by = np.frombuffer(base64.b64decode(s), np.uint8).astype(np.int64)
+    q = np.empty(len(by) // 3 * 2, np.int64); q[0::2] = by[0::3] | ((by[1::3] & 15) << 8); q[1::2] = (by[1::3] >> 4) | (by[2::3] << 4)
+    return q[:n * 3].reshape(-1, 3)
+
+def sfm_check(pipe, X, k, R, T, tol=0.01):
+    """Map the SfM points X (COLMAP frame, any order) and pair them one to one with the copy in pipeline122.js: there
+    12-bit integers over a box for the near ones, float32 for the rest. A near point must lie within half a 12-bit step
+    (pipeline.py's rounding) plus tol of its partner; the deviation is reported in steps. A point within tol of a
+    rounding boundary may pair with the cell on either side, whichever is still free; all others take their own."""
+    s = pipe['sfm']; lo, hi = np.array(s['box'][0], float), np.array(s['box'][1], float); nn = s['near']; step = (hi - lo) / 4095
+    P = k * X @ R.T + T; near = np.all((P >= lo) & (P <= hi), 1)
+    out = dict(points=len(X), stored=s['count'], near=int(near.sum()), stored_near=nn)
+    if len(X) != s['count'] or near.sum() != nn: return dict(out, ok=False)
+    key = lambda a: int((a[0] * 4096 + a[1]) * 4096 + a[2])
+    left = {}
+    for q in unpack12(s['P'], nn).tolist(): left[key(q)] = left.get(key(q), 0) + 1
+    f = (P[near] - lo) / step; cell = np.rint(f).astype(np.int64)
+    other = np.where(np.abs(f - cell) > 0.5 - tol, cell + np.where(f > cell, 1, -1), cell); amb = (other != cell).any(1)
+    for q in cell[~amb].tolist(): left[key(q)] = left.get(key(q), 0) - 1
+    for i in np.nonzero(amb)[0]:
+        cands = sorted({(a, b, c) for a in (cell[i, 0], other[i, 0]) for b in (cell[i, 1], other[i, 1]) for c in (cell[i, 2], other[i, 2])},
+                       key=lambda c: np.abs(f[i] - c).max())
+        for c in cands:
+            if left.get(key(c), 0) > 0: left[key(c)] -= 1; cell[i] = c; break
+    paired = all(v == 0 for v in left.values())
+    F = np.frombuffer(base64.b64decode(s['far']), '<f4').reshape(-1, 3).astype(np.float64); Pf = P[~near]
+    d = np.abs(Pf[:, None, :] - F[None, :, :]).max(2) if len(F) else np.zeros((0, 0))
+    a, b = np.nonzero(d < 1e-4); o = np.argsort(d[a, b], kind='stable'); ua, ub = set(), set()      # one to one: the file has exact duplicates
+    for i, j in zip(a[o].tolist(), b[o].tolist()):
+        if i not in ua and j not in ub: ua.add(i); ub.add(j)
+    far_dev = float(d.min(1).max()) if len(F) else 0.0; far_one = len(ua) == len(F)
+    out.update(near_steps=float(np.abs(f - cell).max()), far_units=far_dev, near_at_boundary=int(amb.sum()))
+    out['ok'] = bool(paired and far_one and out['near_steps'] <= 0.5 + tol and far_dev < 1e-4)
+    return out
+
+
+# ------------------------------------------------------------------ one snapshot
+def owl_frame(G, k, R, T, qR):
+    with np.errstate(over='ignore', invalid='ignore'):                           # exp in float32, as graphdeco and the page compute it
+        P = k * G['x'] @ R.T + T; n = np.linalg.norm(G['rot'], axis=1); S = np.exp(G['sc'].astype(np.float32)).astype(np.float64) * k
+        q = qmul(qR, G['rot'] / np.where(n > 0, n, 1)[:, None]); q /= np.linalg.norm(q, axis=1)[:, None]
+    ok = (np.isfinite(P).all(1) & np.isfinite(S).all(1) & np.isfinite(q).all(1) & (n > 0)
+          & np.isfinite(G['op']) & np.isfinite(G['dc']).all(1))
+    a = 0.5 * (1 + np.tanh(0.5 * G['op']))                                        # sigmoid, without overflow
+    C = np.rint(np.clip(np.nan_to_num(0.5 + C0 * G['dc']), 0, 1) * 255).astype(np.uint8)
+    return ok, P, S, q, C, a
+
+def choose(w, budget, seed, it, rule):
+    if len(w) <= budget: return np.arange(len(w))
+    u = np.random.default_rng([seed, it]).random(len(w))
+    key = u if rule == 'uniform' else np.log(u) / np.maximum(w, 1e-300)            # larger key = kept
+    return np.sort(np.argpartition(-key, budget - 1)[:budget])
+
+def b64(a, dt=None): return base64.b64encode(np.ascontiguousarray(a if dt is None else np.asarray(a).astype(dt)).tobytes()).decode('ascii')
+
+def encode(it, ntotal, P, S, q, C, a):
+    lo, hi = BOX
+    if len(P):                                     # pipeline.py's box, stretched to all but the outermost 0.2 % on each side of each axis
+        lo = np.floor(np.minimum(lo, np.quantile(P, 0.002, axis=0)) * 1e3) / 1e3; hi = np.ceil(np.maximum(hi, np.quantile(P, 0.998, axis=0)) * 1e3) / 1e3
+    near = np.all((P >= lo) & (P <= hi), 1); o = np.r_[np.nonzero(near)[0], np.nonzero(~near)[0]]
+    P, S, q, C, a = P[o], S[o], q[o], C[o], a[o]; n, m = len(P), int(near.sum())
+    pq = np.clip(np.rint((P[:m] - lo) / (hi - lo) * 65535), 0, 65535)
+    ls = np.log(np.maximum(S, 1e-300)); slo = math.floor(max(ls.min(), FLOOR) * 1e4) / 1e4 if n else 0.0
+    shi = math.ceil(max(ls.max() if n else 0.0, slo + 1e-3) * 1e4) / 1e4
+    sq = np.rint((np.clip(ls, slo, shi) - slo) / (shi - slo) * 255)
+    big = np.argmax(np.abs(q), 1); q = q * np.where(q[np.arange(n), big] < 0, -1.0, 1.0)[:, None]
+    keep = np.ones((n, 4), bool); keep[np.arange(n), big] = False
+    qq = np.clip(np.rint((q[keep].reshape(n, 3) * math.sqrt(2) + 1) * 127.5), 0, 255)
+    ib = np.zeros(-(-n // 4) * 4, np.uint8); ib[:n] = big; ib = ib.reshape(-1, 4); ib = ib[:, 0] | ib[:, 1] << 2 | ib[:, 2] << 4 | ib[:, 3] << 6
+    A = np.rint(a * 255)
+    return dict(iter=int(it), ntotal=int(ntotal), n=n, near=m, box=[lo.tolist(), hi.tolist()], slog=[slo, shi],
+                P=b64(pq, '<u2'), F=b64(P[m:], '<f4'), S=b64(sq, np.uint8), Q=b64(qq, np.uint8), I=b64(ib, np.uint8),
+                C=b64(C, np.uint8), A=b64(A, np.uint8))
+
+
+# ------------------------------------------------------------------ log and note
+def read_log(run):
+    p = os.path.join(run, 'log.csv')
+    if not os.path.exists(p): return dict(iter=[], loss=[], psnr=[]), None
+    rows = [r for r in csv.DictReader(open(p, newline='')) if r.get('iteration')]
+    which = 'test' if any(r.get('psnr_test') for r in rows) else 'train'
+    out = dict(iter=[], loss=[], psnr=[])
+    for r in rows:                                          # rows without a PSNR, or with a NaN loss (where a run diverged), stay out
+        if not r.get('psnr_' + which) or not r.get('loss') or not (math.isfinite(float(r['loss'])) and math.isfinite(float(r['psnr_' + which]))): continue
+        out['iter'].append(int(r['iteration'])); out['loss'].append(float('%.6g' % float(r['loss']))); out['psnr'].append(round(float(r['psnr_' + which]), 3))
+    return out, which
+
+def clean(s): return re.sub(r'\s+', ' ', re.sub(r'[<>&"]', ' ', str(s))).strip()      # the page shows the note as HTML
+
+def stop_record(run, run_dir):
+    """run.json's stop record, or None. A run whose process the stall watchdog's last resort ended (faulthandler's timer,
+    when the watchdog thread itself could not run) has none: then stall.txt says so, and run.json's progress says where."""
+    s = (run or {}).get('stop')
+    if s: return dict(s)
+    st = os.path.join(run_dir, 'stall.txt')
+    if run and not run.get('finished') and os.path.exists(st) and 'Timeout' in open(st, errors='replace').read():
+        g = run.get('progress') or {}
+        return dict(reason='stalled', iteration=g.get('iteration'), minutes=None, best_psnr=g.get('best_psnr'), best_iteration=g.get('best_iteration'),
+                    detail='the stall watchdog\'s last resort ended the process (no iteration for twice --stall-minutes; the stacks are in stall.txt); '
+                           'the iteration is that of the last row of the log')
+    return None
+
+def stop_field(s):
+    """The exported stop: {reason, iter, best_psnr, best_iter}, numbers where known, else null."""
+    num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+    it, bp, bi = num(s.get('iteration')), num(s.get('best_psnr')), num(s.get('best_iteration'))
+    return dict(reason=clean(s.get('reason') or 'unknown'), iter=None if it is None else int(it), best_psnr=None if bp is None else round(float(bp), 3),
+                best_iter=None if bi is None else int(bi))
+
+def note(run, which, a, nlog, stop=None, kinds=None):
+    held = ((run or {}).get('stops') or {}).get('psnr') or ('held-out' if which == 'test' else 'training')
+    if run:
+        impl = '%s at %s%s%s' % (run.get('implementation', 'graphdeco-inria/gaussian-splatting'), (run.get('commit') or '')[:7] or 'an unknown commit',
+                                 '' if run.get('matches_pin') else ' (NOT the pinned 54c035f)', ' with local changes' if run.get('local_changes') else '')
+        tv, te = run.get('train_views'), run.get('test_views') or []
+        views = ('%s of the %s photographs, every 8th held out' % (tv, tv + len(te) if tv else '?') if te else 'all %s photographs' % (tv or '?'))
+        n, at = run.get('iterations', '?'), (stop or {}).get('iteration')
+        early = isinstance(at, int) and isinstance(n, int) and at < n
+        s = ('plain 3D Gaussian Splatting (Kerbl et al. 2023): %s, its default settings%s, %s%s iterations on %s (%s), on the dataset\'s COLMAP model; '
+             'trained on %s, %s' % (impl, (' plus ' + ' '.join(run['extra_args'])) if run.get('extra_args') else '', 'up to ' if early else '', n, views,
+                                     'alpha used as a loss mask' if run.get('keep_alpha') else 'RGB, alpha dropped', run.get('gpu', 'an unrecorded GPU'),
+                                     (run.get('finished') or run.get('started') or 'an unrecorded date')[:10]))
+        if stop:
+            m = stop.get('minutes')
+            s += ('. It stopped at iteration %s%s: %s (%s)' % (at if at is not None else '?', ' after %.1f min' % m if isinstance(m, (int, float)) else '',
+                                                              clean(stop.get('reason')), clean(stop.get('detail') or 'no detail recorded')))
+            if isinstance(stop.get('best_psnr'), (int, float)):
+                s += '; its best %s PSNR was %.2f dB, at iteration %s' % (held, stop['best_psnr'], stop.get('best_iteration', '?'))
+        elif not run.get('finished') or run.get('error'): s += ' (the run did NOT finish)'
+    else:
+        s = 'plain 3D Gaussian Splatting (Kerbl et al. 2023), presumably graphdeco-inria/gaussian-splatting: the run has no run.json, so implementation, version, settings, GPU and date are unknown'
+    s += ('. Not the thesis method. Iteration 0 = the Gaussians made from the dataset\'s SfM points, before the first optimizer step; iteration k = '
+          'graphdeco\'s save at k (after k - 1 steps)')
+    for k, what in sorted((kinds or {}).items()):
+        if what == 'final': s += '; snapshot %d is the state where the run stopped' % k
+        if what == 'best': s += '; snapshot %d is its best %s state, kept in host memory while it trained' % (k, held)
+    s += ('. Each snapshot keeps at most %d Gaussians, drawn %s (seed %d)'
+          % (a.budget, 'uniformly' if a.rule == 'uniform' else 'with probability growing with opacity x (s1 s2 + s2 s3 + s3 s1)', a.seed))
+    if nlog: s += ('. log: loss = training loss (0.8 L1 + 0.2 D-SSIM) averaged over the iterations since the previous entry; psnr = mean PSNR of the '
+                   + ('%d held-out photographs' % len(run['test_views']) if which == 'test' and run and run.get('test_views') else '%s photographs' % ('held-out' if which == 'test' else 'training')))
+    else: s += '. No log was found'
+    return s + '.'
+
+
+HEAD = """/* DTU scan %(scan)d: snapshots of ONE run of PLAIN 3D Gaussian Splatting (Kerbl et al., SIGGRAPH 2023), for the `train`
+   scene of the talk's pipeline chapter. GENERATED by tools/train/export.py from a run of tools/train/train3dgs.py: do not
+   edit, re-run them. NOT the thesis method: graphdeco-inria/gaussian-splatting's own training on the scan's photographs
+   and the dataset's COLMAP model, mapped into the owl's frame of talk/dtu-data.js (+y up, the table at y = 0, 1 unit =
+   80 mm) the way tools/dtu/pipeline.py maps that model.
+   %(note)s
+   KnotTalk.dtuTrain[%(scan)d] = { note, stop (optional: why and where the run stopped): { reason, iter, best_psnr, best_iter },
+     unit, log: { iter: [], loss: [], psnr: [] },
+     snaps: [{ iter, ntotal (Gaussians in the checkpoint), n (kept here), p: Float32Array(3n) centres,
+               s: Float32Array(3n) sigma per axis (owl units), q: Float32Array(4n) unit quaternions (w, x, y, z),
+               c: Uint8Array(3n) colour of the DC term (sRGB), a: Uint8Array(n) opacity 0..255 }] }
+   The covariance of Gaussian i is R(q_i) diag(s_i^2) R(q_i)^T. */
+(function () {
+  var KT = window.KnotTalk = window.KnotTalk || {}, D = (KT.dtuTrain = KT.dtuTrain || {})[%(scan)d] = """
+
+TAIL = """  function bytes(s) { var b = atob(s), n = b.length, a = new Uint8Array(n), i; for (i = 0; i < n; i++) a[i] = b.charCodeAt(i); return a; }
+  D.snaps.forEach(function (z) {
+    var n = z.n, m = z.near, lo = z.box[0], hi = z.box[1], s0 = z.slog[0], ds = (z.slog[1] - z.slog[0]) / 255, R = Math.SQRT1_2,
+        b = bytes(z.P), f = bytes(z.F), fv = new DataView(f.buffer), e = bytes(z.S), r = bytes(z.Q), x = bytes(z.I),
+        p = new Float32Array(3 * n), s = new Float32Array(3 * n), q = new Float32Array(4 * n), v = [0, 0, 0, 0], i, j, k, c, l, w;
+    for (i = 0; i < 3 * m; i++) { k = i % 3; p[i] = lo[k] + (hi[k] - lo[k]) * (b[2 * i] | b[2 * i + 1] << 8) / 65535; }
+    for (i = 3 * m; i < 3 * n; i++) p[i] = fv.getFloat32((i - 3 * m) * 4, true);
+    for (i = 0; i < 3 * n; i++) s[i] = Math.exp(s0 + ds * e[i]);
+    for (i = 0; i < n; i++) {                       // the three smallest components; the largest is the rest of the unit length
+      k = x[i >> 2] >> ((i & 3) << 1) & 3; l = 0;
+      for (j = 0, c = 0; j < 4; j++) if (j !== k) { w = (r[3 * i + c++] / 127.5 - 1) * R; v[j] = w; l += w * w; }
+      v[k] = Math.sqrt(Math.max(0, 1 - l)); l = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+      for (j = 0; j < 4; j++) q[4 * i + j] = v[j] / l;
+    }
+    z.p = p; z.s = s; z.q = q; z.c = bytes(z.C); z.a = bytes(z.A);
+    ['near', 'box', 'slog', 'P', 'F', 'S', 'Q', 'I', 'C', 'A'].forEach(function (key) { delete z[key]; });
+  });
+})();
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser(description=' '.join(__doc__.split('\n\n')[0].split()), formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__.split('\n\n', 2)[2])
+    ap.add_argument('run', help='the run folder (graphdeco\'s -m): point_cloud/iteration_*/point_cloud.ply, log.csv, run.json')
+    ap.add_argument('-o', '--out', help='default: talk/dtu/train<scan>.js of this repo')
+    ap.add_argument('--data', help='the scan folder (sparse/0/images.txt, points3D.txt): read the frame and the check from the dataset instead of the run')
+    ap.add_argument('--pipeline', help='default: talk/dtu/pipeline122.js of this repo (the cameras and SfM points in the owl\'s frame)')
+    ap.add_argument('--budget', type=int, default=60000, help='Gaussians kept per snapshot (default 60000)')
+    ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--rule', choices=['area', 'uniform'], default='area', help='how the kept ones are drawn (default: area)')
+    ap.add_argument('--iters', help='only these iterations, comma separated (default: every snapshot in the run)')
+    a = ap.parse_args()
+    run_dir = os.path.abspath(os.path.expanduser(a.run)); pj = os.path.join(run_dir, 'run.json')
+    run = json.load(open(pj)) if os.path.exists(pj) else None
+    if run is None: say('no run.json in %s: implementation, version, GPU and date will be unknown in the note' % run_dir)
+    stop = stop_record(run, run_dir)
+    if stop: say('stop: %s at iteration %s; best PSNR %s at iteration %s' % (stop.get('reason'), stop.get('iteration'), stop.get('best_psnr'), stop.get('best_iteration')))
+    elif run: say('run.json has no stop record: %s' % ('a run of the wrapper before its stop rules' if run.get('finished') else 'the run did NOT finish (killed, or crashed before it could record why)'))
+
+    # ---- the frame
+    scan, pipe = read_pipeline(a.pipeline or os.path.join(TALK, 'dtu', 'pipeline122.js')); U = pipe.get('unit_mm', 80)
+    if a.data: cams, src = cameras_colmap(a.data), os.path.join(a.data, 'sparse', '0', 'images.txt')
+    elif os.path.exists(os.path.join(run_dir, 'cameras.json')): cams, src = cameras_run(run_dir), os.path.join(run_dir, 'cameras.json')
+    elif run and run.get('data'): cams, src = cameras_colmap(run['data']), os.path.join(run['data'], 'sparse', '0', 'images.txt')
+    else: raise SystemExit('no cameras: the run has no cameras.json; pass --data <scan folder>')
+    k, R, T, how = similarity(pipe, cams); qR = quat(R)
+    say('frame from %d cameras (%s): k = %.9f, rotations agree within %.2e deg, centres within %.2e units (%.4f mm)'
+        % (how['cameras'], src, k, how['rotation_deg'], how['centre_units'], how['centre_units'] * U))
+    if how['rotation_deg'] > 0.01 or how['centre_units'] > 1e-3: raise SystemExit('the cameras do not agree with pipeline%d.js: not the same model, nothing written' % scan)
+    pts = os.path.join(a.data, 'sparse', '0', 'points3D.txt') if a.data else os.path.join(run_dir, 'input.ply')
+    if not os.path.exists(pts) and not a.data and run and run.get('data'): pts = os.path.join(run['data'], 'sparse', '0', 'points3D.txt')
+    if os.path.exists(pts):
+        X = sfm_points(pts); chk = sfm_check(pipe, X, k, R, T)
+        say('check: %d SfM points (%s) mapped vs pipeline%d.js: %s; near %d / %d, worst %.4f of a 12-bit step (rounding alone: 0.5); far worst %.2e units'
+            % (chk['points'], os.path.basename(pts), scan, 'one to one' if chk['ok'] else 'MISMATCH', chk['near'], chk['stored_near'],
+               chk.get('near_steps', float('nan')), chk.get('far_units', float('nan'))))
+        if not chk['ok']: raise SystemExit('the SfM points do not land where pipeline.py put them: nothing written')
+    else:
+        X = None; say('no %s: the frame is NOT checked against the SfM points' % pts)
+
+    # ---- the snapshots
+    pc = os.path.join(run_dir, 'point_cloud'); found = {}
+    for d in (os.listdir(pc) if os.path.isdir(pc) else []):
+        m = re.fullmatch(r'iteration_(\d+)', d)
+        if m and os.path.exists(os.path.join(pc, d, 'point_cloud.ply')): found[int(m.group(1))] = os.path.join(pc, d, 'point_cloud.ply')
+    kinds = {int(z['iteration']): z.get('kind', '') for z in run['snapshots']} if run and isinstance(run.get('snapshots'), list) else None
+    if a.iters: its = [int(v) for v in a.iters.split(',')]
+    elif kinds is not None:                                 # the run's own list: not what an earlier run, or a save cut off, left in the folder
+        its = sorted(set(found) & set(kinds)); left, gone = sorted(set(found) - set(kinds)), sorted(set(kinds) - set(found))
+        if left: say('left out: iteration %s is on disk but not among run.json\'s snapshots (an earlier run\'s, or a save that did not finish)' % left)
+        if gone: say('missing: run.json lists iteration %s, which is not on disk' % gone)
+    else: its = sorted(found)
+    miss = [i for i in its if i not in found]
+    if miss or not its: raise SystemExit('no snapshot for iteration %s in %s' % (miss or 'any', pc))
+    snaps = []
+    say('%8s %9s %7s %6s %5s %9s %16s %8s %6s' % ('iter', 'ntotal', 'kept', 'far', 'bad', 'step mm', 'sigma mm', 'opacity', 'KB'))
+    for it in its:
+        G = read_gaussians(found[it]); N = len(G['x'])
+        if it == 0 and X is not None:
+            same = len(X) == N and np.array_equal(np.sort(X.astype(np.float32).view([('', np.float32)] * 3).ravel(), order=['f0', 'f1', 'f2']),
+                                                  np.sort(G['x'].astype(np.float32).view([('', np.float32)] * 3).ravel(), order=['f0', 'f1', 'f2']))
+            say('    iteration 0 holds %s' % ('exactly the %d SfM points' % N if same else 'NOT the SfM points of %s' % os.path.basename(pts)))
+        ok, P, S, q, C, al = owl_frame(G, k, R, T, qR); good = np.nonzero(ok)[0]
+        w = al[good] * (S[good, 0] * S[good, 1] + S[good, 1] * S[good, 2] + S[good, 2] * S[good, 0])
+        idx = good[choose(w, a.budget, a.seed, it, a.rule)]
+        z = encode(it, N, P[idx], S[idx], q[idx], C[idx], al[idx]); snaps.append(z)
+        say('%8d %9d %7d %6d %5d %9.4f %16s %8.3f %6.0f' % (it, N, z['n'], z['n'] - z['near'], N - len(good), max(np.subtract(*z['box'][::-1])) / 65535 * U,
+                                                           '%.3g..%.4g' % (S[idx].min() * U, S[idx].max() * U), al[idx].mean(), sum(len(z[c]) for c in 'PFSQICA') / 1e3))
+
+    # ---- write
+    lg, which = read_log(run_dir)
+    if not lg['iter']: say('no log.csv rows in %s: the file carries an empty log' % run_dir)
+    obj = dict(note=note(run, which, a, len(lg['iter']), stop, {k: v for k, v in (kinds or {}).items() if k in its}))
+    if stop: obj['stop'] = stop_field(stop)                 # optional, next to the note: files without it stay valid
+    obj.update(unit='owl frame, 1 unit = %g mm' % U, log=lg, snaps=snaps)
+    wrap = lambda s, w=114: '\n   '.join(c.strip() for c in re.findall(r'.{1,%d}(?:\s|$)' % w, s.replace('*/', '* /')) if c.strip())
+    js = HEAD % dict(scan=scan, note=wrap(obj['note'])) + json.dumps(obj, separators=(',', ':')) + ';\n' + TAIL
+    out = os.path.abspath(a.out or os.path.join(TALK, 'dtu', 'train%d.js' % scan))
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out + '.part', 'w') as fh: fh.write(js)
+    os.replace(out + '.part', out)
+    say('wrote %s: %.2f MB, %d snapshots, %d Gaussians, log of %d rows (psnr: %s)%s'
+        % (out, len(js) / 1e6, len(snaps), sum(z['n'] for z in snaps), len(lg['iter']), which or '-', '; stop: %s' % json.dumps(obj['stop']) if stop else ''))
+    if len(js) > 8.5e6: say('note: more than 8 MB; --budget lowers it (about 21.7 bytes per kept Gaussian)')
+
+
+if __name__ == '__main__':
+    main()

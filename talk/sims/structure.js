@@ -12,7 +12,8 @@
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
   var N = 16000, KNN = 12, KEDGE = 3;
-  var PART = ['#4db6ac', '#f06292', '#9ccc65', '#7986cb', '#ffb74d', '#ba68c8', '#90a4ae', '#e57373', '#a1887f'];
+  /* a part is coloured with its chart's identity colour (talk/scenes.js, c.hex: the set that is not the semantic one);
+     a k-means cluster takes the colour of the chart with its number */
 
   var SCENES = {
     bag:        { cap: '<b>the same Gaussians, stored two ways</b> · colour = position in memory', mode: 'order' },
@@ -200,16 +201,23 @@
       }
 
       /* ---------- colours for the current operation ---------- */
+      /* the scene steps back (dim < 1) so that what an operation draws over it reads: towards the dark stage on a dark
+         page, towards the glass card on a light one (a darkened owl under dark lines and labels would read on neither) */
+      var LIGHT = KT.theme === 'light', BG = G.rgb(C.bg), PARTC = charts.map(function (c) { return G.rgb(c.hex); });
+      function fade(P, i, dim) {
+        return LIGHT ? [P[i * 3] * dim + BG[0] * (1 - dim), P[i * 3 + 1] * dim + BG[1] * (1 - dim), P[i * 3 + 2] * dim + BG[2] * (1 - dim)]
+                     : [P[i * 3] * dim, P[i * 3 + 1] * dim, P[i * 3 + 2] * dim];
+      }
       function paint() {
         if (st.sc.mode === 'mesh' && !mesh) buildMesh();
         if (st.sc.mode === 'parts' && !parts) buildParts();
         var mode = st.sc.mode, i, k, c, L = fL.color, Rr = fR.color, dim = mode === 'near' ? 0.6 : mode === 'mesh' ? 0.16 : 1, set = {};
         for (i = 0; i < list.n; i++) {
-          c = mode === 'order' ? ramp(i / list.n) : mode === 'parts' ? G.rgb(PART[parts.lab[i] % PART.length]) : [list.col[i * 3] * dim, list.col[i * 3 + 1] * dim, list.col[i * 3 + 2] * dim];
+          c = mode === 'order' ? ramp(i / list.n) : mode === 'parts' ? PARTC[parts.lab[i] % PARTC.length] : fade(list.col, i, dim);
           L[i * 3] = c[0]; L[i * 3 + 1] = c[1]; L[i * 3 + 2] = c[2];
         }
         for (i = 0; i < ours.n; i++) {
-          c = mode === 'order' ? ramp(i / ours.n) : mode === 'parts' ? G.rgb(PART[ours.chart[i] % PART.length]) : [ours.col[i * 3] * dim, ours.col[i * 3 + 1] * dim, ours.col[i * 3 + 2] * dim];
+          c = mode === 'order' ? ramp(i / ours.n) : mode === 'parts' ? PARTC[ours.chart[i] % PARTC.length] : fade(ours.col, i, dim);
           Rr[i * 3] = c[0]; Rr[i * 3 + 1] = c[1]; Rr[i * 3 + 2] = c[2];
         }
         if (mode === 'near' && st.probe >= 0) {
@@ -218,7 +226,7 @@
           near.R.forEach(function (j) { Rr[j * 3] = good[0]; Rr[j * 3 + 1] = good[1]; Rr[j * 3 + 2] = good[2]; });
         }
         fL.commit(list.n); fR.commit(ours.n);
-        var flat = mode === 'order' || mode === 'parts' ? 0.55 : 0;
+        var flat = mode === 'order' || mode === 'parts' || (LIGHT && dim < 1) ? 0.55 : 0;   // a scene faded towards the glass stays light in the shade too
         fL.uniforms.uFlat.value = fR.uniforms.uFlat.value = flat;
         var n = list.n.toLocaleString('en-US');
         tagL.innerHTML = '<b>a list</b> · ' + n + ' Gaussians, unordered <i>(emulated)</i><br>' + ({
@@ -255,7 +263,25 @@
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
         orbit.touched = false; orbit.to(view(), false); need = true;
       }
-      function view() { var v = Object.assign({}, def.views.wide), a = rects[0][2] / rects[0][3]; v.r *= KT.clamp(1.25 / a, 0.62, 1.7); return v; }
+      /* the scene's wide view, nearer on a wide viewport and further on a tall one, but never so near that the object
+         (every chart but the ground) leaves the viewport: its box, plus a margin, must fit the half field of view
+         (18 degrees tall, the camera's 36), as the manifold module frames its cover */
+      var box = (function () {
+        var lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9], i, q, n = 0;
+        if (!charts.some(function (c) { return c.ground; })) return null;        // a scene without a ground has no object apart
+        for (i = 0; i < ours.n; i++) {
+          if (charts[ours.chart[i]].ground) continue;
+          for (q = 0; q < 3; q++) { lo[q] = Math.min(lo[q], ours.pos[i * 3 + q]); hi[q] = Math.max(hi[q], ours.pos[i * 3 + q]); }
+          n++;
+        }
+        return n ? [0, 1, 2].map(function (q) { return (hi[q] - lo[q]) / 2; }) : null;
+      })();
+      function view() {
+        var v = Object.assign({}, def.views.wide), a = rects[0][2] / rects[0][3];
+        v.r *= KT.clamp(1.25 / a, 0.62, 1.7);
+        if (box) v.r = Math.max(v.r, Math.max(box[1] * 1.12 + 0.3, (box[0] * 1.08 + 0.25) / a) / Math.tan(18 * Math.PI / 180) + box[2]);
+        return v;
+      }
 
       env.loop(function (t, dt) {
         st.t += dt;
@@ -289,6 +315,10 @@
           '.kt-sim-structure .kt-side i{font-style:normal;color:var(--mute)}.kt-sim-structure .kt-side em{font-style:normal;color:var(--ok);font-weight:600}' +
           '.kt-sim-structure .kt-side em.bad{color:var(--err)}' +
           '.kt-sim-structure .kt-divide{position:absolute;z-index:3;background:var(--line2);pointer-events:none}' +
+          // the light theme: a label lies over the scene, so it is glass that hides what is behind it (the kit's panels
+          // are clearer, and over a dark part of the scene their dark text would not read)
+          ':root[data-theme="light"] .kt-sim-structure .kt-side{background:rgba(255,255,255,.84);border-color:transparent;' +
+          'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
           '.kt-sim-structure.kt-embed .kt-hint{display:none}.kt-sim-structure .kt-gear{display:none}' +
           '@media (max-width:640px){.kt-sim-structure .kt-side{font-size:9.5px;padding:6px 8px}}';
         document.head.appendChild(css);

@@ -40,8 +40,9 @@
    overlaps), a scatter and a rattle when Gaussians are knocked loose (the momentum they took, how many came
    loose), a pluck and a wobble on the elastic surface (pitch from the spring stiffness, loudness and wobble from
    the control points' motion), a crack and shards when it breaks (impulse over toughness, the pieces' sizes and
-   speeds), a whoosh at the launch (its speed), a tick for each candidate moment of contact. Nothing plays before
-   a key or pointer press (browsers forbid it), while KnotTalk.muted is true, or while the module is paused.
+   speeds), a whoosh at the launch (its speed), a click for each candidate moment of contact, when it happened. All of it
+   sits above the bass of the chapter's music (talk/audio/beat.js), so it carries over it. Nothing plays before a key
+   or pointer press (browsers forbid it), while KnotTalk.muted is true, or while the module is paused.
    Tool: WebGL (three.js), Web Audio. Standalone: talk/sims/touch.html.
    Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js. */
 (function () {
@@ -63,6 +64,7 @@
   var DRAG = 0.35;                             // air drag on a loose Gaussian, 1/s
   var TILT = 0.8;                              // the list: largest tilt of a Gaussian off the surface, radians
   var HM = H / 8, SLOW = 20;                   // moment: its sub-step, and how much slower time runs near contact (scripted)
+  var FSPR = 280;                              // sound: the springs' pitch at 160 N/m, Hz (it goes as the square root of the stiffness)
   var LIGHT = [0.35, 0.86, 0.36];
 
   var SCENES = {
@@ -124,11 +126,12 @@
      written here sample by sample (damped sines: the ticks of a rattle, the ring of a shard). Nothing is loaded.
      The context is made on the first key or pointer press anywhere and resumed on later ones; nothing starts
      while KnotTalk.muted is true (read at play time). One-shot voices: at most VOICES at once; a newcomer
-     quieter than every voice still sounding is dropped, a louder one replaces the quietest. Sustained voices
+     quieter than every voice still sounding is dropped, a louder one replaces the quietest; two of one kind start
+     at least 30 ms apart (clicks 15 ms), so frames that come in a burst cannot pile them into one loud hit. Sustained voices
      (roll, hiss, wobble): one each per mount, renewed every frame, and if no frame renews them (the module is
      paused off screen, the tab is hidden) they fade out within HOLD seconds and stop by themselves. */
   var SFX = (function () {
-    var ctx = null, bus = null, noise = null, dead = false, armed = false, live = [], cnt = {}, rr = KT.rng(4242);
+    var ctx = null, bus = null, noise = null, dead = false, armed = false, live = [], cnt = {}, next = {}, rr = KT.rng(4242);
     var VOICES = 8, HOLD = 0.22, LAG = 0.012;
     ['knock', 'roll', 'hiss', 'scatter', 'rattle', 'wobble', 'crack', 'shards', 'whoosh', 'tick'].forEach(function (k) { cnt[k] = 0; });
     function wake() {
@@ -146,9 +149,9 @@
       var sr = ctx.sampleRate, n = Math.floor(sr * 2.5), rn = KT.rng(99), x, i;
       noise = ctx.createBuffer(1, n, sr); x = noise.getChannelData(0);
       for (i = 0; i < n; i++) x[i] = rn() * 2 - 1;
-      bus = ctx.createGain(); bus.gain.value = 0.42;                          // a room, not a game: everything is quiet
-      var lp = biq('lowpass', 6000, 0.5), cp = ctx.createDynamicsCompressor();  // no harsh highs; a pile-up is held down
-      cp.threshold.value = -22; cp.knee.value = 10; cp.ratio.value = 4; cp.attack.value = 0.003; cp.release.value = 0.25;
+      bus = ctx.createGain(); bus.gain.value = 0.22;                          // a room, not a game: a hard knock peaks near -16 dBFS, the crack -12
+      var lp = biq('lowpass', 5000, 0.5), cp = ctx.createDynamicsCompressor();  // no harsh highs; a pile-up is held down
+      cp.threshold.value = -18; cp.knee.value = 8; cp.ratio.value = 4; cp.attack.value = 0.003; cp.release.value = 0.25;
       bus.connect(lp); lp.connect(cp); cp.connect(ctx.destination);
     }
     function arm() {
@@ -159,8 +162,10 @@
     function ok() { var K = window.KnotTalk; return !!ctx && ctx.state === 'running' && !(K && K.muted); }
 
     /* ---- one-shot voices ---- */
-    function voice(kind, peak, tau, pan) {
-      var t = ctx.currentTime + LAG, i, w = -1, lo = 1e9, l, v, node;
+    function voice(kind, peak, tau, pan, delay) {
+      var t0 = ctx.currentTime + LAG + (delay || 0), t = Math.max(t0, next[kind] || 0), i, w = -1, lo = 1e9, l, v, node;
+      if (t > t0 + 0.25) return null;          // frames that came in a burst (a stall): one kind never stacks on itself, nor lags far
+      next[kind] = t + (kind === 'tick' ? 0.015 : 0.03);
       for (i = live.length - 1; i >= 0; i--) if (live[i].end <= t) live.splice(i, 1);
       if (live.length >= VOICES) {
         for (i = 0; i < live.length; i++) { l = live[i].peak * Math.exp(-Math.max(0, t - live[i].t) / live[i].tau); if (l < lo) { lo = l; w = i; } }
@@ -169,7 +174,7 @@
       }
       v = { t: t, peak: peak, tau: tau, end: t + 0.05, srcs: [], left: 0, out: ctx.createGain() };
       node = v.out;
-      if (pan && ctx.createStereoPanner) { var p = ctx.createStereoPanner(); p.pan.value = pan; v.out.connect(p); node = p; }
+      if (ctx.createStereoPanner) { var p = ctx.createStereoPanner(); p.pan.value = pan || 0; v.out.connect(p); node = p; }
       node.connect(bus); live.push(v); cnt[kind]++;
       return v;
     }
@@ -198,18 +203,19 @@
     }
 
     /* a bounce on the spline: the bowl's first modes, struck. J (N·s) sets loudness, brightness and, a little, pitch;
-       tone shifts it with the place on the bowl; st > 1 is slow motion (lower, longer) */
+       tone shifts it with the place on the bowl; st > 1 is slow motion (lower, longer). The fundamental sits above the
+       bass line of the chapter's music (talk/audio/beat.js), and the upper modes and the click carry over its drums. */
     function knock(J, tone, pan, st) {
       if (!ok()) return;
-      var h = Math.min(J / 12, 1), a = 0.07 + 0.43 * Math.pow(h, 0.85), w = Math.pow(st || 1, 0.2), br = 0.35 + 0.65 * h;
-      var v = voice('knock', a, 0.16 * w, pan); if (!v) return;
-      var t = v.t, f = 150 * Math.pow(Math.max(J, 0.3) / 4, 0.12) * (tone || 1) / w;
-      [[1, 1, 0.16], [2.32, 0.42 * br, 0.075], [4.1, 0.2 * br, 0.04], [6.3, 0.09 * br, 0.022]].forEach(function (md, i) {
+      var h = Math.min(J / 12, 1), a = 0.06 + 0.3 * Math.pow(h, 0.85), w = Math.pow(st || 1, 0.2), br = 0.45 + 0.55 * h;
+      var v = voice('knock', a, 0.1 * w, pan); if (!v) return;
+      var t = v.t, f = 230 * Math.pow(Math.max(J, 0.3) / 4, 0.1) * (tone || 1) / w;
+      [[1, 1, 0.1], [2.32, 0.62 * br, 0.055], [4.1, 0.36 * br, 0.032], [6.3, 0.18 * br, 0.018]].forEach(function (md, i) {
         var o = osc(v, f * md[0], t, md[2] * w * 7 + 0.02);
-        if (!i) { o.frequency.setValueAtTime(f * 1.25, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.03 * w); }
+        if (!i) { o.frequency.setValueAtTime(f * 1.2, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.025 * w); }
         chain(o, amp(t, a * md[1], 0.0015, md[2] * w), v.out);
       });
-      chain(hiss(v, t, 0.05 * w), biq('bandpass', 1500 + 1500 * br, 0.8), amp(t, a * 0.45 * br, 0.0008, 0.006 * w), v.out);   // the contact itself
+      chain(hiss(v, t, 0.05 * w), biq('bandpass', 1800 + 1400 * br, 0.9), amp(t, a * 0.8 * br, 0.0008, 0.006 * w), v.out);   // the contact itself
     }
     /* the surface breaks: r = impulse asked / toughness; np pieces */
     function crack(r, np, pan) {
@@ -253,47 +259,51 @@
       for (i = 0; i < m; i++) L.push([0.085 * rr(), 900 + 1700 * rr(), 0.00035 + 0.0008 * rr(), A * (0.35 + 0.65 * rr())]);
       chain(play(v, grains(L, 0.1), v.t), biq('lowpass', 3400, 0.5), v.out);
     }
-    /* a contact begins on the elastic surface: sp = approach speed (m/s), k = spring stiffness (N/m) */
+    /* a contact begins on the elastic surface: sp = approach speed (m/s), k = spring stiffness (N/m); the pitch goes
+       as the square root of the stiffness, as a spring's frequency does (FSPR at 160 N/m) */
     function pluck(sp, k, pan) {
       if (!ok()) return;
-      var h = KT.clamp(sp / 8, 0, 1), a = 0.05 + 0.3 * Math.pow(h, 0.8), F = 150 * Math.sqrt(k / 160), v = voice('wobble', a, 0.14, pan); if (!v) return;
-      var t = v.t, o = osc(v, F * 1.8, t, 1.0);
-      o.frequency.exponentialRampToValueAtTime(F, t + 0.11); chain(o, amp(t, a, 0.003, 0.14), v.out);
-      chain(osc(v, 68, t, 0.4), amp(t, a * 0.7, 0.002, 0.05), v.out);
+      var h = KT.clamp(sp / 8, 0, 1), a = 0.045 + 0.16 * Math.pow(h, 0.8), F = FSPR * Math.sqrt(k / 160), v = voice('wobble', a, 0.16, pan); if (!v) return;
+      var t = v.t, o = osc(v, F * 1.6, t, 1.1), o2 = osc(v, F * 3.2, t, 0.6);
+      o.frequency.exponentialRampToValueAtTime(F, t + 0.11); chain(o, amp(t, a, 0.003, 0.16), v.out);
+      o2.frequency.exponentialRampToValueAtTime(F * 2, t + 0.11); chain(o2, amp(t, a * 0.3, 0.003, 0.07), v.out);
+      chain(osc(v, 95, t, 0.3), amp(t, a * 0.4, 0.002, 0.04), v.out);                // the push of the ball into it
     }
     /* the ball leaves the bowl at sp m/s */
     function whoosh(sp, pan) {
       if (!ok()) return;
-      var h = KT.clamp(sp / 14, 0, 1), A = 0.08 + 0.22 * h, f = 260 + 55 * sp, v = voice('whoosh', A, 0.3, pan); if (!v) return;
-      var t = v.t, bp = biq('bandpass', f * 0.55, 1.1), g = amp(null, 0);
-      bp.frequency.setValueAtTime(f * 0.55, t); bp.frequency.exponentialRampToValueAtTime(f, t + 0.12); bp.frequency.exponentialRampToValueAtTime(f * 0.4, t + 0.95);
+      var h = KT.clamp(sp / 14, 0, 1), A = 0.1 + 0.26 * h, f = 420 + 75 * sp, v = voice('whoosh', A, 0.3, pan); if (!v) return;
+      var t = v.t, bp = biq('bandpass', f * 0.6, 1.1), g = amp(null, 0);                // above the ringing springs and the music's bass
+      bp.frequency.setValueAtTime(f * 0.6, t); bp.frequency.exponentialRampToValueAtTime(f, t + 0.12); bp.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.95);
       g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(A, t + 0.08); g.gain.setTargetAtTime(0, t + 0.1, 0.24);
       chain(hiss(v, t, 1.3), bp, g, v.out);
-      chain(hiss(v, t, 1.0), biq('lowpass', 300, 0.7), amp(t, A * 0.5, 0.06, 0.2), v.out);
+      chain(hiss(v, t, 1.0), biq('lowpass', 300, 0.7), amp(t, A * 0.3, 0.06, 0.2), v.out);
     }
-    /* moment: candidate i says "contact" */
-    function tick(i, pan) {
+    /* moment: candidate i says "contact": a dry click, a little lower for each later definition (a click, not a note:
+       the chapter's music has its own) */
+    function tick(i, pan, delay) {
       if (!ok()) return;
-      var v = voice('tick', 0.09, 0.03, pan); if (!v) return;
-      chain(osc(v, 1500 * Math.pow(0.9, i), v.t, 0.25), amp(v.t, 0.09, 0.001, 0.03), v.out);
+      var f = 3000 * Math.pow(0.92, i), v = voice('tick', 0.13, 0.003, pan, delay); if (!v) return;
+      chain(play(v, grains([[0, f, 0.0024, 0.13], [0, f * 1.47, 0.0011, 0.08]], 0.03), v.t), v.out);
     }
     function hush() { if (!ctx) return; var t = ctx.currentTime; live.forEach(function (v) { cut(v, t); }); live = []; }
 
     /* ---- sustained voices ---- */
-    function glide(p, x, t, tc) { p.cancelScheduledValues(t); p.setTargetAtTime(x, t, tc); }
+    function glide(p, x, t, tc, fresh) { p.cancelScheduledValues(t); if (fresh) p.setValueAtTime(x, t); else p.setTargetAtTime(x, t, tc); }
     function channel(kind) {
       var c = { g: null, srcs: [], until: 0, lvl: 0, quiet: -9, p: null };
-      function make(t) {
+      function make(t, f0) {
         var g = c.g = ctx.createGain(), s, f;
-        g.gain.setValueAtTime(0, t); g.connect(bus); c.srcs = []; c.p = {};
+        g.gain.value = 0; g.connect(bus); c.srcs = []; c.p = {};                 // silent until set() raises it
         if (kind === 'wobble') {                                                 // a soft tone and its octave
           var o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), lp = biq('lowpass', 1400, 0.6);
+          o1.frequency.value = f0 || FSPR; o2.frequency.value = 2 * (f0 || FSPR);
           o1.start(t); o2.start(t); c.srcs.push(o1, o2);
           chain(o1, lp, g); chain(o2, amp(null, 0.22), lp); c.p.f = o1.frequency; c.p.f2 = o2.frequency;
         } else {
           s = ctx.createBufferSource(); s.buffer = noise; s.loop = true; s.start(t, rr() * 2); c.srcs.push(s);
-          if (kind === 'roll') { f = biq('lowpass', 160, 0.9); chain(s, f, biq('highpass', 45, 0.7), g); }
-          else { f = biq('bandpass', 2000, 0.55); chain(s, f, biq('lowpass', 4600, 0.5), g); }
+          if (kind === 'roll') { f = biq('lowpass', f0 || 200, 0.9); chain(s, f, biq('highpass', 70, 0.7), g); }
+          else { f = biq('bandpass', f0 || 1700, 0.55); chain(s, f, biq('lowpass', 3800, 0.5), g); }
           c.p.f = f.frequency;
         }
         c.srcs[0].onended = function () { try { g.disconnect(); } catch (e) {} };
@@ -307,14 +317,15 @@
           if (c.lvl > 0) c.quiet = t;
           c.lvl = 0; return;
         }
-        if (!alive) { c.stop(); make(t); }
+        if (!alive) { c.stop(); make(t, f); }
         if (c.lvl === 0 && t - c.quiet > 0.25 && kind !== 'wobble') cnt[kind]++;   // a wobble is counted by its pluck
         p = c.g.gain; p.cancelScheduledValues(t);
+        if (!alive) p.setValueAtTime(0, t);                                      // a new voice rises from silence
         p.setTargetAtTime(level, t, level >= c.lvl ? 0.02 : 0.08);
         p.setTargetAtTime(0, t + HOLD, 0.05);                                    // the next frame renews this; if none comes, it fades
         c.until = t + HOLD + 0.45;
         c.srcs.forEach(function (s) { try { s.stop(c.until); } catch (e) {} });
-        if (f) { glide(c.p.f, f, t, kind === 'wobble' ? 0.012 : 0.04); if (c.p.f2) glide(c.p.f2, 2 * f, t, 0.012); }
+        if (f) { glide(c.p.f, f, t, kind === 'wobble' ? 0.012 : 0.04, !alive); if (c.p.f2) glide(c.p.f2, 2 * f, t, 0.012, !alive); }
         c.lvl = level;
       };
       c.stop = function () {
@@ -504,6 +515,8 @@
       // moment: where the ball's lowest point was when each definition said "contact" (red: the list; cyan: the spline), on its vertical
       var mkL = G.lines(2 * CANDS.length, C.err, 0.95), mkS = G.lines(2, C.surf, 1), mkG = G.lines(2, C.text, 0.3);
       [mkL, mkS, mkG].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 14; scene.add(l.obj); });
+      var low = new T.Mesh(new T.SphereGeometry(0.011, 12, 8), new T.MeshBasicMaterial({ color: C.text, depthTest: false, transparent: true }));   // the ball's lowest point
+      low.renderOrder = 31; scene.add(low); ballMesh.renderOrder = 4;                   // (drawn after the list, for when it is see-through)
 
       /* ---------- state ---------- */
       var ball = { p: [0, 0, 0], v: [0, 0, 0], on: false, rest: false };
@@ -839,7 +852,7 @@
           cur = gap.v[i]; up = CANDS[i].lev != null; thr = up ? CANDS[i].lev : 0;
           if (up ? cur < thr : cur > thr) continue;
           f = KT.clamp((prev[i] - thr) / ((prev[i] - cur) || 1e-30), 0, 1);   // where in the sub-step it crossed
-          mo.t[i] = tNow - HM + f * HM; mo.y[i] = yPrev + f * (ball.p[1] - yPrev) - BR; mo.who[i] = gap.who[i]; au.tick.push(i);
+          mo.t[i] = tNow - HM + f * HM; mo.y[i] = yPrev + f * (ball.p[1] - yPrev) - BR; mo.who[i] = gap.who[i]; au.tick.push([i, mo.t[i]]);
         }
         mo.val = gap.v.slice();
       }
@@ -977,9 +990,9 @@
           SFX.shards(frag.list.map(function (q) { return { n: q.n, sp: Math.hypot(q.v[0], q.v[1], q.v[2]), rho: q.rho }; }), au.crack, pan);
         }
         x = au.rest ? au.restV / au.rest : 0;                                         // rolling: the share of the frame in resting contact, at its speed
-        chRoll.set(au.rest && au.simT ? 0.11 * Math.pow(KT.clamp(x / 2.5, 0, 1), 1.2) * Math.min(1, au.rest / au.simT) : 0, 110 + 70 * x);
+        chRoll.set(au.rest && au.simT ? 0.11 * Math.pow(KT.clamp(x / 2.5, 0, 1), 1.2) * Math.min(1, au.rest / au.simT) : 0, 200 + 130 * x);
         x = au.calls ? au.inside / au.calls : 0;                                       // sinking through a list with no rule
-        chHiss.set(x > 0 ? 0.16 * Math.pow(KT.clamp(x / 140, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.35, 1.2) : 0, (1400 + 110 * speed()) / Math.pow(stretch, 0.3));
+        chHiss.set(x > 0 ? 0.13 * Math.pow(KT.clamp(x / 100, 0, 1), 0.6) * KT.clamp(speed() / 7, 0.5, 1.2) : 0, (1200 + 90 * speed()) / Math.pow(stretch, 0.3));
         if (au.hits && au.first) { SFX.scatter(au.jl, au.hits, pan); au.first = false; au.lastN = prt.n; au.ratT = SFX.now(); }   // the ball meets loose particles
         else if (!au.first) {                                                         // and every Gaussian knocked loose since rattles
           x = prt.n - au.lastN; if (x < 0) x = 0; au.lastN = prt.n; au.rat += x;
@@ -992,17 +1005,23 @@
             q = (j * NC + i) * 3; e2 += MV[q] * MV[q] + MV[q + 1] * MV[q + 1] + MV[q + 2] * MV[q + 2];
             w = SINW[i] * SINW[j]; vm += w * MV[q + 1]; ws += w;
           }
-          x = Math.sqrt(e2 / ((NC - 2) * (NC - 2)));                                  // rms speed of the control points, m/s
+          x = Math.sqrt(e2 / ((NC - 2) * (NC - 2)));                                  // rms speed of the control points, m/s: loudness ~ their kinetic energy
           au.env = Math.max(x, au.env * Math.exp(-dt / 0.15));
-          chWob.set(0.26 * Math.pow(KT.clamp(au.env / 0.6, 0, 1), 0.9), 150 * Math.sqrt(mat.stiff / 160) * (1 + 0.06 * KT.clamp(vm / ws / 0.35, -1, 1)));
+          chWob.set(au.env > 0.08 ? 0.11 * Math.pow(KT.clamp(au.env / 1.4, 0, 1), 2) : 0, FSPR * Math.sqrt(mat.stiff / 160) * (1 + 0.05 * KT.clamp(vm / ws / 0.6, -1, 1)));
         } else { chWob.set(0); au.env = 0; }
         if (au.launch) SFX.whoosh(au.launch, pan);                                    // out of the bowl
-        au.tick.forEach(function (i) { SFX.tick(i, pan); });                          // moment: a definition says "contact"
+        if (au.tick.length) {                                                         // moment: a definition says "contact", heard when it
+          var T1 = run.t - run.tr, T0 = T1 - au.simT, last = -1;                      // did within the frame (a frame late), 15 ms apart at least
+          au.tick.forEach(function (q) { last = Math.max(au.simT > 0 ? KT.clamp((q[1] - T0) / au.simT, 0, 1) * dt : 0, last + 0.015); SFX.tick(q[0], pan, last); });
+        }
         quiet();
       }
 
       /* ---------- colours: the checker of knot spans, the ball's shadow, and red where things go wrong ---------- */
       var ERR = G.rgb(C.err);
+      /* moment: the Gaussians that decided a definition are taken 60 % of the way towards a mark that stands out from the
+         page behind the see-through list: near white on the dark stage, the text colour on a light page */
+      var MARK = KT.theme === 'light' ? G.rgb(C.text).map(function (v) { return 0.6 * v; }) : [0.6, 0.58, 0.56];
       function paint() {
         var bx = ball.p[0], by = ball.p[1], bz = ball.p[2], k, o, dx, dy, dz, t, d2, s, w, f, P, cl, L = LIGHT, ll = Math.hypot(L[0], L[1], L[2]);
         var lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll, m = st.sc.model, heat = surf.broken ? Math.exp(-(run.t - surf.tb) / 0.7) : 0, q, r;
@@ -1025,8 +1044,8 @@
             else if (pass && prt.seen[k]) r = d2 < in2 * 1.3 ? 0.9 : 0.45;        // inside the ball right now, or was
             cl[o] = baseL[o] * f * (1 - r) + ERR[0] * r; cl[o + 1] = baseL[o + 1] * f * (1 - r) + ERR[1] * r; cl[o + 2] = baseL[o + 2] * f * (1 - r) + ERR[2] * r;
           }
-          if (m === 'moment' && mo.side < 0) mo.who.forEach(function (i) {          // the Gaussians that decided a definition: lit up
-            if (i < 0) return; o = i * 3; cl[o] = 0.4 * cl[o] + 0.6; cl[o + 1] = 0.4 * cl[o + 1] + 0.58; cl[o + 2] = 0.4 * cl[o + 2] + 0.56;
+          if (m === 'moment' && mo.side < 0) mo.who.forEach(function (i) {          // the Gaussians that decided a definition: lit up (inked, on a light page)
+            if (i < 0) return; o = i * 3; cl[o] = 0.4 * cl[o] + MARK[0]; cl[o + 1] = 0.4 * cl[o + 1] + MARK[1]; cl[o + 2] = 0.4 * cl[o + 2] + MARK[2];
           });
         }
       }
@@ -1034,8 +1053,11 @@
       /* ---------- what is drawn about the contact ---------- */
       function overlays() {
         var m = st.sc.model, onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
-        var soft = m === 'elastic' || m === 'flight', k, i, o, q;
+        var soft = m === 'elastic' || m === 'flight', k, i, o, q, bm = ballMesh.material, see = m === 'moment';
         ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
+        if (bm.transparent !== see) { bm.transparent = see; bm.opacity = see ? 0.3 : 1; bm.depthWrite = !see; bm.needsUpdate = true; }   // close up: see under the ball
+        dot.scale.setScalar(see ? 0.35 : 1);
+        low.visible = see && ball.on; low.position.set(ball.p[0], ball.p[1] - BR, ball.p[2]);
         if (onSpline) closest(ball.p, cp);
         var near = onSpline && cp.d < BR + 0.75 && (soft || !cp.edge || cp.d < BR * 1.6), since = run.t - hit.t;
         iso.obj.visible = dot.visible = arrow.obj.visible = drop.obj.visible = near;
@@ -1104,20 +1126,25 @@
         tlm.classList.toggle('on', on);
         if (!on) return;
         for (i = 0; i < CANDS.length; i++) if (Tt[i] != null) { idx.push(i); lo = Math.min(lo, Tt[i]); hi = Math.max(hi, Tt[i]); }
-        if (!idx.length) { if (tl.key) { tlm.innerHTML = ''; tl.key = ''; tl.cur = null; } return; }
-        var llo = lo, lhi = hi;
-        if (r) { lo = Math.min(lo, r.t); hi = Math.max(hi, r.t); }
-        var key = idx.join(',') + (r ? ',r' : '') + ',' + tl.w, W = tl.w, L0 = tl.x0, R1 = W - 12, pad = Math.max(0.0015, 0.1 * (hi - lo));
-        function X(t) { return L0 + (t - tl.a) / (tl.b - tl.a) * (R1 - L0); }
+        var W = tl.w, L0 = tl.x0, R1 = W - 12;
         function ln(x1, x2, y1, y2, col, wd, op) { return '<line x1="' + x1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y1="' + y1 + '" y2="' + y2 + '" stroke="' + col + '"' + (wd ? ' stroke-width="' + wd + '"' : '') + (op ? ' stroke-opacity="' + op + '"' : '') + '/>'; }
         function tx(x, y, col, s, anc) { return '<text x="' + x.toFixed(1) + '" y="' + y + '" fill="' + col + '"' + (anc ? ' text-anchor="' + anc + '"' : '') + '>' + s + '</text>'; }
+        var rows = '<svg width="' + W + '" height="84" viewBox="0 0 ' + W + ' 84">' + ln(L0, R1, 70, 70, C.mute, 0, 0.6) + tx(0, 82, C.mute, 'ms') +
+                   tx(0, 35, C.splat, 'list') + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, 'spline') + ln(L0, R1, 54, 54, C.line, 1);
+        if (!idx.length) {                                          // nothing has said "contact" yet: the empty rows, at their full height
+          if (tl.key !== 'none,' + W) { tl.key = 'none,' + W; tlm.innerHTML = rows + '</svg>'; tl.cur = null; }
+          return;
+        }
+        var llo = lo, lhi = hi;
+        if (r) { lo = Math.min(lo, r.t); hi = Math.max(hi, r.t); }
+        var key = idx.join(',') + (r ? ',r' : '') + ',' + W, pad = Math.max(0.0015, 0.1 * (hi - lo));
+        function X(t) { return L0 + (t - tl.a) / (tl.b - tl.a) * (R1 - L0); }
         if (key !== tl.key) {
           tl.key = key; tl.a = lo - pad; tl.b = hi + pad;
           var span = (tl.b - tl.a) * 1000, steps = [0.5, 1, 2, 5, 10, 20, 50, 100], sv = 100, k, x, ends = [-99, -99];
           for (k = 0; k < steps.length; k++) if (span / steps[k] <= Math.max(3, Math.floor((R1 - L0) / 48))) { sv = steps[k]; break; }
-          var s = '<svg width="' + W + '" height="84" viewBox="0 0 ' + W + ' 84">' + ln(L0, R1, 70, 70, C.mute, 0, 0.6);
+          var s = rows;
           for (k = Math.ceil(tl.a * 1000 / sv) * sv; k <= tl.b * 1000 + 1e-9; k += sv) { x = X(k / 1000); s += ln(x, x, 67, 73, C.mute) + tx(x, 82, C.mute, +k.toFixed(1), 'middle'); }
-          s += tx(0, 82, C.mute, 'ms') + tx(0, 35, C.splat, 'list') + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, 'spline') + ln(L0, R1, 54, 54, C.line, 1);
           idx.slice().sort(function (p, q) { return Tt[p] - Tt[q]; }).forEach(function (c) {
             var x = X(Tt[c]), lab = CANDS[c].lab, w = lab.length * 6 + 6, row = x - w / 2 > ends[0] ? 0 : x - w / 2 > ends[1] ? 1 : ends[0] <= ends[1] ? 0 : 1;
             ends[row] = x + w / 2;
@@ -1211,7 +1238,7 @@
         if (m === 'moment') {                                       // SCRIPTED: in to the spot as the ball is let go, low enough to see under it
           var k = KT.ease((run.t - 0.1) / 1.1), sp = mo.spot, yb = KT.clamp((ball.p[1] - sp[1] - 0.35) / 0.35, 0, 1);
           // 30 degrees above the horizon at the closest: inside the bowl, above its wall, with the gap under the ball in sight
-          return { tx: sp[0], ty: sp[1] + 0.12 + 0.28 * yb + 0.25 * (1 - k), tz: sp[2], r: (4.4 - 2.95 * k) * f, th: mo.side * (0.32 + 0.3 * (1 - k)), ph: 0.9 + 0.15 * k };
+          return { tx: sp[0], ty: sp[1] + 0.1 + 0.28 * yb + 0.25 * (1 - k), tz: sp[2], r: (4.4 - 2.7 * k) * f, th: mo.side * (0.32 + 0.3 * (1 - k)), ph: 0.9 + 0.15 * k };
         }
         if (m === 'solid') return { tx: x, ty: 0.55, tz: 0, r: 7.4 * f, th: 0.45, ph: 0.82 };
         if (m === 'brittle') return { tx: x, ty: -0.1, tz: 0, r: 8.6 * f, th: 0.45, ph: 1.0 };
@@ -1230,12 +1257,15 @@
         flatten(); derive(); restoreList(); letGo(0);
         if (!first) run.hover = Math.max(run.hover, 1.1);          // the camera may have a bowl's distance to travel
         cap.innerHTML = sc.cap; dimRows();
+        root.classList.toggle('tc-close', sc.model === 'moment');  // close up: the bowl fills the stage, under the caption too
         silence(); quiet(); au.lastN = 0; au.first = true;        // a new scene starts in silence
         orbit.touched = false; orbit.to(view(), first);
       }
 
       env.loop(function (t, dt) {
         var n = 0, m = st.sc.model, v, g = orbit.goal, k, mom = m === 'moment', cap = mom ? 400 : 40;
+        // moment: the panel of numbers covers the bottom of the stage (half of it on a phone); measured before this frame writes to it
+        var cover = mom && size.h > 1 ? Math.min(0.7, (tag.offsetHeight + 10) / size.h) : 0;
         st.clock += dt; st.acc += dt; st.frames = (st.frames || 0) + 1;
         if (mom) while (n < cap && st.acc >= HM / mo.slow) { st.acc -= HM / mo.slow; substepMoment(); n++; }   // a sub-step costs HM / slow of real time
         else while (st.acc >= H && n < cap) { substep(); st.acc -= H; n++; }
@@ -1251,6 +1281,8 @@
           if (!orbit.touched) { orbit.to(v); g.th = v.th + 0.16 * Math.sin(st.clock * 0.23); }
           orbit.update(dt, 2.4);
         }
+        if (mom && size.h > 1) cam.setViewOffset(size.w, size.h, 0, Math.max(0, cover - 0.24) * 0.75 * size.h, size.w, size.h);   // the picture moves up: the contact stays above the panel
+        else if (cam.view && cam.view.enabled) cam.clearViewOffset();
         if (surf.broken) writeFragments(); else if (m === 'elastic' || m === 'flight') derive();
         paint(); overlays(); words(); timeline();
         fL.draw(cam, R.renderer);
@@ -1263,13 +1295,19 @@
           '.kt-sim-touch .kt-side{position:absolute;z-index:4;left:10px;bottom:10px;pointer-events:none;font:500 11px/1.5 var(--f-mono);letter-spacing:.03em;color:var(--dim);' +
           'padding:8px 11px;background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(680px,calc(100% - 20px))}' +
           '.kt-sim-touch .kt-side b{color:var(--text);font-weight:600;letter-spacing:.06em;text-transform:uppercase}' +
-          '.kt-sim-touch .kt-side i{font-style:normal;color:var(--mute)}.kt-sim-touch .kt-side em{font-style:normal;color:var(--ok);font-weight:600}' +
+          '.kt-sim-touch .kt-side i{font-style:normal;color:var(--mute)}.kt-sim-touch .kt-side em{font:inherit;font-weight:600;letter-spacing:inherit;color:var(--ok)}' +   // (the deck sets every em in a serif italic)
           '.kt-sim-touch .kt-side em.bad{color:var(--err)}.kt-sim-touch .kt-side sub,.kt-sim-touch .kt-side sup{font-size:.8em;line-height:0}' +
           '.kt-sim-touch .kt-mo{display:none;margin:0 0 4px}.kt-sim-touch .kt-mo.on{display:block}.kt-sim-touch .kt-mo svg{display:block;overflow:visible}' +
           '.kt-sim-touch .kt-mo text{font:600 9.5px/1 var(--f-mono);letter-spacing:.02em}' +
           '.kt-sim-touch .kt-pin{position:absolute;z-index:3;left:0;top:0;pointer-events:none;white-space:nowrap;font:600 11px/1 var(--f-mono);color:var(--text);' +
           'padding:4px 6px;background:var(--panel);border:1px solid var(--line2);border-radius:5px;display:none}' +
           '.kt-sim-touch.kt-compact .kt-pin{font-size:10px}' +
+          // the light theme: the words lie over the bowls (in `moment` the list, then the spline bowl, fill the stage), so
+          // they sit on glass that hides what is behind them; a clear one takes the bowl's colour and dark text stops reading
+          ':root[data-theme="light"] .kt-sim-touch :is(.kt-side,.kt-pin){background:rgba(255,255,255,.86);border-color:transparent;' +
+          'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
+          ':root[data-theme="light"] .kt-sim-touch.tc-close .kt-caption{border-radius:6px;background:rgba(255,255,255,.86);' +
+          'box-shadow:0 0 0 6px rgba(255,255,255,.86),0 10px 26px -16px rgba(88,56,24,.45)}' +   // its margin as a spread: the caption keeps its place and size
           '@media (max-width:640px){.kt-sim-touch .kt-side{font-size:9.5px;padding:6px 8px}}';
         document.head.appendChild(css);
       }

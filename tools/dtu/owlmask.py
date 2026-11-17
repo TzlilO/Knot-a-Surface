@@ -26,12 +26,13 @@ What it does:
   6. one owl and one book region: a piece of either that holds none of its seeds is given to the other
   7. writes the labels as runs (a few KB); the file feathers the edge over about two control points when it loads
 
-How it was checked (scan 122, defaults): the cut crosses 1,040 lattice edges, 98 % of them concave (median normal
-curvature -18 per scene unit against +0.8 over the whole lattice); every column of the chart crosses it once; no control
-point disagrees with the majority of its 3 x 3 neighbourhood; varying the margin (1.0 .. 1.5), the lean (0.08 .. 0.16),
-the smoothing (1.5 .. 2.5) or the crease scale (8 .. 12) moves fewer than 2 % of the owl's control points (a margin of
-2 or more lets the cut slip down to the crease between the open book and the closed one: the open book is then owl).
-And by eye, in the pictures of --check, against the photographs' colours.
+How it was checked (scan 122, defaults): the owl is 58,466 of the chart's 112,896 control points. The cut crosses
+1,033 lattice edges, 98 % of them concave (median normal curvature -18 per scene unit, against +0.8 over the whole
+lattice); every column of the chart crosses it once; no control point disagrees with the majority of its 3 x 3
+neighbourhood. Varying the margin (1.0 .. 1.5), the lean (0.08 .. 0.16), the smoothing (1.0 .. 2.5), the crease scale
+(6 .. 12) or the weight of the features (0.2 .. 0.8) changes at most 186 control points (0.3 % of the owl). A margin of
+1.75 changes 828; at 2 the cut spills onto the top of the open book (5,719). And by eye, in the pictures of --check and
+in the talk's renderer, against the photographs' colours: front, sides, back, the talons and the open page.
 
 --check DIR writes the pictures the numbers come from: the chart's lattice (colour, classifier, crease, labels) and
 the object seen from the front, both sides, the back and close to the feet and the open page, with the owl tinted.

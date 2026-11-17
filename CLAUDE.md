@@ -44,14 +44,32 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `clear`, `scn`, `budget`, `cap`), and the section receives a `kt-stats` event with the module's stats.
 - The opening (`<div class="prelude">`, first in talk.html): the English version of talk-he.html, "How does a
   computer see in 3D?" (explicit, implicit, Gaussians, the 3D breakfast scene, "Which one?"), then the talk's
-  cover, all in the Hebrew deck's light "liquid glass" look, scoped to `.prelude` by `talk/prelude.css` (it
-  re-points the kit's and deck's tokens; a sticky "room" of slow light behind it, clipped to `.prelude`; under the
-  cover the page fades into the talk's night). While a step inside it is active, deck.js sets `body.lightroom` and
-  the fixed chrome (rail, HUD, keys) turns light. `talk/prelude.js` = the 3D step's Gaussian slider and count
+  cover, in the Hebrew deck's light "liquid glass" look, which the WHOLE talk shares: talk.html is `<html
+  data-theme="light">`; kit.css holds the light tokens and, at its end, the glass controls; kit.js sets
+  `KnotTalk.theme` and `KnotTalk.color` (same keys as the dark set, that theme's values, `bg` = the glass card);
+  deck.css ends with the theme layer (a page-wide `.room` of slow light, glass stages and pills, Inter headlines,
+  a headline's coloured word through its `c-*` class); `talk/prelude.css` keeps only the opening's own rules (its
+  scoped hues, title screens, trio, `.p-read` / `.he-read`). Pages without the attribute (lab pages, index.html,
+  talk-he.html) keep the dark set unchanged. On a light page `gl.renderer` clears see-through (pass `clear:
+  'opaque'` or a colour to change that). A module on the light talk takes every colour from `KnotTalk.color` (no hex
+  literals), clears 2D canvases with clearRect, avoids additive glows ('lighter', white shadowBlur vanish on paper),
+  and keeps `uRim` low (0-0.2) on light-coloured surfaces, whose rim shading otherwise draws a dark outline. On
+  screens up to 900 px wide the end of the talk gets 40 % of a screen of room so the last step can become active. `talk/prelude.js` = the 3D step's Gaussian slider and count
   (fewer Gaussians on a phone). The cover (`section.cover`, rail "K", key 0) mounts `manifold` with scene
   `cover`: the owl and the rabbit (hidden scene `duo`, DTU scans 122 and 55 side by side, the rabbit at the
   owl's scale) on a 22 s loop: the picture, a dissolve into rolling bands (normals, Gaussians, visual) and back,
   with a slow camera sway. Home goes to the opening.
+- Slide master (`talk/master.js` + `talk/master.css`): D (or the HUD list button) opens a drawer listing every
+  `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
+  part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
+  emptied section goes with its stage and rail entry); the clock and the cut buttons count only what is on.
+  `data-off` on a section or step = off until the presenter turns it on (chapter 08, `structure`, ships off). localStorage
+  `kt-parts` holds only the presenter's overrides, keyed `rail · step title` (renaming a step drops its choice);
+  deck.js applies them before the first frame; "Reset to defaults" and "Show all". `talk.html?master` (or `#master`)
+  = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
+  postMessage to a window opened from the drawer, and the storage event; deck.js mounts nothing there
+  (`body.kt-presenter`). `KnotTalk.deck` is the deck's handle (steps, sections, go / step, set / refresh /
+  setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`).
 - `talk/kit.js` = `KnotTalk.register(name, {title, blurb, tool, scenes, create(env)})` registry,
   lifecycle (`env.loop` pauses offscreen), UI helpers, and the standalone lab shell
   (`KnotTalk.standalone(name)`, used by every `talk/sims/<name>.html`).
@@ -61,7 +79,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound; its last scene `handoff`, SCRIPTED,
   fades everything but the bound spline and eases it onto the toy's true curve written as a 14-point cubic B-spline,
   and `basis` uses those same 14 control points (a literal copy) in every single-curve scene, so chapter 01 ends on
-  chapter 02's first picture; both share one layout rule and the bright cyan / amber look), `basis` (SVG curve
+  chapter 02's first picture; both share one layout rule and one look: a glowing cyan / amber tube on a dark page, a
+  blue tube with a soft shadow on the light talk, where flatland's 1-D photos are drawn over a light backdrop by
+  coverage while training stays on black), `basis` (SVG curve
   playground; its `letters` / `script` scenes draw "Shalom Rafael" as one spline per letter and as
   three handwritten strokes, from the control polygons in `PRINT` / `HAND`; `morph` blends letters →
   handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with
@@ -73,7 +93,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   plane; the drawings and `morphSets` live in `talk/ink.js` = `KnotTalk.ink`), `planoid` (one patch → derived Gaussians, resolution knob; lit translucent
   sheet, solid depth-tested vectors via `gl.vector` / `gl.sheet` / `gl.hidden`, a face-on tangent-plane
   inset, and a scale stage that measures the size from the lattice cell's 4 or 8 neighbours against the
-  derivative formula),
+  derivative formula; its 6 x 6 net is fitted live by least squares (conjugate gradients, area-weighted) to the
+  terrain of chapter 05, `talk/terrain.js` = `KnotTalk.terrain`, shared with `refine` and loaded before both;
+  `scale` / `fill` draw every Gaussian's 1σ outline and MEASURE the uncovered share of the surface, one size for
+  all against each sized to its own cell; `stitch` = the 2 x 2 window over a 12 x 12 lattice; `knob` sweeps 64 to
+  1,048,576 Gaussians with the frame time measured, turning back at 50 ms (or 3x a slow first frame); `adaptive` =
+  1,024 Gaussians on a spring net pulled towards what a second camera sees, the shares measured),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
   draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
   `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets),
@@ -81,22 +106,45 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
   charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
-  capture rig and an `edit(k)` animation. The stand-ins are NOT offered on the manifold lab page any more: its picker and tabs show only the DTU scans; the barn remains the landing page's hero and the fallback without scan data). The deck's chapter 06 runs on ONE subject, scene `scan`: a REAL
+  capture rig and an `edit(k)` animation. The stand-ins are NOT offered on the manifold lab page any more: its picker and tabs show only the DTU scans; the barn remains the landing page's hero and the fallback without scan data). The deck's chapter 07 runs on ONE subject, scene `scan`: a REAL
   DTU object (scan 122, an owl) baked offline by `python3 -I tools/dtu/fit.py <data-dir> 122` into
   `talk/dtu-data.js` (`KnotTalk.dtu`, must load before `talk/scenes.js`; without it the barn stands in).
   It is an offline fit to the dataset's depth maps and photographs: never call it trained or a result of
   the method. Further scans baked with `--register scans` land in `talk/dtu/scan<N>.js` (`KnotTalk.dtuScans`) and
   become scenes `scan<N>` in the lab page's picker only; one sheet around an axis suits a compact single body, and
   `tools/dtu/README.md` lists the scans that failed. `photo: true` = colours already hold the light (`uFlat`). Nets longer than `DENSE` control
-  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` lays one even
-  lattice per chart, puts the Gaussians on its points and lets a running 2 x 2 window stitch two triangles per stop
-  (`buildMesh` / `stepMesh`; instances are written in reverse window order so `setCount` retires the stitched ones).
-  The owl's `animate(t, paint)` (`owlLife` in `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as
-  control-point edits, and `paint` wipes a MATERIAL in (scene `paint`): one entry of `MATS`, a rule that writes control
-  colours and optionally control opacities (`s.a`) and motion (`move`), with its properties in `p` and the ones the
-  simulator may turn in `knobs` (one slider each; `tune()` repaints); `animate(t, paint, material, from)` wipes one
-  material in over another; the picker fills itself from `MATS`. To add or
-  tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
+  points are drawn thinned (`c.ns`), and dragging one of their points is a soft brush. Scene `mesh` meshes the same
+  Gaussians twice at the budget the slider sets, and a board compares them, every number measured in the page. The
+  list: `talk/meshlist.js` (`KnotTalk.meshList`, node-requirable) EMULATES an unstructured 3DGS list from the charts'
+  lattices (never call it trained) and meshes it as a list must: hash grid + 12-nearest search (distances counted),
+  PCA normal, local Delaunay star in the tangent plane, a triangle kept where 2 of 3 corners propose it; emulator,
+  mesher and auditor are jobs stepped a few ms per frame. The lattice: one even lattice per chart with as many points
+  as the budget (`sizeLattices`: area x gain, square cells), stitched by a running 2 x 2 window (instances in reverse
+  window order so `setCount` retires the stitched ones). One audit grades both (bridges, non-manifold edges, holes).
+  `mesh` plays the list, then the lattice; `stitch` starts at the lattice and keeps the mesh; a new budget rebuilds
+  once the slider rests. Export: `talk/meshio.js` (`KnotTalk.meshio`) writes the stitched lattice as PLY / GLB / OBJ
+  / STL, in metres for a DTU scan; every save goes through `KnotTalk.saveFile(filename, blob)` -> promise, defined
+  only if absent and looked up at click time (a host page may replace it). Tests: `api.meshStats()`,
+  `meshFile(fmt)`, `meshSeek(t)`.
+  The owl's `animate(t, paint, material, from, target, fromTarget)` (`owlLife` in
+  `talk/scenes.js`) is SCRIPTED: breathing, a head tilt and a blink as control-point edits of the owl alone, and
+  `paint` wipes a MATERIAL in (scene `paint`) over a TARGET, from the top of what is painted to its foot: one entry
+  of `MATS`, a rule that writes control colours and optionally control opacities (`s.a`) and motion (`move`, tied to
+  `s.h`, the height above where the painted part stands), with its properties in `p` and the ones the simulator may
+  turn in `knobs` (`tune()` repaints); the picker fills itself from `MATS`. `TARGETS` = a second control `object ·
+  owl · selection` (`api.setTarget`; defaults target `object`, material `glass`): `object` = every control point of
+  the object's chart (owl and books, never the table); `owl` = `talk/dtu/owlmask122.js` (`KnotTalk.dtuMasks[122]`,
+  loads before `talk/scenes.js`; without it a hand-drawn height line), segmented OFFLINE by `python3 -I
+  tools/dtu/owlmask.py` (height seeds, a linear classifier on the scan's DINOv3 features, a minimum cut along the
+  concave crease where the owl rests on the book; feathered over two control points), never trained; `selection` =
+  the Hands selection (`c.sel`, `c.selRev`), feathered alike: the module shows the atlas in its select mode
+  (`hands.show(on, 'select')`, wand / brush / erase on the atlas or the object; needs `talk/hands.js` on the page) and
+  a page without the features file fetches it then (`def.features(cb)`). The landing page's teaser paints the owl
+  (`TEASE_ON`). To add or tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). On the light talk a light
+  scene or material (`light: true` on `KT.scenes[..]` / `MATS[..]`: breakfast, snowy owl, clear glass) gets `uRim`
+  0.12 (`rim()`, eased through a wipe; `lod` keeps 0.6), and boxes over 3D content (the mesh board, the atlas, band
+  labels, badges; touch's tags and `moment` caption; pipeline's tags, plot and split caption) sit on 84-86 % glass;
+  dark pages keep their values. A scene without `animate` falls back to
   `edit(k)`. Opacity: `gl.splats(n, {alpha: true})` gives a field an opacity per Gaussian; while its
   `ktSplat.thin` is set, `gl.draw` draws the solid Gaussians as before and the see-through ones as two more layers
   (far side, near side) blended over them. Other fields and modules are untouched. Scene `hands` (lab page only) hosts
@@ -109,22 +157,69 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   touch handlers of its own. A chart marked `ground` (the table) is never touched and can be put away (`c.off`).
   The features are REAL DINOv3 ViT-S/16 features of the scan's photographs, baked by `python3 -I tools/dtu/features.py
   <data-dir> 122 <model.onnx>` (weights not in the repo; see `tools/dtu/README.md`) in the format of `lab/features/`;
-  they tell parts apart (head, body, books, table), not the eyes from the face. Only the lab page loads them. Its views are the splat shader's render modes (`uMode` in
+  they tell parts apart (head, body, books, table), not the eyes from the face. The lab page loads them; the talk fetches them only when the paint scene's `selection` target is picked. Its views are the splat shader's render modes (`uMode` in
   `talk/gl.js`: appearance, depth, normals, single Gaussians, chart identity); view `split` (scene
   `modes`) shows all five at once as rolling slanted bands — the mode is picked per pixel (`uSplit`),
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
   head is shaped from MediaPipe's canonical face mesh (`talk/face-data.js`, Apache-2.0; `faceFit` casts a
   ray per control point; without that file it falls back to sculpted bumps).
-  `structure` (talk/sims/structure.js, chapter 07) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
+  `structure` (talk/sims/structure.js, chapter 08, off by default) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
-  ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured.
-  `touch` (talk/sims/touch.js, chapter 07b "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
+  ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured. Its framing is
+  never closer than the object's box allows; on light, operations fade the scene towards `KT.color.bg` (on dark,
+  towards black); parts use the charts' own `c.hex`.
+  `touch` (talk/sims/touch.js, chapter 09 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
   an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
   loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
-  shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list). Fixed sub-steps,
-  seeded, every number on screen measured; only the launch direction of `flight` is chosen.
+  shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list), `moment` (the
+  camera closes in and time runs 20x slower over the last 10 cm above the list: the seven "moments of contact" a list
+  admits, 3/2/1 sigma shells, summed density 0.1/0.3/0.5, nearest mean, MEASURED on a timeline, against the spline's
+  one root of |S(u,v) - c| = r). The list's Gaussians are drawn soft and see-through (thickness 25-40 % of the
+  in-plane axes, tilted up to 46 degrees off the surface, opacity 0.34-0.64). Fixed sub-steps, seeded, every number on
+  screen measured; only the launch direction of `flight` and the camera path and slow motion of `moment` are
+  scripted. Sound effects are synthesized from the simulation's own quantities (knock from the impulse, hiss from
+  the Gaussians inside the ball, pluck and wobble from the springs, crack, shards, whoosh, a click per contact
+  definition), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
+  own sound switch. The talk's chapter 09 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
+  registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
+  `pipeline` (talk/sims/pipeline.js, chapter 06 "From photographs to charts", right before the owl's chapter 07) =
+  the road to the owl, on the real data of `talk/dtu/pipeline122.js` (`KnotTalk.dtuPipeline[122]`, written by
+  `python3 -I tools/dtu/pipeline.py`; it must load before the module). Scenes: `photos` (the dataset's 64 calibrated
+  cameras as frusta; the photographs are not shown: the dataset's terms could not be checked), `sfm` (the COLMAP
+  points that come with the dataset copy, each appearing once its second camera is added: triangulated with the
+  GIVEN poses, never call it a full SfM run), `init3dgs` (the reference 3DGS initialisation, made exactly: one round
+  Gaussian per point, sigma^2 = mean squared distance to its 3 nearest points, the point's colour, opacity 0.1; drawn
+  as 3DGS draws, EWA-projected and sorted, into a target reused until the view changes; a toggle leaves out the 536
+  Gaussians wider than 1 cm, said on screen; a magnifier on one Gaussian), `initspline` (a 12 x 16 chart fitted to
+  the sparse points by robust least squares; only its axis and angular range come from fit.py), `levels` (fit.py's
+  coarse-to-fine levels: a GEOMETRIC fit to the depth maps, never call it training; level 1 and level 4 are worse
+  than the level before, shown as measured), `train` (replays `talk/dtu/train122.js` = `KnotTalk.dtuTrain[122]`,
+  exported by tools/train from a real 3DGS run, snapshot by snapshot, never interpolated, with the run's optional
+  `stop` record; without that file the run is PENDING on screen and the stand-in is the 3DGS init beside the levels;
+  add its script tag only once the file exists). The Gaussian scenes hold the camera still and draw only when
+  something changes; views are fitted into the part of the stage the caption, panel, plot and magnifier leave free.
+- `tools/train/` is for the user's own GPU machine (nothing is trained here): `README.md` (setup, pinned versions),
+  `train3dgs.py` (runs graphdeco-inria/gaussian-splatting at 54c035f on DTU scan 122 from Hugging Face `Y1ue/DTU`;
+  trains on RGB copies of the RGBA photographs, saves PLY snapshots at 0, 100, 300, 1000, 3000, 7000, 15000, 30000
+  and a loss / PSNR log on 8 held-out views; it judges the run as it goes, inside graphdeco's training_report:
+  iteration cap, wall clock (`--max-minutes`, 120), NaN / Inf (loss every iteration, parameters every 100),
+  Gaussian and GPU-memory caps, a stall watchdog (faulthandler as the last resort), SIGINT / SIGTERM, and the
+  judgement rules `--no-early-stop` turns off: a loss blow-up that ignores the windows after graphdeco's opacity
+  resets, a held-out PSNR plateau only after densification ends, and "not learning" at 1,000; the best state is
+  kept and written as a snapshot; `run.json` records `stop` {reason, iteration, minutes, best_psnr,
+  best_iteration, detail} and every threshold used; "When it stops" in the README) and `export.py` (`python3 -I`,
+  numpy only) -> `talk/dtu/train122.js` = `KnotTalk.dtuTrain[122]` {note, unit, optional stop {reason, iter,
+  best_psnr, best_iter}, log {iter, loss, psnr}, snaps [{iter, ntotal, n, p, s, q, c, a}]} (final and best
+  snapshots included), in the owl's frame recovered from `talk/dtu/pipeline122.js`'s cameras; it writes nothing
+  unless all 21,760 SfM points land on that file's copies. Never put synthetic test output in `talk/dtu/`.
+  Rule for every long optimisation job in this repo (GPU or not): it must judge itself and stop. A wall-clock
+  budget and an iteration cap; divergence detection (NaN / Inf at once, without saving the bad state; a sustained
+  loss blow-up, ignoring spikes the method causes on purpose); convergence detection on a held-out measure (a
+  plateau with a patience, only once the schedule allows it) and a "not learning" check early on; resource and
+  stall watchdogs; SIGINT / SIGTERM handled. Every threshold is a flag with a documented default, the best state
+  is saved, and the reason it stopped is recorded and carried into what is exported.
 - Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
   as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the
@@ -132,13 +227,14 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
   (`talk/audio/tracks.js`, empty by default: no recording is in the repo) while the step is active; M mutes; the
   `.credit` line of a step shows only when a track has loaded. `data-sfx` marks a step whose simulation makes
-  its own synthesized sound effects (chapter 07b); the ♪ button shows there too and `KnotTalk.muted` carries
+  its own synthesized sound effects (chapter 09); the ♪ button shows there too and `KnotTalk.muted` carries
   the mute to the module.
 - Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
   away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is
   written still meets the budget (the far side of a closed chart gets zero weight).
-- Colour code is semantic and fixed: cyan = surface, amber = control points/knots, violet =
-  Gaussians, red = error (chart identity colours in the finale's `charts` view are a separate,
+- Colour code is semantic and fixed: surface, control points/knots, Gaussians, error = cyan / amber / violet /
+  red on a dark page and blue / orange / purple / red on the light talk, always through `KnotTalk.color` or the CSS
+  tokens (copy in talk.html names the light hues) (chart identity colours in the finale's `charts` view are a separate,
   non-semantic set in `talk/scenes.js`). Evidence data (DTU table, bench numbers) = constants at the
   top of `talk/deck.js`; the DTU exhibit notes on screen when a row's mean differs from the printed mean.
 - Touch: ONE shared layer in `talk/kit.js` — `KnotTalk.touchGuard` (claims a touch that starts on a
@@ -298,6 +394,9 @@ with sync_playwright() as p:
     print(pg.inner_text(".kss-hud-tl")); b.close()
 PY
 ```
+Headless SwiftShader has no frame backpressure: frames queue without limit and a screenshot can time out. When
+testing a heavy WebGL scene, sync the stage canvas after every animation frame (a 1-pixel readPixels from an init
+script wrapping requestAnimationFrame), as a real browser waits for its GPU.
 Always: syntax-check every inline script block with `new Function(...)` after building,
 grep the HUD for expected state, screenshot before shipping. Push only after zero
 console errors.
