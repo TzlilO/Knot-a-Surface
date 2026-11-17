@@ -582,9 +582,12 @@
 
       /* ---------- controls ---------- */
       var st = { scene: 'net', sc: SCENES.net, show: {}, n: 14, gain: 0.75, u: 0.5, v: 0.5, t: 0, nb: 4, ci: 0, cj: 0,
-                 touchedProbe: false, touchedN: false, wigI: -1,
+                 touchedProbe: false, touchedN: false, wigI: -1, uvOn: true, uvNative: false, uvAdded: false,
                  nudge: true, nud: { th: 0, ph: 0 }, nudT: 0, autoR: null, userZoom: false, sparkT: 0, ins: 160, lift: 0, viewKey: '' };
       var panel = ui.panel(root, { pos: 'tr', title: T('sampling') });
+      /* the lab page shows the (u, v) chart in every scene, by default; in the talk the scenes' own `show` decides */
+      var tgUv = ui.toggle(panel, { label: T('(u, v) chart'), value: true, onChange: function (v) { st.uvOn = v; syncUv(); } });
+      if (env.embed) tgUv.el.style.display = 'none';
       var slN = ui.slider(panel, { label: T('samples'), min: 4, max: NMAX, step: 1, value: st.n,
         fmt: function (v) { return v + '²'; },
         onInput: function (v) { st.n = v; st.touchedN = true; fieldDirty = true; uvDirty = true; latDirty = probeDirty = true; } });
@@ -1066,7 +1069,7 @@
         var t0 = performance.now();
         st.n = n; writeLattice(field, n, st.gain, violet); st.fieldN = n; field.setCount(n * n);
         kn.ev[n] = performance.now() - t0; kn.cur = n; kn.k = 0; kn.t = 0; kn.iv = [];
-        slK.set(knV(n)); layers(); rdEv.set(kn.ev[n].toFixed(kn.ev[n] < 10 ? 1 : 0) + ' ms'); hudDirty = true; kn.plotT = 0;
+        uvDirty = true; slK.set(knV(n)); layers(); rdEv.set(kn.ev[n].toFixed(kn.ev[n] < 10 ? 1 : 0) + ' ms'); hudDirty = true; kn.plotT = 0;
       }
       function knCap() { var f0 = kn.ft[KN_LEVELS[0]]; return Math.max(KN_BUDGET, f0 != null ? 3 * f0 : 0); }
       function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length & 1 ? s[m] : 0.5 * (s[m - 1] + s[m]); }
@@ -1794,11 +1797,25 @@
           g.stroke();
         }
         if (s.nbr) cells(0, h, w / n, h / n, st.ci, st.cj);
+        if (st.uvAdded && s.net && !s.nbr) {                       // lab page, scenes that had no chart: the control net sits at its own (u, v)
+          for (b2 = 0; b2 < NV; b2++) for (a2 = 0; a2 < NU; a2++) {
+            var ci3 = (b2 * NU + a2) * 3;
+            g.fillStyle = s.feat ? 'rgb(' + Math.round(patch.C[ci3] * 255) + ',' + Math.round(patch.C[ci3 + 1] * 255) + ',' + Math.round(patch.C[ci3 + 2] * 255) + ')' : C.ctrl;
+            g.beginPath(); g.arc(a2 / (NU - 1) * w, (1 - b2 / (NV - 1)) * h, Math.max(2.5, w * 0.022), 0, 6.2832); g.fill();
+            if (s.feat) { g.strokeStyle = rgba(C.text, 0.5); g.lineWidth = 1; g.stroke(); }
+          }
+        }
         if (s.tile && tset.n && n <= OUTMAX) ellipses(tset, st.gain, tl.s1, tl.b, 0, s.nbr ? 0.75 : 0.9);
         if ((s.field || s.ell) && !s.stitch && !s.adapt) {
           g.fillStyle = C.splat;
           if (n <= 44) { var r = Math.max(1, Math.min(3, w / n * 0.22));
             for (b2 = 0; b2 < n; b2++) for (a2 = 0; a2 < n; a2++) { g.beginPath(); g.arc((a2 + 0.5) / n * w, (b2 + 0.5) / n * h, r, 0, 6.2832); g.fill(); } }
+          else if (st.uvAdded) {                           // lab page: too many for a mark each, so the lattice lines thinned to at most 32 a side
+            var stp = Math.ceil(n / 32);
+            g.strokeStyle = rgba(C.splat, 0.45); g.lineWidth = 1; g.beginPath();
+            for (i = 0; i <= n; i += stp) { g.moveTo(i / n * w, 0); g.lineTo(i / n * w, h); g.moveTo(0, i / n * h); g.lineTo(w, i / n * h); }
+            g.stroke();
+          }
           else { g.globalAlpha = Math.min(0.75, 0.25 + n / 320) * (s.nbr ? 0.35 : 1); g.fillRect(0, 0, w, h); g.globalAlpha = 1; }
         }
         if (s.probe) {
@@ -1820,7 +1837,8 @@
         }
         // the label is set in capitals: a lower-case σ would turn into Σ, so it keeps its case
         var lab = s.nbr ? (w < 150 ? T('(u, v) · {n} nbrs', { n: st.nb }) : T('(u, v) · {n} neighbours', { n: st.nb })) : s.stitch ? (w < 150 ? T('2 × 2 window') : T('(u, v) · 2 × 2 window')) :
-                  s.win ? (w < 150 ? T('(u, v) · window') : T('(u, v) · view window')) : s.adapt ? (w < 150 ? T('(u, v) · warped') : T('(u, v) · warped lattice')) : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : T('(u, v) · 1<i>σ</i> footprints')) : T('(u, v) chart');
+                  s.win ? (w < 150 ? T('(u, v) · window') : T('(u, v) · view window')) : s.adapt ? (w < 150 ? T('(u, v) · warped') : T('(u, v) · warped lattice')) : s.tile ? (w < 150 ? '(u, v) · 1<i>σ</i>' : T('(u, v) · 1<i>σ</i> footprints')) :
+                  st.uvAdded && s.field && w >= 150 ? T('(u, v) · {n} Gaussians', { n: (n * n).toLocaleString('en-US') }) : T('(u, v) chart');
         if (lab !== uvLabHtml) { uvLabHtml = lab; uvLab.innerHTML = lab; }
       }
 
@@ -1949,6 +1967,14 @@
       }
 
       /* ---------- scenes ---------- */
+      function syncUv() {                       // the (u, v) chart: the scene's own flag in the talk, the toggle (on) on the lab page
+        var s = st.show;
+        if (!env.embed) s.uv = st.uvOn;
+        st.uvAdded = !!s.uv && !st.uvNative;
+        uvBox.style.display = s.uv ? '' : 'none';
+        fcBox.classList.toggle('kt-solo', !s.uv);
+        uvDirty = true;
+      }
       function setScene(id) {
         var sc = SCENES[id]; if (!sc) return;
         st.scene = id; st.sc = sc; st.t = 0; st.touchedProbe = false; st.touchedN = false; st.wigI = -1;
@@ -2012,8 +2038,8 @@
         on(nbRingA.obj, s.nbr && !s.tile); on(nbRingI.obj, s.nbr && !s.tile);      // with every outline drawn, these would be twice
         tMu.style.display = s.probe && !s.nbr ? '' : 'none'; tU.style.display = tV.style.display = s.tan ? '' : 'none';
         tN.style.display = s.nor ? '' : 'none';
-        uvBox.style.display = s.uv ? '' : 'none';
-        fcBox.style.display = s.face ? '' : 'none'; fcBox.classList.toggle('kt-solo', !s.uv);
+        st.uvNative = !!s.uv; syncUv();
+        fcBox.style.display = s.face ? '' : 'none';
         root.classList.toggle('kt-has-face', !!s.face); root.classList.toggle('kt-nbr', !!s.nbr);
         nbBar.style.display = s.nbr ? '' : 'none';
         panel.style.display = sc.hero ? 'none' : ''; cap.style.display = sc.hero ? 'none' : '';

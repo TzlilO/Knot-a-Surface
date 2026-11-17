@@ -603,6 +603,7 @@
   "⊙ towards you": "⊙ לכיוונכם",
   "⊗ away": "⊗ הרחק מכם",
   "(u, v) · {n} nbrs": "<span dir=\"ltr\">(u, v)</span> · {n} שכנים",
+  "(u, v) · {n} Gaussians": "<span dir=\"ltr\">(u, v)</span> · {n} גאוסיאנים",
   "(u, v) · {n} neighbours": "<span dir=\"ltr\">(u, v)</span> · {n} שכנים",
   "2 × 2 window": "חלון <span dir=\"ltr\">2 × 2</span>",
   "(u, v) · 2 × 2 window": "\u2067<span dir=\"ltr\">(u, v)</span> · חלון <span dir=\"ltr\">2 × 2</span>\u2069",
