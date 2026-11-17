@@ -255,7 +255,7 @@ class Recorder:
         try:
             self.finish(dict(reason='stalled', iteration=self.it, detail='no iteration completed for %.1f minutes after iteration %d (--stall-minutes %g): '
                                                                           'a hung CUDA kernel or I/O; the stacks of its threads are in stall.txt' % (idle / 60, self.it, self.a.stall_minutes)), watchdog=True)
-            say('\nSTALLED: no iteration for %.1f minutes after iteration %d; the record is written, the process ends' % (idle / 60, self.it))
+            self.tell('\nSTALLED: no iteration for %.1f minutes after iteration %d; the record is written, the process ends' % (idle / 60, self.it))
         finally:
             os._exit(3)
 
@@ -360,7 +360,12 @@ class Recorder:
     def snapshot(self, k, A, what):
         self.beat(); write_ply(os.path.join(self.out, 'point_cloud', 'iteration_%d' % k, 'point_cloud.ply'), A); self.beat()
         self.disk[k] = what
-        say('[ITER %d] Saving Gaussians: %s' % (k, 'the state where the run stopped' if what == 'final' else 'the best %s state, from host memory' % self.which))
+        self.tell('[ITER %d] Saving Gaussians: %s' % (k, 'the state where the run stopped' if what == 'final' else 'the best %s state, from host memory' % self.which))
+
+    def tell(self, msg):                                   # the watchdog writes straight to stderr: the hung main thread may hold stdout's lock
+        if threading.current_thread() is threading.main_thread(): return say(msg)
+        try: os.write(2, (msg + '\n').encode())
+        except OSError: pass
 
     def keep_best(self):
         """The best evaluated state goes to disk unless a snapshot there comes within --min-delta of its PSNR."""
