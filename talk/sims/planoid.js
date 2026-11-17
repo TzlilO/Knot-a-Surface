@@ -1962,9 +1962,12 @@
           'box-shadow:var(--glass-edge),0 10px 26px -16px rgba(88,56,24,.3)}' +
           '[data-theme="light"] .kt-sim-planoid .kt-pl-hud .big{font-family:var(--f-ui);font-weight:700;letter-spacing:-.01em}' +
           /* a right-to-left page (talk.html in Hebrew; the same mark as kit.css asks for): this module's own labels are set
-             without the tracking of the capitals they replace */
+             without the tracking of the capitals they replace; and the kit lays its row the other way round (label on the
+             right), so the box around the 4 / 8 switch keeps its wider padding on the label's side */
           ':root[dir="rtl"][data-lang] .kt-sim-planoid .kt-uv-lab,:root[dir="rtl"][data-lang] .kt-sim-planoid .kt-pl-hud,' +
-          ':root[dir="rtl"][data-lang] .kt-sim-planoid .kt-tag i{letter-spacing:0}';
+          ':root[dir="rtl"][data-lang] .kt-sim-planoid .kt-tag i{letter-spacing:0}' +
+          ':root[dir="rtl"][data-lang] .kt-sim-planoid .kt-nbsw{padding:4px 10px 4px 4px}' +
+          ':root[dir="rtl"][data-lang][data-theme="light"] .kt-sim-planoid .kt-nbsw{padding:4px 14px 4px 4px}';
         document.head.appendChild(css);
       }
 

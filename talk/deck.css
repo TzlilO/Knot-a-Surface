@@ -353,6 +353,8 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 /* left to right inside right-to-left text: formulas, key caps, code; a number that stands alone; a chart */
 :root[dir="rtl"] :is(.katex,.eq,[data-tex],kbd,code,.mono){direction:ltr;unicode-bidi:isolate}
 :root[dir="rtl"] .keys kbd{margin-right:0;margin-left:.5rem}             /* a key cap is left to right itself, so its own "end" is the wrong side */
+/* a left-to-right run inside Hebrew copy (a size, a range, a number with its unit) is one piece: it never breaks over two lines */
+:root[dir="rtl"] span[dir="ltr"]{white-space:nowrap}
 :root[dir="rtl"] .stats b{direction:ltr;text-align:right}
 :root[dir="rtl"] .exhibit svg{direction:ltr}
 /* type: no tracking on the small labels; headlines a little less tight and a little more open than the Latin ones, as
