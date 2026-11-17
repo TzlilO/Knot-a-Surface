@@ -73,7 +73,7 @@
   <div class="p-text">
     <div class="tag k-blob">Before the talk · about five minutes</div>
     <h1>How does a computer <span>see</span> in 3D?</h1>
-    <p class="lede">Three ways to describe a world: a list, a question, and a cloud of soft blobs.</p>
+    <p class="lede">Two ways to describe a world, a list and a question, and then a list whose items are soft blobs.</p>
     <div class="meta">Scroll down, or press space</div>
   </div>
   <div class="hero glass"><div class="sim-mount"></div></div>
@@ -123,12 +123,12 @@
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav" data-scene="few">
-      <div class="tag">Gaussian splatting</div>
+      <div class="tag">Explicit representation · Gaussians</div>
       <h2>And what if the points were <span>soft</span>?</h2>
-      <p>A Gaussian is a blob with a centre, a size, a direction, an opacity and a colour. <b>Explicit like a point, smooth like a function.</b></p>
+      <p>A Gaussian is a blob with a centre, a size, a direction, an opacity and a colour. <b>Still explicit: a list of items, now soft ones that blend.</b></p>
     </article>
     <article class="step nav" data-scene="many">
-      <div class="tag">Gaussian splatting</div>
+      <div class="tag">Explicit representation · Gaussians</div>
       <h2>And the computer <span>learns</span> where to put them</h2>
       <p>Start from random blobs and compare with the picture. At every step each blob moves a little, until the picture comes into focus.</p>
       <p class="fine">In a real scene one starts from a sparse point cloud, and must know where every camera stood.</p>
@@ -146,7 +146,7 @@
   </div></div>
   <div class="steps">
     <article class="step nav">
-      <div class="tag">Gaussian splatting</div>
+      <div class="tag">Explicit representation · Gaussians</div>
       <h2>And in 3D: <span>real time</span></h2>
       <p>Throw the blobs at the screen, sort them by depth and blend. No rays and no questions.</p>
       <p class="fine">Drawing is fast. Training takes many minutes on a graphics card.</p>
@@ -163,7 +163,7 @@
         <ul><li>Fast to draw</li><li>Easy to edit</li><li class="no">Every detail costs more items</li></ul></div>
       <div class="glass k-implicit"><b>Implicit</b><small>a function · NeRF</small>
         <ul><li>Smooth and continuous</li><li>Compact</li><li class="no">Many questions for every pixel</li></ul></div>
-      <div class="glass k-blob"><b>Gaussians</b><small>3D Gaussian Splatting</small>
+      <div class="glass k-blob"><b>Explicit, soft</b><small>Gaussians · 3D Gaussian Splatting</small>
         <ul><li>Fast to draw</li><li>Photographic quality</li><li class="no">No defined surface</li></ul></div>
     </div>
   </article>
@@ -730,8 +730,8 @@
     <article class="step nav" data-scene="flight" data-replay data-audio="touch" data-audio-len="30" data-sfx>
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2><em>Out of bounds</em></h2>
-      <p>A hard bounce throws the ball out of the spline bowl and into the list. There every Gaussian is on its own, and the bowl comes apart.</p>
-      <p class="aside">Only the direction of the launch is chosen, so that the ball lands in the other bowl. The bounce, the flight and the scatter are simulated. How hard overlapping Gaussians push each other apart is an invented constant: a list defines no such force.</p>
+      <p>The ball comes down on the owl, a spline reconstruction of a real scan. The owl heads it to the glass rabbit, which jumps and heads it on into the bowl. There the same two objects stand as lists of Gaussians. Nothing in a list pushes back: its Gaussians drift aside and the ball falls through.</p>
+      <p class="aside">Computed: where and when the ball meets each spline figure, from the closest point on its chart. Scripted: the two headers and the jump, both the movement and where the ball is sent. The lists in the bowl are emulated from the same charts, not trained. The balloon drift is an invented rule: a list defines no force.</p>
     </article>
   </div>
 </section>
