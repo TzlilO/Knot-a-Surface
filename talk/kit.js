@@ -18,6 +18,10 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk = window.KnotTalk || {};
+  /* languages: talk/i18n.js (loaded before this file on a page that has them) sets KT.lang and KT.t; on any other
+     page the strings are the English they are written in */
+  KT.lang = KT.lang || 'en';
+  if (!KT.t) KT.t = function (en, vars) { return vars ? en.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : m; }) : en; };
   KT.sims = KT.sims || {};
   KT.register = function (name, def) { KT.sims[name] = def; };
 
