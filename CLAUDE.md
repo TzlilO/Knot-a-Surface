@@ -59,6 +59,19 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `cover`: the owl and the rabbit (hidden scene `duo`, DTU scans 122 and 55 side by side, the rabbit at the
   owl's scale) on a 22 s loop: the picture, a dissolve into rolling bands (normals, Gaussians, visual) and back,
   with a slow camera sway. Home goes to the opening.
+- Two languages (`tools/i18n/README.md` is the full description): talk.html is written in English; Hebrew is a
+  dictionary keyed by the English itself, `talk/i18n/he.js` (`KnotTalk.i18nData.he`), hand-edited and reviewed: change
+  values there, never regenerate it. `talk/i18n.js` loads first in the head and decides the language once per load
+  (`?lang=he|en`, else the saved `kt-lang`, else English); switching (HUD "EN | עב", key L, the slide master) reloads
+  the page and keeps step, cut, parts, clock and mute. `KnotTalk.i18n.apply()` swaps the page's blocks and attributes;
+  every string a script shows goes through `KnotTalk.t('English', vars)` (one sentence per call, `{name}` templates;
+  kit.js gives the English back on pages without i18n.js). On the Hebrew page `KnotTalk.t` wraps its result in bidi
+  isolates, so never use a translated string as an id, a key or a file name: `KT.scenes[..].en` and the slide master's
+  keys stay English. The deck mirrors right to left (arrow keys too: ← forward); a simulation stage (`.kt-sim`) stays
+  a left-to-right island and only kit panels, captions and hints read right to left. A changed English sentence falls
+  back to English until its dictionary key is changed with it: run `node tools/i18n/check.js` after touching copy or
+  strings (coverage, markup, numbers and step keys are errors), and look at the step in `talk.html?lang=he`.
+  `tools/i18n/GLOSSARY.md` fixes the terms.
 - Slide master (`talk/master.js` + `talk/master.css`): D (or the HUD list button) opens a drawer listing every
   `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
   part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
