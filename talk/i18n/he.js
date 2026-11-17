@@ -1146,6 +1146,16 @@
   "<b>{e}</b> · plan {p} / {tot}": "<b>{e}</b> · תכנון <span dir=\"ltr\">{p} / {tot}</span>",
   "D · slide master: show / hide parts": "D · מנהל השקפים: הצגה / הסתרה של חלקים",
   "Slide master: show or hide parts of the talk (D)": "מנהל השקפים: הצגה או הסתרה של חלקים בהרצאה (D)",
-  "Slide master · Knot‑a‑Surface": "מנהל השקפים · Knot‑a‑Surface"
+  "Slide master · Knot‑a‑Surface": "מנהל השקפים · Knot‑a‑Surface",
+  "<kbd>S</kbd>titles only: hide / show the subtitles · the presenter view keeps them as notes": "<kbd>S</kbd>כותרות בלבד: הסתרה / הצגה של הכתוביות · תצוגת המציג שומרת אותן כהערות",
+  "S · titles only: hide / show the subtitles": "S · כותרות בלבד: הסתרה / הצגה של הכתוביות",
+  "Titles only: hide the subtitles of the slides (S)": "כותרות בלבד: הסתרת הכתוביות בשקפים (S)",
+  "Titles only": "כותרות בלבד",
+  "Hide the subtitles on the slides; the presenter view keeps them as speaker notes.": "הכתוביות יורדות מהשקפים; תצוגת המציג שומרת אותן כהערות למציג.",
+  "Speaker notes": "הערות למציג",
+  "Text size": "גודל הטקסט",
+  "Smaller text": "טקסט קטן יותר",
+  "Larger text": "טקסט גדול יותר",
+  "No notes for this step.": "אין הערות לשלב הזה."
   });
 })();

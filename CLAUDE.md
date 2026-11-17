@@ -82,7 +82,18 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
   postMessage to a window opened from the drawer, and the storage event; deck.js mounts nothing there
   (`body.kt-presenter`). `KnotTalk.deck` is the deck's handle (steps, sections, go / step, set / refresh /
-  setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`).
+  setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`, `kt-subs`).
+  The presenter view is two columns: the talk window's controls over the SPEAKER NOTES = the active step's subtitles,
+  cloned from its own copy of the page by step key (nothing but keys crosses windows), scrollable, A− / A+ (localStorage
+  `kt-notes`); the list beside them. TITLES ONLY (`html.kt-titles`): a step's subtitles leave the slide, the presenter
+  view keeps them. Subtitles = `KnotTalk.deck.subtitles(step)` = the step's direct `p` (not `.thesis` / `.qa` /
+  `.lede`), `ul`, `.do`, `.try`, `.time` (deck.js `SUB`, mirrored in deck.css), on the two title screens what follows
+  the title block (the cover's `p.fine`, the opening's `.meta`); badges, headlines, `.lede`, the cover's byline and
+  exhibits (`.eq`, `.flip`, `table.cmp`, `.exhibits`, `.legend`, `.props`, `.labs`, `.trio`, `.p-next`) stay. Steps
+  keep their min-height, so activation, scenes and the clock do not change. `talk.html`'s head sets the class before
+  the first paint: kept over a language reload, else `?subs=on|off` (saved; a toggle drops it from the address), else
+  localStorage `kt-subs` (default on). Switched by S, the HUD button, the slide master's switch and the presenter view
+  (bus message `subs`); `KnotTalk.deck.subs()` / `setSubs(on)`, event `kt-subs` {subs}.
 - Link preview: talk.html's head carries Open Graph / Twitter tags (absolute URLs) pointing at `talk/share.jpg`,
   1200 x 630: two owls cut into slanted bands, the scan (stone | normals) and its copy (stone | glass | jelly).
   `node tools/share/render.js` redraws it: `tools/share/page.html` mounts one `manifold` instance per band (scene

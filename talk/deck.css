@@ -37,6 +37,12 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 .hud .clock{padding:.42rem .55rem;border:1px solid var(--line2);border-radius:6px;background:var(--panel);
   font-variant-numeric:tabular-nums;color:var(--dim);cursor:pointer}
 .hud .sound.off{text-decoration:line-through;opacity:.5}
+/* titles only (deck.js "subtitles"): pressed = the subtitles are hidden; its two thin lines fade with them */
+.hud .subs{display:inline-flex;align-items:center;justify-content:center}
+.hud .subs svg{display:block;width:1.4em;height:1.1em;margin:-.05em 0;fill:none;stroke:currentColor;stroke-linecap:round}
+.hud .subs .sl{transition:opacity .2s}
+.hud .subs[aria-pressed="true"]{color:var(--bg);background:var(--text);border-color:var(--text)}
+.hud .subs[aria-pressed="true"] .sl{opacity:.3}
 .hud .clock b{color:var(--text);font-weight:600}
 .hud .clock.late b{color:var(--ctrl)}.hud .clock.ok b{color:var(--ok)}
 .keys{position:fixed;z-index:70;inset-inline-start:3.3rem;bottom:3.2rem;display:none;padding:1rem 1.2rem;border-radius:10px;background:var(--bg3);
@@ -353,6 +359,30 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   :where([data-theme="light"] body>section) .eq .katex-display>.katex{width:max-content}   /* scrolled to its end, it ends clear of the fade */
 }
 @media (prefers-reduced-motion:reduce){.room i{animation:none}}
+
+/* =====================================================================================================================
+   Titles only (html.kt-titles, deck.js "subtitles"; talk.html's head sets it before the first paint). A step's
+   subtitles leave the slide: the same list as deck.js's SUB, so the presenter view's notes are exactly what is hidden
+   here. A step keeps its height (min-height above), so the reading line, the scroll and the scenes do not change: the
+   headline is centred in it, beside the stage, and set larger, so the slide reads as designed with one line.
+   ===================================================================================================================== */
+:root.kt-titles :is(.step,.p-hero>.p-text)>:is(p:not(.thesis,.qa,.lede),ul,.do,.try,.time),
+:root.kt-titles .p-open>.p-text>.meta{display:none}
+:root.kt-titles .steps{container-type:inline-size}
+/* larger, but never wider than the column lets a headline's longest unbreakable run be (Hebrew keeps phrases whole with
+   no-break spaces): the size follows the text column (cqi), between the base size and 2.9rem */
+:root.kt-titles .chapter .step:not(.opener) h2{font-size:clamp(2.3rem,9.6cqi,2.9rem);max-width:12em}
+:root.kt-titles .prelude .chapter .step h2{font-size:clamp(2.6rem,9.6cqi,3rem)}
+:root.kt-titles .chapter .step:not(.opener) .lvl,:root.kt-titles .chapter .step:not(.opener) .tag{margin-bottom:1.5rem}
+:root.kt-titles .chapter .opener h2{margin-bottom:0}
+:root.kt-titles .step>.eq{margin-top:1rem}
+@media (max-width:900px){
+  /* a phone: the stage pinned on top, the title under it, a little lower than the first line of text would sit */
+  :root.kt-titles .chapter .step:not(.opener) h2,:root.kt-titles .prelude .chapter .step h2{font-size:clamp(1.75rem,8.8cqi,2.1rem)}
+  :root.kt-titles .chapter .step{padding-top:2.4rem}
+  /* a full-width step that is only a headline still holds the reading line (62 % down the screen) when it is landed */
+  :root.kt-titles .wide .step{min-height:60svh;justify-content:center}
+}
 
 /* =====================================================================================================================
    Right to left (Hebrew: talk/i18n.js sets <html dir="rtl">). The rules above name sides as inline-start / inline-end,

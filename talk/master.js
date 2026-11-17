@@ -17,7 +17,11 @@
    Languages (talk/i18n.js): the panel is in the page's language and carries the language control (L switches here
    too); in Hebrew the presenter view's arrows swap as the deck's do (← next). What windows exchange and what is
    saved are the steps' English keys, so two windows in different languages agree; see "language" below for how a
-   switch in one window reaches the other. */
+   switch in one window reaches the other.
+   Titles only (deck.js "subtitles", KnotTalk.deck.subs / setSubs): a switch under the cuts, here and in the presenter
+   view, which flips the talk window as the cut does. The presenter view always shows the active step's subtitles as
+   speaker notes, read from its own copy of the page (the same talk.html, in the same language) by the step's key:
+   nothing but the key crosses between windows. A− / A+ set their size (localStorage 'kt-notes'). */
 (function () {
   'use strict';
   var KT = window.KnotTalk || {}, D = KT.deck;
@@ -91,8 +95,9 @@
   })();
 
   /* ---------- what the panel shows: this deck, or (presenter view) what the talk window last said ---------- */
-  var view = { cut: D.cut(), cur: null, t0: 0, plan: 0, linked: false };
+  var view = { cut: D.cut(), cur: null, t0: 0, plan: 0, linked: false, subs: D.subs() };
   function cutNow() { return presenter ? view.cut : D.cut(); }
+  function subsNow() { return presenter ? view.subs : D.subs(); }
   function curNow() { return presenter ? (view.cur && D.byKey(view.cur)) : D.current(); }
   function label(n) { var s = D.section(n); return (s.dataset.rail || '') + ' · ' + D.title(n); }
   function nextAfter(n, m) {
@@ -102,7 +107,7 @@
 
   /* ---------- the panel ---------- */
   var panel = el('div', 'ktm' + (presenter ? ' ktm-page' : ''));
-  panel.innerHTML =
+  panel.innerHTML = (presenter ? '<div class="ktm-side">' : '') +
     '<header class="ktm-head">' +
       '<div class="ktm-top"><div><div class="ktm-kick">' + (presenter ? T('Knot‑a‑Surface · presenter view') : T('Knot‑a‑Surface · the talk')) + '</div>' +
         '<h2 class="ktm-h" id="ktm-h" tabindex="-1">' + T('Slide master') + '</h2></div>' +
@@ -114,19 +119,25 @@
       '<div class="ktm-cuts" role="group">' +
         '<button type="button" data-cut="40"><span>' + T('long cut') + '</span><b></b></button>' +
         '<button type="button" data-cut="20"><span>' + T('short cut') + '</span><b></b></button></div>' +
+      '<label class="ktm-subs"><input type="checkbox" class="ktm-tog"><span><b>' + T('Titles only') + '</b> <kbd>S</kbd>' +
+        '<small>' + T('Hide the subtitles on the slides; the presenter view keeps them as speaker notes.') + '</small></span></label>' +
       '<div class="ktm-acts"><button type="button" class="ktm-all">' + T('Show all') + '</button>' +
         '<button type="button" class="ktm-reset">' + T('Reset to defaults') + '<i></i></button></div>' +
     '</header>' +
-    (presenter ?
-      '<section class="ktm-live">' +
+    '<div class="ktm-body"><div class="ktm-cols" aria-hidden="true"><span>' + T('part') + '</span><span>' + T('long') + '</span><span>' + T('short') + '</span></div>' +
+      '<ol class="ktm-list"></ol></div>' +
+    (presenter ? '</div>' +
+      /* the presenter view: the talk window's controls and the speaker notes, beside the list (master.css) */
+      '<div class="ktm-main"><section class="ktm-live">' +
         '<div class="ktm-nav"><button type="button" class="ktm-prev">' + T('← prev') + '</button>' +
           '<button type="button" class="ktm-next">' + T('next →') + '</button></div>' +
         '<div class="ktm-where"><div><span>' + T('now') + '</span><b class="ktm-cur">–</b></div><div><span>' + T('next') + '</span><b class="ktm-nxt">–</b></div></div>' +
         '<div class="ktm-clock"><button type="button" class="ktm-clk">' + T('start clock') + '</button><span class="ktm-time"></span></div>' +
         '<p class="ktm-link"><span class="ktm-st" role="status"></span> <button type="button" class="ktm-open">' + T('Open the talk ↗') + '</button></p>' +
-      '</section>' : '') +
-    '<div class="ktm-body"><div class="ktm-cols" aria-hidden="true"><span>' + T('part') + '</span><span>' + T('long') + '</span><span>' + T('short') + '</span></div>' +
-      '<ol class="ktm-list"></ol></div>';
+      '</section>' +
+      '<section class="ktm-notes"><div class="ktm-nhead"><span class="ktm-nlab">' + T('Speaker notes') + '</span>' +
+        '<span class="ktm-size" role="group"><button type="button" class="ktm-smaller">A−</button><button type="button" class="ktm-larger">A+</button></span></div>' +
+        '<div class="ktm-ntext" tabindex="0"></div></section></div>' : '');
   /* what is said in an attribute is set here, not written into the markup above: a translation may hold a quote */
   function say(sel, name, text) { var e = $(sel, panel); if (e) e.setAttribute(name, text); }
   say('.ktm-pop', 'title', T('The same list in a second window, synced with this one'));
@@ -134,6 +145,9 @@
   say('.ktm-cuts', 'aria-label', T('Length of what is on, per cut; pick the cut in use'));
   say('.ktm-live', 'aria-label', T('The talk window'));
   say('.ktm-prev', 'aria-label', T('Previous step')); say('.ktm-next', 'aria-label', T('Next step'));
+  say('.ktm-subs .ktm-tog', 'aria-label', T('Titles only: hide the subtitles of the slides (S)'));
+  say('.ktm-notes', 'aria-label', T('Speaker notes')); say('.ktm-size', 'aria-label', T('Text size'));
+  say('.ktm-smaller', 'aria-label', T('Smaller text')); say('.ktm-larger', 'aria-label', T('Larger text'));
   /* "in use" on the cut that is on is written by the stylesheet (master.css): hand it the words of another language */
   if (T('in use') !== 'in use') panel.style.setProperty('--ktm-inuse', JSON.stringify(' · ' + T('in use')));
   /* the language: the HUD's control again, beside "show all" and "reset" (the drawer, and the presenter view) */
@@ -194,6 +208,30 @@
     cur: $('.ktm-cur', panel), nxt: $('.ktm-nxt', panel), clk: $('.ktm-clk', panel), time: $('.ktm-time', panel),
     link: $('.ktm-link', panel), st: $('.ktm-st', panel), open: $('.ktm-open', panel), was: null
   } : null;
+  var subsTog = $('.ktm-subs .ktm-tog', panel);
+
+  /* ---------- speaker notes (presenter view): the subtitles of the active step, from this page's own copy ---------- */
+  var notes = presenter ? { box: $('.ktm-ntext', panel), size: 1 } : null;
+  function noteSize(k) {
+    if (!notes) return;
+    if (k) notes.size = Math.max(0.6, Math.min(2.6, Math.round(notes.size * (k > 0 ? 1.15 : 1 / 1.15) * 100) / 100));
+    try { if (k) localStorage.setItem('kt-notes', String(notes.size)); } catch (e) { /* the size lasts as long as the page */ }
+    panel.style.setProperty('--ktm-ns', notes.size);
+  }
+  if (notes) { try { notes.size = Math.max(0.6, Math.min(2.6, +localStorage.getItem('kt-notes') || 1)); } catch (e) {} noteSize(0); }
+  function showNotes(n) {
+    if (!notes) return;
+    var box = notes.box, subs = n ? D.subtitles(n) : [];
+    box.textContent = '';
+    subs.forEach(function (e) {
+      var c = e.cloneNode(true);
+      c.removeAttribute('id'); $$('[id]', c).forEach(function (x) { x.removeAttribute('id'); });
+      $$('[data-tex]', c).forEach(function (t) { if (!t.firstChild) t.textContent = t.dataset.tex; });   // no KaTeX: the TeX itself
+      box.appendChild(c);
+    });
+    if (!subs.length) box.appendChild(el('p', 'ktm-none', n ? T('No notes for this step.') : '–'));
+    box.scrollTop = 0;
+  }
 
   /* minutes of a part in one cut: what is on of it; a part that is off shows what it would take, struck through (CSS) */
   function setNum(span, v, full, cutName, off) {
@@ -261,7 +299,8 @@
       }
       paintClock();
     }
-    if (cur !== lastCur) { lastCur = cur; follow(); }
+    subsTog.checked = !subsNow();
+    if (cur !== lastCur) { lastCur = cur; follow(); showNotes(cur); }
   }
   function paintClock() {
     if (!live) return;
@@ -309,6 +348,10 @@
   resetBtn.addEventListener('click', function () {
     wipe = true; D.setOverrides({});
     if (presenter) bus.post({ type: 'reset' });
+  });
+  subsTog.addEventListener('change', function () {
+    var on = !subsTog.checked;                            // checked = titles only
+    if (presenter) { view.subs = on; paint(); bus.post({ type: 'subs', subs: on }); } else D.setSubs(on);
   });
   cutBtns.forEach(function (b) {
     b.addEventListener('click', function () {
@@ -362,7 +405,7 @@
   }
   function openPresenter() {
     var url = pageUrl('?master'), w = null;
-    try { w = window.open(url, 'knot-talk-master', 'popup,width=600,height=900'); } catch (e) {}
+    try { w = window.open(url, 'knot-talk-master', 'popup,width=1180,height=860'); } catch (e) {}
     if (w) { bus.peer(w); try { w.focus(); } catch (e) {} }
   }
 
@@ -385,6 +428,7 @@
       if (!(e.metaKey || e.ctrlKey || e.altKey)) {
         if (k === 'Escape' || (k === 'd' && !e.repeat)) { e.preventDefault(); close(); }
         else if (k === 'l' && !e.repeat && I18N) { e.preventDefault(); I18N.toggle(); }
+        else if (k === 's' && !e.repeat) { e.preventDefault(); D.setSubs(!D.subs()); }
         else if (rove(e, true)) e.preventDefault();
       }
       e.stopPropagation();                                  // the deck behind does not see keys while the drawer is open
@@ -403,6 +447,8 @@
     $('.ktm-prev', panel).addEventListener('click', function () { bus.post({ type: 'step', d: -1 }); });
     $('.ktm-next', panel).addEventListener('click', function () { bus.post({ type: 'step', d: 1 }); });
     live.clk.addEventListener('click', function () { bus.post({ type: 'clock' }); });
+    $('.ktm-smaller', panel).addEventListener('click', function () { noteSize(-1); });
+    $('.ktm-larger', panel).addEventListener('click', function () { noteSize(1); });
     live.open.addEventListener('click', function () {
       var w = null;
       try { w = window.open(pageUrl(''), 'knot-talk'); } catch (x) {}
@@ -417,6 +463,7 @@
       var bwd = k === behind || k === 'PageUp' || (k === ' ' && !ctl && e.shiftKey);
       if (fwd || bwd) { e.preventDefault(); bus.post({ type: 'step', d: fwd ? 1 : -1 }); }
       else if (k === 't' && !e.repeat) bus.post({ type: 'clock' });
+      else if (k === 's' && !e.repeat) { view.subs = !view.subs; paint(); bus.post({ type: 'subs', subs: view.subs }); }
       else if (k === 'l' && !e.repeat && I18N) I18N.toggle();
       else if (rove(e, false)) e.preventDefault();
       e.stopPropagation();
@@ -430,7 +477,7 @@
   function sendState() {
     if (presenter) return;
     var c = D.current();
-    bus.post({ type: 'state', over: D.overrides(), cut: D.cut(), cur: c ? D.key(c) : null, t0: D.clock(), plan: D.plan() });
+    bus.post({ type: 'state', over: D.overrides(), cut: D.cut(), cur: c ? D.key(c) : null, t0: D.clock(), plan: D.plan(), subs: D.subs() });
   }
   /* ---------- language ----------
      A switch reloads the window it is made in (talk/i18n.js, its `kt-lang` event comes first). That window says so on
@@ -452,6 +499,7 @@
     if (presenter) {
       if (d.type === 'state') {
         view.linked = true; view.cut = d.cut === 20 ? 20 : 40; view.cur = d.cur || null; view.t0 = +d.t0 || 0; view.plan = +d.plan || 0;
+        view.subs = d.subs !== false;
         var o = d.over && typeof d.over === 'object' ? d.over : {};
         // the talk window's word on what is on (setOverrides repaints through kt-parts)
         if (!same(o, D.overrides())) fromAfar(function () { D.setOverrides(o); }); else paint();
@@ -469,6 +517,7 @@
     else if (d.type === 'go') { if ((n = D.byKey(d.key))) D.go(n); }
     else if (d.type === 'step') D.step(d.d < 0 ? -1 : 1);
     else if (d.type === 'cut') D.setCut(d.m === 20 ? 20 : 40);
+    else if (d.type === 'subs') D.setSubs(d.subs !== false);
     else if (d.type === 'clock') D.toggleClock();
   });
   /* another window of this browser saved a change: apply what changed (twice is harmless) */
@@ -481,7 +530,7 @@
       if (changed) D.refresh();
     });
   });
-  ['kt-parts', 'kt-cut', 'kt-clock', 'kt-step'].forEach(function (t) {
+  ['kt-parts', 'kt-cut', 'kt-clock', 'kt-step', 'kt-subs'].forEach(function (t) {
     document.addEventListener(t, function () {
       if (t === 'kt-parts' && !afar) save();
       paint(); sendState();

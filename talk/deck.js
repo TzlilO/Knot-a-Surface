@@ -1,8 +1,8 @@
 /* Knot-a-Surface talk — scroll-driven deck engine.
    Steps (.step, plus the cover) are the unit of navigation: the one nearest the reading line is
    active, and its data-scene is pushed to the chapter's simulation. Keys: → / space next,
-   ← previous, F focus the stage, T pace clock, 0 the Knot-a-Surface cover, 1–8 chapters, Home the opening,
-   L the language (talk/i18n.js: English or Hebrew; in Hebrew the two arrows swap, ← is next).
+   ← previous, F focus the stage, T pace clock, S titles only (see "subtitles"), 0 the Knot-a-Surface cover, 1–8
+   chapters, Home the opening, L the language (talk/i18n.js: English or Hebrew; in Hebrew the two arrows swap, ← is next).
    The opening ("How does a computer see in 3D?") and the cover sit in a light wrapper, .prelude
    (talk/prelude.css); while a step inside it is active, body.lightroom turns the fixed chrome light too.
    Parts of the talk can be switched off (data-off in talk.html, or the slide master, talk/master.js): see "parts"
@@ -316,6 +316,45 @@
   /* the language: the same control in the HUD and in the slide master; L switches (the page reloads, see "boot") */
   var hud = $('.hud');
   if (I18N && hud) hud.insertBefore(I18N.switcher('lang'), $('.clock', hud));
+
+  /* ================= subtitles: titles only =================
+     A step's subtitles are its text about the picture: paragraphs (p.aside, p.fine, p.big, p.scope, p.credit…), lists,
+     the .do / .try lines, an opener's .time; on the two title screens what follows the title block (the cover's
+     p.fine, the opening's "scroll down" .meta). What stays: badges and labels (.lvl, .tag, .num, .kick), the
+     headline (h1, h2, p.thesis, p.qa), a title screen's .lede and the cover's byline, and every exhibit (.eq, .flip,
+     table.cmp, .exhibits, .legend, .props, .labs, .trio, .p-next). Titles only (html.kt-titles; deck.css hides SUB
+     there) leaves every step its height, so the reading line, the scroll and the scenes behave as before. talk.html's
+     head sets the class before the first paint (?subs=on|off, else localStorage 'kt-subs'); S, the HUD button, the
+     slide master and the presenter view switch it (setSubs). The presenter view shows subtitles(step) as its notes. */
+  var SUB = ':scope>:is(p:not(.thesis,.qa,.lede),ul,.do,.try,.time)', root = document.documentElement;
+  function subtitles(n) {
+    var host = n.matches('.p-hero') ? $('.p-text', n) : n, out = host ? $$(SUB, host) : [];
+    if (host && n.matches('.p-open')) out = $$(':scope>:is(p:not(.lede),.meta)', host);
+    return out;
+  }
+  var subsBtn = el('button', 'subs', '<svg viewBox="0 0 16 13" aria-hidden="true"><path d="M1.5 2.2h13" stroke-width="2.2"/><path class="sl" d="M1.5 7h10.5M1.5 11h7.5" stroke-width="1.4"/></svg>');
+  subsBtn.type = 'button'; subsBtn.title = KT.t('S · titles only: hide / show the subtitles');
+  subsBtn.setAttribute('aria-label', KT.t('Titles only: hide the subtitles of the slides (S)'));
+  if (hud) hud.insertBefore(subsBtn, $('.help', hud));
+  function subs() { return !root.classList.contains('kt-titles'); }
+  function paintSubs() { subsBtn.setAttribute('aria-pressed', String(!subs())); }
+  function setSubs(on) {
+    on = !!on;
+    if (on !== subs()) {
+      root.classList.toggle('kt-titles', !on);
+      settle(); onScroll();
+    }
+    try { localStorage.setItem('kt-subs', on ? 'on' : 'off'); } catch (e) {}
+    // an address that says ?subs= would undo this choice at the next load: it goes, the saved choice holds
+    if (/[?&]subs=/.test(location.search)) try {
+      history.replaceState(null, '', location.pathname + location.search.replace(/([?&])subs=[^&]*&?/, '$1').replace(/[?&]$/, '') + location.hash);
+    } catch (e) {}
+    paintSubs();
+    emit('kt-subs', { subs: on });
+  }
+  subsBtn.addEventListener('click', function () { setSubs(!subs()); });
+  paintSubs();
+
   document.addEventListener('keydown', function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     var t = e.target, tag = t && t.tagName;
@@ -331,6 +370,7 @@
     else if (k === 't') toggleClock();
     else if (k === 'm') snd.btn.click();
     else if (k === 'l') { if (I18N && !e.repeat) I18N.toggle(); }
+    else if (k === 's') { if (!e.repeat) setSubs(!subs()); }
     else if (k === '?') keys.classList.toggle('on');
     else if (k >= '0' && k <= '9') {                 // 0 = the Knot-a-Surface cover, 1-9 = the chapter with that rail number; a key with none goes to the last part
       var c = k === '0' ? ($('section.cover[data-rail]') || chapters[0]) : chapters.filter(function (x) { return +x.dataset.rail === +k; })[0] || chapters[chapters.length - 1];
@@ -450,7 +490,8 @@
   ex = $('#ex-bench'); if (ex) benchChart(ex);
 
   /* ================= the handle: talk/master.js (the slide master) and tests =================
-     events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh) */
+     events on document: kt-step {step} (a new active step), kt-cut {cut}, kt-clock {t0}, kt-parts {over} (after refresh),
+     kt-subs {subs} (subtitles shown, or titles only) */
   KT.deck = {
     presenter: presenter,                                              // this page is the presenter view (talk.html?master)
     steps: allNav, sections: chapters, navs: navsOf,                   // every step (.nav) and every data-rail section, in order
@@ -458,6 +499,7 @@
     letter: letter,                                                    // a keydown's key, by position on a keyboard that types another script
     section: function (n) { return n._sec; }, byKey: function (k) { return byKey[k] || null; },
     current: function () { return cur; }, cut: cut, setCut: setCut,
+    subs: subs, setSubs: setSubs, subtitles: subtitles,               // subs(): true = subtitles shown; subtitles(step): its subtitle elements
     defaultOn: defaultOn, isOn: isOn, inCut: inCut, shown: shown,      // shown(n, m): on, and in cut m (default: the current one)
     minutes: minutes, share: share, budget: budget, total: total, plan: plan,
     clock: function () { return clock.t0; }, toggleClock: toggleClock,
@@ -477,7 +519,7 @@
      back here: the cut, the parts that are on, the running clock, the mute, the step (the saved choices and the
      address hold most of it anyway; this also works where the browser gives the page no storage). */
   document.addEventListener('kt-lang', function (e) {
-    e.detail.keep.deck = { cut: cut(), over: Object.assign({}, over), t0: clock.t0, mute: snd.mute, step: cur ? cur._i : -1 };
+    e.detail.keep.deck = { cut: cut(), over: Object.assign({}, over), t0: clock.t0, mute: snd.mute, step: cur ? cur._i : -1, subs: subs() };
   });
   var kept = (I18N && I18N.kept && I18N.kept.deck) || {};
   var saved = 40;

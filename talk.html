@@ -6,6 +6,14 @@
 <title>Knot-a-Surface — the talk</title>
 <script src="talk/i18n.js"></script>
 <script src="talk/i18n/he.js"></script>
+<!-- titles only (talk/deck.js "subtitles"): decided here, before the first paint, so no subtitle flashes. What a change
+     of language carried over its reload, else ?subs=on|off in the address (saved), else the saved choice (kt-subs) -->
+<script>(function () {
+  var k = window.KnotTalk && KnotTalk.i18n && KnotTalk.i18n.kept && KnotTalk.i18n.kept.deck, q = /[?&]subs=(on|off)(?:&|$)/.exec(location.search), v = null;
+  try { v = localStorage.getItem('kt-subs'); if (q) localStorage.setItem('kt-subs', v = q[1]); } catch (e) { if (q) v = q[1]; }
+  if (k && typeof k.subs === 'boolean') v = k.subs ? 'on' : 'off';
+  if (v === 'off') document.documentElement.classList.add('kt-titles');
+})();</script>
 <meta name="description" content="Knot-a-Surface: surfaces first, Gaussians second. A scroll-driven thesis talk with eight live simulations, from a single spline to a manifold of spline charts.">
 <!-- what a shared link shows: the owl in split screen, as scanned and with two material edits (talk/share.jpg, made by tools/share/render.js) -->
 <meta property="og:type" content="website">
@@ -50,6 +58,7 @@
   <div><kbd>1</kbd>–<kbd>9</kbd>jump to a chapter · <kbd>0</kbd>the talk’s cover · <kbd>Home</kbd>the opening</div>
   <div><kbd>T</kbd>start / reset the pace clock · <kbd>M</kbd>mute the sound</div>
   <div><kbd>D</kbd>slide master: show / hide parts · talk.html?master = the same in a second window</div>
+  <div><kbd>S</kbd>titles only: hide / show the subtitles · the presenter view keeps them as notes</div>
   <div><kbd>L</kbd>language: English / <span lang="he">עברית</span></div>
   <div>the short cut hides the deep‑dive steps · the long one shows everything</div>
 </div>
