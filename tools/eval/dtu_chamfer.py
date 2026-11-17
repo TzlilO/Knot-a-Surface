@@ -237,11 +237,11 @@ def find(data, kind, names):
     return tried
 
 
-def reference(data, scan):
-    """-> paths of the three files, or Stop('missing_reference') naming exactly what is not there."""
+def reference(data, scan, stl=True):
+    """-> paths of the three files (two with stl=False), or Stop('missing_reference') naming exactly what is not there."""
     want = dict(obsmask=find(data, 'obsmask', ['ObsMask%d_10.mat' % scan]), plane=find(data, 'obsmask', ['Plane%d.mat' % scan]),
                 stl=find(data, 'stl', ['stl%03d_total.ply' % scan]))
-    miss = {k: v for k, v in want.items() if not isinstance(v, str)}
+    miss = {k: v for k, v in want.items() if not isinstance(v, str) and (stl or k != 'stl')}
     if miss:
         lines = ['%s: not found (looked for %s under %s in: %s)' % (k, os.path.basename(v[0]), data, ', '.join(repr(d) for d in FIND['stl' if k == 'stl' else 'obsmask'])) for k, v in miss.items()]
         raise Stop('missing_reference', '; '.join(lines) + '. They come from ' + OFFICIAL.replace('{N}', str(scan)).replace('{N:03d}', '%03d' % scan))
@@ -258,7 +258,7 @@ def stats(d, cap):
 
 
 # ------------------------------------------------------------------ the evaluation
-def evaluate(mesh, scan, data, mode='mesh', density=0.2, patch=60.0, max_dist=20.0, seed=0, max_minutes=30.0, max_points=120000000, workers=-1, note=None, quiet=False):
+def evaluate(mesh, scan, data, mode='mesh', density=0.2, patch=60.0, max_dist=20.0, seed=0, max_minutes=30.0, max_points=120000000, workers=-1, note=None, quiet=False, mask_only=False):
     """Runs the protocol; returns the result as a dict (also when it stopped early: then `result` is absent)."""
     global log
     keep_log = log
@@ -271,7 +271,7 @@ def evaluate(mesh, scan, data, mode='mesh', density=0.2, patch=60.0, max_dist=20
         started=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
     def stage(name, t): times[name] = round(time.time() - t, 2)
     try:
-        ref = reference(data, scan)
+        ref = reference(data, scan, stl=not mask_only)
         t = time.time(); log('reading %s' % mesh)
         V, F = read_ply(mesh, faces=(mode == 'mesh')); R['input'] = dict(path=os.path.abspath(mesh), bytes=os.path.getsize(mesh), sha256=sha256(mesh), vertices=int(len(V)))
         if not len(V): raise Stop('bad_input', 'no vertices')
@@ -300,6 +300,8 @@ def evaluate(mesh, scan, data, mode='mesh', density=0.2, patch=60.0, max_dist=20
                               plane=dict(path=os.path.abspath(ref['plane']), bytes=os.path.getsize(ref['plane']), sha256=sha256(ref['plane']), P=plane.tolist()))
         stage('mask', t); log('    %d in the box, %d of them in the mask' % (len(Pin), len(Pobs)))
         if not len(Pobs): raise Stop('no_points_in_mask', 'no point of the input lies in the observation mask: is the mesh in the DTU world frame, in mm?')
+        h = (np.c_[Pobs, np.ones(len(Pobs))] @ plane) / np.linalg.norm(plane[:3]); counts['data_in_mask_above_plane'] = int((h > 0).sum())      # not part of the protocol: for reading the result
+        if mask_only: raise Stop('mask_only', 'steps 1 to 3 only, as asked: no distance was measured and there is no result')
         t = time.time(); log('4. reference cloud %s' % ref['stl']); guard.check('reading the reference')
         S, _ = read_ply(ref['stl'], faces=False)
         if not np.isfinite(S).all(): raise Stop('non_finite_input', 'the reference cloud holds NaN or Inf')
@@ -475,6 +477,7 @@ def main():
     ap.add_argument('--max-points', type=int, default=120000000, help='memory guard: refuse a mesh that samples to more points than this (default 120 million, about 3 GB)')
     ap.add_argument('--workers', type=int, default=-1, help='threads of the nearest-neighbour searches (default -1 = all)')
     ap.add_argument('--note', help='free text stored in the JSON, e.g. what the mesh is')
+    ap.add_argument('--mask-only', action='store_true', help='stop after step 3 (needs only ObsMask and Plane): how many points of the input the protocol would count. No distance, no result')
     ap.add_argument('--self-test', action='store_true', help='run the checks on synthetic data (and, with --data and --scan, on that real reference)')
     a = ap.parse_args()
     if a.self_test:
@@ -483,7 +486,7 @@ def main():
             with open(a.out, 'w') as f: json.dump(R, f, indent=1)
         sys.exit(1 if R['failed'] else 0)
     if not (a.mesh and a.scan is not None and a.data): ap.error('MESH, --scan and --data are needed (or --self-test)')
-    R = evaluate(a.mesh, a.scan, a.data, a.mode, a.density, a.patch, a.max_dist, a.seed, a.max_minutes, a.max_points, a.workers, a.note)
+    R = evaluate(a.mesh, a.scan, a.data, a.mode, a.density, a.patch, a.max_dist, a.seed, a.max_minutes, a.max_points, a.workers, a.note, mask_only=a.mask_only)
     out = a.out or os.path.splitext(a.mesh)[0] + '.dtu_chamfer.json'
     with open(out, 'w') as f: json.dump(R, f, indent=1)
     log('wrote %s (stop: %s)' % (out, R['stop']['reason']))

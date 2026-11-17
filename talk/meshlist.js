@@ -234,7 +234,7 @@
     var n = L.n, P = L.pos, K = o.k || 12, MU = o.mu || 1.6, RI = o.ri == null ? 5 : o.ri, DEV = Math.cos((o.dev == null ? 45 : o.dev) * Math.PI / 180), KEEP = o.keep || 2;
     var nbI = new Int32Array(n * K), nbD = new Float32Array(n * K), nbN = new Uint8Array(n), NRM = new Float32Array(n * 3);
     var star = new Int32Array(Math.max(1024, n * 14)), sStart = new Int32Array(n + 1), sLen = 0, grid = null, i = 0, out = null, m = 0, aud = null;
-    var J = { n: n, tests: 0, tri: null, nTri: 0, stats: null, progress: 0, cell: 0, normals: NRM };
+    var J = { n: n, k: K, tests: 0, tri: null, nTri: 0, stats: null, progress: 0, cell: 0, normals: NRM, bytes: null };
     var X = new Float64Array(K + 1), Y = new Float64Array(K + 1), Jx = new Int32Array(K + 1);
     var PX = new Float64Array(2 * K + 16), PY = new Float64Array(2 * K + 16), PL = new Int32Array(2 * K + 16);
     var QX = new Float64Array(2 * K + 16), QY = new Float64Array(2 * K + 16), QL = new Int32Array(2 * K + 16), nv3 = [0, 0, 0];
