@@ -140,7 +140,11 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the Hands selection (`c.sel`, `c.selRev`), feathered alike: the module shows the atlas in its select mode
   (`hands.show(on, 'select')`, wand / brush / erase on the atlas or the object; needs `talk/hands.js` on the page) and
   a page without the features file fetches it then (`def.features(cb)`). The landing page's teaser paints the owl
-  (`TEASE_ON`). To add or tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). A scene without `animate` falls back to
+  (`TEASE_ON`). To add or tune one, use the `owl-material` skill (`.claude/skills/owl-material/`). On the light talk a light
+  scene or material (`light: true` on `KT.scenes[..]` / `MATS[..]`: breakfast, snowy owl, clear glass) gets `uRim`
+  0.12 (`rim()`, eased through a wipe; `lod` keeps 0.6), and boxes over 3D content (the mesh board, the atlas, band
+  labels, badges; touch's tags and `moment` caption; pipeline's tags, plot and split caption) sit on 84-86 % glass;
+  dark pages keep their values. A scene without `animate` falls back to
   `edit(k)`. Opacity: `gl.splats(n, {alpha: true})` gives a field an opacity per Gaussian; while its
   `ktSplat.thin` is set, `gl.draw` draws the solid Gaussians as before and the see-through ones as two more layers
   (far side, near side) blended over them. Other fields and modules are untouched. Scene `hands` (lab page only) hosts
@@ -162,7 +166,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `structure` (talk/sims/structure.js, chapter 08, off by default) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
-  ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured.
+  ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured. Its framing is
+  never closer than the object's box allows; on light, operations fade the scene towards `KT.color.bg` (on dark,
+  towards black); parts use the charts' own `c.hex`.
   `touch` (talk/sims/touch.js, chapter 09 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
   an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
   loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),

@@ -71,7 +71,6 @@
 .prelude .kas .hero{aspect-ratio:1.2}
 /* the manifold's readings (the cover's, and the owl chapter's "five readings" on the light talk): dividers dark on the
    light card */
-:root[data-theme="light"] .kt-sim-manifold .kt-split i,.prelude .kt-sim-manifold .kt-split i{background:rgba(29,29,31,.22)}
 
 /* ---------- full-width moments of the opening ---------- */
 .prelude .wide .step{align-items:center;text-align:center;padding:5rem 2.4rem 6rem 5.5rem}
