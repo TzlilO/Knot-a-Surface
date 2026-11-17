@@ -224,26 +224,53 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   without a cut, the list's half of `moment` runs on the same code (`run.close`, `model()`) and hands back; the
   loose-particle rule is a third drop on the lab page only, never in the talk's `ghost`), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
-  shared by `patchSupport` weights), `flight` (two headers, then the lists: the owl (scan 122's object chart) and the
+  shared by `patchSupport` weights), `flight` (a slingshot: bowl -> owl -> rabbit -> the lists. The ball starts in the elastic bowl (the spline chart of
+  `elastic`, control points on springs) at `SL.r0`, with the HANDLE on it: a screen-sized ring (radius `KnotTalk.HIT` + 6 px at any
+  zoom; `pickHandle` / `overHandle` / `dropHandle` are the orbit's `pick` / `hit` / `release` hooks, so a drag on the ring neither
+  turns the camera nor scrolls the page, one finger only, a second finger puts the ring back; the pointer only sets a
+  target, the next sub-step takes it, so a release always throws from the last position drawn). The pull `D` (clamped by
+  `clampPull`: the back half, at least `MINUP` below the horizontal, at most `DMAX`) is a kinematic ball plus a pouch
+  that drags the control points around the bowl's middle along (`PO`, `KPO`; the net's own springs do the rest: the stretch
+  is simulated, the stored energy is not what throws). THE LAUNCH RULE, named as a rule on screen (`K_SLING`): on release
+  the ball sits in a spring pouch, p'' = -K^2 (p - rest), integrated on the fixed sub-steps (`springStep`) and leaving at
+  the rest point at K |D| along -D; then ordinary ballistic flight under gravity, the net ringing behind it. The same
+  pull always gives the same flight, whatever the net was doing. `shotAhead(D)` is the PREDICTION: it runs those two
+  integrators on a copy of the ball, with the owl's nod timed by `owlTime` and the very contact test the flight uses
+  (`touch`, shared with `meet`, on its own warm start), so what it says is what then happens; valid = the path meets the
+  owl, else a reason (`short`, `high`, `steep`, `side`) that the guidance line turns into "pull further back" etc.; drawn
+  dashed, in the surface colour when valid and the error colour when not (`slingDraw`; the handle ring takes the same
+  colour), with a target circle on the owl's head and, after 12 s untouched (`AUTO_IDLE`, `SL.idle`), a pulsing halo on the
+  ring (it never launches by itself). The button "launch for me" (`startAuto`, `autoPull`: a valid pull found with the
+  prediction itself, drawn back in `AUTO_PULL` s and let go) is labelled SCRIPTED while it runs. A miss flies on (the
+  bowl is elastic if it falls back into it), and a pause after it leaves the frame or rests, as after the chain, the
+  scene starts again (`letGo`; the step has `data-replay`, deck.js calls `setScene` again on a replay, which resets
+  everything). A valid launch runs the chain: the owl (scan 122's object chart) and the
   rabbit (scan 55, in `MATS.glass`, which scenes.js exposes as `KnotTalk.materials`) stand as spline figures, their
-  Gaussians derived on a lattice in ONE alpha field (two splat fields, one thin, lose the solid one in `gl.draw`); the
+  Gaussians derived on a lattice in ONE alpha field with the bowl's own (two splat fields, one thin, lose the solid one in `gl.draw`:
+  `figBowl` copies the bowl into that field, lit by hand); the
   ball meets the owl's head, the owl nods it to the rabbit, which jumps and heads it into the list bowl, where EMULATED
-  lists of both figures stand (`listOf`, as the bowl's list is made; never trained); there the Gaussians drift aside
-  like balloons (`balloons`, an INVENTED one-way rule with its constants at the top) and the ball falls through.
+  lists of both figures stand (`listOf`, as the bowl's list is made; never trained); there all three lists dissolve like
+  smoke (`startSmoke`, `smokeDraw`: an INVENTED one-way rule, constants `SM_*` at the top: once the ball first reaches a
+  list Gaussian a front runs out from there at `SM_FRONT` through the bowl's own list and the owl's and the rabbit's, and
+  each Gaussian it reaches rises, sways, grows and fades to zero opacity in 2 to 3 s, a closed function of the time since the
+  front, so a replay is the same; counts measured: reached, dissolved of all) and the ball falls through, feeling nothing.
   Contact is computed: closest point by damped Gauss-Newton in a window of the chart around the head (the scans'
   charts are open sheets: the owl's ear tufts are the top edge), the moment by bisection in the sub-step with the
   figure where its script has it. SCRIPTED: the owl's nod (`owlNod`, head control points turned about the neck), the
-  rabbit's crouch, jump, nod and squash (`rabbitPose`, rigid), and where each header sends the ball (`header`). Without
+  rabbit's crouch, jump, nod and squash (`rabbitPose`, rigid), and where each header sends the ball (`header`), and the
+  pull of "launch for me". Time `run.t` of the flight starts at 0 at the launch. Tests: `api.pull(x, y, z)` (a pull from the rest point),
+  `release()`, `predict(x, y, z)` -> {valid, reason, rec}, `auto()`, `autoPull()`, `stats().fig.sling` / `.smoke`. Without
   the scans' data on the page it falls back to the older finale: elastic bowl, launch, the list scattered), `moment` (the
   camera closes in and time runs 20x slower over the last 10 cm above the list: the seven "moments of contact" a list
   admits, 3/2/1 sigma shells, summed density 0.1/0.3/0.5, nearest mean, MEASURED on a timeline, against the spline's
   one root of |S(u,v) - c| = r). The list's Gaussians are drawn soft and see-through (thickness 25-40 % of the
   in-plane axes, tilted up to 46 degrees off the surface, opacity 0.34-0.64). Fixed sub-steps, seeded, every number on
-  screen measured; only `flight`'s headers and jump (and, in its fallback, the launch direction) and the camera path
+  screen measured; only `flight`'s headers, jump and "launch for me" pull (and, in its fallback, the launch direction) and the camera path
   and slow motion of `moment` are scripted. Sound effects are synthesized from the simulation's own quantities (knock
   from the impulse, hiss from the Gaussians inside the ball, pluck and wobble from the springs, crack, shards, whoosh,
-  a click per contact definition, a glass ring from the rabbit's header impulse, a soft puff from how many list
-  Gaussians the ball reaches), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
+  a click per contact definition, a glass ring from the rabbit's header impulse, in `flight` a stretch creak whose pitch
+  follows the pull's length (loudness: how fast it is being stretched), a release twang from the launch speed and an airy hiss
+  from how many Gaussians are dissolving), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
   own sound switch, and loads dtu-data.js, dtu/scan55.js and scenes.js for `flight`'s cast. The talk's chapter 09 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
   registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
   `pipeline` (talk/sims/pipeline.js, chapter 06 "From photographs to charts", right before the owl's chapter 07) =

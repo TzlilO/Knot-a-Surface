@@ -60,7 +60,10 @@
    overlaps), a scatter and a rattle when Gaussians are knocked loose (the momentum they took, how many came
    loose), a pluck and a wobble on the elastic surface (pitch from the spring stiffness, loudness and wobble from
    the control points' motion), a crack and shards when it breaks (impulse over toughness, the pieces' sizes and
-   speeds), a whoosh at the launch (its speed), a click for each candidate moment of contact, when it happened. All of it
+   speeds), a whoosh at the launch of the old finale (its speed), a click for each candidate moment of contact, when it
+   happened; in `flight` a stretch creak (pitch from the pull's length, loudness from how fast it is being stretched), a
+   twang at the release (the launch speed), a knock from the owl and a glass ring from the rabbit (their impulses) and an
+   airy hiss while the lists dissolve (how many Gaussians are dissolving). All of it
    sits above the bass of the chapter's music (talk/audio/beat.js), so it carries over it. Nothing plays before a key
    or pointer press (browsers forbid it), while KnotTalk.muted is true, or while the module is paused.
    Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js), keyed by its English, one statement
@@ -105,6 +108,7 @@
      The pull is clamped to DMAX m, to at least MINUP degrees below the horizontal (the ball is thrown up and clear of the
      bowl's wall) and to the back half (x >= 0 from the rest point); a pull shorter than DMIN is no throw. KPO: how hard
      the pouch drags the bowl's control points along with the ball (N/m at the centre point). */
+  var PRED_N = 420;                            // flight: the most points of a predicted path
   var K_SLING = 3.4, DMAX = 2.1, DMIN = 0.25, MINUP = 35 * Math.PI / 180, KPO = 2000;
   var AUTO_IDLE = 12, AUTO_PULL = 1.1, AUTO_HOLD = 0.35, RESET_AFTER = 1.5;   // the hint after 12 s untouched; the scripted pull: seconds to draw, to hold; the pause before a restart
   /* INVENTED, the smoke rule (`smoke`): a list defines no force and no boundary, so what happens to it when a ball
@@ -122,7 +126,7 @@
     brittle: { cap: T('<b>toughness</b> · the surface breaks when the impact asks too much of it'), model: 'brittle', side: 1 },
     elastic: { cap: T('<b>an elastic surface</b> · the control points sit on springs'), model: 'elastic', side: 1 },
     flight:  { cap: T('<b>out of bounds</b> · from the spline bowl to the list of Gaussians'), model: 'flight', side: 1,
-               capF: T('<b>out of bounds</b> · two headers, then the lists in the bowl') }
+               capF: T('<b>out of bounds</b> · pull the ball back and let go: the owl, the rabbit, then the lists') }
   };
   /* where the ball is let go: x and z from the bowl's centre, height y, and the speed it is thrown down with */
   var DROPS = {
@@ -602,8 +606,20 @@
       var ringG = new THREE.RingGeometry(0.86, 1, 48);
       function ringMesh() { var m = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({ color: C.dim, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide })); m.renderOrder = 32; m.visible = false; scene.add(m); return m; }
       var ring = ringMesh(), halo = ringMesh();
-      var rope = G.lines(2, C.dim, 0.7), pred = G.lines(2 * PRED_N, C.surf, 0.95), TGN = 40, tgt = G.lines(2 * TGN, C.dim, 0.9);
-      [rope, pred, tgt].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 15; l.obj.visible = false; scene.add(l.obj); });
+      var rope = G.lines(2, C.dim, 0.7), TGN = 40, tgt = G.lines(2 * TGN, C.dim, 0.9);
+      [rope, tgt].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 15; l.obj.visible = false; scene.add(l.obj); });
+      /* the predicted path: dashes, each a flat strip a few pixels wide that faces the eye, over a wider one in the stage's own colour
+         (a one pixel line is lost over the bowl's net, and the path and the bowl are both the surface's colour) */
+      function ribbon(color, op, order) {
+        var g = new THREE.BufferGeometry(), pos = new THREE.BufferAttribute(new Float32Array(PRED_N * 12), 3), idx = new Uint16Array(PRED_N * 6), i;
+        pos.setUsage(THREE.DynamicDrawUsage); g.setAttribute('position', pos);
+        for (i = 0; i < PRED_N; i++) idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 2, i * 4 + 1, i * 4 + 3], i * 6);
+        g.setIndex(new THREE.BufferAttribute(idx, 1)); g.setDrawRange(0, 0);
+        var mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: op, depthTest: false, side: THREE.DoubleSide }), obj = new THREE.Mesh(g, mat);
+        obj.frustumCulled = false; obj.renderOrder = order; obj.visible = false; scene.add(obj);
+        return { obj: obj, arr: pos.array, mat: mat, geo: g, pos: pos };
+      }
+      var pred = ribbon(C.surf, 1, 16), predBack = ribbon(C.bg || C.text, 0.78, 15);
       // moment: where the ball's lowest point was when each definition said "contact" (red: the list; cyan: the spline), on its vertical
       var mkL = G.lines(2 * CANDS.length, C.err, 0.95), mkS = G.lines(2, C.surf, 1), mkG = G.lines(2, C.text, 0.3);
       [mkL, mkS, mkG].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 14; scene.add(l.obj); });
@@ -1082,11 +1098,11 @@
         FR.fp = [gp[fi * 3], gp[fi * 3 + 1], gp[fi * 3 + 2]];
         FR.aimL = [FR.fp[0] + FR.fn[0] * BR, FR.fp[1] + FR.fn[1] * BR, FR.fp[2] + FR.fn[2] * BR];
 
-        /* both figures in one field, the rabbit first (its count is fixed), then the owl's front: one field with an opacity
+        /* the bowl and both figures in one field, the bowl first, the rabbit (its count is fixed), then the owl's front: one field with an opacity
            per Gaussian, solid and see-through together, as the manifold module draws its glass owl over the table */
-        fF = G.splats(FR.na * FR.nb + FO.na * FO.nb, { alpha: !!MG }); fF.uniforms.uFlat.value = 1;   // photographs: their colours already hold the light
+        fF = G.splats(N + FR.na * FR.nb + FO.na * FO.nb, { alpha: !!MG }); fF.uniforms.uFlat.value = 1;   // photographs: their colours already hold the light (the bowl's are lit by `figBowl`)
         fF.uniforms.uRim.value = KT.theme === 'light' && MG ? 0.12 : 0.3;      // a light material: no dark outline on a light page
-        if (MG) { fF.alpha.fill(1); fF.alpha.set(FR.ag); fF.mesh.userData.ktSplat.thin = true; }
+        if (MG) { fF.alpha.fill(1); fF.alpha.set(FR.ag, N); fF.mesh.userData.ktSplat.thin = true; }   // [ the bowl | the rabbit | the owl's front ]
         fF.mesh.visible = false; scene.add(fF.mesh);
 
         /* the lists in the bowl: the same two charts, a little apart on the bowl's floor */
@@ -1271,7 +1287,7 @@
          owl's nod timed by `owlTime` and the contact test `touch`) ahead from the pull, on a copy of the ball. */
       var SL = { r0: [X0, YB + BR, 0], D: [0, 0, 0], D0: [0, 0, 0], tgt: null, grab: false, rel: false, id: -1, off: [0, 0, 0], idle: 0, touched: false,
                  auto: null, mv: 0, pred: null, predKey: '', why: 'none', tPull: 0, valid0: false };
-      var SPRING = { p: [0, 0, 0], v: [0, 0, 0], n: 0 }, PRED_N = 420, PRED = { pts: new Float32Array(PRED_N * 3) }, AUTOPULL = null;
+      var SPRING = { p: [0, 0, 0], v: [0, 0, 0], n: 0 }, PRED = { pts: new Float32Array(PRED_N * 3) }, AUTOPULL = null;
       function holding() { return fl.phase === 'ready' || fl.phase === 'pull' || fl.phase === 'throw'; }
       /* the pull allowed: the back half, at least MINUP below the horizontal, at most DMAX long */
       function clampPull(D, out) {
@@ -1416,12 +1432,13 @@
         }
         smokeCount(t);
       }
-      /* the cast on stage or off it (the spline bowl stays: the ball starts in it); the lists of the figures stay out of the
-         list's field (parked far below, where its drawing skips them) in every other scene */
+      /* the cast on stage or off it (the spline bowl is drawn with them: the ball starts in it); the lists of the figures stay out of the
+         list's field (parked far below, where its drawing skips them) in every other scene. In `flight` the bowl's own Gaussians
+         are written into the figures' field (see `figBowl`): gl.draw loses a solid field drawn beside a see-through one. */
       function figShow(on) {
         if (!FIG) return;
         smokeReset();                                              // (the smoke scaled and faded the list's Gaussians: back as they were stored)
-        fF.mesh.visible = on; fR.mesh.visible = true;
+        fF.mesh.visible = on; fR.mesh.visible = !on;
         var P = fL.center, i;
         if (on) P.set(LH.subarray(N * 3), N * 3);
         else for (i = N; i < NT; i++) { P[i * 3] = 0; P[i * 3 + 1] = -100; P[i * 3 + 2] = 0; }
@@ -1448,14 +1465,26 @@
             x = g.su[o]; y = g.su[o + 1]; z = g.su[o + 2]; for (i = 0; i < 3; i++) RW.su[o + i] = M[i * 3] * x + M[i * 3 + 1] * y + M[i * 3 + 2] * z;
             x = g.sv[o]; y = g.sv[o + 1]; z = g.sv[o + 2]; for (i = 0; i < 3; i++) RW.sv[o + i] = M[i * 3] * x + M[i * 3 + 1] * y + M[i * 3 + 2] * z;
           }
-          n = G.writePlanoids(fF, 0, RW, FR.na, FR.nb, FR.du, FR.dv, 0.72, null, null);
-          if (FR.flip < 0) for (k = 0; k < n * 3; k++) fF.axV[k] = -fF.axV[k];          // S_u x S_v out of the object, as the layers want it
-          fig.nR = n;
+          n = G.writePlanoids(fF, N, RW, FR.na, FR.nb, FR.du, FR.dv, 0.72, null, null);
+          if (FR.flip < 0) for (k = N * 3; k < n * 3; k++) fF.axV[k] = -fF.axV[k];      // S_u x S_v out of the object, as the layers want it
+          fig.nR = n - N;
         }
-        n = G.writePlanoids(fF, fig.nR, F.grid, F.na, F.nb, F.du, F.dv, 0.72, null, { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: F.flip, min: -0.12 });
-        fF.setCount(n); fF.commit(n); fig.nO = n - fig.nR;
+        n = G.writePlanoids(fF, N + fig.nR, F.grid, F.na, F.nb, F.du, F.dv, 0.72, null, { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: F.flip, min: -0.12 });
+        fF.setCount(n); fig.n = n; fig.nO = n - N - fig.nR;
       }
-      var fig = { nO: 0, nR: 0 };
+      /* after `paint`: the bowl's Gaussians (derived and coloured in the bowl's own field, which is not drawn) go into the figures' field,
+         lit once by hand (the field's colours are otherwise unlit: photographs), and the whole field is uploaded */
+      function figBowl() {
+        var C0 = fR.center, U = fR.axU, V = fR.axV, K = fR.color, k, o, nx, ny, nz, l, f, L = LIGHT, ll = Math.hypot(L[0], L[1], L[2]);
+        fF.center.set(C0.subarray(0, N * 3), 0); fF.axU.set(U.subarray(0, N * 3), 0); fF.axV.set(V.subarray(0, N * 3), 0);
+        for (k = 0; k < N; k++) {
+          o = k * 3; nx = U[o + 1] * V[o + 2] - U[o + 2] * V[o + 1]; ny = U[o + 2] * V[o] - U[o] * V[o + 2]; nz = U[o] * V[o + 1] - U[o + 1] * V[o];
+          l = Math.hypot(nx, ny, nz) || 1; f = 0.72 + 0.42 * Math.abs((nx * L[0] + ny * L[1] + nz * L[2]) / (l * ll));
+          fF.color[o] = K[o] * f; fF.color[o + 1] = K[o + 1] * f; fF.color[o + 2] = K[o + 2] * f;
+        }
+        fF.commit(fig.n);
+      }
+      var fig = { nO: 0, nR: 0, n: 0 };
 
       /* ---------- moment: when does the ball touch? ----------
          Over the list, every sub-step measures, for the Gaussians near the ball's vertical: the gap between the
@@ -1660,7 +1689,7 @@
           if (ph === 'toowl') {
             rec = touch(0, ball, run.t, fl.cps[0], false);
             if (rec) { header(0, rec); fly(H - rec.hi); }
-            else if (ball.p[0] < OWL_AT[0] - 1.0) { fl.phase = 'miss'; fl.miss = true; }
+            else if (ball.p[0] < OWL_AT[0] - 1.0 || (run.t > 0.3 && ball.v[1] < 0 && ball.p[1] < SL.r0[1] && ball.p[0] > X0 - RB - 0.4)) { fl.phase = 'miss'; fl.miss = true; fl.tm = run.t; }   // past the owl, or back down in the bowl
           } else if (ph === 'air1') { meet(1); if (fl.phase === 'air1' && run.t > fl.ta + 0.5) { fl.phase = 'air2'; fl.miss = true; } }
           if (fl.phase === 'air2' || fl.phase === 'bowl') reachStep();
           if (fl.phase === 'air2' && sm.t0 != null) { fl.phase = 'bowl'; fl.tb = run.t; fl.vin = speed(); }
@@ -1668,7 +1697,7 @@
           if (fl.end == null) {
             if (fl.phase === 'bowl' && run.t > sm.tEnd) fl.end = run.t;
             else if (fl.phase === 'miss' || (fl.phase === 'air2' && fl.miss)) {
-              if (ball.p[1] < -6 || Math.abs(ball.p[0]) > 16) fl.end = run.t;
+              if (ball.p[1] < -6 || Math.abs(ball.p[0]) > 16 || (fl.phase === 'miss' && run.t - fl.tm > 5)) fl.end = run.t;
               else { s = speed(); fl.rest = s < 0.12 && el.touch ? fl.rest + H : 0; if (fl.rest > 1.0) fl.end = run.t; }
             }
             if (run.t > 30) fl.end = run.t - RESET_AFTER;
@@ -1774,7 +1803,7 @@
       function paint() {
         var bx = ball.p[0], by = ball.p[1], bz = ball.p[2], k, o, dx, dy, dz, t, d2, s, w, f, P, cl, L = LIGHT, ll = Math.hypot(L[0], L[1], L[2]);
         var lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll, m = model(), heat = surf.broken ? Math.exp(-(run.t - surf.tb) / 0.7) : 0, q, r;
-        if (fR.mesh.visible) {                                    // (not while flight's cast stands where the spline bowl was)
+        if (fR.mesh.visible || (FIG && m === 'flight')) {         // (in flight the bowl is drawn through the figures' field: its colours are still painted here)
           P = fR.center; cl = fR.color;
           for (k = 0; k < N; k++) {
             o = k * 3; dx = bx - P[o]; dy = by - P[o + 1]; dz = bz - P[o + 2]; t = dx * lx + dy * ly + dz * lz; f = 1; r = 0;
@@ -1870,7 +1899,7 @@
         // the address, written next to the contact
         var s = pinAt ? G.project(cam, pinAt[0], pinAt[1], pinAt[2], size.w, size.h) : null;
         if (s && s[0] > 40 && s[0] < size.w - 150 && s[1] > 40 && s[1] < size.h - 30) {
-          pin.style.display = 'block'; pin.style.transform = 'translate(' + (s[0] + (pinTxt ? 38 : 16)).toFixed(1) + 'px,' + (s[1] + (pinTxt ? -26 : 10)).toFixed(1) + 'px)';
+          pin.style.display = 'block'; pin.style.transform = pinTxt ? 'translate(' + s[0].toFixed(1) + 'px,' + (s[1] - 48).toFixed(1) + 'px) translate(-50%,-100%)' : 'translate(' + (s[0] + 16).toFixed(1) + 'px,' + (s[1] + 10).toFixed(1) + 'px)';
           setText(pin, pinTxt || '(u, v) = (' + pinU.toFixed(2) + ', ' + pinV.toFixed(2) + ')');
         } else pin.style.display = 'none';
       }
@@ -1909,10 +1938,10 @@
       }
       function slingDraw(on) {
         var ph = fl.phase, pull = on && ph === 'pull', held = on && (ph === 'ready' || ph === 'pull'), k, i, n, px, upp, sc, dist, pr, col, ok, bad, txt = '', cls = '';
-        if (!on) { ring.visible = halo.visible = rope.obj.visible = pred.obj.visible = tgt.obj.visible = false; tip.style.display = 'none'; return; }
+        if (!on) { ring.visible = halo.visible = rope.obj.visible = pred.obj.visible = predBack.obj.visible = tgt.obj.visible = false; tip.style.display = 'none'; return; }
         if (pull) {
           var key = SL.D[0].toFixed(5) + ',' + SL.D[1].toFixed(5) + ',' + SL.D[2].toFixed(5);
-          if (key !== SL.predKey) { SL.predKey = key; SL.pred = shotAhead(SL.D); }
+          if (key !== SL.predKey) { SL.predKey = key; SL.pred = shotAhead(SL.D); SL.pred.pts = SL.pred.pts.slice(0, SL.pred.n * 3); }   // (its own copy of the points: a test's `predict()` reuses the buffer)
         }
         pr = pull ? SL.pred : null; ok = !!(pr && pr.valid); bad = !!(pr && !pr.valid && pr.len >= DMIN);
         col = ok ? C.surf : bad ? C.err : C.dim;
@@ -1930,13 +1959,18 @@
         rope.obj.visible = on && (ph === 'pull' || ph === 'throw');
         if (rope.obj.visible) { rope.arr.set(SL.r0, 0); rope.arr.set(ball.p, 3); rope.set(2); }
         // the predicted path, dashed (two samples drawn, two left out), up to the contact or a little past the owl
-        pred.obj.visible = pull && pr && pr.n > 1;
+        pred.obj.visible = predBack.obj.visible = pull && pr && pr.n > 1;
         if (pred.obj.visible) {
           pred.mat.color.set(col); n = 0;
+          var ce0 = cam.matrixWorld.elements, ex = ce0[8], ey = ce0[9], ez = ce0[10], hw = 0.5 * 3.2 * 2 * cam.position.distanceTo(ballMesh.position) * Math.tan(cam.fov * Math.PI / 360) / size.h;   // the eye's direction; half of 3.2 px, in metres
           for (k = 0; k + 1 < pr.n; k++) if ((k & 3) < 2) {
-            for (i = 0; i < 3; i++) { pred.arr[n * 3 + i] = pr.pts[k * 3 + i]; pred.arr[n * 3 + 3 + i] = pr.pts[k * 3 + 3 + i]; } n += 2;
+            var ax = pr.pts[k * 3], ay = pr.pts[k * 3 + 1], az = pr.pts[k * 3 + 2], bx = pr.pts[k * 3 + 3], by = pr.pts[k * 3 + 4], bz = pr.pts[k * 3 + 5];
+            var dx = bx - ax, dy = by - ay, dz = bz - az, px = dy * ez - dz * ey, py = dz * ex - dx * ez, pz = dx * ey - dy * ex, pl = Math.hypot(px, py, pz) || 1;
+            px *= hw / pl; py *= hw / pl; pz *= hw / pl;
+            pred.arr.set([ax - px, ay - py, az - pz, ax + px, ay + py, az + pz, bx - px, by - py, bz - pz, bx + px, by + py, bz + pz], n * 12);
+            predBack.arr.set([ax - 2 * px, ay - 2 * py, az - 2 * pz, ax + 2 * px, ay + 2 * py, az + 2 * pz, bx - 2 * px, by - 2 * py, bz - 2 * pz, bx + 2 * px, by + 2 * py, bz + 2 * pz], n * 12); n++;
           }
-          pred.set(n);
+          pred.pos.needsUpdate = predBack.pos.needsUpdate = true; pred.geo.setDrawRange(0, n * 6); predBack.geo.setDrawRange(0, n * 6);
         }
         // the target: a circle on the owl's head, facing the eye
         tgt.obj.visible = held;
@@ -2140,6 +2174,10 @@
         dplane.setFromNormalAndCoplanarPoint(ddir, dtmp.set(SL.r0[0], SL.r0[1], SL.r0[2]));
         return ray.ray.intersectPlane(dplane, dpt) ? dpt : null;
       }
+      function ballClient() {                                     // where the ball is on the page (client px), for the pointer tests
+        var r = R.canvas.getBoundingClientRect(), p = G.project(cam, ball.p[0], ball.p[1], ball.p[2], r.width, r.height);
+        return p ? [r.left + p[0], r.top + p[1]] : null;
+      }
       function overHandle(x, y) {
         if (!(FIG && st.sc.model === 'flight' && fl.phase === 'ready' && !SL.auto)) return false;
         var r = R.canvas.getBoundingClientRect(), p = G.project(cam, ball.p[0], ball.p[1], ball.p[2], r.width, r.height);
@@ -2188,8 +2226,8 @@
           };
           var ph0 = fl.phase;
           /* ready and pulling: everything the chain touches in one picture (on a phone only the bowl and the owl fit: from the launch on, the camera follows the ball) */
-          if (ph0 === 'ready' || ph0 === 'pull' || ph0 === 'throw') return nar ? frame(X0 - 0.9, 0.3, 8.4, 3.4, 0.2, 0.05, 1.36) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.36);
-          if (ph0 === 'toowl' || ph0 === 'miss') return nar ? frame(KT.clamp(bx, OWL_AT[0] - 0.6, X0 - 0.9), 0.5, 8.4, 3.4, 0.2, 0.05, 1.36) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.36);
+          if (ph0 === 'ready' || ph0 === 'pull' || ph0 === 'throw') return nar ? frame(X0 - 0.9, 0.3, 8.4, 3.4, 0.2, 0.05, 1.1) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.1);   // (looking down 27 degrees: over the bowl's near wall, at the ball)
+          if (ph0 === 'toowl' || ph0 === 'miss') return nar ? frame(KT.clamp(bx, OWL_AT[0] - 0.6, X0 - 0.9), 0.5, 8.4, 3.4, 0.2, 0.05, 1.1) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.1);
           if (fl.phase === 'air1') return { tx: 0.5 * (bx + RAB_AT[0]), ty: 1.4 - lo, tz: 0, r: 10 * f, th: 0.05, ph: 1.34 };
           if (fl.phase === 'air2') return { tx: KT.clamp(bx, -X0 + 0.8, RAB_AT[0]), ty: Math.max(0.9, ball.p[1] * 0.7) - lo, tz: 0, r: 10.5 * fit(1.36), th: 0, ph: 1.3 };
           return { tx: -X0, ty: 0.55 - 0.6 * lo, tz: 0, r: 8.4 * f, th: -0.1, ph: 1.2 };
@@ -2242,7 +2280,7 @@
         else { st.off = off ? st.off : 0; if (cam.view && cam.view.enabled) cam.clearViewOffset(); }
         if (surf.broken) writeFragments(); else if (m === 'elastic' || m === 'flight') derive();
         if (FIG && m === 'flight') figDraw();
-        paint(); overlays(); words(); timeline();
+        paint(); if (FIG && m === 'flight') figBowl(); overlays(); words(); timeline();
         fL.draw(cam, R.renderer);
         (G.draw || function (R, s, c) { R.renderer.render(s, c); })(R, scene, cam);
       });
@@ -2314,7 +2352,7 @@
                                 sling: { phase: fl.phase, D: SL.D.slice(), D0: SL.D0.slice(), len: Math.hypot(SL.D[0], SL.D[1], SL.D[2]), grab: SL.grab, id: SL.id, auto: !!SL.auto, touched: SL.touched, idle: SL.idle,
                                          hint: fl.phase === 'ready' && !SL.touched && SL.idle > AUTO_IDLE, vl: fl.vl, end: fl.end, rest: SL.r0.slice(), K: K_SLING, dmax: DMAX, dmin: DMIN,
                                          pred: SL.pred && { valid: SL.pred.valid, reason: SL.pred.reason }, pred0: SL.pred0 && { valid: SL.pred0.valid, reason: SL.pred0.reason, rec: SL.pred0.rec },
-                                         owlHead: FO.hc.slice(), tip: tip.style.display !== 'none' ? tip.textContent : '', tipClass: tip.className, ring: ring.visible, halo: halo.visible },
+                                         owlHead: FO.hc.slice(), screen: ballClient(), path: { on: pred.obj.visible, idx: pred.geo.drawRange.count }, tip: tip.style.display !== 'none' ? tip.textContent : '', tipClass: tip.className, ring: ring.visible, halo: halo.visible },
                                 smoke: (function () { if (sm.t0 != null) smokeCount(run.t); return { t0: sm.t0, reached: sm.nReach, started: sm.n, gone: sm.gone, live: sm.live, total: NT, front: SM_FRONT, life: SM_LIFE, tEnd: sm.tEnd, origin: sm.o.slice(),
                                   alphaSum: (function () { var a = 0, i; for (i = 0; i < NT; i++) a += fL.alpha[i]; return a; })() }; })(),
                                 drift: function () { var m = 0, P = fL.center, i, d; for (i = 0; i < NT * 3; i += 3) { d = Math.hypot(P[i] - LH[i], P[i + 1] - LH[i + 1], P[i + 2] - LH[i + 2]); if (d > m) m = d; } return m; }(),
