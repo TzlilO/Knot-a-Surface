@@ -217,8 +217,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   never closer than the object's box allows; on light, operations fade the scene towards `KT.color.bg` (on dark,
   towards black); parts use the charts' own `c.hex`.
   `touch` (talk/sims/touch.js, chapter 09 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
-  an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: fall through, or
-  loose particles), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
+  an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: the ball falls through, then,
+  without a cut, the list's half of `moment` runs on the same code (`run.close`, `model()`) and hands back; the
+  loose-particle rule is a third drop on the lab page only, never in the talk's `ghost`), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
   shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list), `moment` (the
   camera closes in and time runs 20x slower over the last 10 cm above the list: the seven "moments of contact" a list

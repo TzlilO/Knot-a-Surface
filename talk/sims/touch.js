@@ -935,7 +935,7 @@
         if (m === 'ghost' || m === 'flight' || m === 'moment') restoreList();
         if (surf.broken) mend();
         if (m === 'flight') { flatten(); derive(); fl.phase = 'drop'; fl.tt = fl.th = 0; fl.boost = false; }
-        if (close) momentDrop(side);
+        if (close) momentDrop(side); else mo.slow = 1;             // (no slow motion is carried out of a close-up)
         au.first = true; au.lastN = 0;
       }
       /* SCRIPTED, the one thing in the finale that is: when the ball leaves the elastic surface, its velocity is
