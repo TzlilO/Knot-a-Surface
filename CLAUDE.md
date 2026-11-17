@@ -256,6 +256,19 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   plateau with a patience, only once the schedule allows it) and a "not learning" check early on; resource and
   stall watchdogs; SIGINT / SIGTERM handled. Every threshold is a flag with a documented default, the best state
   is saved, and the reason it stopped is recorded and carried into what is exported.
+- `tools/eval/` = the DTU Chamfer distance (numpy + scipy, `python3 -I`; `README.md` there). `dtu_chamfer.py MESH.ply
+  --scan N --data REF` runs the standard protocol (Jensen et al. 2014 as in DTUeval-python's eval.py: 0.2 mm sampling
+  and reduction, `ObsMask{N}_10.mat`, `Plane{N}.mat`, `stl{N:03d}_total.ply`, 20 mm cap; accuracy, completeness,
+  overall in mm) on a mesh in the DTU world frame in mm and writes a JSON with every parameter, file hash and
+  `stop.reason` (`--max-minutes` 30, `--max-points`, `--seed` 0, `--self-test`, `--mask-only`); it agrees with eval.py
+  to the last digit where the shuffle decides nothing. `chart_mesh.py` writes a fitted scan's charts as lattices in
+  that frame (rigid fit of the file's `cams` onto `cameras.npz`, stops above 0.2 mm; `full` = one vertex per control
+  point, `talk<N>` = the mesh scene's lattice at budget N; each with and without the table chart). `eval_fits.py
+  --dtu DATA --ref REF -o OUT` does both for scans 122 and 55. Those are OFFLINE FITS to depth maps rendered from the
+  very reference they are measured against (MVSNet's Depths_raw): never call the numbers trained, a result of the
+  method, or comparable with published tables; a perfect mesh scores about 0.1 mm, not 0. Reference data never goes
+  in the repo. Until `stl122_total.ply` and `stl055_total.ply` are obtained, no number for the owl or the rabbit
+  exists: do not quote one.
 - Rendering: modules draw with `gl.draw(R, scene, camera)`, not `renderer.render`. It draws the `gl.splats` of a scene
   as a smooth surface (depth pre-pass, weighted sum into a half-float target, normalising resolve, depth again for the
   rest of the scene) with a per-pixel low-pass on every Gaussian; without float render targets it falls back to the

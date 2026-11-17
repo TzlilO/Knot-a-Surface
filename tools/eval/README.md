@@ -10,6 +10,7 @@ Three scripts, numpy + scipy only, all run with `python3 -I` (the reference data
 
 ```bash
 python3 -I tools/eval/dtu_chamfer.py --self-test                                  # 31 checks on made-up data, 7 s
+python3 -I tools/eval/dtu_chamfer.py --self-test --data REF --scan 1              # + 10 on a real reference, 2 min
 python3 -I tools/eval/dtu_chamfer.py MESH.ply --scan 24 --data REF --out r.json   # any mesh in the DTU world frame, mm
 python3 -I tools/eval/eval_fits.py --dtu DATA --ref REF -o OUT                    # the repository's two fits
 ```
@@ -18,9 +19,9 @@ python3 -I tools/eval/eval_fits.py --dtu DATA --ref REF -o OUT                  
 
 **They are offline fits, not trained results, and not results of the thesis method.** `tools/dtu/fit.py` fitted
 those charts to the depth maps of the Hugging Face copy `Y1ue/DTU`. Those depth maps are not a reconstruction from
-the photographs: they are MVSNet's `Depths_raw` (Yao et al., ECCV 2018), which that paper made by running screened
-Poisson reconstruction on DTU's ground-truth point clouds and rendering the mesh into every view. The evidence
-gathered here:
+the photographs: they are MVSNet's `Depths_raw` (Yao et al., ECCV 2018), made, as that paper describes its depth
+maps, by screened Poisson reconstruction of DTU's ground-truth point clouds and rendering the mesh into every view.
+The evidence gathered here:
 
 - `DTU/scan114/depths/depth_map_0000.pfm` and `DTU/scan118/depths/depth_map_0010.pfm` of `Y1ue/DTU` are byte for
   byte the files `dtu/depth_raw/Depths/scan114|118/…` of the public benchmark copy `depth-anything/DA3-BENCH`
@@ -49,8 +50,9 @@ They are in `Points.zip` (7.0 GB, all 124 scans) of the DTU MVS data set, "MVS D
 `roboimagedata.compute.dtu.dk` (files served from `roboimagedata2.compute.dtu.dk/data/MVS/`). Both hosts were
 refused by the container's network policy. On Hugging Face the two files were found only in gated repositories
 (`SRPLB1/benchmarks-dtu-mvs`: `parts/Points.zip`; `Bluefish2333/benchmark`: `MVRecon/dtu/Points.tar`; both need the
-owner's approval). The public copies hold other scans: `rhayat/DTU` (`SampleSet.zip`: scans 1 and 6) and
-`depth-anything/DA3-BENCH` (`dtu.zip`: the 22 scans of MVSNet's test set, among them 24, 110, 114, 118).
+owner's approval). The public copies hold the clouds of other scans: `rhayat/DTU` (`SampleSet.zip`: the masks and
+planes of every scan, the clouds of scans 1 and 6 only) and `depth-anything/DA3-BENCH` (`dtu.zip`: the 22 scans of
+MVSNet's test set, among them 24, 110, 114, 118).
 Nothing was put in their place: the depth maps the fits were made from are NOT a reference for this number.
 
 With the two files in `REF/Points/stl/`, the whole evaluation is one command, under ten minutes on four cores:
@@ -81,6 +83,9 @@ was written from those two sources and follows the port step by step.
 Where the MATLAB code differs, and why no distance below 20 mm changes: it searches block by block with a 60 mm cap
 instead of cropping the input to the box; it rounds half away from zero (numpy: half to even; only a point exactly
 on a voxel face); its mesh sampler `MeshSupSamp` is a compiled mex without source, so the port's lattice is used.
+One thing differs from the port: the nearest-neighbour searches here stop at the cap (a distance of 20 mm or more is
+an outlier whatever its value), which gives the same means to the last digit and keeps a search far from everything
+from walking the whole tree.
 Both reference implementations shuffle without a seed (the port reports a scatter of 0.01 %); here the shuffle is
 seeded, so a run repeats exactly.
 
@@ -92,7 +97,7 @@ A long numerical job by this repository's rule: progress on stdout; `--max-minut
 and between chunks of every search; `--max-points` (120 million) refuses a mesh before memory is allocated; NaN or
 Inf in the input or in a distance stops it; SIGINT / SIGTERM stop it cleanly. The JSON is written in every case,
 with `stop.reason` (`completed`, `max_minutes`, `max_points`, `signal`, `non_finite_input`, `missing_reference`,
-`no_points_in_mask`, `no_distance_below_cap`, `mask_only`, `bad_input`, `out_of_memory`) and no `result` unless it
+`non_finite_result`, `no_points_in_mask`, `no_distance_below_cap`, `mask_only`, `bad_input`, `out_of_memory`) and no `result` unless it
 completed. `eval_fits.py` carries the reason into `summary.json`.
 
 The JSON: `parameters`, `input` (path, bytes, sha256, vertices, triangles, area), `reference` (the three files with
@@ -177,11 +182,14 @@ the object, `…_all` is what the talk shows. A published mesh usually contains 
    its normal: 0.513 / 0.515, 2.003 / 2.004, 7.001 / 7.001 mm (between d and √(d² + 0.2²), as the sampling allows);
    slid by 3 mm in its own plane: only its 3 mm lip counts; the ground plane, the mask, the 20 mm cap; the guards;
    same seed, same numbers.
-2. **On the official reference of scans 1 and 6** (`--self-test --data REF --scan 1`): the reference cloud as input
-   scores accuracy 0.000000 mm (completeness 0.034 and 0.013 mm: the reduction removes points that are exactly
-   0.2 mm apart). Moved rigidly by 1 and 3 mm along the table's normal it scores 0.367 and 1.126 mm (scan 1),
-   0.407 and 1.282 mm (scan 6): above zero and below d, as it must on a real scene, where every surface that
-   lies along the shift slides on itself. A rigid shift reads as d only where the surface faces it (the plate above).
+2. **On the official reference of scans 1 and 6** (`--self-test --data REF --scan 1`, 41 checks, all pass): the
+   reference cloud as input scores accuracy 0.000000 mm (completeness 0.034 and 0.013 mm: the reduction removes
+   points that are exactly 0.2 mm apart). A rigid shift reads as d where the surface faces it: the reference's
+   table alone (its 109,141 and 148,433 points under the ground plane) moved by 1 and 3 mm along the plane's normal
+   scores a median of 0.992 and 2.931 mm (scan 1), 0.977 and 2.899 mm (scan 6); the means are 0.933, 2.806, 0.916,
+   2.723 mm, because the board is not flat to better than 0.5 mm. The whole cloud moved the same way scores 0.367
+   and 1.126 mm (scan 1), 0.407 and 1.282 mm (scan 6): above zero and below d, as it must, since every surface
+   that lies along the shift slides on itself.
 3. **Against the reference implementation**, DTUeval-python's `eval.py` run unmodified (open3d 0.20.0,
    scikit-learn 1.9.1) on official inputs of scan 1; accuracy / completeness / overall, mm:
 

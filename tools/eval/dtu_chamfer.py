@@ -4,6 +4,7 @@
     python3 -I tools/eval/dtu_chamfer.py MESH.ply --scan 122 --data REF_DIR [--out result.json]
     python3 -I tools/eval/dtu_chamfer.py --self-test                       # synthetic data, no download
     python3 -I tools/eval/dtu_chamfer.py --self-test --data REF_DIR --scan 1   # the same, plus checks on a real reference
+    python3 -I tools/eval/dtu_chamfer.py MESH.ply --scan 122 --data REF_DIR --mask-only   # steps 1 to 3, without the cloud
 
 MESH.ply must be in the DTU world frame, in millimetres (the frame of the dataset's calibration, `pos_NNN.txt`, and
 of the IDR-style `cameras.npz`: `world_mat_i`). REF_DIR holds, for scan N (searched in the layouts listed in FIND):
@@ -32,11 +33,16 @@ follows step by step. It is written from those two sources in numpy + scipy only
 Differences from the MATLAB code, none of which changes a distance below 20 mm: MATLAB searches block by block
 with a 60 mm cap instead of cropping to the box; it rounds half away from zero where numpy rounds half to even
 (a point exactly on a voxel face); its mesh sampler is a compiled mex without source, the port's lattice is used
-here. The shuffle is random in both; here it is seeded (--seed) so that a run can be repeated exactly.
+here. The shuffle is random in both; here it is seeded (--seed) so that a run can be repeated exactly. Unlike the
+port, the nearest-neighbour searches stop at --max-dist: the means are the same to the last digit, and a search far
+from everything no longer walks the whole tree. Checked against eval.py on the dataset's own files: README.md.
 
 A long numerical job by this repository's rule: it prints its progress, has a wall-clock budget (--max-minutes)
 and a memory guard (--max-points), refuses non-finite input, handles SIGINT / SIGTERM, and always writes the JSON
 with the reason it stopped (`stop.reason`: completed, or what cut it short; then there is no result in it).
+
+The repository's own charts (the owl, the rabbit) are OFFLINE FITS to depth maps rendered from this very reference:
+their numbers are not trained results and are not comparable with published tables. See README.md.
 
 Exit status: 0 completed, 2 stopped early or bad input, 1 a self-test failed.
 """
