@@ -20,6 +20,10 @@
                { v: 'normal', label: 'normal', name: 'normals' }, { v: 'gauss', label: 'gauss', name: 'Gaussians' },
                { v: 'charts', label: 'chart', name: 'charts' }];
   var ROLL = 0.03, SLANT = 0.2;     // split screen: band travel in stage widths per second, and the lean of its dividers
+  /* rim shading darkens the fringe of every Gaussian (uRim: 0.3 unless a scene asks for more). On a light page that fringe
+     draws a dark outline around a light-coloured surface: there a light scene (KT.scenes[..].light) or a light material
+     (talk/scenes.js, MATS[..].light) is shaded with LIGHT_RIM. A dark page keeps the scene's own rim */
+  var LIGHT = KT.theme === 'light', LIGHT_RIM = 0.12;
   function wrap(x, m) { return ((x % m) + m) % m; }
 
   /* The talk runs on ONE subject: `scan`, a real DTU object (talk/dtu-data.js; without that file the barn
@@ -333,6 +337,9 @@
       /* per Gaussian of the last frame: its chart and the control point nearest to it (for picking, and for what
          a chart stores per control point: opacity, the tool layer's selection and holds) */
       var instC = new Uint8Array(CAP), instK = new Int32Array(CAP), keptL = new Int32Array(CAP);
+      /* the tool layer's marks on the Gaussians: a selection tints towards the surface colour, a hold towards the control
+         points' (on a dark page their cyan and amber, as they have always been written) */
+      var SELT = LIGHT ? G.rgb(C.surf) : [0.31, 0.76, 0.97], HOLDT = LIGHT ? G.rgb(C.ctrl) : [1.0, 0.65, 0.15];
       function emit() {
         allocate();
         var n = 0, eye = { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: 1, min: -0.12 }, thin = false, track = !!st.sc.hands || selecting();
@@ -353,8 +360,8 @@
               l = keptL[k - t0]; q = Math.round(tl.vs[(l / tl.na) | 0] * (p.nv - 1)) * p.nu + Math.round(tl.us[l % tl.na] * (p.nu - 1));
               instC[k] = ci; instK[k] = q;
               if (AL) field.alpha[k] = AL[q];
-              if (SE && SE[q] > 0.5) { o = k * 3; K[o] = K[o] * 0.5 + 0.155; K[o + 1] = K[o + 1] * 0.5 + 0.38; K[o + 2] = K[o + 2] * 0.5 + 0.485; }   // selected: towards cyan
-              if (PN && (s = PN[q] * 0.5) > 0) { o = k * 3; K[o] += (1.0 - K[o]) * s; K[o + 1] += (0.65 - K[o + 1]) * s; K[o + 2] += (0.15 - K[o + 2]) * s; }   // held: towards amber
+              if (SE && SE[q] > 0.5) { o = k * 3; K[o] = K[o] * 0.5 + SELT[0] * 0.5; K[o + 1] = K[o + 1] * 0.5 + SELT[1] * 0.5; K[o + 2] = K[o + 2] * 0.5 + SELT[2] * 0.5; }   // selected: towards the surface colour
+              if (PN && (s = PN[q] * 0.5) > 0) { o = k * 3; K[o] += (HOLDT[0] - K[o]) * s; K[o + 1] += (HOLDT[1] - K[o + 1]) * s; K[o + 2] += (HOLDT[2] - K[o + 2]) * s; }   // held: towards the control points' colour
             }
             if (AL) thin = true;
           });
@@ -780,6 +787,15 @@
       function paintBadge() {
         badge.innerHTML = 'view-adaptive sampling <b class="' + (st.adaptive ? 'on' : 'off') + '">' + (st.adaptive ? 'ON' : 'OFF') + '</b>';
       }
+      /* the rim shading of what is on the stage (see LIGHT_RIM); a material that wipes in takes over from the one before it */
+      function rim() {
+        var base = st.sc.rim || 0.3;
+        if (!LIGHT || st.sc.rim) return base;                  // a scene that asks for its own rim keeps it (lod: the fringes show the sampling)
+        if (KT.scenes[st.scn] && KT.scenes[st.scn].light) return LIGHT_RIM;
+        if (!st.sc.paint || !def || !def.materials) return base;
+        function of(v) { var m = def.materials.filter(function (k) { return k.v === v; })[0]; return m && m.light ? LIGHT_RIM : base; }
+        return of(st.from) + (of(st.mat) - of(st.from)) * KT.clamp(st.paint, 0, 1);
+      }
       function paintCap() {
         var s = KT.scenes[st.scn];
         cap.innerHTML = '<b>' + s.label + '</b> · ' + s.suite + (s.note != null ? s.note && ' · ' + s.note : st.scn === 'studio' ? '' : ' · procedural stand-in') + '<br>' + st.sc.cap;
@@ -881,6 +897,7 @@
           if (st.nets) updateNets();
           need = true;
         }
+        if (LIGHT) field.uniforms.uRim.value = rim();
         var home = def.views[matView()];
         if (!orbit.touched && !sc.tour && !sc.teaser && !sc.cover && (sc.cam || 'wide') === 'wide') orbit.goal.th = home.th + 0.14 * Math.sin(t * 0.16);
         orbit.update(dt, sc.tour ? 1.5 : 3);
@@ -961,6 +978,16 @@
           'font:600 13px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:9px 14px;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:999px}' +
           '.kt-sim-manifold .kt-ab b{margin-left:8px}.kt-sim-manifold .kt-ab .on{color:var(--ok)}.kt-sim-manifold .kt-ab .off{color:var(--err)}' +
+          // the light theme: what lies over the object (the board, the atlas, the badge, the band labels) is glass that hides
+          // what is behind it, since a clear one turns grey over the owl and its dark text stops reading; a chart's name in
+          // its identity colour is taken towards the text colour, so that it reads on white glass
+          ':root[data-theme="light"] .kt-sim-manifold :is(.mf-board,.kt-atlas,.kt-ab,.kt-split span){background:rgba(255,255,255,.84);' +
+          'border-color:transparent;box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
+          ':root[data-theme="light"] .kt-sim-manifold .kt-tile-name{color:color-mix(in srgb,var(--c) 62%,var(--text))}' +
+          // and the dividers of the split screen are dark lines on the light card (the same rule is in talk/prelude.css); the
+          // badge of `lod` goes under the caption, where the wider glass panel does not cover its ON / OFF
+          ':root[data-theme="light"] .kt-sim-manifold .kt-split i{background:color-mix(in srgb,var(--text) 22%,transparent)}' +
+          ':root[data-theme="light"] .kt-sim-manifold .kt-ab{left:14px;transform:none}' +
           '@media (max-width:640px){.kt-sim-manifold .kt-atlas{gap:4px;padding:6px}.kt-sim-manifold .kt-tile-box{aspect-ratio:2}' +
           '.kt-sim-manifold .kt-tile-s{display:none}.kt-sim-manifold .kt-tile-name{font-size:8px;letter-spacing:.04em}.kt-sim-manifold .kt-tile-n{font-size:9px}}';
         document.head.appendChild(css);

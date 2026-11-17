@@ -30,7 +30,27 @@
   var VEC = 0.26;            // a tangent arrow is drawn at this fraction of its true length
   var LATMAX = 40;           // up to this many samples per axis the whole sampling lattice is drawn
   var EDGE = 0.24;           // |cos| between the view ray and the normal under which the tangent plane counts as edge-on
-  var COL_U = C.surf, COL_V = '#6d8dff';            // two shades of the surface colour: S_u and S_v must not look alike
+
+  /* ---------- colours: KnotTalk.color, in the page's theme ----------
+     The dark stage (the lab page) keeps the values it always had. On a light page (the talk) every colour is taken
+     from KT.color, or mixed from two of its entries where the dark stage used a shade the palette has no entry for:
+     the marks that are white on the dark stage (the probe, the normal, the derivative ring, the window) are ink,
+     the pale tints of the surface and Gaussian colours become deep ones, and what was a dark chip is light glass. */
+  var LIGHT = KT.theme === 'light';
+  function hex3(c) { var n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function mix(a, b, t) {                           // '#rrggbb' between a (t = 0) and b (t = 1)
+    var p = hex3(a), q = hex3(b);
+    return '#' + p.map(function (x, i) { return ('0' + Math.round(x + (q[i] - x) * t).toString(16)).slice(-2); }).join('');
+  }
+  function rgba(c, a) { var p = hex3(c); return 'rgba(' + p[0] + ',' + p[1] + ',' + p[2] + ',' + a + ')'; }
+  var INK = LIGHT ? C.text : '#ffffff';                              // the neutral marks: white on dark, ink on paper
+  var SURF_HI = LIGHT ? mix(C.surf, C.text, 0.3) : '#d7f1ff';        // the surface colour, set off from it
+  var SPLAT_HI = LIGHT ? mix(C.splat, C.text, 0.45) : '#f6e9fa';     // the Gaussian colour, set off from it
+  var OUTL_ON = LIGHT ? mix(C.splat, C.text, 0.6) : '#2e1440';       // 1-sigma outlines drawn over the violet Gaussians: a deep violet
+  // two shades of the surface colour, S_u and S_v, must not look alike: S_v leans to violet (on paper an indigo, ~35 degrees of hue
+  // from the surface's azure and as far from the Gaussians' purple)
+  var COL_U = C.surf, COL_V = LIGHT ? mix(C.surf, C.splat, 0.55) : '#6d8dff';
+  function rim(v) { return LIGHT ? Math.min(v, 0.2) : v; }           // splat rim shading outlines each Gaussian in a dark line: faint on paper
 
   var OUTMAX = 48;           // up to this many samples per axis every Gaussian's 1-sigma outline is drawn
   var KN_LEVELS = [8, 16, 32, 64, 128, 256, 512, 1024];   // the knob, x4 Gaussians per step
@@ -155,10 +175,10 @@
       var W = 1, H = 1, fitR = 1;
 
       /* light and air: the same light direction as the splat shader, and a fog that follows the camera */
-      var LIGHT = new T.Vector3(0.35, 0.86, 0.36).normalize();
-      scene.fog = new T.Fog(0x07090f, 5, 14);
+      var LIGHT_DIR = new T.Vector3(0.35, 0.86, 0.36).normalize();
+      scene.fog = new T.Fog(LIGHT ? C.bg : 0x07090f, 5, 14);          // distance fades into the stage: dark, or the glass card
       scene.add(new T.HemisphereLight(0xe6efff, 0x2a3650, 1.5));
-      var sun = new T.DirectionalLight(0xffffff, 2.6); sun.position.copy(LIGHT); scene.add(sun);
+      var sun = new T.DirectionalLight(0xffffff, 2.6); sun.position.copy(LIGHT_DIR); scene.add(sun);
 
       /* ---------- the patch: the terrain of chapter 05 (talk/terrain.js), held by this 6 x 6 net ----------
          The control points stand on a regular grid in x and z; only their heights are fitted. ground(x, z) is the
@@ -328,20 +348,25 @@
         return own(new T.LineSegments(l.obj.geometry, G.hidden(l.mat.color, opacity, 'line')), order);
       }
 
-      var grid = new T.GridHelper(9, 18, 0x243652, 0x162238); grid.position.y = FLOOR; scene.add(grid);
+      // the floor: a grid (on paper the line colour of the page, its centre lines a shade darker) and a soft pool of the
+      // surface colour under the patch (on the dark stage a pale glow)
+      var grid = LIGHT ? new T.GridHelper(9, 18, mix(C.line, C.dim, 0.3), C.line) : new T.GridHelper(9, 18, 0x243652, 0x162238);
+      grid.position.y = FLOOR; scene.add(grid);
+      var glowC = LIGHT ? G.rgb(C.surf).map(function (x) { return x.toFixed(3); }).join(', ') + ', a * a * 0.06' : '0.20, 0.33, 0.52, a * a * 0.30';
       var glow = own(new T.Mesh(new T.CircleGeometry(5.4, 48).rotateX(-Math.PI / 2), new T.ShaderMaterial({
         transparent: true, depthWrite: false,
         vertexShader: 'varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'varying vec2 vP; void main(){ float a = 1.0 - clamp(length(vP) / 5.4, 0.0, 1.0); gl_FragColor = vec4(0.20, 0.33, 0.52, a * a * 0.30); }'
+        fragmentShader: 'varying vec2 vP; void main(){ float a = 1.0 - clamp(length(vP) / 5.4, 0.0, 1.0); gl_FragColor = vec4(' + glowC + '); }'
       })), -6);
       glow.position.y = FLOOR - 0.004;
 
       var FN = 33, sheet = G.sheet(FN, FN), fill = own(sheet.mesh, 0);
       var sg = { pos: sheet.pos, su: new Float32Array(FN * FN * 3), sv: new Float32Array(FN * FN * 3) };
       // the sheet's shadow: the same geometry flattened onto the floor along the light, three times for a soft edge
-      var shadowMat = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false, side: T.DoubleSide, fog: false });
+      // (black on the dark stage; on paper a light shade of ink, or the three layers make a slab)
+      var shadowMat = new T.MeshBasicMaterial({ color: LIGHT ? C.text : 0x000000, transparent: true, opacity: LIGHT ? 0.045 : 0.2, depthWrite: false, side: T.DoubleSide, fog: false });
       var shadows = [0.93, 1.0, 1.08].map(function (k, i) {
-        var m = own(new T.Mesh(sheet.geo, shadowMat), -4), sx = -LIGHT.x / LIGHT.y, sz = -LIGHT.z / LIGHT.y;
+        var m = own(new T.Mesh(sheet.geo, shadowMat), -4), sx = -LIGHT_DIR.x / LIGHT_DIR.y, sz = -LIGHT_DIR.z / LIGHT_DIR.y;
         m.matrixAutoUpdate = false; m.matrixWorldNeedsUpdate = true;
         m.matrix.set(k, sx, 0, -sx * FLOOR,   0, 1e-4, 0, FLOOR + 0.004 + 0.002 * i,   0, sz, k, -sz * FLOOR,   0, 0, 0, 1);
         return m;
@@ -361,9 +386,9 @@
       var violet = G.rgb(C.splat);
 
       // the probe and its frame
-      var probe = new T.Mesh(new T.SphereGeometry(0.05, 20, 14), new T.MeshLambertMaterial({ color: 0xffffff, emissive: 0x6a6a6a }));
-      var probeHid = new T.Mesh(probe.geometry, G.hidden(0xffffff, 0.4)); probeHid.renderOrder = 8; probe.add(probeHid); scene.add(probe);
-      var aU = G.vector(COL_U), aV = G.vector(COL_V), aN = G.vector(0xffffff);
+      var probe = new T.Mesh(new T.SphereGeometry(0.05, 20, 14), new T.MeshLambertMaterial({ color: INK, emissive: LIGHT ? 0x000000 : 0x6a6a6a }));
+      var probeHid = new T.Mesh(probe.geometry, G.hidden(INK, 0.4)); probeHid.renderOrder = 8; probe.add(probeHid); scene.add(probe);
+      var aU = G.vector(COL_U), aV = G.vector(COL_V), aN = G.vector(INK);
       scene.add(aU.obj); scene.add(aV.obj); scene.add(aN.obj);
       var IS = 48, isoU = G.lines(IS * 2, COL_U, 0.95), isoV = G.lines(IS * 2, COL_V, 0.95); own(isoU.obj, 2); own(isoV.obj, 2);
       var ig = { pos: new Float32Array((IS + 1) * 3) }, isoT = lin(IS + 1);
@@ -375,7 +400,7 @@
       function flat(color, opacity) { return new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: T.DoubleSide, depthWrite: false }); }
       var plane = own(new T.Mesh(plGeo, [flat(C.surf, 0.09), flat(C.surf, 0.22)]), 4);
       var planeHid = own(new T.Mesh(plGeo, G.hidden(C.surf, 0.045, 'flat')), 5);
-      var plGrid = G.lines(40, C.surf, 0.26), plEdge = G.lines(8, '#d7f1ff', 0.85), mark = G.lines(8, '#ffffff', 0.9);
+      var plGrid = G.lines(40, C.surf, 0.26), plEdge = G.lines(8, SURF_HI, 0.85), mark = G.lines(8, INK, 0.9);
       own(plGrid.obj, 5); own(plEdge.obj, 6); own(mark.obj, 6);
       var plEdgeHid = ghostLines(plEdge, 0.25, 7);
 
@@ -402,7 +427,7 @@
             g.attributes.position.needsUpdate = true;
           } };
       }
-      var ringN = ribbon(C.splat, 0.95, 11), ringA = ribbon('#ffffff', 0.95, 12);
+      var ringN = ribbon(C.splat, 0.95, 11), ringA = ribbon(INK, 0.95, 12);
 
       // the neighbourhood: the lattice on the surface, the 3 x 3 block, the eight neighbours and their Gaussians
       var LS = 36, lat = G.lines(2 * (LATMAX + 1) * LS * 2, C.surf, 0.3); own(lat.obj, 1);
@@ -416,7 +441,7 @@
       dotGeo.setAttribute('position', new T.BufferAttribute(dotPos, 3)); dotGeo.setDrawRange(0, 0);
       var dots = own(new T.Points(dotGeo, new T.PointsMaterial({ color: C.splat, size: 0.05, map: dotTex, alphaTest: 0.5, transparent: true, opacity: 0.75 })), 2);
       var BS = 4, BN = 3 * BS + 1, bgd = { pos: new Float32Array(BN * BN * 3) };
-      var blk = G.lines(8 * (BN - 1) * 2, '#d7f1ff', 0.8); own(blk.obj, 2);
+      var blk = G.lines(8 * (BN - 1) * 2, SURF_HI, 0.8); own(blk.obj, 2);
       var nbGeo = new T.SphereGeometry(0.036, 16, 12), cs = new T.Color(C.splat);
       var nbOn = new T.MeshLambertMaterial({ color: cs, emissive: cs.clone().multiplyScalar(0.35) });
       var nbOff = new T.MeshLambertMaterial({ color: cs.clone().multiplyScalar(0.42), emissive: cs.clone().multiplyScalar(0.1) });
@@ -426,7 +451,7 @@
       }
       var NR = 40, nbRingA = G.lines(8 * NR * 2, C.splat, 0.5), nbRingI = G.lines(4 * NR * 2, C.splat, 0.18);
       own(nbRingA.obj, 11); own(nbRingI.obj, 11);
-      var span = G.lines(16, '#f6e9fa', 0.95), err = G.lines(4, C.err, 1); own(span.obj, 12); own(err.obj, 13);
+      var span = G.lines(16, SPLAT_HI, 0.95), err = G.lines(4, C.err, 1); own(span.obj, 12); own(err.obj, 13);
       var spanHid = ghostLines(span, 0.3, 13);
       var G9 = { pos: new Float32Array(27), su: new Float32Array(27), sv: new Float32Array(27) };
       var G9b = { pos: new Float32Array(27), su: new Float32Array(27), sv: new Float32Array(27) };
@@ -491,13 +516,15 @@
       triGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
       triGeo.setAttribute('normal', new T.BufferAttribute(new Float32Array(SQ * 18), 3));
       triGeo.setDrawRange(0, 0);
-      var tri = own(new T.Mesh(triGeo, new T.MeshLambertMaterial({ color: 0x2f8fbf, emissive: 0x0c3448, side: T.DoubleSide,
+      // (on paper the triangles take a light shade of the surface colour, so that its edges read on them)
+      var triCol = LIGHT ? new T.Color(mix(C.surf, C.bg, 0.55)) : new T.Color(0x2f8fbf);
+      var tri = own(new T.Mesh(triGeo, new T.MeshLambertMaterial({ color: triCol, emissive: LIGHT ? triCol.clone().multiplyScalar(0.12) : 0x0c3448, side: T.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })), 1);
       var triEdge = G.lines(SQ * 10, C.surf, 0.9); own(triEdge.obj, 2);
-      var triNew = G.lines(10, '#ffffff', 1); own(triNew.obj, 3);
+      var triNew = G.lines(10, INK, 1); own(triNew.obj, 3);
       var winGeo = new T.BufferGeometry(); winGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
-      var win = ovOwn(new T.LineLoop(winGeo, new T.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, fog: false })), 6);
-      var winDot = ovOwn(new T.Points(winGeo, new T.PointsMaterial({ color: 0xffffff, size: 6, sizeAttenuation: false, depthTest: false, transparent: true, fog: false })), 6);
+      var win = ovOwn(new T.LineLoop(winGeo, new T.LineBasicMaterial({ color: INK, depthTest: false, transparent: true, fog: false })), 6);
+      var winDot = ovOwn(new T.Points(winGeo, new T.PointsMaterial({ color: INK, size: 6, sizeAttenuation: false, depthTest: false, transparent: true, fog: false })), 6);
 
       // adaptive: a second camera (body + frustum, in the neutral colour) and the outline of what it sees on the surface
       var obs = new T.PerspectiveCamera(21, 1.45, 0.05, 30);
@@ -510,7 +537,7 @@
         var e = ui.el('div', 'kt-tag kt-tag-' + tone, html); if (color) e.style.color = color;
         root.appendChild(e); return e;
       }
-      var tMu = tag('μ', 'text'), tU = tag('', 'vec', COL_U), tV = tag('', 'vec', COL_V), tN = tag('n', 'vec', '#ffffff');
+      var tMu = tag('μ', 'text'), tU = tag('', 'vec', COL_U), tV = tag('', 'vec', COL_V), tN = tag('n', 'vec', INK);
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
       var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
 
@@ -917,7 +944,10 @@
         var ax = P[i1] - P[i0], ay = P[i1 + 1] - P[i0 + 1], az = P[i1 + 2] - P[i0 + 2], bx = P[i2] - P[i0], by = P[i2 + 1] - P[i0 + 1], bz = P[i2 + 2] - P[i0 + 2];
         var nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1, v, c;
         if (ny < 0) l = -l;
-        [i0, i1, i2].forEach(function (i) { for (c = 0; c < 3; c++) { TP[k + c] = P[i + c]; } TN[k] = nx / l; TN[k + 1] = ny / l; TN[k + 2] = nz / l; k += 3; });
+        // the lattice's winding faces down (S_u x S_v points down on this patch), so from above the camera sees back faces, lit
+        // by the hemisphere's ground colour: a dark band, the dark stage's look. On paper the winding is turned over and the
+        // triangles are lit from above, a light shade of the surface colour.
+        (LIGHT ? [i0, i2, i1] : [i0, i1, i2]).forEach(function (i) { for (c = 0; c < 3; c++) { TP[k + c] = P[i + c]; } TN[k] = nx / l; TN[k + 1] = ny / l; TN[k + 2] = nz / l; k += 3; });
         return k;
       }
       function stitchBuild() {
@@ -1030,7 +1060,7 @@
         function X(c) { return 8 + (Math.log(c) - lx0) / (lx1 - lx0) * (w - 16); }
         function Y(ms) { return h - 13 - Math.min(ms, ym) / ym * (h - 28); }
         g.font = '500 9px JetBrains Mono, ui-monospace, monospace'; g.textBaseline = 'middle';
-        [[1000 / 60, '60 fps', 'rgba(143,164,192,.35)'], [knCap(), 'turns back', 'rgba(239,83,80,.4)']].forEach(function (l) {
+        [[1000 / 60, '60 fps', rgba(C.dim, 0.35)], [knCap(), 'turns back', rgba(C.err, 0.4)]].forEach(function (l) {
           g.strokeStyle = l[2]; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(8, Y(l[0])); g.lineTo(w - 8, Y(l[0])); g.stroke(); g.setLineDash([]);
           g.fillStyle = C.mute; g.textAlign = 'right'; g.fillText(l[1], w - 8, Y(l[0]) - 6);
         });
@@ -1038,7 +1068,7 @@
         [[64, '64'], [1024, '1k'], [16384, '16k'], [262144, '262k']].forEach(function (l) { g.fillText(l[1], X(l[0]), h - 5); });
         g.textAlign = 'right'; g.fillText('1M', w - 6, h - 5);
         if (pts.length > 1) {
-          g.strokeStyle = 'rgba(221,229,240,.75)'; g.lineWidth = 1.5; g.beginPath();
+          g.strokeStyle = rgba(C.text, 0.75); g.lineWidth = 1.5; g.beginPath();
           pts.forEach(function (p, i) { if (i) g.lineTo(X(p[0]), Y(p[1])); else g.moveTo(X(p[0]), Y(p[1])); }); g.stroke();
         }
         g.fillStyle = C.text; pts.forEach(function (p) { g.beginPath(); g.arc(X(p[0]), Y(p[1]), 2.4, 0, 6.2832); g.fill(); });
@@ -1400,7 +1430,7 @@
       function drawUV() {
         var z = uvc.fit(), g = uvc.ctx, w = z.w, h = z.h, i, n = st.n, s = st.show, a2, b2;
         g.clearRect(0, 0, w, h);
-        g.strokeStyle = 'rgba(255,167,38,.38)'; g.lineWidth = 1;            // knot lines = patch seams of the basis
+        g.strokeStyle = rgba(C.ctrl, 0.38); g.lineWidth = 1;               // knot lines = patch seams of the basis
         var inner = NU - 3;
         for (i = 1; i < inner; i++) {
           g.beginPath(); g.moveTo(i / inner * w, 0); g.lineTo(i / inner * w, h); g.moveTo(0, i / inner * h); g.lineTo(w, i / inner * h); g.stroke();
@@ -1412,7 +1442,7 @@
           g.globalAlpha = 1;
         }
         function ellipses(S, k, s1, bl, from, alpha) {   // the footprints, in the chart where they are defined
-          g.strokeStyle = 'rgba(206,147,216,' + alpha + ')'; g.lineWidth = 1; g.beginPath();
+          g.strokeStyle = rgba(C.splat, alpha); g.lineWidth = 1; g.beginPath();
           for (var q = from; q < S.n; q++) {
             var LA = sizeA(S, q, k, s1, bl), LB = sizeB(S, q, k, s1, bl), e1 = S.lu[q] / LA, e2 = S.pr[q] / LA, e3 = S.lvp[q] / LB, m, th, eb, ea, x, y;
             for (m = 0; m <= 28; m++) {
@@ -1428,9 +1458,9 @@
           g.lineWidth = 1;
           for (qk = 0; qk < sx.q; qk++) {
             qa = quadAt(sn, qk).a; qb = quadAt(sn, qk).b;
-            g.fillStyle = qk === sx.q - 1 && sx.q < sx.Q ? 'rgba(255,255,255,.34)' : 'rgba(79,195,247,.2)';
+            g.fillStyle = qk === sx.q - 1 && sx.q < sx.Q ? (LIGHT ? rgba(INK, 0.2) : 'rgba(255,255,255,.34)') : rgba(C.surf, 0.2);
             g.beginPath(); g.moveTo(SX(qa), SY(qb)); g.lineTo(SX(qa + 1), SY(qb)); g.lineTo(SX(qa + 1), SY(qb + 1)); g.lineTo(SX(qa), SY(qb + 1)); g.closePath(); g.fill();
-            g.strokeStyle = 'rgba(79,195,247,.85)'; g.stroke();
+            g.strokeStyle = rgba(C.surf, 0.85); g.stroke();
             g.beginPath(); g.moveTo(SX(qa), SY(qb)); g.lineTo(SX(qa + 1), SY(qb + 1)); g.stroke();
           }
           for (qb = 0; qb < sn; qb++) for (qa = 0; qa < sn; qa++) {
@@ -1440,20 +1470,20 @@
           if (sx.q < sx.Q) {                                 // the window around the four samples it holds
             qk = Math.max(0, sx.q - 1); qa = quadAt(sn, qk).a; qb = quadAt(sn, qk).b;
             var pad = Math.max(3, w / sn * 0.3);
-            g.strokeStyle = '#ffffff'; g.lineWidth = 1.6;
+            g.strokeStyle = INK; g.lineWidth = 1.6;
             g.strokeRect(SX(qa) - pad, SY(qb + 1) - pad, SX(qa + 1) - SX(qa) + 2 * pad, SY(qb) - SY(qb + 1) + 2 * pad);
           }
         }
         if (s.adapt && ad.stat) {
           if (!ad.cv) { ad.cv = document.createElement('canvas'); ad.cv.width = ad.cv.height = VF; ad.im = ad.cv.getContext('2d').createImageData(VF, VF); }
-          var D = ad.im.data, fu, fv, o2;
+          var D = ad.im.data, fu, fv, o2, VC = LIGHT ? hex3(C.text) : [230, 230, 230], VA = LIGHT ? 22 : 52;     // the camera's view: a veil, pale on dark, ink on paper
           for (fv = 0; fv < VF; fv++) for (fu = 0; fu < VF; fu++) {
-            o2 = ((VF - 1 - fv) * VF + fu) * 4; D[o2] = D[o2 + 1] = D[o2 + 2] = 230; D[o2 + 3] = maskData[(fv * VF + fu) * 4 + 2] ? 52 : 0;
+            o2 = ((VF - 1 - fv) * VF + fu) * 4; D[o2] = VC[0]; D[o2 + 1] = VC[1]; D[o2 + 2] = VC[2]; D[o2 + 3] = maskData[(fv * VF + fu) * 4 + 2] ? VA : 0;
           }
           ad.cv.getContext('2d').putImageData(ad.im, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(ad.cv, 0, 0, w, h);
           var an = ad.n, AN = an + 1, X2 = ad.X, aa, ab, o3;
           // the net of cell corners, as the springs have pulled it, and a dot per Gaussian
-          g.strokeStyle = 'rgba(206,147,216,.38)'; g.lineWidth = 1; g.beginPath();
+          g.strokeStyle = rgba(C.splat, 0.38); g.lineWidth = 1; g.beginPath();
           for (ab = 0; ab < AN; ab++) for (aa = 0; aa < AN; aa++) {
             o3 = (ab * AN + aa) * 2;
             if (aa) { g.moveTo(X2[o3 - 2] * w, (1 - X2[o3 - 1]) * h); g.lineTo(X2[o3] * w, (1 - X2[o3 + 1]) * h); }
@@ -1462,7 +1492,7 @@
           g.stroke();
           var rd2 = Math.max(0.8, Math.min(1.8, w / an * 0.14));
           for (aa = 0; aa < an * an; aa++) {
-            g.fillStyle = ad.inG[aa] ? C.splat : 'rgba(206,147,216,.6)';
+            g.fillStyle = ad.inG[aa] ? C.splat : rgba(C.splat, 0.6);
             g.fillRect(aset.u[aa] * w - rd2, (1 - aset.v[aa]) * h - rd2, 2 * rd2, 2 * rd2);
           }
           g.strokeStyle = C.text; g.lineWidth = 1.3; g.beginPath();
@@ -1472,13 +1502,13 @@
         function cells(x0, y0, cw, ch, ci, cj) {          // the cell (ci, cj) and its neighbourhood, cell size cw x ch at (x0, y0) for cell (0, 0)
           for (b2 = -1; b2 <= 1; b2++) for (a2 = -1; a2 <= 1; a2++) {
             var x = x0 + (ci + a2) * cw, y = y0 - (cj + b2 + 1) * ch, mid = !a2 && !b2, on = mid || st.nb === 8 || !a2 || !b2;
-            g.fillStyle = mid ? 'rgba(255,255,255,.92)' : on ? 'rgba(206,147,216,.62)' : 'rgba(206,147,216,.10)';
+            g.fillStyle = mid ? (LIGHT ? rgba(INK, 0.85) : 'rgba(255,255,255,.92)') : on ? rgba(C.splat, 0.62) : rgba(C.splat, 0.10);
             g.fillRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
-            if (!on) { g.strokeStyle = 'rgba(206,147,216,.5)'; g.lineWidth = 1; g.setLineDash([2, 2]); g.strokeRect(x + 1, y + 1, cw - 2, ch - 2); g.setLineDash([]); }
+            if (!on) { g.strokeStyle = rgba(C.splat, 0.5); g.lineWidth = 1; g.setLineDash([2, 2]); g.strokeRect(x + 1, y + 1, cw - 2, ch - 2); g.setLineDash([]); }
           }
         }
         if (s.nbr && n <= LATMAX) {                        // the lattice of cells
-          g.strokeStyle = 'rgba(206,147,216,.22)'; g.lineWidth = 1; g.beginPath();
+          g.strokeStyle = rgba(C.splat, 0.22); g.lineWidth = 1; g.beginPath();
           for (i = 1; i < n; i++) { g.moveTo(i / n * w, 0); g.lineTo(i / n * w, h); g.moveTo(0, i / n * h); g.lineTo(w, i / n * h); }
           g.stroke();
         }
@@ -1493,15 +1523,15 @@
         if (s.probe) {
           var pu = s.nbr ? (st.ci + 0.5) / n : st.u, pv = s.nbr ? (st.cj + 0.5) / n : st.v, x = pu * w, y = (1 - pv) * h;
           if (s.ell && !s.nbr) { g.strokeStyle = C.splat; g.lineWidth = 1.5; g.strokeRect(x - w / n / 2, y - h / n / 2, w / n, h / n); }
-          g.strokeStyle = s.nbr ? 'rgba(221,229,240,.45)' : C.text; g.lineWidth = 1.2;
+          g.strokeStyle = s.nbr ? rgba(C.text, 0.45) : C.text; g.lineWidth = 1.2;
           g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
           g.fillStyle = s.nbr ? C.bg : C.text; g.beginPath(); g.arc(x, y, s.nbr ? Math.min(3, w / n * 0.3) : 4, 0, 6.2832); g.fill();
           if (s.nbr && w / n < 11) {                       // cells too small to read: a magnified copy of the 5 x 5 window
             var L = Math.round(w * 0.5), lx = pu < 0.5 ? w - L - 5 : 5, ly = pv < 0.5 ? 20 : h - L - 5, cs2 = L / 5;
-            g.strokeStyle = 'rgba(221,229,240,.5)'; g.lineWidth = 1;
+            g.strokeStyle = rgba(C.text, 0.5); g.lineWidth = 1;
             g.strokeRect(x - 2.5 * w / n, y - 2.5 * h / n, 5 * w / n, 5 * h / n);
             g.beginPath(); g.moveTo(x, y); g.lineTo(lx + L / 2, ly + L / 2); g.stroke();
-            g.fillStyle = 'rgba(11,16,26,.96)'; g.fillRect(lx, ly, L, L); g.strokeRect(lx + 0.5, ly + 0.5, L - 1, L - 1);
+            g.fillStyle = LIGHT ? rgba(C.bg, 0.96) : 'rgba(11,16,26,.96)'; g.fillRect(lx, ly, L, L); g.strokeRect(lx + 0.5, ly + 0.5, L - 1, L - 1);
             g.save(); g.beginPath(); g.rect(lx, ly, L, L); g.clip();
             cells(lx + (2 - st.ci) * cs2, ly + (st.cj + 3) * cs2, cs2, cs2, st.ci, st.cj);
             g.restore();
@@ -1557,7 +1587,7 @@
           var mx = small ? 14 : 25, my = small ? 8 : 15, aw = w - 2 * mx - (small ? 12 : 0), ah = h - top - bot - 2 * my;
           sc = Math.min(aw / (x1 - x0), ah / (y1 - y0));
           cx = mx + (aw - (x1 - x0) * sc) / 2 - x0 * sc; cy = top + my + (ah - (y1 - y0) * sc) / 2 + y1 * sc;
-          g.fillStyle = 'rgba(79,195,247,.13)'; g.strokeStyle = 'rgba(215,241,255,.5)'; g.lineWidth = 1;
+          g.fillStyle = rgba(C.surf, 0.13); g.strokeStyle = rgba(SURF_HI, 0.5); g.lineWidth = 1;
           g.beginPath(); pts = [pts[0], su, add(su, sv), sv];
           pts.forEach(function (p, i) { if (i) g.lineTo(X(p), Y(p)); else g.moveTo(X(p), Y(p)); });
           g.closePath(); g.fill(); g.stroke();
@@ -1565,16 +1595,16 @@
           if (s.nor) {                                   // the axis the rotation actually uses: S_v made perpendicular to S_u
             g.setLineDash([3, 3]); g.strokeStyle = COL_V; g.lineWidth = 1.2; line([0, 0, 0], m.svp); g.setLineDash([]);
             var sgn = Y(m.svp) > cy ? 1 : -1;
-            g.strokeStyle = 'rgba(221,229,240,.8)'; g.lineWidth = 1; g.strokeRect(cx, sgn > 0 ? cy : cy - 7, 7, 7);
-            if (!small && Math.abs(m.ang - 90) > 3) sub('S', 'v⊥', X(m.svp) + (m.ang > 90 ? 16 : -18), Y(m.svp) - sgn * 12, 'rgba(109,141,255,.85)');
+            g.strokeStyle = rgba(C.text, 0.8); g.lineWidth = 1; g.strokeRect(cx, sgn > 0 ? cy : cy - 7, 7, 7);
+            if (!small && Math.abs(m.ang - 90) > 3) sub('S', 'v⊥', X(m.svp) + (m.ang > 90 ? 16 : -18), Y(m.svp) - sgn * 12, rgba(COL_V, 0.85));
           }
-          g.strokeStyle = 'rgba(221,229,240,.9)'; g.lineWidth = 1.2; g.beginPath(); g.arc(cx, cy, rr, 0, aV2, aV2 < 0); g.stroke();
+          g.strokeStyle = rgba(C.text, 0.9); g.lineWidth = 1.2; g.beginPath(); g.arc(cx, cy, rr, 0, aV2, aV2 < 0); g.stroke();
           arrow(su, COL_U, 2.2); arrow(sv, COL_V, 2.2);
           sub('S', 'u', X(su) + 9, Y(su) + (aV2 < 0 ? 9 : -9), COL_U); sub('S', 'v', X(sv) + 11, Y(sv), COL_V);
           g.fillStyle = C.text; g.beginPath(); g.arc(cx, cy, 2.6, 0, 6.2832); g.fill();
           if (s.nor) {                                   // n comes straight out of the picture
-            g.strokeStyle = '#fff'; g.lineWidth = 1.4; g.beginPath(); g.arc(cx, cy, 5.5, 0, 6.2832); g.stroke();
-            if (!small) sub('n', '', cx - 10, cy + (aV2 < 0 ? 12 : -12), '#fff');
+            g.strokeStyle = INK; g.lineWidth = 1.4; g.beginPath(); g.arc(cx, cy, 5.5, 0, 6.2832); g.stroke();
+            if (!small) sub('n', '', cx - 10, cy + (aV2 < 0 ? 12 : -12), INK);
           }
           foot((small ? '∠ ' : '∠(Su, Sv) = ') + m.ang.toFixed(1) + '°', C.text);
           return;
@@ -1583,22 +1613,22 @@
         var D = m.D, A = mul(su, D), B = mul(sv, D), k = st.gain, ext = 0, d;
         for (j = 0; j < 9; j++) ext = Math.max(ext, Math.abs(dot(m.d[j], m.e1)), Math.abs(dot(m.d[j], m.e2)));
         sc = Math.min(w - 12, h - top - bot) / 2 / (ext * 1.12); cx = w / 2; cy = top + (h - top - bot) / 2;
-        g.fillStyle = 'rgba(206,147,216,.16)'; g.beginPath();
+        g.fillStyle = rgba(C.splat, 0.16); g.beginPath();
         [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]].forEach(function (q, i) {
           d = add(mul(A, q[0]), B, q[1]); if (i) g.lineTo(X(d), Y(d)); else g.moveTo(X(d), Y(d));
         });
         g.closePath(); g.fill();
-        g.strokeStyle = 'rgba(79,195,247,.32)'; g.lineWidth = 1;
+        g.strokeStyle = rgba(C.surf, 0.32); g.lineWidth = 1;
         for (i = -1.5; i <= 1.5; i++) { line(add(mul(A, i), B, -1.5), add(mul(A, i), B, 1.5)); line(add(mul(B, i), A, -1.5), add(mul(B, i), A, 1.5)); }
-        g.strokeStyle = 'rgba(246,233,250,.7)'; g.lineWidth = 1;
+        g.strokeStyle = rgba(SPLAT_HI, 0.7); g.lineWidth = 1;
         if (st.nb === 4) { line(m.d[3], m.d[5]); line(m.d[1], m.d[7]); }
         else for (j = 0; j < 9; j++) if (j !== 4) line([0, 0, 0], m.d[j]);
         ellipse(mul(m.est.ax[0], k), mul(m.est.ax[1], k), C.splat, 3.2);
-        ellipse(mul(m.ref.ax[0], k), mul(m.ref.ax[1], k), '#ffffff', 1.3);
+        ellipse(mul(m.ref.ax[0], k), mul(m.ref.ax[1], k), INK, 1.3);
         arrow(A, COL_U, 2); arrow(B, COL_V, 2);
         for (j = 0; j < 9; j++) {
           var on = j === 4 || st.nb === 8 || (j & 1) === 1;
-          g.fillStyle = j === 4 ? '#fff' : on ? C.splat : 'rgba(206,147,216,.4)';
+          g.fillStyle = j === 4 ? INK : on ? C.splat : rgba(C.splat, 0.4);
           g.beginPath(); g.arc(X(m.d[j]), Y(m.d[j]), j === 4 ? 3 : on ? 3.4 : 2.4, 0, 6.2832); g.fill();
         }
         foot((small ? '' : 'differ by ') + pct(m.gap), m.gap < 0.01 ? C.ok : C.text);
@@ -1620,20 +1650,20 @@
           if (pr.u - D < 0 || pr.u + D > 1 || pr.v - D < 0 || pr.v + D > 1) continue;
           var m = measure(patch, pr.u, pr.v, D, G9b); pts.push([SPN[i], eight ? m.gap8 : m.gap4]);
         }
-        g.strokeStyle = 'rgba(143,164,192,.22)'; g.lineWidth = 1; g.font = '500 9px JetBrains Mono, ui-monospace, monospace';
+        g.strokeStyle = rgba(C.dim, 0.22); g.lineWidth = 1; g.font = '500 9px JetBrains Mono, ui-monospace, monospace';
         g.fillStyle = C.mute; g.textBaseline = 'middle'; g.textAlign = 'right';
         [1e-1, 1e-2, 1e-3, 1e-4].forEach(function (e) {
           g.beginPath(); g.moveTo(6, Y(e)); g.lineTo(w - 6, Y(e)); g.stroke(); g.fillText(+(e * 100).toPrecision(1) + '%', w - 7, Y(e) - 6);
         });
         if (pts.length > 1) {
           var last = pts[pts.length - 1];
-          g.setLineDash([3, 3]); g.strokeStyle = 'rgba(221,229,240,.45)'; g.beginPath();       // a 1 / n^2 line through the finest point
+          g.setLineDash([3, 3]); g.strokeStyle = rgba(C.text, 0.45); g.beginPath();       // a 1 / n^2 line through the finest point
           g.moveTo(X(4), Y(last[1] * last[0] * last[0] / 16)); g.lineTo(X(last[0]), Y(last[1])); g.stroke(); g.setLineDash([]);
           g.strokeStyle = C.splat; g.lineWidth = 2; g.beginPath();
           pts.forEach(function (p, i) { if (i) g.lineTo(X(p[0]), Y(p[1])); else g.moveTo(X(p[0]), Y(p[1])); });
           g.stroke();
         }
-        g.fillStyle = '#fff'; g.beginPath(); g.arc(X(st.n), Y(pr.gap), 3.2, 0, 6.2832); g.fill();
+        g.fillStyle = INK; g.beginPath(); g.arc(X(st.n), Y(pr.gap), 3.2, 0, 6.2832); g.fill();
         g.fillStyle = C.dim; g.textAlign = 'left'; g.fillText('differ by, vs samples · dashed = 1/n²', 6, 9);
       }
 
@@ -1653,7 +1683,7 @@
         }
         if (sc.n) { st.n = sc.n; slN.set(sc.n); }
         if (sc.fixed) { st.u = sc.fixed[0]; st.v = sc.fixed[1]; }
-        small.uniforms.uRim.value = sc.rim == null ? 0.6 : sc.rim;
+        small.uniforms.uRim.value = rim(sc.rim == null ? 0.6 : sc.rim);
         cap.innerHTML = sc.cap; hint.textContent = sc.hint || '';
         var s = st.show, on = function (o, v) { o.visible = !!v; };
         // restart what runs on its own: the size alternation, the stitching, the camera's path, the knob
@@ -1663,7 +1693,7 @@
         on(tgtDots, s.fit); on(tgtHid, s.fit); on(resid.obj, s.fit); on(residHid, s.fit);
         on(ovMesh, s.tile || s.adapt); ovMat.uniforms.uGap.value = s.tile ? 1 : 0; ovMat.uniforms.uTint.value = s.adapt ? 1 : 0;
         on(ovDepth, s.tile || s.stitch || s.adapt);
-        outl.mat.color.set(s.field ? '#2e1440' : C.splat); outl.mat.opacity = s.field ? 0.85 : 0.95;   // on the violet Gaussians: a deep violet
+        outl.mat.color.set(s.field ? OUTL_ON : C.splat); outl.mat.opacity = s.field ? 0.85 : 0.95;   // on the violet Gaussians: a deep violet
         [tri, triEdge.obj, triNew.obj, win, winDot].forEach(function (o) { on(o, s.stitch); });
         triGeo.setDrawRange(0, 0); triEdge.set(0);
         [obsBody.obj, obsRay.obj, fpLine.obj].forEach(function (o) { on(o, s.adapt); });
@@ -1895,7 +1925,26 @@
           '.kt-sim-planoid .kt-pl-hud .e{color:var(--err)}.kt-sim-planoid .kt-pl-hud .u{color:var(--surf)}' +
           '.kt-sim-planoid .kt-pl-hud .big{font:600 21px/1.25 var(--f-mono);letter-spacing:0}' +
           '.kt-sim-planoid.kt-compact .kt-pl-hud,.kt-sim-planoid.kt-ins-small .kt-pl-hud{left:3px;font-size:10px;line-height:1.5;max-width:calc(100% - 20px)}' +
-          '.kt-sim-planoid.kt-compact .kt-pl-hud .big,.kt-sim-planoid.kt-ins-small .kt-pl-hud .big{font-size:16px}';
+          '.kt-sim-planoid.kt-compact .kt-pl-hud .big,.kt-sim-planoid.kt-ins-small .kt-pl-hud .big{font-size:16px}' +
+          /* a light page (the talk): the dark chips become the kit's glass, the type the page's (Inter); colours stay tokens */
+          '[data-theme="light"] .kt-sim-planoid .kt-tag{font-family:var(--f-ui);background:rgba(255,255,255,.74);' +
+          'box-shadow:var(--glass-edge),0 4px 14px -6px rgba(88,56,24,.32);border-radius:7px}' +
+          '[data-theme="light"] .kt-sim-planoid.kt-nbr .kt-tag{background:rgba(255,255,255,.68)}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-tag i{font-family:var(--f-ui);color:var(--dim)}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-uv{border:0;border-radius:14px;background:rgba(255,255,255,.6);' +
+          'backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);' +
+          'box-shadow:var(--glass-edge),0 14px 34px -18px rgba(88,56,24,.35)}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-uv-lab{font:600 9.5px/1 var(--f-ui);letter-spacing:.08em;color:var(--dim);' +
+          'background:rgba(255,255,255,.8);box-shadow:var(--glass-edge)}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-nbsw{border:0;border-radius:999px;background:rgba(255,255,255,.62);' +
+          'backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);' +
+          'box-shadow:var(--glass-edge),0 10px 26px -16px rgba(88,56,24,.35);padding:4px 4px 4px 14px}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-nbsw .kt-seg-btn.on,[data-theme="light"] .kt-sim-planoid .kt-pl-sz .kt-seg-btn.on{color:#fff}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-pl-hud{font-family:var(--f-ui);letter-spacing:0;font-variant-numeric:tabular-nums;' +
+          'padding:4px 10px 5px;border-radius:12px;background:rgba(255,255,255,.66);text-shadow:none;' +
+          'backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);' +
+          'box-shadow:var(--glass-edge),0 10px 26px -16px rgba(88,56,24,.3)}' +
+          '[data-theme="light"] .kt-sim-planoid .kt-pl-hud .big{font-family:var(--f-ui);font-weight:700;letter-spacing:-.01em}';
         document.head.appendChild(css);
       }
 

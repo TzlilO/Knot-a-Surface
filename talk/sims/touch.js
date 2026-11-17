@@ -1019,6 +1019,9 @@
 
       /* ---------- colours: the checker of knot spans, the ball's shadow, and red where things go wrong ---------- */
       var ERR = G.rgb(C.err);
+      /* moment: the Gaussians that decided a definition are taken 60 % of the way towards a mark that stands out from the
+         page behind the see-through list: near white on the dark stage, the text colour on a light page */
+      var MARK = KT.theme === 'light' ? G.rgb(C.text).map(function (v) { return 0.6 * v; }) : [0.6, 0.58, 0.56];
       function paint() {
         var bx = ball.p[0], by = ball.p[1], bz = ball.p[2], k, o, dx, dy, dz, t, d2, s, w, f, P, cl, L = LIGHT, ll = Math.hypot(L[0], L[1], L[2]);
         var lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll, m = st.sc.model, heat = surf.broken ? Math.exp(-(run.t - surf.tb) / 0.7) : 0, q, r;
@@ -1041,8 +1044,8 @@
             else if (pass && prt.seen[k]) r = d2 < in2 * 1.3 ? 0.9 : 0.45;        // inside the ball right now, or was
             cl[o] = baseL[o] * f * (1 - r) + ERR[0] * r; cl[o + 1] = baseL[o + 1] * f * (1 - r) + ERR[1] * r; cl[o + 2] = baseL[o + 2] * f * (1 - r) + ERR[2] * r;
           }
-          if (m === 'moment' && mo.side < 0) mo.who.forEach(function (i) {          // the Gaussians that decided a definition: lit up
-            if (i < 0) return; o = i * 3; cl[o] = 0.4 * cl[o] + 0.6; cl[o + 1] = 0.4 * cl[o + 1] + 0.58; cl[o + 2] = 0.4 * cl[o + 2] + 0.56;
+          if (m === 'moment' && mo.side < 0) mo.who.forEach(function (i) {          // the Gaussians that decided a definition: lit up (inked, on a light page)
+            if (i < 0) return; o = i * 3; cl[o] = 0.4 * cl[o] + MARK[0]; cl[o + 1] = 0.4 * cl[o + 1] + MARK[1]; cl[o + 2] = 0.4 * cl[o + 2] + MARK[2];
           });
         }
       }
@@ -1254,6 +1257,7 @@
         flatten(); derive(); restoreList(); letGo(0);
         if (!first) run.hover = Math.max(run.hover, 1.1);          // the camera may have a bowl's distance to travel
         cap.innerHTML = sc.cap; dimRows();
+        root.classList.toggle('tc-close', sc.model === 'moment');  // close up: the bowl fills the stage, under the caption too
         silence(); quiet(); au.lastN = 0; au.first = true;        // a new scene starts in silence
         orbit.touched = false; orbit.to(view(), first);
       }
@@ -1298,6 +1302,12 @@
           '.kt-sim-touch .kt-pin{position:absolute;z-index:3;left:0;top:0;pointer-events:none;white-space:nowrap;font:600 11px/1 var(--f-mono);color:var(--text);' +
           'padding:4px 6px;background:var(--panel);border:1px solid var(--line2);border-radius:5px;display:none}' +
           '.kt-sim-touch.kt-compact .kt-pin{font-size:10px}' +
+          // the light theme: the words lie over the bowls (in `moment` the list, then the spline bowl, fill the stage), so
+          // they sit on glass that hides what is behind them; a clear one takes the bowl's colour and dark text stops reading
+          ':root[data-theme="light"] .kt-sim-touch :is(.kt-side,.kt-pin){background:rgba(255,255,255,.86);border-color:transparent;' +
+          'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
+          ':root[data-theme="light"] .kt-sim-touch.tc-close .kt-caption{border-radius:6px;background:rgba(255,255,255,.86);' +
+          'box-shadow:0 0 0 6px rgba(255,255,255,.86),0 10px 26px -16px rgba(88,56,24,.45)}' +   // its margin as a spread: the caption keeps its place and size
           '@media (max-width:640px){.kt-sim-touch .kt-side{font-size:9.5px;padding:6px 8px}}';
         document.head.appendChild(css);
       }

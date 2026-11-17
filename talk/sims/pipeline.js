@@ -1061,6 +1061,16 @@
       '.kt-sim-pipeline .pl-inset span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:var(--panel);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
       '.kt-sim-pipeline .pl-inset b{color:var(--text)}.kt-sim-pipeline .pl-inset em{font-style:normal;color:var(--splat)}' +
       '.kt-sim-pipeline .pl-mark{position:absolute;z-index:3;width:22px;height:22px;margin:-11px 0 0 -11px;border:1.5px solid var(--splat);border-radius:50%;pointer-events:none}' +
+      /* the light theme: the boxes lie over the scene (the grey fog of the 3DGS initialisation fills a whole half of the
+         training step), so they are glass that hides what is behind it: a clear one turns grey there and its text stops reading */
+      ':root[data-theme="light"] .kt-sim-pipeline :is(.pl-side,.pl-plot){background:rgba(255,255,255,.84);border-color:transparent;' +
+      'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
+      ':root[data-theme="light"] .kt-sim-pipeline .pl-pend{background:rgba(255,255,255,.86)}' +
+      ':root[data-theme="light"] .kt-sim-pipeline .pl-inset span{background:rgba(255,255,255,.84)}' +
+      // (the split's left half is that fog from top to bottom: the caption over it gets the same glass, its margin drawn
+      // as a spread shadow so that the caption keeps its size, and the views fitted around it keep theirs)
+      ':root[data-theme="light"] .kt-sim-pipeline.pl-split .kt-caption{border-radius:6px;background:rgba(255,255,255,.84);' +
+      'box-shadow:0 0 0 6px rgba(255,255,255,.84),0 10px 26px -16px rgba(88,56,24,.45)}' +
       '.kt-sim-pipeline.kt-embed .kt-hint{display:none}' +
       '.kt-sim-pipeline.kt-compact .pl-plot,.kt-sim-pipeline.kt-compact .pl-what,.kt-sim-pipeline.kt-compact .pl-note{display:none!important}' +
       /* a narrow stage: the caption across the top, the panel bottom right, the object framed between them; the plot,

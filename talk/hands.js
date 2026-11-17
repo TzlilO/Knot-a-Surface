@@ -9,13 +9,13 @@
      pinch  while held, the patch draws together around the point you hold
      pull   while held, the patch comes out along the surface normal there
      push   while held, it goes in
-     hold   paint a region that the other actions then cannot move (amber); "let go" frees it
+     hold   paint a region that the other actions then cannot move (in the control points' colour); "let go" frees it
    The patch is every control point within `reach` of the point you touched, with a smooth falloff.
 
    Atlas: one chart as a picture of its own (u, v) domain, one pixel per control point, in the channel you
    choose: colour, normals, opacity, height, baked features (when the host has them), or the masks alone.
    On it: wand (grow a selection from the pixel you click over the channel shown; on features, everything
-   similar to it), brush, erase. The selection (cyan) can then be tinted, hidden, inflated or held.
+   similar to it), brush, erase. The selection (in the surface colour) can then be tinted, hidden, inflated or held.
 
    show(true, 'select'): the atlas and its selection tools only, for a host that does something of its own with
    the selection (the manifold module's `paint` scene puts the chosen material on it). On the object the pointer
@@ -34,6 +34,12 @@
   var KT = window.KnotTalk;
   var ACTS = [{ v: 'grab', label: 'grab' }, { v: 'pinch', label: 'pinch' }, { v: 'pull', label: 'pull' }, { v: 'push', label: 'push' }, { v: 'hold', label: 'hold' }];
   var TINTS = [[0.85, 0.20, 0.25], [0.95, 0.70, 0.10], [0.20, 0.70, 0.35], [0.20, 0.45, 0.90], [0.90, 0.90, 0.88]];
+  /* the marks on the atlas: a selection tinted towards the surface colour, a hold towards the control points', and the ring
+     around the pixel last touched. A dark page keeps them as they were written (cyan, amber, white); a light page takes
+     its own surface and control colours, and a ring in the text colour */
+  function rgbOf(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
+  var LIGHT = KT.theme === 'light';
+  var SELC = LIGHT ? rgbOf(KT.color.surf) : [0.31, 0.76, 0.97], HOLDC = LIGHT ? rgbOf(KT.color.ctrl) : [1.0, 0.65, 0.15], RING = LIGHT ? KT.color.text : '#fff';
 
   function create(host) {
     var T = window.THREE, ui = host.ui, cam = host.camera, cv = host.canvas;
@@ -224,11 +230,11 @@
       for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {
         k = j * nu + i; value(c, k, v);
         var s = c.sel[k] > 0.5 ? 0.5 : 0, h = c.pin[k] * 0.55, o = ((nv - 1 - j) * nu + i) * 4;      // v runs up the picture
-        D[o] = 255 * ((v[0] * (1 - s) + 0.31 * s) * (1 - h) + 1.0 * h); D[o + 1] = 255 * ((v[1] * (1 - s) + 0.76 * s) * (1 - h) + 0.65 * h);
-        D[o + 2] = 255 * ((v[2] * (1 - s) + 0.97 * s) * (1 - h) + 0.15 * h); D[o + 3] = 255;
+        D[o] = 255 * ((v[0] * (1 - s) + SELC[0] * s) * (1 - h) + HOLDC[0] * h); D[o + 1] = 255 * ((v[1] * (1 - s) + SELC[1] * s) * (1 - h) + HOLDC[1] * h);
+        D[o + 2] = 255 * ((v[2] * (1 - s) + SELC[2] * s) * (1 - h) + HOLDC[2] * h); D[o + 3] = 255;
       }
       g.putImageData(img, 0, 0);
-      if (mark && mark.c === c) { g.strokeStyle = '#fff'; g.lineWidth = Math.max(1, nu / 120); g.beginPath(); g.arc(mark.i + 0.5, nv - 1 - mark.j + 0.5, nu / 30, 0, 6.3); g.stroke(); }
+      if (mark && mark.c === c) { g.strokeStyle = RING; g.lineWidth = Math.max(1, nu / 120); g.beginPath(); g.arc(mark.i + 0.5, nv - 1 - mark.j + 0.5, nu / 30, 0, 6.3); g.stroke(); }
       title.textContent = 'atlas · ' + c.name + ' · ' + nu + ' × ' + nv;
       var f = feat(c), n = count(c);
       note.textContent = (st.chan === 'feat' && !f ? 'no features are baked for this object · ' : '') + n.toLocaleString('en-US') + ' control points selected' +
