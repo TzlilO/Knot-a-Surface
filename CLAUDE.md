@@ -221,27 +221,16 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   without a cut, the list's half of `moment` runs on the same code (`run.close`, `model()`) and hands back; the
   loose-particle rule is a third drop on the lab page only, never in the talk's `ghost`), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
   `brittle` (toughness in N·s; pieces of the (u,v) domain as rigid bodies), `elastic` (control points on springs, force
-  shared by `patchSupport` weights), `flight` (two headers, then the lists: the owl (scan 122's object chart) and the
-  rabbit (scan 55, in `MATS.glass`, which scenes.js exposes as `KnotTalk.materials`) stand as spline figures, their
-  Gaussians derived on a lattice in ONE alpha field (two splat fields, one thin, lose the solid one in `gl.draw`); the
-  ball meets the owl's head, the owl nods it to the rabbit, which jumps and heads it into the list bowl, where EMULATED
-  lists of both figures stand (`listOf`, as the bowl's list is made; never trained); there the Gaussians drift aside
-  like balloons (`balloons`, an INVENTED one-way rule with its constants at the top) and the ball falls through.
-  Contact is computed: closest point by damped Gauss-Newton in a window of the chart around the head (the scans'
-  charts are open sheets: the owl's ear tufts are the top edge), the moment by bisection in the sub-step with the
-  figure where its script has it. SCRIPTED: the owl's nod (`owlNod`, head control points turned about the neck), the
-  rabbit's crouch, jump, nod and squash (`rabbitPose`, rigid), and where each header sends the ball (`header`). Without
-  the scans' data on the page it falls back to the older finale: elastic bowl, launch, the list scattered), `moment` (the
+  shared by `patchSupport` weights), `flight` (the ball is thrown from the spline bowl into the list), `moment` (the
   camera closes in and time runs 20x slower over the last 10 cm above the list: the seven "moments of contact" a list
   admits, 3/2/1 sigma shells, summed density 0.1/0.3/0.5, nearest mean, MEASURED on a timeline, against the spline's
   one root of |S(u,v) - c| = r). The list's Gaussians are drawn soft and see-through (thickness 25-40 % of the
   in-plane axes, tilted up to 46 degrees off the surface, opacity 0.34-0.64). Fixed sub-steps, seeded, every number on
-  screen measured; only `flight`'s headers and jump (and, in its fallback, the launch direction) and the camera path
-  and slow motion of `moment` are scripted. Sound effects are synthesized from the simulation's own quantities (knock
-  from the impulse, hiss from the Gaussians inside the ball, pluck and wobble from the springs, crack, shards, whoosh,
-  a click per contact definition, a glass ring from the rabbit's header impulse, a soft puff from how many list
-  Gaussians the ball reaches), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
-  own sound switch, and loads dtu-data.js, dtu/scan55.js and scenes.js for `flight`'s cast. The talk's chapter 09 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
+  screen measured; only the launch direction of `flight` and the camera path and slow motion of `moment` are
+  scripted. Sound effects are synthesized from the simulation's own quantities (knock from the impulse, hiss from
+  the Gaussians inside the ball, pluck and wobble from the springs, crack, shards, whoosh, a click per contact
+  definition), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
+  own sound switch. The talk's chapter 09 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
   registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
   `pipeline` (talk/sims/pipeline.js, chapter 06 "From photographs to charts", right before the owl's chapter 07) =
   the road to the owl, on the real data of `talk/dtu/pipeline122.js` (`KnotTalk.dtuPipeline[122]`, written by

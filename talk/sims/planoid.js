@@ -5,8 +5,8 @@
    Then fill the chart — every Gaussian's 1-sigma outline drawn crisp, one size for all against each sized to its
    own cell, with the uncovered share measured (`scale`, `fill`) — stitch the samples into a mesh with a sliding
    2 x 2 window (`stitch`), turn the resolution knob from 64 to 1,048,576 Gaussians with the frame time measured
-   (`knob`), warp a fixed budget towards what a second camera sees (`adaptive`), or spend all of it inside the
-   camera's view plus a margin and none outside (`window`). The learnable parameters never change.
+   (`knob`), and warp a fixed budget towards what a second camera sees (`adaptive`). The learnable parameters
+   never change.
 
    Reading the picture in 3D:
      - the surface is a lit sheet (darker underneath), it casts a soft shadow on the floor, and distance
@@ -91,9 +91,6 @@
     adaptive: { show: 'uv adapt', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
                 cap: T('<b>adaptive sampling</b> · a fixed budget, warped towards what a camera sees'),
                 hint: T('drag to orbit · we watch from the side') },
-    window:   { show: 'uv adapt win', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
-                cap: T('<b>view window</b> · every Gaussian inside what a camera sees, plus a margin'),
-                hint: T('drag to orbit · take the buffer slider') },
     features: { show: 'net field feat', n: 72, rim: 0.4, cap: T('<b>control features</b> · colour and opacity ride the same basis') },
     hero:     { show: 'wire field feat', n: 64, rim: 0.5, hero: 1, cap: '' }
   };
@@ -180,7 +177,7 @@
       { id: 'scale', label: 'Scale' }, { id: 'derive', label: 'Derived, not learned' },
       { id: 'fill', label: 'Fill the chart' }, { id: 'stitch', label: 'Stitch a mesh' },
       { id: 'knob', label: 'Resolution knob' }, { id: 'adaptive', label: 'Adaptive sampling' },
-      { id: 'window', label: 'View window' }, { id: 'features', label: 'Control features' }
+      { id: 'features', label: 'Control features' }
     ],
     create: function (env) {
       var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
@@ -500,21 +497,19 @@
       var maskTex = null, maskF = 0, maskData = null;
       var ovMat = new THREE.ShaderMaterial({
         transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uOut: { value: 0 }, uFog: { value: new THREE.Vector2(4, 14) },
-                    uRed: { value: new THREE.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new THREE.Vector3().fromArray(G.rgb(C.text)) },
-                    uBg: { value: new THREE.Vector3().fromArray(G.rgb(C.bg)) } },
+        uniforms: { tMask: { value: null }, uBlend: { value: 0 }, uGap: { value: 0 }, uTint: { value: 0 }, uFog: { value: new THREE.Vector2(4, 14) },
+                    uRed: { value: new THREE.Vector3().fromArray(G.rgb(C.err)) }, uWhite: { value: new THREE.Vector3().fromArray(G.rgb(C.text)) } },
         vertexShader: 'varying vec2 vUv; varying float vZ; void main(){ vUv = uv; vec4 e = modelViewMatrix * vec4(position, 1.0); vZ = -e.z; gl_Position = projectionMatrix * e; }',
         fragmentShader: [
-          'uniform sampler2D tMask; uniform float uBlend; uniform float uGap; uniform float uTint; uniform float uOut; uniform vec2 uFog; uniform vec3 uRed; uniform vec3 uWhite; uniform vec3 uBg;',
+          'uniform sampler2D tMask; uniform float uBlend; uniform float uGap; uniform float uTint; uniform vec2 uFog; uniform vec3 uRed; uniform vec3 uWhite;',
           'varying vec2 vUv; varying float vZ;',
           'void main(){',
           '  vec4 m = texture2D(tMask, vUv);',
           '  float g = 0.85 * uGap * smoothstep(0.3, 0.7, mix(m.g, m.r, uBlend));',    // uncovered: own cell (g) or one size (r)
           '  float t = 0.17 * uTint * m.b;',                                          // inside a camera's footprint
-          '  float o = uOut * m.g;',                                                   // outside a view window: the bare surface, veiled
-          '  if (max(max(g, t), o) < 0.01) discard;',
+          '  if (max(g, t) < 0.01) discard;',
           '  float f = clamp((vZ - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);',
-          '  gl_FragColor = o > max(g, t) ? vec4(uBg, o * (1.0 - 0.3 * f)) : vec4(g >= t ? uRed : uWhite, max(g, t) * (1.0 - 0.55 * f));',
+          '  gl_FragColor = vec4(g >= t ? uRed : uWhite, max(g, t) * (1.0 - 0.55 * f));',
           '}'].join('\n')
       });
       var ovMesh = ovOwn(new THREE.Mesh(sheet.geo, ovMat), 0);
@@ -549,8 +544,6 @@
       var obsBody = G.lines(48, C.text, 0.95); ovOwn(obsBody.obj, -5);
       var obsRay = G.lines(16, C.text, 0.55); ovOwn(obsRay.obj, -5);
       var fpLine = G.lines(4096, C.text, 0.95); ovOwn(fpLine.obj, 3);
-      // view window: its polygon on the surface, dashed, in the Gaussians' colour (they live inside it)
-      var wnLine = G.lines(4096, C.splat, 1); ovOwn(wnLine.obj, 4);
 
       // floating labels
       function tag(html, tone, color) {
@@ -622,16 +615,6 @@
       var rdUni = ui.readout(panel, { label: T('even lattice, in view') });
       var rdEq = ui.readout(panel, { label: T('that spacing everywhere') });
       [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
-      // scene window: the margin around the view, and what the window costs
-      var slB = ui.slider(panel, { label: T('buffer'), min: 0, max: 0.15, step: 0.005, value: 0.04,
-        fmt: function (v) { return (v * 100).toFixed(1) + ' %'; }, onInput: function (v) { wd.buf = v; } });
-      var rdWin = ui.readout(panel, { label: T('the window covers') });
-      var rdWs = ui.readout(panel, { label: T('cell side in view'), tone: 'splat' });
-      var rdSpr = ui.readout(panel, { label: T('spring net, in view') });
-      var rdBare = ui.readout(panel, { label: T('no Gaussians at all'), tone: 'err' });
-      panel.insertBefore(slB.el, rdIn.el);
-      [rdWin, rdWs, rdSpr].forEach(function (r) { panel.insertBefore(r.el, rdUni.el); });
-      panel.insertBefore(rdBare.el, rdP.el);
       // the numbers that must stay readable when the panel is folded away (a phone, the deck): under the caption
       var hud = ui.el('div', 'kt-pl-hud'); root.appendChild(hud);
       if (KT.rtl) hud.classList.add('kt-text');   // a few lines of running text: on a right-to-left page they take its direction (kit.css)

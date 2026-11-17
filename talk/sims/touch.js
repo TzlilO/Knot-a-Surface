@@ -31,19 +31,9 @@
               into pieces of the (u,v) domain; each piece is a rigid body carrying its Gaussians.
      elastic  the control points sit on damped springs (a membrane over the control net); the contact
               force is spread to them by the basis weights; the Gaussians are re-derived every frame.
-     flight   two headers, then the lists. The cast are real objects stored as spline charts: the owl (DTU scan 122,
-              on its books) and the rabbit (DTU scan 55) in the talk's clear glass, both fitted offline to the
-              dataset (talk/dtu-data.js, talk/dtu/scan55.js; never trained). The ball comes down on the owl's head;
-              the owl nods it to the rabbit, which jumps and heads it on into the list bowl, where list versions of
-              the owl and the rabbit stand (EMULATED from the same charts, as the bowl's list is). There nothing
-              scatters: the Gaussians near the ball's path drift aside like floating balloons and the ball falls
-              through. COMPUTED: where and when the ball meets each figure (closest point by Gauss-Newton in (u, v)
-              in a window of the chart around the head, normal S_u x S_v, the root of |S(u, v) - c| = r inside the
-              sub-step). SCRIPTED: the owl's nod, the rabbit's jump, squash and nod, and where each header sends the
-              ball (see `header`). INVENTED: the balloon drift (see `balloons`): a list defines no force.
-              Without the scans' data (a page that does not load them) `flight` is the older finale: a hard bounce on
-              the elastic bowl throws the ball across to the list, whose Gaussians it scatters as loose particles
-              (only the direction of the launch is chosen, see `launch`).
+     flight   a hard bounce on the elastic bowl throws the ball out; the camera follows it across to the
+              list, whose Gaussians it scatters as loose particles. Only the direction of the launch is
+              chosen (see `launch`); the bounce, the flight and the scatter are simulated.
    All motion runs on a fixed sub-step (H; H / 8 in `moment`), so a scene plays the same at any frame rate.
    Every number on screen is read off the simulation.
    Sound: synthesised in the page with Web Audio (oscillators, a seeded noise buffer through filters, envelopes,
@@ -61,9 +51,7 @@
    a left-to-right island: the timeline, the address pin and the boxes are where they are in English, T gives each
    string its own direction, and the sentences under the timeline are marked right-to-left as a block.
    Tool: WebGL (three.js), Web Audio. Standalone: talk/sims/touch.html.
-   Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js; `flight` also on dtu-data.js, dtu/scan55.js and scenes.js
-   (KnotTalk.materials.glass), loaded before this file (without the first two it falls back, without scenes.js the
-   rabbit keeps its photograph's colours). */
+   Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
@@ -86,16 +74,6 @@
   var HM = H / 8, SLOW = 20;                   // moment: its sub-step, and how much slower time runs near contact (scripted)
   var FSPR = 280;                              // sound: the springs' pitch at 160 N/m, Hz (it goes as the square root of the stiffness)
   var LIGHT = [0.35, 0.86, 0.36];
-  /* flight with the scans: where the cast stands (the base of each figure: the bottom of the owl's books, the rabbit's
-     feet), how big (FS: metres per unit of the owl's scan, 80 mm; the rabbit keeps its true size beside it, 71 mm a
-     unit), and the script's times */
-  var FS = 0.5;                                // the owl is 1.75 m tall and its head about as wide as the ball
-  var OWL_AT = [5.3, -0.75, -0.15], RAB_AT = [1.35, -0.75, 0.35], RFACE = 0.32;   // RFACE: the rabbit faces this far (rad) from the eye towards the owl
-  var T1 = 1.0, T2 = 1.3;                      // SCRIPTED: how long the ball flies after each header
-  var HJ = 0.5, CROUCH = 0.2, LAND = 0.24;     // SCRIPTED: the rabbit's jump: its height (m), its crouch and its landing (s)
-  /* INVENTED, the balloon rule (`balloons`): reach beyond the ball (m), push (m/s^2), drag along with the ball (1/s),
-     the spring home (1/s^2), its damping (1/s), lift while displaced (1/s^2), sway (1/s^2), top speed (m/s) */
-  var BREACH = 0.14, BKP = 22, BKD = 2.4, BK = 3.5, BC = 1.5, BLIFT = 0.9, BSWAY = 0.7, BVMAX = 1.5;
 
   var SCENES = {
     ghost:   { cap: T('<b>a ball meets a list of Gaussians</b> · a density, not a boundary'), model: 'ghost', side: -1 },
@@ -103,8 +81,7 @@
     solid:   { cap: T('<b>the same drop on the spline</b> · closest point, normal, reflection'), model: 'solid', side: 1 },
     brittle: { cap: T('<b>toughness</b> · the surface breaks when the impact asks too much of it'), model: 'brittle', side: 1 },
     elastic: { cap: T('<b>an elastic surface</b> · the control points sit on springs'), model: 'elastic', side: 1 },
-    flight:  { cap: T('<b>out of bounds</b> · from the spline bowl to the list of Gaussians'), model: 'flight', side: 1,
-               capF: T('<b>out of bounds</b> · two headers, then the lists in the bowl') }
+    flight:  { cap: T('<b>out of bounds</b> · from the spline bowl to the list of Gaussians'), model: 'flight', side: 1 }
   };
   /* where the ball is let go: x and z from the bowl's centre, height y, and the speed it is thrown down with */
   var DROPS = {
@@ -164,7 +141,7 @@
   var SFX = (function () {
     var ctx = null, bus = null, noise = null, dead = false, armed = false, live = [], cnt = {}, next = {}, rr = KT.rng(4242);
     var VOICES = 8, HOLD = 0.22, LAG = 0.012;
-    ['knock', 'roll', 'hiss', 'scatter', 'rattle', 'wobble', 'crack', 'shards', 'whoosh', 'tick', 'glass', 'puff'].forEach(function (k) { cnt[k] = 0; });
+    ['knock', 'roll', 'hiss', 'scatter', 'rattle', 'wobble', 'crack', 'shards', 'whoosh', 'tick'].forEach(function (k) { cnt[k] = 0; });
     function wake() {
       if (dead) return;
       try {
@@ -317,28 +294,6 @@
       var f = 3000 * Math.pow(0.92, i), v = voice('tick', 0.13, 0.003, pan, delay); if (!v) return;
       chain(play(v, grains([[0, f, 0.0024, 0.13], [0, f * 1.47, 0.0011, 0.08]], 0.03), v.t), v.out);
     }
-    /* flight: the glass rabbit heads the ball. J = the header's impulse, m |v_out - v_in| (N·s), sets the loudness and,
-       a little, the brightness: a struck glass, a few inharmonic modes, each a slowly beating pair (the glass is not
-       perfectly round), the higher ones shorter, over the click of the tap */
-    function glass(J, pan) {
-      if (!ok()) return;
-      var h = Math.min(J / 12, 1), A = 0.05 + 0.2 * Math.pow(h, 0.8), v = voice('glass', A, 0.45, pan); if (!v) return;
-      var f = 1240 * Math.pow(Math.max(J, 0.5) / 6, 0.04), br = 0.5 + 0.5 * h, L = [];
-      [[1, 1, 0.85], [2.32, 0.55 * br, 0.42], [3.88, 0.3 * br, 0.2]].forEach(function (m) {
-        L.push([0, f * m[0], m[2], A * m[1]]); L.push([0.002, f * m[0] * 1.0037, m[2] * 0.9, A * m[1] * 0.55]);
-      });
-      chain(play(v, grains(L, 1.6), v.t), v.out);
-      chain(hiss(v, v.t, 0.03), biq('highpass', 2600, 0.7), amp(v.t, A * 0.45, 0.0005, 0.004), v.out);   // the tap
-    }
-    /* flight: the ball meets the lists in the bowl, whose Gaussians drift aside like balloons (the invented rule): a soft,
-       rubbery push, louder for more of them (n = how many the ball reached at once) */
-    function puff(n, pan) {
-      if (!ok() || n < 1) return;
-      var h = KT.clamp(Math.log2(1 + n) / 9, 0, 1), A = 0.05 + 0.11 * h, v = voice('puff', A, 0.2, pan); if (!v) return;
-      var t = v.t, o = osc(v, 300, t, 0.7);
-      o.frequency.exponentialRampToValueAtTime(175, t + 0.35); chain(o, biq('lowpass', 700, 0.7), amp(t, A, 0.035, 0.15), v.out);
-      chain(hiss(v, t, 0.5), biq('lowpass', 520, 0.6), amp(t, A * 0.6, 0.05, 0.12), v.out);
-    }
     function hush() { if (!ctx) return; var t = ctx.currentTime; live.forEach(function (v) { cut(v, t); }); live = []; }
 
     /* ---- sustained voices ---- */
@@ -395,7 +350,7 @@
       arm: arm, wake: wake, ok: function () { try { return ok(); } catch (e) { return false; } }, now: function () { return ctx ? ctx.currentTime : 0; },
       counts: function () { return Object.assign({}, cnt); },
       knock: safe(knock), crack: safe(crack), shards: safe(shards), scatter: safe(scatter), rattle: safe(rattle),
-      pluck: safe(pluck), whoosh: safe(whoosh), tick: safe(tick), glass: safe(glass), puff: safe(puff), hush: safe(hush),
+      pluck: safe(pluck), whoosh: safe(whoosh), tick: safe(tick), hush: safe(hush),
       channel: function (kind) {
         var c = channel(kind);
         return { set: safe(c.set), stop: safe(c.stop) };
@@ -459,10 +414,7 @@
       var YB = evalS(0.5, 0.5, E).p[1];                          // the bottom of the bowl
 
       /* ---------- its Gaussians, twice ---------- */
-      /* flight's cast needs both scans; its lists in the bowl share the list's field, after the bowl's own N Gaussians */
-      var FIG = !!(KT.dtu && KT.dtu.charts && KT.dtuScans && KT.dtuScans[55] && KT.dtuScans[55].charts);
-      var NLO = FIG ? 3200 : 0, NLR = FIG ? 3200 : 0, NF = NLO + NLR, NT = N + NF;
-      var fR = G.splats(N), fL = fuzzy(NT); scene.add(fR.mesh); scene.add(fL.mesh);
+      var fR = G.splats(N), fL = fuzzy(N); scene.add(fR.mesh); scene.add(fL.mesh);
       var us = new Float32Array(NA), du = new Float32Array(NA), baseR = new Float32Array(N * 3), baseL = new Float32Array(N * 3);
       var gr = { pos: new Float32Array(N * 3), su: new Float32Array(N * 3), sv: new Float32Array(N * 3) };
       var grW = { pos: gr.pos, su: gr.su, sv: gr.sv, col: fR.color };   // colours are painted separately, every frame
@@ -503,7 +455,7 @@
           fL.axU.set(turn(q.u), k * 3); fL.axV.set(turn(q.v), k * 3); fL.axW.set([nn[0] * sw, nn[1] * sw, nn[2] * sw], k * 3);
           fL.alpha[k] = 0.34 + 0.3 * rt();
         });
-        home.c.set(fL.center.subarray(0, N * 3));
+        home.c.set(fL.center);
         for (k = 0; k < N; k++) {                                   // as a particle, a Gaussian is a sphere of its own size: the mean of its two 1-sigma axes
           pr[k] = 0.5 * (Math.hypot(uo[k * 3], uo[k * 3 + 1], uo[k * 3 + 2]) + Math.hypot(vo[k * 3], vo[k * 3 + 1], vo[k * 3 + 2]));   // (as stored before the tilt, which keeps lengths)
           prMax = Math.max(prMax, pr[k]);
@@ -586,14 +538,13 @@
       var hit = { n: 0, J: 0, t: -9, ask: 0, held: true, vout: 0 };
       var surf = { broken: false, tb: 0 };
       var el = { touch: false, f: 0, fmax: 0, J: 0, lost: 0, pen: 0, sup: [] };
-      var fl = { phase: 'drop', tt: 0, th: 0, vsim: 0, vset: 0, boost: false, vin: 0,
-                 t1: null, ta: null, tf: 0, tb: 0, miss: false, hit: [null, null], cps: [null, null], loops: 0 };   // (the cast's: see `meet`)
+      var fl = { phase: 'drop', tt: 0, th: 0, vsim: 0, vset: 0, boost: false, vin: 0 };
       var prt = { v: new Float32Array(N * 3), aw: new Uint8Array(N), n: 0, seen: new Uint8Array(N), nSeen: 0, sub: 0 };
       function newCp() { return { ok: false, u: 0.5, v: 0.5, p: [0, 0, 0], su: [0, 0, 0], sv: [0, 0, 0], n: [0, 1, 0], nc: [0, 1, 0], d: 9, sd: 9, edge: false }; }
       var mo = { side: -1, D: 9, slow: 1, near: [], top: 0, spot: [0, 0, 0], val: null, t: [], y: [], who: [], root: null, end: 0, cpm: newCp(), cpr: newCp(), cps: newCp() };
       /* what the sound hears: the physics only ever adds to these, and they never feed back */
       var au = { simT: 0, J: 0, Jn: 0, tone: 1, rest: 0, restV: 0, inside: 0, calls: 0, hits: 0, jl: 0, crack: 0, pluck: 0, launch: 0, tick: [],
-                 first: true, lastN: 0, rat: 0, ratT: -9, env: 0, glass: 0, puff: 0 };
+                 first: true, lastN: 0, rat: 0, ratT: -9, env: 0 };
 
       /* ---------- closest point on the spline ----------
          Minimise |S(u,v) - c|^2 over the address: a few Gauss-Newton steps in (u,v), started from the last
@@ -864,422 +815,6 @@
       })();
       function restoreList() { fL.center.set(home.c); prt.v.fill(0); prt.aw.fill(0); prt.seen.fill(0); prt.n = prt.nSeen = prt.sub = 0; }
 
-      /* ---------- flight: the owl and the rabbit, two real objects stored as spline charts ----------
-         Each is the object's one cubic chart from its scan (the owl with its books; never the table), in metres (FS), set
-         where the script has it. Its Gaussians are derived from it on an even (u, v) lattice, as the bowl's are, with
-         gl.writePlanoids: the owl's far side is left out (a closed chart, solid), the rabbit keeps it (it is see-through).
-         The rabbit wears the talk's clear glass: talk/scenes.js's rule (KnotTalk.materials.glass, the one the owl's
-         material scene uses), evaluated once per control point, colour and opacity, then carried to the Gaussians by the
-         same basis as everything else. In the list bowl stand list versions of both: EMULATED, never trained, made from
-         the same charts the way the bowl's own list is made from the bowl (below, `listOf`). */
-      var FIGS = small() ? 0.62 : 0.8;            // lattice scale: about 19,000 Gaussians on a laptop, 11,000 on a phone (the cover: 160,000 and 30,000)
-      function small() { return Math.min(window.innerWidth, window.innerHeight) < 560; }
-      var FNu = new Float64Array(4), FDu = new Float64Array(4), FNv = new Float64Array(4), FDv = new Float64Array(4);
-      var FE = { p: [0, 0, 0], su: [0, 0, 0], sv: [0, 0, 0], c: [0, 0, 0] };
-      function figure(D, o) {
-        var d = D.charts.filter(function (c) { return !c.plane; })[0], nu = d.nu, nv = d.nv, n = nu * nv, i, j, q, x, y, z;
-        var k, patch = NB.makePatch({ nu: nu, nv: nv, p: 3 }), P = patch.P, sc = FS * D.unit_mm / KT.dtu.unit_mm, cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
-        for (i = 0; i < n; i++) {
-          q = i * 3; x = d.P[q] * sc; y = d.P[q + 1] * sc; z = d.P[q + 2] * sc;
-          P[q] = o.at[0] + cy * x + sy * z; P[q + 1] = o.at[1] + y; P[q + 2] = o.at[2] - sy * x + cy * z;
-        }
-        patch.C.set(d.C);
-        var F = { d: d, patch: patch, B: new Float32Array(P), sc: sc, nu: nu, nv: nv, W: null, piv: null, th: 0, flip: 1, at: o.at, yaw: o.yaw, key: '' };
-        // the window of the closest-point search: from the Greville abscissa of the lowest control row whose mean height
-        // passes vcut (in the scan's units) up to the top of the chart
-        for (j = 0; j < nv; j++) { for (y = 0, i = 0; i < nu; i++) y += d.P[(j * nu + i) * 3 + 1]; if (y / nu > o.vcut) break; }
-        F.vlo = KT.clamp((patch.Vk[j + 1] + patch.Vk[j + 2] + patch.Vk[j + 3]) / 3, 0, 1);
-        var na = F.na = Math.max(8, Math.round(o.na)), nb = F.nb = Math.max(8, Math.round(o.nb));
-        F.us = new Float32Array(na); F.vs = new Float32Array(nb); F.du = new Float32Array(na); F.dv = new Float32Array(nb);
-        for (i = 0; i < na; i++) { F.us[i] = (i + 0.5) / na; F.du[i] = 1 / na; }
-        for (j = 0; j < nb; j++) { F.vs[j] = (j + 0.5) / nb; F.dv[j] = 1 / nb; }
-        F.grid = { pos: new Float32Array(na * nb * 3), su: new Float32Array(na * nb * 3), sv: new Float32Array(na * nb * 3), col: new Float32Array(na * nb * 3) };
-        NB.patchGrid(patch, F.us, F.vs, F.grid);
-        F.seed = []; for (j = 0; j < nb; j++) if (F.vs[j] >= F.vlo) for (i = 0; i < na; i++) F.seed.push(j * na + i);
-        // which way is out: S_u x S_v against the way from the chart's vertical axis (its control points' mean), by a vote of
-        // every lattice sample
-        var g = F.grid, mx = 0, mz = 0, vote = 0, t;
-        for (i = 0; i < n; i++) { mx += P[i * 3]; mz += P[i * 3 + 2]; }
-        mx /= n; mz /= n;
-        for (k = 0; k < na * nb; k++) {
-          t = k * 3; x = g.su[t + 1] * g.sv[t + 2] - g.su[t + 2] * g.sv[t + 1]; z = g.su[t] * g.sv[t + 1] - g.su[t + 1] * g.sv[t];
-          vote += (x * (g.pos[t] - mx) + z * (g.pos[t + 2] - mz)) > 0 ? 1 : -1;
-        }
-        F.flip = vote < 0 ? -1 : 1;
-        return F;
-      }
-      /* S, S_u, S_v (and the colour, when o.c is there) of a figure at (u, v). th turns the owl's head: every control point
-         by th times its weight W, about the neck (piv), in the plane of the eye: the same edit the drawing makes */
-      function evalF(F, u, v, o, th) {
-        var pt = F.patch, nu = F.nu, ku = NB.findSpan(pt.mu, 3, u, pt.Uk), kv = NB.findSpan(pt.mv, 3, v, pt.Vk), B = F.B, W = F.W, C = pt.C;
-        var r, s, q, a, da, db, k, x, y, z, w, cs, sn, ex, ey, oc = o.c;
-        NB.basisFuns(ku, u, 3, pt.Uk, FNu, FDu); NB.basisFuns(kv, v, 3, pt.Vk, FNv, FDv);
-        for (k = 0; k < 3; k++) { o.p[k] = o.su[k] = o.sv[k] = 0; if (oc) oc[k] = 0; }
-        for (s = 0; s < 4; s++) for (r = 0; r < 4; r++) {
-          q = (kv - 3 + s) * nu + ku - 3 + r; a = FNu[r] * FNv[s]; da = FDu[r] * FNv[s]; db = FNu[r] * FDv[s];
-          x = B[q * 3]; y = B[q * 3 + 1]; z = B[q * 3 + 2];
-          if (th && W && (w = W[q])) { cs = Math.cos(th * w); sn = Math.sin(th * w); ex = x - F.piv[0]; ey = y - F.piv[1]; x = F.piv[0] + ex * cs - ey * sn; y = F.piv[1] + ex * sn + ey * cs; }
-          o.p[0] += a * x; o.p[1] += a * y; o.p[2] += a * z; o.su[0] += da * x; o.su[1] += da * y; o.su[2] += da * z; o.sv[0] += db * x; o.sv[1] += db * y; o.sv[2] += db * z;
-          if (oc) { oc[0] += a * C[q * 3]; oc[1] += a * C[q * 3 + 1]; oc[2] += a * C[q * 3 + 2]; }
-        }
-        return o;
-      }
-      /* the closest point of a figure's chart to c, inside its window: Gauss-Newton in (u, v) as `closest` does on the bowl,
-         started from the nearer of the last answer and the nearest lattice sample of the window. These charts are far less
-         even than the bowl (a scan's sheet, curved about as tightly as the ball is wide), so the steps are damped: at most
-         0.02 in u or v, and kept only when they bring the point nearer (else halved) */
-      function descend(F, c, u, v, th, o) {
-        var dx, dy, dz, it, a, b, g, gu, gv, det, su, sv, m, h, f, f2, u2, v2;
-        evalF(F, u, v, FE, th); f = dist2(FE.p, c);
-        for (it = 0; it < 60; it++) {
-          dx = FE.p[0] - c[0]; dy = FE.p[1] - c[1]; dz = FE.p[2] - c[2];
-          gu = dx * FE.su[0] + dy * FE.su[1] + dz * FE.su[2]; gv = dx * FE.sv[0] + dy * FE.sv[1] + dz * FE.sv[2];
-          a = FE.su[0] * FE.su[0] + FE.su[1] * FE.su[1] + FE.su[2] * FE.su[2]; b = FE.su[0] * FE.sv[0] + FE.su[1] * FE.sv[1] + FE.su[2] * FE.sv[2];
-          g = FE.sv[0] * FE.sv[0] + FE.sv[1] * FE.sv[1] + FE.sv[2] * FE.sv[2]; det = a * g - b * b || 1e-12;
-          su = -(g * gu - b * gv) / det; sv = -(a * gv - b * gu) / det;
-          if ((v >= 1 && sv > 0) || (v <= F.vlo && sv < 0)) { sv = 0; su = -gu / (a || 1e-12); }      // on the edge of the window: along it
-          if ((u >= 1 && su > 0) || (u <= 0 && su < 0)) { su = 0; sv = -gv / (g || 1e-12); }
-          for (var pass = 0; pass < 2; pass++) {                  // the Gauss-Newton step; where it stalls, steepest descent
-            if (pass) { su = -gu / (a || 1e-12); sv = -gv / (g || 1e-12); if (v >= 1 && sv > 0 || v <= F.vlo && sv < 0) sv = 0; if (u >= 1 && su > 0 || u <= 0 && su < 0) su = 0; }
-            m = Math.max(Math.abs(su), Math.abs(sv)); if (m > 0.02) { su *= 0.02 / m; sv *= 0.02 / m; }
-            for (h = 1; h > 1 / 4096; h *= 0.5) {
-              u2 = KT.clamp(u + su * h, 0, 1); v2 = KT.clamp(v + sv * h, F.vlo, 1); evalF(F, u2, v2, FE, th); f2 = dist2(FE.p, c);
-              if (f2 < f) break;
-            }
-            if (f2 < f) break;
-          }
-          if (!(f2 < f)) break;
-          m = Math.abs(u2 - u) + Math.abs(v2 - v); u = u2; v = v2; f = f2;
-          if (m < 1e-10) break;
-        }
-        o.u = u; o.v = v; return f;
-      }
-      function closestF(F, c, o, th) {
-        var G = F.grid.pos, S = F.seed, k, i, best = 1e18, bi = S[0], dx, dy, dz, d2;
-        for (k = 0; k < S.length; k++) { i = S[k] * 3; dx = G[i] - c[0]; dy = G[i + 1] - c[1]; dz = G[i + 2] - c[2]; d2 = dx * dx + dy * dy + dz * dz; if (d2 < best) { best = d2; bi = S[k]; } }
-        var wu = o.u, wv = o.v, warm = o.ok;
-        d2 = descend(F, c, F.us[bi % F.na], F.vs[(bi / F.na) | 0], th, o);    // from the nearest sample, and from the last answer: the nearer end wins
-        if (warm) { k = o.u; i = o.v; if (descend(F, c, wu, wv, th, o) > d2) { o.u = k; o.v = i; } else d2 = dist2(FE.p, c); }
-        if (d2 < (BR + 0.05) * (BR + 0.05)) {                    // near a contact: the scan's fine relief holds neighbouring minima, so look around
-          var bu = o.u, bv = o.v, j, e;
-          for (j = 0; j < 4; j++) {
-            e = descend(F, c, KT.clamp(bu + (j & 1 ? 0.012 : -0.012), 0, 1), KT.clamp(bv + (j & 2 ? 0.012 : -0.012), F.vlo, 1), th, o);
-            if (e < d2) { d2 = e; k = o.u; i = o.v; } else { k = bu; i = bv; }
-            bu = k; bv = i;
-          }
-          o.u = bu; o.v = bv;
-        }
-        evalF(F, o.u, o.v, o, th);
-        var nx = o.su[1] * o.sv[2] - o.su[2] * o.sv[1], ny = o.su[2] * o.sv[0] - o.su[0] * o.sv[2], nz = o.su[0] * o.sv[1] - o.su[1] * o.sv[0], nl = (Math.hypot(nx, ny, nz) || 1e-9) * F.flip;
-        o.n[0] = nx / nl; o.n[1] = ny / nl; o.n[2] = nz / nl;
-        dx = c[0] - o.p[0]; dy = c[1] - o.p[1]; dz = c[2] - o.p[2];
-        o.d = Math.hypot(dx, dy, dz); o.sd = dx * o.n[0] + dy * o.n[1] + dz * o.n[2];
-        o.edge = o.u <= 0 || o.u >= 1 || o.v >= 1;
-        if (o.edge) { o.nc[0] = dx / (o.d || 1e-9); o.nc[1] = dy / (o.d || 1e-9); o.nc[2] = dz / (o.d || 1e-9); }
-        else { k = o.sd < 0 ? -1 : 1; o.nc[0] = o.n[0] * k; o.nc[1] = o.n[1] * k; o.nc[2] = o.n[2] * k; }
-        o.ok = true; return o;
-      }
-      var FO = null, FR = null, fF = null, RP = { T: [0, 0, 0], M: new Float64Array(9), R: new Float64Array(9), S: [1, 1, 1] };
-      var LH = new Float32Array(NT * 3), LSZ = new Float32Array(NT);          // the lists' homes and their Gaussians' largest sigma
-      var BAIM = [0, 0, 0];                                                    // where the rabbit sends the ball: the head of the rabbit's list
-      if (FIG) (function cast() {
-        var A = KT.dtu, Bn = KT.dtuScans[55], i, j, k, o, x, y, z, w;
-        /* the owl, facing the eye; its head (control points above the shoulders, softly: talk/scenes.js's owlLife takes
-           the same band) turns about the neck */
-        FO = figure(A, { yaw: 0, at: OWL_AT, na: 150 * FIGS, nb: 116 * FIGS, vcut: 2.1 });
-        var dO = FO.d, n = FO.nu * FO.nv; FO.W = new Float32Array(n); FO.hi = [];
-        for (i = 0; i < n; i++) { w = ss(2.25, 2.8, dO.P[i * 3 + 1]); if (w > 0) { FO.W[i] = w; FO.hi.push(i); } }
-        FO.piv = [OWL_AT[0] + 0.24 * FO.sc, OWL_AT[1] + 2.45 * FO.sc];
-        FO.hc = [OWL_AT[0] + 0.24 * FO.sc, OWL_AT[1] + 2.95 * FO.sc, OWL_AT[2] + 0.2 * FO.sc]; FO.reach = BR + 0.62 * FO.sc + 0.3;
-        for (i = 0, y = -1e9; i < n; i++) y = Math.max(y, FO.B[i * 3 + 1]); FO.top = y;
-        /* the rabbit: which way its face looks, in the scan (from the middle of its head to its nose, the frontmost point of the
-           head), so that it can be turned RFACE from the eye towards the owl. It is built around its own feet; the script
-           moves it (rabbitPose) */
-        var dR = Bn.charts.filter(function (c) { return !c.plane; })[0], m = dR.nu * dR.nv, hx = 0, hz = 0, hn = 0, nose = null;
-        for (i = 0; i < m; i++) {
-          y = dR.P[i * 3 + 1]; if (y < 2.4) continue; hx += dR.P[i * 3]; hz += dR.P[i * 3 + 2]; hn++;
-          if (y < 3.2 && (!nose || dR.P[i * 3 + 2] > nose[1])) nose = [dR.P[i * 3], dR.P[i * 3 + 2]];
-        }
-        var yaw = RFACE - Math.atan2(nose[0] - hx / hn, nose[1] - hz / hn);
-        FR = figure(Bn, { yaw: yaw, at: [0, 0, 0], na: 150 * FIGS, nb: 84 * FIGS, vcut: 2.0 });
-        FR.face = [Math.sin(RFACE), 0, Math.cos(RFACE)];
-        var hs = [0, 0, 0], ns = 0, Bp = FR.B, top = -1e9;
-        for (i = 0; i < m; i++) if (dR.P[i * 3 + 1] > 2.4) { hs[0] += Bp[i * 3]; hs[1] += Bp[i * 3 + 1]; hs[2] += Bp[i * 3 + 2]; ns++; top = Math.max(top, Bp[i * 3 + 1]); }
-        FR.hc = [hs[0] / ns, hs[1] / ns, hs[2] / ns]; FR.reach = BR + 0.9 * FR.sc + 0.35;
-        /* its glass: the material's rule on every control point (the net's normal, out of the object, and how bright the
-           photograph is there: the carving's relief), colour and opacity; both carried to the lattice by the basis */
-        var MG = KT.materials && KT.materials.glass, nu = dR.nu, nv = dR.nv, Pd = dR.P, Kd = dR.C;
-        FR.glass = !!MG;
-        if (MG) {
-          var Cg = FR.patch.C, AC = new Float32Array(m * 3), smp = {};
-          for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {
-            var a = (j * nu + Math.max(0, i - 1)) * 3, b = (j * nu + Math.min(nu - 1, i + 1)) * 3, g = (Math.max(0, j - 1) * nu + i) * 3, h = (Math.min(nv - 1, j + 1) * nu + i) * 3;
-            var ux = Pd[b] - Pd[a], uy = Pd[b + 1] - Pd[a + 1], uz = Pd[b + 2] - Pd[a + 2], vx = Pd[h] - Pd[g], vy = Pd[h + 1] - Pd[g + 1], vz = Pd[h + 2] - Pd[g + 2];
-            x = uy * vz - uz * vy; y = uz * vx - ux * vz; z = ux * vy - uy * vx; w = (Math.hypot(x, y, z) || 1) * FR.flip; o = (j * nu + i) * 3;
-            smp.nx = x / w; smp.ny = y / w; smp.nz = z / w; smp.x = Pd[o]; smp.y = Pd[o + 1]; smp.z = Pd[o + 2]; smp.head = Pd[o + 1] > 2.4;
-            smp.sh = Math.min(1, (0.30 * Kd[o] + 0.59 * Kd[o + 1] + 0.11 * Kd[o + 2]) / 0.30); smp.a = 1;
-            MG.colour(smp, MG.p);
-            Cg[o] = smp.r; Cg[o + 1] = smp.g; Cg[o + 2] = smp.b; AC[o] = AC[o + 1] = AC[o + 2] = smp.a;
-          }
-          var ag = { pos: new Float32Array(FR.na * FR.nb * 3), col: new Float32Array(FR.na * FR.nb * 3) };
-          NB.patchGrid(Object.assign({}, FR.patch, { C: AC }), FR.us, FR.vs, ag);
-          FR.ag = new Float32Array(FR.na * FR.nb); for (i = 0; i < FR.ag.length; i++) FR.ag[i] = KT.clamp(ag.col[i * 3], 0, 1);
-          NB.patchGrid(FR.patch, FR.us, FR.vs, FR.grid);                       // the lattice again, with the glass colours
-        }
-        /* its forehead, where the owl aims: of the samples on the front of the head, below the chart's open top, the one whose
-           outward normal looks most towards where the ball comes from (up, and towards the owl); the ball's centre is aimed
-           one radius out from it */
-        var gp = FR.grid.pos, gu = FR.grid.su, gv = FR.grid.sv, uin = [0.62, 0.62, 0.48], bestF = -9, fi = 0;
-        for (k = 0; k < FR.na * FR.nb; k++) {
-          o = k * 3; if (gp[o + 1] < FR.hc[1] || FR.vs[(k / FR.na) | 0] > 0.95) continue;
-          x = gu[o + 1] * gv[o + 2] - gu[o + 2] * gv[o + 1]; y = gu[o + 2] * gv[o] - gu[o] * gv[o + 2]; z = gu[o] * gv[o + 1] - gu[o + 1] * gv[o];
-          w = (Math.hypot(x, y, z) || 1) * FR.flip; x /= w; y /= w; z /= w;
-          if (x * FR.face[0] + z * FR.face[2] < 0.3) continue;                 // facing forwards
-          var sc2 = x * uin[0] + y * uin[1] + z * uin[2]; if (sc2 > bestF) { bestF = sc2; fi = k; FR.fn = [x, y, z]; }
-        }
-        FR.fp = [gp[fi * 3], gp[fi * 3 + 1], gp[fi * 3 + 2]];
-        FR.aimL = [FR.fp[0] + FR.fn[0] * BR, FR.fp[1] + FR.fn[1] * BR, FR.fp[2] + FR.fn[2] * BR];
-
-        /* both figures in one field, the rabbit first (its count is fixed), then the owl's front: one field with an opacity
-           per Gaussian, solid and see-through together, as the manifold module draws its glass owl over the table */
-        fF = G.splats(FR.na * FR.nb + FO.na * FO.nb, { alpha: !!MG }); fF.uniforms.uFlat.value = 1;   // photographs: their colours already hold the light
-        fF.uniforms.uRim.value = KT.theme === 'light' && MG ? 0.12 : 0.3;      // a light material: no dark outline on a light page
-        if (MG) { fF.alpha.fill(1); fF.alpha.set(FR.ag); fF.mesh.userData.ktSplat.thin = true; }
-        fF.mesh.visible = false; scene.add(fF.mesh);
-
-        /* the lists in the bowl: the same two charts, a little apart on the bowl's floor */
-        var bowlY = function (x, z) { return DEPTH * ((x + X0) * (x + X0) + z * z) / (RB * RB); };
-        var LO = figure(A, { yaw: 0.25, at: [-X0 - 0.5, 0, -0.4], na: 8, nb: 8, vcut: 9 }), LR = figure(Bn, { yaw: yaw, at: [-X0 + 0.5, 0.06, 0.12], na: 8, nb: 8, vcut: 9 });
-        [LO, LR].forEach(function (L) { var dy = bowlY(L.at[0], L.at[2]) - 0.04; for (var i = 1; i < L.B.length; i += 3) L.B[i] += dy; L.patch.P.set(L.B); });
-        var tmp = [], cg = G.rgb(C.splat), rnd = KT.rng(57), rt = KT.rng(91);
-        listOf(LO, 64, 50, rnd, tmp); listOf(LR, 80, 40, rnd, tmp);
-        for (i = tmp.length - 1; i > 0; i--) { j = Math.floor(rnd() * (i + 1)); o = tmp[i]; tmp[i] = tmp[j]; tmp[j] = o; }   // one list: no order at all
-        var hl = [0, 0, 0], hn2 = 0, rtop = -1e9;
-        tmp.forEach(function (q) { if (q.r) rtop = Math.max(rtop, q.p[1]); });
-        tmp.forEach(function (q, t) {
-          var k = N + t, lu = Math.hypot(q.u[0], q.u[1], q.u[2]), lv = Math.hypot(q.v[0], q.v[1], q.v[2]), ph = rt() * 6.2832, th = (rt() * 2 - 1) * TILT;
-          var ax = [0, 1, 2].map(function (j) { return Math.cos(ph) * q.u[j] / lu + Math.sin(ph) * q.v[j] / lv; }), c0 = Math.cos(th), s0 = Math.sin(th);
-          function turn(x) {
-            var d = ax[0] * x[0] + ax[1] * x[1] + ax[2] * x[2];
-            return [x[0] * c0 + (ax[1] * x[2] - ax[2] * x[1]) * s0 + ax[0] * d * (1 - c0), x[1] * c0 + (ax[2] * x[0] - ax[0] * x[2]) * s0 + ax[1] * d * (1 - c0),
-                    x[2] * c0 + (ax[0] * x[1] - ax[1] * x[0]) * s0 + ax[2] * d * (1 - c0)];
-          }
-          var nn = turn(q.n), sw = (0.25 + 0.15 * rt()) * 0.5 * (lu + lv);
-          LH.set(q.p, k * 3); fL.axU.set(turn(q.u), k * 3); fL.axV.set(turn(q.v), k * 3); fL.axW.set([nn[0] * sw, nn[1] * sw, nn[2] * sw], k * 3);
-          fL.alpha[k] = 0.34 + 0.3 * rt(); LSZ[k] = Math.max(lu, lv);
-          // the scan's own colours, a third of the way towards the colour of Gaussians: these are lists too
-          fL.color[k * 3] = q.c[0] * 0.66 + cg[0] * 0.3; fL.color[k * 3 + 1] = q.c[1] * 0.66 + cg[1] * 0.3; fL.color[k * 3 + 2] = q.c[2] * 0.66 + cg[2] * 0.3;
-          if (q.r && q.p[1] > rtop - 0.32) { hl[0] += q.p[0]; hl[1] += q.p[1]; hl[2] += q.p[2]; hn2++; }
-        });
-        BAIM = [hl[0] / hn2, hl[1] / hn2 - 0.1, hl[2] / hn2];                  // through the head of the rabbit's list
-      })();
-      LH.set(home.c); LSZ.set(lsm);
-      /* a list of na x nb Gaussians from a figure's chart, as the bowl's list is made from the bowl: one jittered sample in
-         every (u, v) cell, nudged off the surface, turned and resized at random within its cell's size (tilted and
-         thickened by the caller) */
-      function listOf(F, na, nb, rnd, out) {
-        var i, j, e = { p: [0, 0, 0], su: [0, 0, 0], sv: [0, 0, 0], c: [0, 0, 0] }, isR = F.d.name !== 'owl';
-        for (j = 0; j < nb; j++) for (i = 0; i < na; i++) {
-          evalF(F, KT.clamp((i + rnd()) / na, 0, 0.9999), KT.clamp((j + rnd()) / nb, 0, 0.9999), e, 0);
-          var sx = e.su[0] / na, sy = e.su[1] / na, sz = e.su[2] / na, tx = e.sv[0] / nb, ty = e.sv[1] / nb, tz = e.sv[2] / nb;
-          var nx = sy * tz - sz * ty, ny = sz * tx - sx * tz, nz = sx * ty - sy * tx, nl = Math.hypot(nx, ny, nz) || 1e-9, sp = Math.sqrt(nl);
-          var off = (rnd() - 0.5) * 0.5 * sp, an = rnd() * 6.283, ca = Math.cos(an), sa = Math.sin(an), f1 = sp * 0.72 * (0.6 + 0.7 * rnd()), f2 = sp * 0.72 * (0.6 + 0.7 * rnd());
-          var sl = Math.hypot(sx, sy, sz) || 1e-9, e1 = [sx / sl, sy / sl, sz / sl], e2 = [(ny * e1[2] - nz * e1[1]) / nl, (nz * e1[0] - nx * e1[2]) / nl, (nx * e1[1] - ny * e1[0]) / nl];
-          out.push({ p: [e.p[0] + nx / nl * off, e.p[1] + ny / nl * off, e.p[2] + nz / nl * off], c: e.c.slice(), r: isR, n: [nx / nl, ny / nl, nz / nl],
-                     u: [0, 1, 2].map(function (k) { return (e1[k] * ca + e2[k] * sa) * f1; }), v: [0, 1, 2].map(function (k) { return (e2[k] * ca - e1[k] * sa) * f2; }) });
-        }
-      }
-      function ss(a, b, v) { v = KT.clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v); }
-      function dist2(p, c) { var x = p[0] - c[0], y = p[1] - c[1], z = p[2] - c[2]; return x * x + y * y + z * z; }
-
-      /* SCRIPTED, the owl's nod, x seconds from the contact it is timed to: a wind-up away from the rabbit, a swing through
-         the ball towards it, and back. Radians, positive = the head's top towards the rabbit */
-      function owlNod(x) {
-        if (x < -0.55 || x > 1.0) return 0;
-        if (x < -0.15) return -0.16 * KT.ease((x + 0.55) / 0.4);
-        if (x < 0.1) return -0.16 + 0.46 * KT.ease((x + 0.15) / 0.25);
-        return 0.3 * (1 - KT.ease((x - 0.1) / 0.9));
-      }
-      function owlTh(t) { return fl.t1 == null ? 0 : owlNod(t - fl.t1); }
-      /* SCRIPTED, the rabbit at time t: a crouch, a jump whose top is the moment the ball is due (fl.ta), a landing that
-         squashes it (volume kept), and a nod that turns it towards the bowl and tips it forwards through the header. A rigid
-         motion of its chart (and the squash, while the ball is far): world = T + R S local */
-      var VJ = Math.sqrt(2 * GRAV * HJ), TJ = VJ / GRAV;
-      function rabbitPose(t, o) {
-        var ta = fl.ta, y = 0, sy = 1, psi = 0, phi = 0, x;
-        if (ta != null) {
-          var t0 = ta - TJ, t1 = ta + TJ;                               // take-off and landing
-          if (t >= t0 - CROUCH && t < t0) sy = 1 - 0.13 * Math.sin(Math.PI * (t - t0 + CROUCH) / CROUCH);
-          else if (t >= t0 && t < t1) { x = t - t0; y = VJ * x - 0.5 * GRAV * x * x; }
-          else if (t >= t1 && t < t1 + LAND) sy = 1 - 0.1 * Math.sin(Math.PI * (t - t1) / LAND);
-          x = t - ta;
-          psi = x < -0.45 || x > 1 ? 0 : x < -0.12 ? 0.18 * KT.ease((x + 0.45) / 0.33) : x < 0.12 ? 0.18 - 0.48 * KT.ease((x + 0.12) / 0.24) : -0.3 * (1 - KT.ease((x - 0.12) / 0.88));
-          phi = 0.14 * Math.sin(Math.PI * KT.clamp((x + 0.3) / 0.7, 0, 1));
-        }
-        var f = FR.face, ax = f[2], az = -f[0], cp = Math.cos(phi), sp = Math.sin(phi), cs = Math.cos(psi), sn = Math.sin(psi);
-        // tip forwards: about the horizontal axis a = up x face (Rodrigues), then turn about the vertical
-        var A = [cp + ax * ax * (1 - cp), -az * sp, ax * az * (1 - cp), az * sp, cp, -ax * sp, az * ax * (1 - cp), ax * sp, cp + az * az * (1 - cp)];
-        var Y = [cs, 0, sn, 0, 1, 0, -sn, 0, cs], R = o.R, M = o.M, i, j, sx = 1 / Math.sqrt(sy);
-        for (i = 0; i < 3; i++) for (j = 0; j < 3; j++) R[i * 3 + j] = Y[i * 3] * A[j] + Y[i * 3 + 1] * A[3 + j] + Y[i * 3 + 2] * A[6 + j];
-        o.S[0] = sx; o.S[1] = sy; o.S[2] = sx;
-        for (i = 0; i < 3; i++) for (j = 0; j < 3; j++) M[i * 3 + j] = R[i * 3 + j] * o.S[j];
-        o.T[0] = RAB_AT[0]; o.T[1] = RAB_AT[1] + y; o.T[2] = RAB_AT[2];
-        return o;
-      }
-      function toWorld(o, l, w) { var M = o.M; for (var i = 0; i < 3; i++) w[i] = o.T[i] + M[i * 3] * l[0] + M[i * 3 + 1] * l[1] + M[i * 3 + 2] * l[2]; return w; }
-      function toLocal(o, w, l) {                                       // S^-1 R^T (w - T)
-        var R = o.R, x = w[0] - o.T[0], y = w[1] - o.T[1], z = w[2] - o.T[2];
-        for (var i = 0; i < 3; i++) l[i] = (R[i] * x + R[3 + i] * y + R[6 + i] * z) / o.S[i];
-        return l;
-      }
-      function rot(o, l, w) { var R = o.R; for (var i = 0; i < 3; i++) w[i] = R[i * 3] * l[0] + R[i * 3 + 1] * l[1] + R[i * 3 + 2] * l[2]; return w; }
-
-      /* ---------- where and when the ball meets a figure (computed) ---------- */
-      var CL = [0, 0, 0], HCW = [0, 0, 0], PW = [0, 0, 0], NW = [0, 0, 0], BP0 = [0, 0, 0], BV0 = [0, 0, 0], CQ = [0, 0, 0];
-      /* |S(u, v) - c| for figure `who` (0 the owl, 1 the rabbit) with the figure as the script has it at time t; o receives
-         the closest point (o.wp, o.wn in the world) */
-      function gapAt(who, c, t, o) {
-        if (!who) { closestF(FO, c, o, owlTh(t)); o.wp = o.p.slice(); o.wn = o.nc.slice(); return o.d; }
-        rabbitPose(t, RP); toLocal(RP, c, CL); closestF(FR, CL, o, 0);
-        o.wp = toWorld(RP, o.p, [0, 0, 0]); o.wn = rot(RP, o.nc, [0, 0, 0]);
-        return Math.hypot(c[0] - o.wp[0], c[1] - o.wp[1], c[2] - o.wp[2]);
-      }
-      function along(t, c) { c[0] = BP0[0] + BV0[0] * t; c[1] = BP0[1] + BV0[1] * t - 0.5 * GRAV * t * t; c[2] = BP0[2] + BV0[2] * t; return c; }
-      /* after a sub-step: if the ball now overlaps the figure, find the moment inside the sub-step when it first touched (the
-         root of |S(u, v) - c(t)| - r, by bisection, the figure moving with its script), put the ball there, and head it */
-      function meet(who) {
-        var F = who ? FR : FO, o = fl.cps[who], cen = who ? toWorld(rabbitPose(run.t, RP), FR.hc, HCW) : FO.hc;
-        if (Math.hypot(ball.p[0] - cen[0], ball.p[1] - cen[1], ball.p[2] - cen[2]) > F.reach) { o.near = false; return; }
-        o.near = true;
-        var d = gapAt(who, ball.p, run.t, o), t0 = run.t - H, lo = 0, hi = H, it, m, g, k = { u: o.u, v: o.v, wp: o.wp, wn: o.wn, edge: o.edge };
-        if (d > BR) return;
-        for (it = 0; it < 48 && hi - lo > 1e-15; it++) {
-          m = 0.5 * (lo + hi); g = gapAt(who, along(m, CQ), t0 + m, o);
-          if (g > BR) lo = m; else { hi = m; d = g; k = { u: o.u, v: o.v, wp: o.wp, wn: o.wn, edge: o.edge }; }   // the answer at the touching end
-        }
-        along(hi, CQ); o.u = k.u; o.v = k.v; o.wp = k.wp; o.wn = k.wn; o.edge = k.edge;
-        if (who) rabbitPose(t0 + hi, RP);
-        // an independent look at the same answer: the nearest of a fine (u, v) grid around it, with the figure as it was then
-        var chk = 1e9, a, b, uu, vv, th = who ? 0 : owlTh(t0 + hi), cl = who ? toLocal(RP, CQ, [0, 0, 0]) : CQ;
-        for (b = -12; b <= 12; b++) for (a = -12; a <= 12; a++) {
-          uu = KT.clamp(o.u + a * 0.0025, 0, 1); vv = KT.clamp(o.v + b * 0.0025, F.vlo, 1); evalF(F, uu, vv, FE, th);
-          chk = Math.min(chk, Math.hypot(cl[0] - FE.p[0], cl[1] - FE.p[1], cl[2] - FE.p[2]) * (who ? RP.S[0] : 1));
-        }
-        ball.p[0] = CQ[0]; ball.p[1] = CQ[1]; ball.p[2] = CQ[2]; ball.v[0] = BV0[0]; ball.v[1] = BV0[1] - GRAV * hi; ball.v[2] = BV0[2];
-        var rec = { who: who, t: t0 + hi - run.tr, at: t0 + hi, u: o.u, v: o.v, d: d, gap: d - BR, check: chk - BR, p: o.wp.slice(), n: o.wn.slice(), c: CQ.slice(), vin: ball.v.slice(), edge: o.edge };
-        header(who, rec);
-        fly(H - hi);
-      }
-      /* SCRIPTED, where a header sends the ball: the parabola from where it is to the next target in a set time (T1 to the
-         rabbit's forehead, one radius out, at the top of its jump; T2 to the head of the rabbit's list in the bowl). The
-         contact before it is computed; the speed and direction after it are chosen. The impulse is what that takes,
-         m |v_out - v_in|, and it sets the loudness of the sound */
-      function header(who, rec) {
-        var A = [0, 0, 0], T = who ? T2 : T1, c = ball.p, k, J;
-        if (!who) { fl.ta = rec.at + T1; toWorld(rabbitPose(fl.ta, RP), FR.aimL, A); }
-        else A = BAIM.slice();
-        for (k = 0; k < 3; k++) ball.v[k] = (A[k] - c[k]) / T;
-        ball.v[1] += 0.5 * GRAV * T;
-        J = BM * Math.hypot(ball.v[0] - rec.vin[0], ball.v[1] - rec.vin[1], ball.v[2] - rec.vin[2]);
-        rec.vout = ball.v.slice(); rec.J = J; rec.aim = A; fl.hit[who] = rec; fl.th = rec.at;
-        if (who) au.glass = Math.max(au.glass, J); else { au.J = Math.max(au.J, J); au.Jn++; au.tone = 0.82; }   // glass rings; stone knocks
-        fl.phase = who ? 'air2' : 'air1';
-      }
-      /* at the drop: the moment the ball will meet the owl's head with the head at the middle of its swing, so that the nod
-         can be timed to it (the actual contact is computed as it happens, with the head where it is) */
-      function predictOwl() {
-        var o = newCp(), c = ball.p.slice(), th = owlNod(0), y, lo, hi, it, vy = ball.v[1];
-        for (y = c[1]; y > OWL_AT[1]; y -= 0.01) { c[1] = y; if (closestF(FO, c, o, th).d < BR) break; }
-        lo = y + 0.01; hi = y;
-        for (it = 0; it < 40; it++) { c[1] = 0.5 * (lo + hi); if (closestF(FO, c, o, th).d < BR) hi = c[1]; else lo = c[1]; }
-        return (vy + Math.sqrt(vy * vy + 2 * GRAV * (ball.p[1] - hi))) / GRAV;
-      }
-
-      /* ---------- INVENTED: the lists answer the ball like floating balloons ----------
-         A list defines no force: there is no surface to push back and nothing ties a Gaussian to another. To show the ball
-         passing through without breaking anything, each Gaussian near the ball's path is given this rule: inside a reach of
-         BREACH beyond the ball (and its own size) it is pushed away from the ball's centre and dragged a little along with
-         the ball (both falling off as (1 - d / reach)^2); once displaced it is pulled home by a soft, under-damped spring,
-         lifted a little while away (it floats up) and swayed a little (each with its own phase): it bobs and wanders home.
-         The ball feels nothing back (the rule is one-way) and falls through. Every fourth sub-step, on the bowl's list and
-         the figures' lists alike. */
-      var BV = new Float32Array(NT * 3), BA = new Uint8Array(NT), BPU = new Uint8Array(NT), BSTEP = 4;
-      var bal = { sub: 0, moved: 0, inside: 0, reach: 0, dmax: 0, dnow: 0 };
-      function balReset() { BV.fill(0); BA.fill(0); BPU.fill(0); bal.sub = bal.moved = bal.inside = bal.reach = bal.dmax = bal.dnow = 0; }
-      function balloons() {
-        if (++bal.sub % BSTEP) return;
-        var h = BSTEP * H, P = fL.center, c = ball.p, bv = ball.v, i, o, dx, dy, dz, d2, d, R, q, ins = 0, rch = 0, sp, w;
-        if (ball.on && Math.abs(c[0] + X0) < RB + 1.4 && c[1] > -1.6 && c[1] < 3.4) {
-          au.calls++;
-          for (i = 0; i < NT; i++) {
-            o = i * 3; R = BR + BREACH + LSZ[i];
-            dx = P[o] - c[0]; if (dx > R || dx < -R) continue; dy = P[o + 1] - c[1]; if (dy > R || dy < -R) continue;
-            dz = P[o + 2] - c[2]; d2 = dx * dx + dy * dy + dz * dz; if (d2 >= R * R) continue;
-            d = Math.sqrt(d2) || 1e-6; q = 1 - d / R; q *= q; rch++;
-            if (d < BR) ins++;
-            if (!BPU[i]) { BPU[i] = 1; bal.moved++; }
-            BA[i] = 1;
-            BV[o] += (BKP * q * dx / d + BKD * q * (bv[0] - BV[o])) * h; BV[o + 1] += (BKP * q * dy / d + BKD * q * (bv[1] - BV[o + 1])) * h;
-            BV[o + 2] += (BKP * q * dz / d + BKD * q * (bv[2] - BV[o + 2])) * h;
-          }
-          au.inside += ins;
-        }
-        bal.inside = ins; bal.reach = rch;
-        var dm = 0, ts = run.t;
-        for (i = 0; i < NT; i++) {
-          if (!BA[i]) continue; o = i * 3;
-          dx = P[o] - LH[o]; dy = P[o + 1] - LH[o + 1]; dz = P[o + 2] - LH[o + 2]; d = Math.sqrt(dx * dx + dy * dy + dz * dz); w = 3.1 * ts + 2.39996 * i;
-          BV[o] += (-BK * dx - BC * BV[o] + BSWAY * d * Math.sin(w)) * h;
-          BV[o + 1] += (-BK * dy - BC * BV[o + 1] + BLIFT * d) * h;
-          BV[o + 2] += (-BK * dz - BC * BV[o + 2] + BSWAY * d * Math.cos(w)) * h;
-          sp = Math.hypot(BV[o], BV[o + 1], BV[o + 2]); if (sp > BVMAX) { BV[o] *= BVMAX / sp; BV[o + 1] *= BVMAX / sp; BV[o + 2] *= BVMAX / sp; }
-          P[o] += BV[o] * h; P[o + 1] += BV[o + 1] * h; P[o + 2] += BV[o + 2] * h;
-          if (d < 2e-4 && sp < 2e-3) { P[o] = LH[o]; P[o + 1] = LH[o + 1]; P[o + 2] = LH[o + 2]; BV[o] = BV[o + 1] = BV[o + 2] = 0; BA[i] = 0; }   // home: asleep again
-          if (d > dm) dm = d;
-        }
-        bal.dnow = dm; if (dm > bal.dmax) bal.dmax = dm;
-      }
-      /* the cast on stage or off it; the lists of the figures stay out of the list's field (parked far below, where its
-         drawing skips them) in every other scene */
-      function figShow(on) {
-        if (!FIG) return;
-        fF.mesh.visible = on; fR.mesh.visible = !on;
-        var P = fL.center, i;
-        if (on) P.set(LH.subarray(N * 3), N * 3);
-        else for (i = N; i < NT; i++) { P[i * 3] = 0; P[i * 3 + 1] = -100; P[i * 3 + 2] = 0; }
-        balReset();
-      }
-      /* every frame on stage: the owl's head where the script has it (its control points turned, the lattice evaluated
-         again only when they moved), its front half written as Gaussians for this eye; the rabbit's lattice carried by its
-         pose (written again only when it moved) */
-      var RW = FIG ? { pos: new Float32Array(FR.na * FR.nb * 3), su: new Float32Array(FR.na * FR.nb * 3), sv: new Float32Array(FR.na * FR.nb * 3), col: FR.grid.col } : null;
-      function figDraw() {
-        var th = owlTh(run.t), F = FO, P = F.patch.P, B = F.B, k, i, q, w, cs, sn, ex, ey, n;
-        if (th !== F.th) {
-          for (k = 0; k < F.hi.length; k++) {
-            i = F.hi[k]; q = i * 3; w = F.W[i] * th; cs = Math.cos(w); sn = Math.sin(w); ex = B[q] - F.piv[0]; ey = B[q + 1] - F.piv[1];
-            P[q] = F.piv[0] + ex * cs - ey * sn; P[q + 1] = F.piv[1] + ex * sn + ey * cs;
-          }
-          F.th = th; NB.patchGrid(F.patch, F.us, F.vs, F.grid);
-        }
-        rabbitPose(run.t, RP);
-        var key = RP.T[1].toFixed(5) + ',' + Array.prototype.join.call(RP.M, ','), g = FR.grid, m = FR.na * FR.nb, M = RP.M, x, y, z, o;
-        if (key !== FR.key) {
-          FR.key = key;
-          for (k = 0; k < m; k++) {
-            o = k * 3; toWorld(RP, [g.pos[o], g.pos[o + 1], g.pos[o + 2]], PW); RW.pos[o] = PW[0]; RW.pos[o + 1] = PW[1]; RW.pos[o + 2] = PW[2];
-            x = g.su[o]; y = g.su[o + 1]; z = g.su[o + 2]; for (i = 0; i < 3; i++) RW.su[o + i] = M[i * 3] * x + M[i * 3 + 1] * y + M[i * 3 + 2] * z;
-            x = g.sv[o]; y = g.sv[o + 1]; z = g.sv[o + 2]; for (i = 0; i < 3; i++) RW.sv[o + i] = M[i * 3] * x + M[i * 3 + 1] * y + M[i * 3 + 2] * z;
-          }
-          n = G.writePlanoids(fF, 0, RW, FR.na, FR.nb, FR.du, FR.dv, 0.72, null, null);
-          if (FR.flip < 0) for (k = 0; k < n * 3; k++) fF.axV[k] = -fF.axV[k];          // S_u x S_v out of the object, as the layers want it
-          fig.nR = n;
-        }
-        n = G.writePlanoids(fF, fig.nR, F.grid, F.na, F.nb, F.du, F.dv, 0.72, null, { x: cam.position.x, y: cam.position.y, z: cam.position.z, flip: F.flip, min: -0.12 });
-        fF.setCount(n); fF.commit(n); fig.nO = n - fig.nR;
-      }
-      var fig = { nO: 0, nR: 0 };
-
       /* ---------- moment: when does the ball touch? ----------
          Over the list, every sub-step measures, for the Gaussians near the ball's vertical: the gap between the
          ball's surface and each one's 3, 2 and 1 sigma ellipsoid (exact point-to-ellipsoid distance minus the
@@ -1392,7 +927,7 @@
         var d = close ? DROPS.moment : DROPS[st.scene], q = d[k % d.length], side = m === 'moment' ? (k % 2 ? 1 : -1) : st.sc.side;
         run.k = k; run.t = 0; run.still = 0; run.ph = ph; run.close = close; run.rule = ph === 'loose' ? 1 : 0;
         run.hover = m === 'flight' || close ? 1.3 : was && m === 'ghost' ? 1.1 : 0.55;   // back from the close-up: the camera has the way out to travel
-        cap.innerHTML = close ? SCENES.moment.cap : FIG && m === 'flight' ? st.sc.capF : st.sc.cap;
+        cap.innerHTML = close ? SCENES.moment.cap : st.sc.cap;
         root.classList.toggle('tc-close', close);                  // close up: the bowl fills the stage, under the caption too
         ball.p = [side * X0 + q[0], q[1], q[2]]; ball.v = [0, -q[3], 0]; ball.on = false; ball.rest = false;
         cp.ok = false; hit.n = 0; hit.J = 0; hit.t = -9; hit.ask = 0; hit.held = true; hit.vout = 0; tr.n = tr.k = 0;
@@ -1400,13 +935,6 @@
         if (m === 'ghost' || m === 'flight' || m === 'moment') restoreList();
         if (surf.broken) mend();
         if (m === 'flight') { flatten(); derive(); fl.phase = 'drop'; fl.tt = fl.th = 0; fl.boost = false; }
-        figShow(FIG && m === 'flight');
-        if (FIG && m === 'flight') {                               // the ball is let go over the owl's head, from rest
-          ball.p = [FO.hc[0] - 0.04, FO.top + 1.7, FO.hc[2]]; ball.v = [0, 0, 0]; run.E0 = energy();
-          fl.t1 = fl.ta = null; fl.tb = 0; fl.miss = false; fl.hit = [null, null]; fl.cps = [newCp(), newCp()]; fl.loops++;
-          FO.th = NaN; FR.key = '';                                // drawn afresh
-          fl.tf = predictOwl();
-        }
         if (close) momentDrop(side); else mo.slow = 1;             // (no slow motion is carried out of a close-up)
         au.first = true; au.lastN = 0;
       }
@@ -1432,7 +960,6 @@
         if (m === 'moment') { for (s = 0; s < 8 && run.close; s++) substepMoment(); return; }   // (ghost's close-up may hand back to its pass inside)
         run.t += H; au.simT += H;
         if (!ball.on && run.t >= run.hover) { ball.on = true; run.tr = run.t - H; run.E0 = energy(); }
-        BP0[0] = ball.p[0]; BP0[1] = ball.p[1]; BP0[2] = ball.p[2]; BV0[0] = ball.v[0]; BV0[1] = ball.v[1]; BV0[2] = ball.v[2];   // (flight's contacts look back into the sub-step)
         if (ball.on) fly(H);
         if (m === 'ghost') {
           if (ball.on) ballVsList(run.rule === 1);
@@ -1448,13 +975,6 @@
           membrane(true);
           s = speed(); run.still = s < 0.12 && el.touch ? run.still + H : 0;
           if (run.still > 1.3 || run.t > 9.5 || ball.p[1] < -6) letGo(run.k + 1);
-        } else if (FIG) {                                          // flight, with the cast
-          if (ball.on && fl.t1 == null) fl.t1 = run.tr + fl.tf;    // the nod is timed to the predicted contact
-          if (fl.phase === 'drop' && ball.on) meet(0);
-          else if (fl.phase === 'air1') { meet(1); if (fl.phase === 'air1' && run.t > fl.ta + 0.5) { fl.phase = 'air2'; fl.miss = true; } }
-          balloons();
-          if (fl.phase === 'air2' && bal.inside) { fl.phase = 'bowl'; fl.tb = run.t; fl.vin = speed(); au.puff = bal.reach; }
-          if ((fl.phase === 'bowl' && run.t - fl.tb > 4.6) || run.t > 18 || (fl.phase !== 'bowl' && ball.p[1] < -12)) letGo(0);   // the lists have time to settle
         } else {
           if (fl.phase === 'drop') {
             membrane(true);
@@ -1473,7 +993,7 @@
       /* ---------- sound: one frame's worth of events, heard ---------- */
       var chRoll = SFX.channel('roll'), chHiss = SFX.channel('hiss'), chWob = SFX.channel('wobble');
       var SINW = []; (function () { for (var i = 0; i < NC; i++) SINW.push(Math.sin(Math.PI * i / (NC - 1))); })();   // the membrane's first mode
-      function quiet() { au.simT = au.J = au.Jn = au.rest = au.restV = au.inside = au.calls = au.hits = au.jl = au.crack = au.pluck = au.launch = au.glass = au.puff = 0; au.tick.length = 0; }
+      function quiet() { au.simT = au.J = au.Jn = au.rest = au.restV = au.inside = au.calls = au.hits = au.jl = au.crack = au.pluck = au.launch = 0; au.tick.length = 0; }
       function silence() { chRoll.stop(); chHiss.stop(); chWob.stop(); SFX.hush(); au.env = 0; au.rat = 0; }
       function listen(dt) {
         var m = model(), s, pan = 0, x, w;
@@ -1496,9 +1016,7 @@
           if (au.rat && SFX.now() - au.ratT > 0.06) { SFX.rattle(au.rat, pan); au.rat = 0; au.ratT = SFX.now(); }
         }
         if (au.pluck > 0.2) SFX.pluck(au.pluck, mat.stiff, pan);                      // a contact begins on the springs
-        if (au.glass) SFX.glass(au.glass, pan);                                       // the glass rabbit heads the ball
-        if (au.puff) SFX.puff(au.puff, pan);                                          // the lists in the bowl give way
-        if (m === 'elastic' || (m === 'flight' && !FIG)) {                            // and the net rings: loudness from its motion, the wobble from its first mode
+        if (m === 'elastic' || m === 'flight') {                                      // and the net rings: loudness from its motion, the wobble from its first mode
           var e2 = 0, vm = 0, ws = 0, q, i, j;
           for (j = 1; j < NC - 1; j++) for (i = 1; i < NC - 1; i++) {
             q = (j * NC + i) * 3; e2 += MV[q] * MV[q] + MV[q + 1] * MV[q + 1] + MV[q + 2] * MV[q + 2];
@@ -1524,7 +1042,7 @@
       function paint() {
         var bx = ball.p[0], by = ball.p[1], bz = ball.p[2], k, o, dx, dy, dz, t, d2, s, w, f, P, cl, L = LIGHT, ll = Math.hypot(L[0], L[1], L[2]);
         var lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll, m = model(), heat = surf.broken ? Math.exp(-(run.t - surf.tb) / 0.7) : 0, q, r;
-        if (fR.mesh.visible) {                                    // (not while flight's cast stands where the spline bowl was)
+        {
           P = fR.center; cl = fR.color;
           for (k = 0; k < N; k++) {
             o = k * 3; dx = bx - P[o]; dy = by - P[o + 1]; dz = bz - P[o + 2]; t = dx * lx + dy * ly + dz * lz; f = 1; r = 0;
@@ -1551,8 +1069,8 @@
 
       /* ---------- what is drawn about the contact ---------- */
       function overlays() {
-        var m = model(), onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && !FIG && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
-        var soft = m === 'elastic' || (m === 'flight' && !FIG), k, i, o, q, bm = ballMesh.material, see = m === 'moment';
+        var m = model(), onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
+        var soft = m === 'elastic' || m === 'flight', k, i, o, q, bm = ballMesh.material, see = m === 'moment';
         ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
         if (bm.transparent !== see) { bm.transparent = see; bm.opacity = see ? 0.3 : 1; bm.depthWrite = !see; bm.needsUpdate = true; }   // close up: see under the ball
         dot.scale.setScalar(see ? 0.35 : 1);
@@ -1560,8 +1078,6 @@
         if (onSpline) closest(ball.p, cp);
         var near = onSpline && cp.d < BR + 0.75 && (soft || !cp.edge || cp.d < BR * 1.6), since = run.t - hit.t;
         iso.obj.visible = dot.visible = arrow.obj.visible = drop.obj.visible = near;
-        var pinAt = near ? cp.p : null, pinU = cp.u, pinV = cp.v;
-        if (FIG && m === 'flight') { var fo = figMarks(); if (fo) { pinAt = fo.p; pinU = fo.u; pinV = fo.v; } }
         if (near) {
           var up = 0.012, n = cp.nc, len;
           for (i = 0; i < NS; i++) for (k = 0; k < 2; k++) {
@@ -1612,36 +1128,11 @@
           if (cnt > 1) { mkG.arr.set([xl, yt + 0.03, z0, xl, yb - 0.03, z0]); mkG.set(2); } else mkG.set(0);
         }
         // the address, written next to the contact
-        var s = pinAt ? G.project(cam, pinAt[0], pinAt[1], pinAt[2], size.w, size.h) : null;
+        var s = near ? G.project(cam, cp.p[0], cp.p[1], cp.p[2], size.w, size.h) : null;
         if (s && s[0] > 40 && s[0] < size.w - 150 && s[1] > 40 && s[1] < size.h - 30) {
           pin.style.display = 'block'; pin.style.transform = 'translate(' + (s[0] + 16).toFixed(1) + 'px,' + (s[1] + 10).toFixed(1) + 'px)';
-          setText(pin, '(u, v) = (' + pinU.toFixed(2) + ', ' + pinV.toFixed(2) + ')');
+          setText(pin, '(u, v) = (' + cp.u.toFixed(2) + ', ' + cp.v.toFixed(2) + ')');
         } else pin.style.display = 'none';
-      }
-      /* flight: on the figure the ball is coming down on, while it is near, the closest point S(u, v), the line to the ball's
-         centre, the normal and the chart's two parameter lines through the point; for a moment after a header, the contact
-         itself (its normal drawn longer with the impulse). -> { p, u, v } for the address pin, or null */
-      var IE = { p: [0, 0, 0], su: [0, 0, 0], sv: [0, 0, 0] }, IW = [0, 0, 0];
-      function figMarks() {
-        var who = fl.phase === 'drop' ? 0 : fl.phase === 'air1' ? 1 : -1, rec = null, o = null, P, Nn, u, v, F, th, k, i, a, since = 9, len;
-        for (k = 0; k < 2; k++) if (fl.hit[k] && run.t - fl.hit[k].at < 0.7) { rec = fl.hit[k]; since = run.t - rec.at; }
-        if (rec) { who = rec.who; P = rec.p; Nn = rec.n; u = rec.u; v = rec.v; }
-        else if (who >= 0 && (o = fl.cps[who]) && o.near && o.ok && o.wp && o.d < BR + 0.75) { P = o.wp; Nn = o.wn; u = o.u; v = o.v; }
-        else return null;
-        F = who ? FR : FO; th = who ? 0 : owlTh(run.t); if (who) rabbitPose(run.t, RP);
-        iso.obj.visible = dot.visible = arrow.obj.visible = drop.obj.visible = true;
-        for (i = 0; i < NS; i++) for (k = 0; k < 2; k++) for (a = 0; a < 2; a++) {     // a = 0: along u at this v; a = 1: along v at this u
-          var x = (i + k) / NS - 0.5;
-          evalF(F, a ? u : KT.clamp(u + 0.24 * x, 0, 1), a ? KT.clamp(v + 0.2 * x, F.vlo, 1) : v, IE, th);
-          if (who) toWorld(RP, IE.p, IW); else { IW[0] = IE.p[0]; IW[1] = IE.p[1]; IW[2] = IE.p[2]; }
-          var q = (a * NS * 2 + i * 2 + k) * 3; iso.arr[q] = IW[0] + Nn[0] * 0.012; iso.arr[q + 1] = IW[1] + Nn[1] * 0.012; iso.arr[q + 2] = IW[2] + Nn[2] * 0.012;
-        }
-        iso.set(4 * NS);
-        dot.position.set(P[0], P[1], P[2]);
-        drop.arr.set(rec ? rec.c : ball.p, 0); drop.arr.set(P, 3); drop.set(2);
-        len = 0.45 + (rec ? Math.min(1, rec.J * 0.06) * (1 - since / 0.7) : 0);
-        arrow.aim(P, Nn[0], Nn[1], Nn[2], len, rec ? 1.5 : 1);
-        return { p: P, u: u, v: v };
       }
       function setText(e, html) { if (e._h !== html) { e._h = html; e.innerHTML = html; } }
 
@@ -1734,30 +1225,6 @@
           s = SPL + T('control points on damped springs, {k} N/m', { k: mat.stiff.toFixed(0) }) + ' · ' +
             (el.touch ? T('contact force <em>{f} N</em> on {n} control points, by basis weight', { f: el.f.toFixed(0), n: el.sup.length }) : T('the Gaussians are derived again every frame')) +
             '<br>' + T('energy: ball <em>{b}</em> · surface <em>{s}</em> · damped {d}', { b: pct(e), s: pct(em), d: pct(el.lost / run.E0) }) + (hit.n ? ' · ' + T('bounce {n}', { n: hit.n }) : '');
-        } else if (FIG) {                                          // flight, with the cast
-          var h0 = fl.hit[0], h1 = fl.hit[1], o0 = fl.cps[0];
-          if (fl.phase === 'drop') {
-            s = T('<b>two spline charts</b> · the owl, {a} × {b} control points', { a: FO.nu, b: FO.nv }) + ' · ' +
-              (FR.glass ? T('the rabbit, {a} × {b}, in clear glass', { a: FR.nu, b: FR.nv }) : T('the rabbit, {a} × {b}', { a: FR.nu, b: FR.nv })) + ' · ' +
-              T('{n} Gaussians derived', { n: (fig.nO + fig.nR).toLocaleString('en-US') }) + '<br>' +
-              (!ball.on ? T('the ball is let go over the owl’s head')
-                : o0 && o0.near && o0.ok ? T('closest point on the owl S(<em>{u}</em>, <em>{v}</em>) by Gauss–Newton in (u, v) · {d} m to go', { u: o0.u.toFixed(2), v: o0.v.toFixed(2), d: Math.max(0, o0.d - BR).toFixed(2) })
-                : T('falling at {v} m/s', { v: speed().toFixed(1) }));
-          } else if (fl.phase === 'air1') {
-            s = T('header 1 · the ball met the owl at S(<em>{u}</em>, <em>{v}</em>), {t} after release · |S − c| − r = <em>{g} m</em> · impulse {J} N·s',
-                  { u: h0.u.toFixed(2), v: h0.v.toFixed(2), t: ms(h0.t), g: sci(Math.abs(h0.gap)), J: h0.J.toFixed(1) }) + '<br>' +
-              T('computed: where and when they meet · scripted: the owl’s nod, and the ball sent to the rabbit at {v} m/s', { v: Math.hypot(h0.vout[0], h0.vout[1], h0.vout[2]).toFixed(1) });
-          } else if (fl.phase === 'air2') {
-            s = (h1 ? T('header 2 · the ball met the rabbit at S(<em>{u}</em>, <em>{v}</em>), {t} after release · |S − c| − r = <em>{g} m</em> · impulse {J} N·s',
-                        { u: h1.u.toFixed(2), v: h1.v.toFixed(2), t: ms(h1.t), g: sci(Math.abs(h1.gap)), J: h1.J.toFixed(1) })
-                    : T('the ball missed the rabbit')) + '<br>' +
-              (h1 ? T('computed: where and when they meet · scripted: the rabbit’s jump and nod, and the ball sent into the bowl at {v} m/s', { v: Math.hypot(h1.vout[0], h1.vout[1], h1.vout[2]).toFixed(1) })
-                  : T('speed {v} m/s', { v: speed().toFixed(1) }));
-          } else {
-            s = T('<b>three lists</b> · the bowl, the owl and the rabbit · {n} Gaussians, unordered <i>(emulated)</i>', { n: NT.toLocaleString('en-US') }) + '<br>' +
-              T('the ball passes through · <em>{k}</em> Gaussians drift aside, the farthest {d} cm · <em>{loose}</em> knocked loose', { k: bal.moved.toLocaleString('en-US'), d: (100 * bal.dmax).toFixed(0), loose: prt.n }) +
-              ' · ' + T('the drift is an invented rule: a list defines no force');
-          }
         } else if (fl.phase === 'drop') {
           s = SPL + T('elastic, {k} N/m · the ball is thrown down at {v} m/s', { k: mat.stiff.toFixed(0), v: DROPS.flight[0][3] }) +
             '<br>' + (el.touch ? T('contact force <em>{f} N</em> on {n} control points', { f: el.f.toFixed(0), n: el.sup.length }) : T('speed {v} m/s', { v: speed().toFixed(1) }));
@@ -1783,7 +1250,7 @@
       // on the lab page there is no deck to carry the mute: the module has its own switch (KnotTalk.muted, as in the deck)
       var sndT = env.embed ? null : ui.toggle(panel, { label: 'sound', value: !KT.muted, onChange: function (on) { KT.muted = !on; if (on) SFX.wake(); } });
       function dimRows() {
-        var m = st.sc.model, use = { e: m === 'solid' || m === 'brittle' || m === 'moment', tough: m === 'brittle', stiff: m === 'elastic' || (m === 'flight' && !FIG) }, k;
+        var m = st.sc.model, use = { e: m === 'solid' || m === 'brittle' || m === 'moment', tough: m === 'brittle', stiff: m === 'elastic' || m === 'flight' }, k;
         for (k in sl) sl[k].el.style.opacity = use[k] ? 1 : 0.35;
       }
 
@@ -1801,14 +1268,6 @@
         if (m === 'solid') return { tx: x, ty: 0.55, tz: 0, r: 7.4 * f, th: 0.45, ph: 0.82 };
         if (m === 'brittle') return { tx: x, ty: -0.1, tz: 0, r: 8.6 * f, th: 0.45, ph: 1.0 };
         if (m === 'elastic') return { tx: x, ty: 0.6, tz: 0, r: 7.6 * f, th: 0.5, ph: 1.0 };
-        if (FIG) {                                                // the finale with the cast: both figures, the owl, the flight, the rabbit, the bowl
-          var bx = ball.p[0], lo = size.w / size.h < 1.1 ? 0.45 : 0;   // a narrow stage (a phone) has the numbers over its lower third: the cast stands higher
-          if (!ball.on) return { tx: 3.3, ty: 1.45 - lo, tz: 0, r: 10.4 * f, th: 0.06, ph: 1.36 };
-          if (fl.phase === 'drop') return { tx: OWL_AT[0] - 0.8, ty: 1.0 - lo, tz: 0, r: 7.6 * f, th: 0.1, ph: 1.34 };
-          if (fl.phase === 'air1') return { tx: 0.5 * (bx + RAB_AT[0]), ty: 1.4 - lo, tz: 0, r: 10 * f, th: 0.05, ph: 1.34 };
-          if (fl.phase === 'air2') return { tx: KT.clamp(bx, -X0 + 0.8, RAB_AT[0]), ty: Math.max(0.9, ball.p[1] * 0.7) - lo, tz: 0, r: 10.5 * fit(1.36), th: 0, ph: 1.3 };
-          return { tx: -X0, ty: 0.55 - 0.6 * lo, tz: 0, r: 8.4 * f, th: -0.1, ph: 1.2 };
-        }
         // the finale: over the spline bowl, then with the ball, then over what is left of the list
         if (fl.phase === 'drop') return { tx: X0 - 0.3, ty: 0.9, tz: 0, r: 9 * f, th: 0.16, ph: 1.2 };
         if (fl.phase === 'air') return { tx: ball.p[0], ty: Math.max(0.6, ball.p[1] * 0.62), tz: 0, r: 15 * fit(1.36), th: 0.05, ph: 1.24 };
@@ -1854,8 +1313,7 @@
         st.off = st.off == null ? off : st.off + (off - st.off) * (1 - Math.exp(-4 * dt));
         if (st.off > 0.5 && size.h > 1) cam.setViewOffset(size.w, size.h, 0, st.off, size.w, size.h);
         else { st.off = off ? st.off : 0; if (cam.view && cam.view.enabled) cam.clearViewOffset(); }
-        if (surf.broken) writeFragments(); else if (m === 'elastic' || (m === 'flight' && !FIG)) derive();
-        if (FIG && m === 'flight') figDraw();
+        if (surf.broken) writeFragments(); else if (m === 'elastic' || m === 'flight') derive();
         paint(); overlays(); words(); timeline();
         fL.draw(cam, R.renderer);
         (G.draw || function (R, s, c) { R.renderer.render(s, c); })(R, scene, cam);
@@ -1904,15 +1362,7 @@
                    broken: surf.broken, pieces: frag.n, touch: el.touch, force: el.f, fmax: el.fmax, membrane: membraneEnergy() / run.E0, damped: el.lost / run.E0,
                    phase: fl.phase, vsim: fl.vsim, vset: fl.vset, boost: fl.boost, vin: fl.vin, reached: prt.nSeen, awake: prt.n, n: N, overlaps: overlaps,
                    moment: { side: mo.side, slow: mo.slow, D: mo.D, labels: CANDS.map(function (c) { return c.lab; }), t: mo.t.slice(), y: mo.y.slice(), who: mo.who.slice(),
-                             near: mo.near.length, root: mo.root && { t: mo.root.t, res: mo.root.res, u: mo.root.u, v: mo.root.v, y: mo.root.y } },
-                   fig: FIG ? { on: st.sc.model === 'flight', loops: fl.loops, t1: fl.t1, ta: fl.ta, tb: fl.tb, miss: fl.miss, owlTh: owlTh(run.t), rab: RP.T.slice(), lists: NF,
-                                hits: fl.hit.map(function (h) { return h && { t: h.t, at: h.at, u: h.u, v: h.v, d: h.d, gap: h.gap, check: h.check, J: h.J, edge: h.edge, p: h.p, n: h.n, c: h.c, vin: h.vin, vout: h.vout, aim: h.aim }; }),
-                                drawn: { owl: fig.nO, rabbit: fig.nR, owlGrid: FO.na * FO.nb, rabbitGrid: FR.na * FR.nb }, glass: FR.glass,
-                                bal: { moved: bal.moved, inside: bal.inside, dmax: bal.dmax, dnow: bal.dnow, active: (function () { var c = 0; for (var i = 0; i < NT; i++) c += BA[i]; return c; })() },
-                                drift: function () { var m = 0, P = fL.center, i, d; for (i = 0; i < NT * 3; i += 3) { d = Math.hypot(P[i] - LH[i], P[i + 1] - LH[i + 1], P[i + 2] - LH[i + 2]); if (d > m) m = d; } return m; }(),
-                                reds: (function () { var c = 0, K = fL.color, i; for (i = 0; i < NT * 3; i += 3) if (Math.hypot(K[i] - ERR[0], K[i + 1] - ERR[1], K[i + 2] - ERR[2]) < 0.25) c++; return c; })(),
-                                visible: { figures: fF.mesh.visible, bowl: fR.mesh.visible },
-                                parked: (function () { var c = 0; for (var i = N; i < NT; i++) if (fL.center[i * 3 + 1] < -60) c++; return c; })() } : null };
+                             near: mo.near.length, root: mo.root && { t: mo.root.t, res: mo.root.res, u: mo.root.u, v: mo.root.v, y: mo.root.y } } };
         },
         resize: function (w, h) {
           R.resize(w, h); size.w = w; size.h = h;

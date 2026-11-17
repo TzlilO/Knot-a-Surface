@@ -597,7 +597,6 @@
     },
     eye: function (d, lx, ly) { return Math.hypot(lx + 0.3, ly - 0.32) < 0.22 ? [1, 1, 1] : d < 0.8 ? [0.04, 0.10, 0.22] : [0.75, 0.88, 1]; } };
   Object.keys(MATS).forEach(function (k) { MATS[k].rev = 0; });
-  KT.materials = MATS;                       // the same rules for another module's charts (touch.js paints its rabbit in `glass`)
   /* where a material may go; `selection` needs the Hands layer (talk/hands.js), which the host offers or not */
   var TARGETS = [{ v: 'object', label: T('object') }, { v: 'owl', label: T('owl') }, { v: 'selection', label: T('selection') }];
   var FEET = 1.45;                           // the owl stands on the book at this height: its motion is measured from here
