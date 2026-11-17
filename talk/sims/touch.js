@@ -2227,8 +2227,9 @@
           };
           var ph0 = fl.phase;
           /* ready and pulling: everything the chain touches in one picture (on a phone only the bowl and the owl fit: from the launch on, the camera follows the ball) */
-          if (ph0 === 'ready' || ph0 === 'pull' || ph0 === 'throw') return nar ? frame(X0 - 0.9, 0.3, 8.4, 3.4, 0.2, 0.05, 1.1) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.1);   // (looking down 27 degrees: over the bowl's near wall, at the ball)
-          if (ph0 === 'toowl' || ph0 === 'miss') return nar ? frame(KT.clamp(bx, OWL_AT[0] - 0.6, X0 - 0.9), 0.5, 8.4, 3.4, 0.2, 0.05, 1.1) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.1);
+          var tight = size.w / size.h < 0.9;                          // (the talk's stage is nearly square, a laptop's lab page wide: all four fit; a phone's does not)
+          if (ph0 === 'ready' || ph0 === 'pull' || ph0 === 'throw') return tight ? frame(X0 - 0.9, 0.3, 8.4, 3.4, 0.2, 0.05, 1.1) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.1);   // (looking down 27 degrees: over the bowl's near wall, at the ball)
+          if (ph0 === 'toowl' || ph0 === 'miss') return tight ? frame(KT.clamp(bx, OWL_AT[0] - 0.6, X0 - 0.9), 0.5, 8.4, 3.4, 0.2, 0.05, 1.1) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.1);
           if (fl.phase === 'air1') return { tx: 0.5 * (bx + RAB_AT[0]), ty: 1.4 - lo, tz: 0, r: 10 * f, th: 0.05, ph: 1.34 };
           if (fl.phase === 'air2') return { tx: KT.clamp(bx, -X0 + 0.8, RAB_AT[0]), ty: Math.max(0.9, ball.p[1] * 0.7) - lo, tz: 0, r: 10.5 * fit(1.36), th: 0, ph: 1.3 };
           return { tx: -X0, ty: 0.55 - 0.6 * lo, tz: 0, r: 8.4 * f, th: -0.1, ph: 1.2 };

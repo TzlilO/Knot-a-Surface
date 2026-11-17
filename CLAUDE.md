@@ -76,7 +76,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
   part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
   emptied section goes with its stage and rail entry); the clock and the cut buttons count only what is on.
-  `data-off` on a section or step = off until the presenter turns it on (chapter 08, `structure`, ships off). localStorage
+  `data-off` on a section or step = off until the presenter turns it on (chapter 08, `structure`, ships off). A chapter's opener step (`.opener`) carries its first picture and first claim (number, kicker, title, the first step's text, time): there is no separate title-only step before it. Chapter 03's `tangents` and `normal` steps are one step (scene `normal`), chapter 07's `budget` and `lod` are one (scene `lod`). Shipped deep (long cut only): chapter 03 `adaptive`, chapter 05 `versus`; shipped off: chapter 06 `train` (its run is still pending) and chapter 07 `stitch` (also deep), chapter 08 as a whole; all reversible in the slide master. localStorage
   `kt-parts` holds only the presenter's overrides, keyed `rail · step title` (renaming a step drops its choice);
   deck.js applies them before the first frame; "Reset to defaults" and "Show all". `talk.html?master` (or `#master`)
   = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
