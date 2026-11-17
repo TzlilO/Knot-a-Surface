@@ -9,10 +9,13 @@
               opacity falling off as exp(-m^2 / 2), blended back to front (sorted every frame).
      ours     one cubic B-spline patch (13 x 13 control points); its Gaussians are derived from it.
    Six scenes:
-     ghost    the ball is dropped on the list. There is no boundary to hit. Two honest rules alternate:
-              no rule (it passes through), and "every Gaussian is a loose particle": the ball knocks away
-              the ones it touches, and since the Gaussians of a list overlap where they lie, as solid
-              particles they push each other apart and the bowl comes loose.
+     ghost    the ball is dropped on the list. There is no boundary to hit: with no rule it passes through.
+              Then, without a cut, the list's half of `moment` (its drop, camera, slow motion, numbers and
+              timeline, the same code: `run.close` makes `model()` answer 'moment'), then the pass again
+              (`GHOST`). The lab page adds a third drop, the rule "every Gaussian is a loose particle": the
+              ball knocks away the ones it touches, and since the Gaussians of a list overlap where they lie,
+              as solid particles they push each other apart and the bowl comes loose. The talk never shows it
+              in `ghost` (`flight` scatters the list that way).
      moment   the same drop on both bowls, close up and slowed down. When does the ball touch the list? It
               admits many answers, each measured on the fall: the ball's surface reaches the 3, 2 or 1 sigma
               shell of the nearest Gaussian (the exact distance from its centre to the ellipsoid), the summed
@@ -365,7 +368,9 @@
     create: function (env) {
       var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
       var cam = new THREE.PerspectiveCamera(36, 1, 0.1, 400), R = G.renderer(root, cam), scene = new THREE.Scene();
-      var st = { scene: 'ghost', sc: SCENES.ghost, acc: 0, clock: 0 }, size = { w: 2, h: 1 };
+      var st = { scene: 'ghost', sc: SCENES.ghost, acc: 0, clock: 0, off: null }, size = { w: 2, h: 1 };
+      /* ghost: its drops in turn. pass = no rule, close = the list's close-up of `moment`, loose = the particle rule (lab page only) */
+      var GHOST = env.embed ? ['pass', 'close'] : ['pass', 'close', 'loose'];
       var mat = { e: 0.75, tough: 5, stiff: 160 };
       ['e', 'tough', 'stiff'].forEach(function (k) { if (env.opts[k] != null && isFinite(+env.opts[k])) mat[k] = +env.opts[k]; });
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
@@ -527,7 +532,9 @@
       /* ---------- state ---------- */
       var ball = { p: [0, 0, 0], v: [0, 0, 0], on: false, rest: false };
       var cp = { ok: false, u: 0.5, v: 0.5, p: [0, 0, 0], su: [0, 0, 0], sv: [0, 0, 0], n: [0, 1, 0], nc: [0, 1, 0], d: 9, sd: 9, edge: false };
-      var run = { k: 0, t: 0, tr: 0, hover: 0.55, still: 0, E0: 1, rule: 0 };
+      var run = { k: 0, t: 0, tr: 0, hover: 0.55, still: 0, E0: 1, rule: 0, close: false, ph: '' };
+      /* the model the drop on screen runs: 'moment' through all of `moment` and in ghost's close-up, else the scene's own */
+      function model() { return run.close ? 'moment' : st.sc.model; }
       var hit = { n: 0, J: 0, t: -9, ask: 0, held: true, vout: 0 };
       var surf = { broken: false, tb: 0 };
       var el = { touch: false, f: 0, fmax: 0, J: 0, lost: 0, pen: 0, sup: [] };
@@ -916,15 +923,19 @@
 
       /* ---------- the script: every scene lets the ball go by itself, again and again ---------- */
       function letGo(k) {
-        var d = DROPS[st.scene], q = d[k % d.length], m = st.sc.model, side = m === 'moment' ? (k % 2 ? 1 : -1) : st.sc.side;
-        run.k = k; run.t = 0; run.still = 0; run.rule = k % 2; run.hover = m === 'flight' ? 1.3 : m === 'moment' ? 1.3 : 0.55;
+        var m = st.sc.model, ph = m === 'ghost' ? GHOST[k % GHOST.length] : '', close = m === 'moment' || ph === 'close', was = run.close;
+        var d = close ? DROPS.moment : DROPS[st.scene], q = d[k % d.length], side = m === 'moment' ? (k % 2 ? 1 : -1) : st.sc.side;
+        run.k = k; run.t = 0; run.still = 0; run.ph = ph; run.close = close; run.rule = ph === 'loose' ? 1 : 0;
+        run.hover = m === 'flight' || close ? 1.3 : was && m === 'ghost' ? 1.1 : 0.55;   // back from the close-up: the camera has the way out to travel
+        cap.innerHTML = close ? SCENES.moment.cap : st.sc.cap;
+        root.classList.toggle('tc-close', close);                  // close up: the bowl fills the stage, under the caption too
         ball.p = [side * X0 + q[0], q[1], q[2]]; ball.v = [0, -q[3], 0]; ball.on = false; ball.rest = false;
         cp.ok = false; hit.n = 0; hit.J = 0; hit.t = -9; hit.ask = 0; hit.held = true; hit.vout = 0; tr.n = tr.k = 0;
         run.E0 = energy(); el.lost = 0;
         if (m === 'ghost' || m === 'flight' || m === 'moment') restoreList();
         if (surf.broken) mend();
         if (m === 'flight') { flatten(); derive(); fl.phase = 'drop'; fl.tt = fl.th = 0; fl.boost = false; }
-        if (m === 'moment') momentDrop(side);
+        if (close) momentDrop(side);
         au.first = true; au.lastN = 0;
       }
       /* SCRIPTED, the one thing in the finale that is: when the ball leaves the elastic surface, its velocity is
@@ -945,8 +956,8 @@
         au.launch = fl.vset;
       }
       function substep() {
-        var m = st.sc.model, s;
-        if (m === 'moment') { for (s = 0; s < 8; s++) substepMoment(); return; }
+        var m = model(), s;
+        if (m === 'moment') { for (s = 0; s < 8 && run.close; s++) substepMoment(); return; }   // (ghost's close-up may hand back to its pass inside)
         run.t += H; au.simT += H;
         if (!ball.on && run.t >= run.hover) { ball.on = true; run.tr = run.t - H; run.E0 = energy(); }
         if (ball.on) fly(H);
@@ -985,7 +996,7 @@
       function quiet() { au.simT = au.J = au.Jn = au.rest = au.restV = au.inside = au.calls = au.hits = au.jl = au.crack = au.pluck = au.launch = 0; au.tick.length = 0; }
       function silence() { chRoll.stop(); chHiss.stop(); chWob.stop(); SFX.hush(); au.env = 0; au.rat = 0; }
       function listen(dt) {
-        var m = st.sc.model, s, pan = 0, x, w;
+        var m = model(), s, pan = 0, x, w;
         if (!SFX.ok()) { quiet(); chRoll.stop(); chHiss.stop(); chWob.stop(); au.lastN = prt.n; if (prt.n || prt.nSeen) au.first = false; return; }
         s = G.project(cam, ball.p[0], ball.p[1], ball.p[2], size.w, size.h);
         if (s) pan = KT.clamp((s[0] / size.w - 0.5) * 0.9, -0.45, 0.45);
@@ -1030,7 +1041,7 @@
       var MARK = KT.theme === 'light' ? G.rgb(C.text).map(function (v) { return 0.6 * v; }) : [0.6, 0.58, 0.56];
       function paint() {
         var bx = ball.p[0], by = ball.p[1], bz = ball.p[2], k, o, dx, dy, dz, t, d2, s, w, f, P, cl, L = LIGHT, ll = Math.hypot(L[0], L[1], L[2]);
-        var lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll, m = st.sc.model, heat = surf.broken ? Math.exp(-(run.t - surf.tb) / 0.7) : 0, q, r;
+        var lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll, m = model(), heat = surf.broken ? Math.exp(-(run.t - surf.tb) / 0.7) : 0, q, r;
         {
           P = fR.center; cl = fR.color;
           for (k = 0; k < N; k++) {
@@ -1058,7 +1069,7 @@
 
       /* ---------- what is drawn about the contact ---------- */
       function overlays() {
-        var m = st.sc.model, onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
+        var m = model(), onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
         var soft = m === 'elastic' || m === 'flight', k, i, o, q, bm = ballMesh.material, see = m === 'moment';
         ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
         if (bm.transparent !== see) { bm.transparent = see; bm.opacity = see ? 0.3 : 1; bm.depthWrite = !see; bm.needsUpdate = true; }   // close up: see under the ball
@@ -1128,7 +1139,7 @@
       /* ---------- moment: the timeline of the candidate moments (ms after release), the list's and the spline's ---------- */
       var tl = { key: '', w: 420, cur: null, a: 0, b: 1, x0: 52 };
       function timeline() {
-        var on = st.sc.model === 'moment', Tt = mo.t, idx = [], i, lo = 1e9, hi = -1e9, r = mo.root;
+        var on = model() === 'moment', spl = st.sc.model === 'moment', Tt = mo.t, idx = [], i, lo = 1e9, hi = -1e9, r = mo.root;
         tlm.classList.toggle('on', on);
         if (!on) return;
         for (i = 0; i < CANDS.length; i++) if (Tt[i] != null) { idx.push(i); lo = Math.min(lo, Tt[i]); hi = Math.max(hi, Tt[i]); }
@@ -1136,14 +1147,15 @@
         function ln(x1, x2, y1, y2, col, wd, op) { return '<line x1="' + x1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y1="' + y1 + '" y2="' + y2 + '" stroke="' + col + '"' + (wd ? ' stroke-width="' + wd + '"' : '') + (op ? ' stroke-opacity="' + op + '"' : '') + '/>'; }
         function tx(x, y, col, s, anc) { return '<text x="' + x.toFixed(1) + '" y="' + y + '" fill="' + col + '"' + (anc ? ' text-anchor="' + anc + '"' : '') + '>' + s + '</text>'; }
         var rows = '<svg width="' + W + '" height="84" viewBox="0 0 ' + W + ' 84">' + ln(L0, R1, 70, 70, C.mute, 0, 0.6) + tx(0, 82, C.mute, 'ms') +
-                   tx(0, 35, C.splat, T('list')) + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, T('spline')) + ln(L0, R1, 54, 54, C.line, 1);
+                   tx(0, 35, C.splat, T('list')) + ln(L0, R1, 31, 31, C.line, 1) +
+                   (spl ? tx(0, 58, C.surf, T('spline')) + ln(L0, R1, 54, 54, C.line, 1) : '');   // ghost's close-up has no spline drop: no row for it
         if (!idx.length) {                                          // nothing has said "contact" yet: the empty rows, at their full height
-          if (tl.key !== 'none,' + W) { tl.key = 'none,' + W; tlm.innerHTML = rows + '</svg>'; tl.cur = null; }
+          if (tl.key !== 'none,' + spl + W) { tl.key = 'none,' + spl + W; tlm.innerHTML = rows + '</svg>'; tl.cur = null; }
           return;
         }
         var llo = lo, lhi = hi;
         if (r) { lo = Math.min(lo, r.t); hi = Math.max(hi, r.t); }
-        var key = idx.join(',') + (r ? ',r' : '') + ',' + W, pad = Math.max(0.0015, 0.1 * (hi - lo));
+        var key = idx.join(',') + (r ? ',r' : '') + ',' + spl + W, pad = Math.max(0.0015, 0.1 * (hi - lo));
         function X(t) { return L0 + (t - tl.a) / (tl.b - tl.a) * (R1 - L0); }
         if (key !== tl.key) {
           tl.key = key; tl.a = lo - pad; tl.b = hi + pad;
@@ -1173,7 +1185,7 @@
       function sci(x) { if (!(x > 0)) return '0'; var e = Math.floor(Math.log10(x)); return (x / Math.pow(10, e)).toFixed(1) + ' × 10<sup>' + String(e).replace('-', '−') + '</sup>'; }
       /* one template per statement: a line is statements joined by " · ", in the same order in every language */
       function words() {
-        var m = st.sc.model, s, e = energy() / run.E0, addr = T('closest point S(<em>{u}</em>, <em>{v}</em>)', { u: cp.u.toFixed(2), v: cp.v.toFixed(2) });
+        var m = model(), s, e = energy() / run.E0, addr = T('closest point S(<em>{u}</em>, <em>{v}</em>)', { u: cp.u.toFixed(2), v: cp.v.toFixed(2) });
         if (m === 'ghost') {
           var dv = Math.hypot(ball.v[0], ball.v[1] + (ball.on ? GRAV * (run.t - run.tr) : 0), ball.v[2]);
           s = LIST + (run.rule
@@ -1246,7 +1258,7 @@
       var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.2, maxRadius: 34, target: [-X0, 0.2, 0], radius: 8 });
       function fit(k) { return KT.clamp((k || 1.15) / (size.w / size.h), 1, 2.4); }     // a narrow stage stands further back
       function view() {
-        var m = st.sc.model, f = fit(), x = st.sc.side * X0;
+        var m = model(), f = fit(), x = st.sc.side * X0;
         if (m === 'ghost') return { tx: x, ty: -0.45, tz: 0, r: 8.6 * f, th: -0.42, ph: 1.06 };
         if (m === 'moment') {                                       // SCRIPTED: in to the spot as the ball is let go, low enough to see under it
           var k = KT.ease((run.t - 0.1) / 1.1), sp = mo.spot, yb = KT.clamp((ball.p[1] - sp[1] - 0.35) / 0.35, 0, 1);
@@ -1269,23 +1281,25 @@
         if (surf.broken) mend();
         flatten(); derive(); restoreList(); letGo(0);
         if (!first) run.hover = Math.max(run.hover, 1.1);          // the camera may have a bowl's distance to travel
-        cap.innerHTML = sc.cap; dimRows();
-        root.classList.toggle('tc-close', sc.model === 'moment');  // close up: the bowl fills the stage, under the caption too
+        dimRows(); st.off = null;                                  // (letGo set the caption and the close-up layout; the picture's offset snaps)
         silence(); quiet(); au.lastN = 0; au.first = true;        // a new scene starts in silence
         orbit.touched = false; orbit.to(view(), first);
       }
 
       env.loop(function (t, dt) {
-        var n = 0, m = st.sc.model, v, g = orbit.goal, k, mom = m === 'moment', cap = mom ? 400 : 40;
+        var n = 0, m = model(), v, g = orbit.goal, k, mom = m === 'moment', cap = mom ? 400 : 40, off;
         // moment: the panel of numbers covers the bottom of the stage (half of it on a phone); measured before this frame writes to it
         var cover = mom && size.h > 1 ? Math.min(0.7, (tag.offsetHeight + 10) / size.h) : 0;
         st.clock += dt; st.acc += dt; st.frames = (st.frames || 0) + 1;
-        if (mom) while (n < cap && st.acc >= HM / mo.slow) { st.acc -= HM / mo.slow; substepMoment(); n++; }   // a sub-step costs HM / slow of real time
-        else while (st.acc >= H && n < cap) { substep(); st.acc -= H; n++; }
+        while (n < cap) {                                          // the kind of sub-step is asked each time: ghost hands over between its pass and its close-up
+          if (run.close) { if (st.acc < HM / mo.slow) break; st.acc -= HM / mo.slow; substepMoment(); }   // a sub-step costs HM / slow of real time
+          else { if (st.acc < H) break; substep(); st.acc -= H; }
+          n++;
+        }
         if (n === cap) st.acc = 0;
         listen(dt);
         if (sndT && sndT.get() === !!KT.muted) sndT.set(!KT.muted);   // the switch follows KnotTalk.muted, whoever set it
-        m = st.sc.model; v = view();
+        m = model(); mom = m === 'moment'; v = view();
         if (m === 'flight') {                                     // follow the ball; a drag still turns the camera, nothing snaps
           g.tx = v.tx; g.ty = v.ty; g.tz = v.tz; g.r = v.r;
           if (!orbit.touched) { g.th = v.th; g.ph = v.ph; }
@@ -1294,8 +1308,11 @@
           if (!orbit.touched) { orbit.to(v); g.th = v.th + 0.16 * Math.sin(st.clock * 0.23); }
           orbit.update(dt, 2.4);
         }
-        if (mom && size.h > 1) cam.setViewOffset(size.w, size.h, 0, Math.max(0, cover - 0.24) * 0.75 * size.h, size.w, size.h);   // the picture moves up: the contact stays above the panel
-        else if (cam.view && cam.view.enabled) cam.clearViewOffset();
+        // the picture moves up, so that the contact stays above the panel; eased, as ghost goes in and out of its close-up (snaps on a new scene)
+        off = mom && size.h > 1 ? Math.max(0, cover - 0.24) * 0.75 * size.h : 0;
+        st.off = st.off == null ? off : st.off + (off - st.off) * (1 - Math.exp(-4 * dt));
+        if (st.off > 0.5 && size.h > 1) cam.setViewOffset(size.w, size.h, 0, st.off, size.w, size.h);
+        else { st.off = off ? st.off : 0; if (cam.view && cam.view.enabled) cam.clearViewOffset(); }
         if (surf.broken) writeFragments(); else if (m === 'elastic' || m === 'flight') derive();
         paint(); overlays(); words(); timeline();
         fL.draw(cam, R.renderer);
@@ -1340,7 +1357,7 @@
         },
         sfx: function () { return SFX.counts(); },
         stats: function () {
-          return { scene: st.scene, t: run.t, drop: run.k, rule: run.rule, on: ball.on, rest: ball.rest, p: ball.p.slice(), v: ball.v.slice(), speed: speed(),
+          return { scene: st.scene, t: run.t, drop: run.k, rule: run.rule, ph: run.ph, close: run.close, model: model(), on: ball.on, rest: ball.rest, p: ball.p.slice(), v: ball.v.slice(), speed: speed(),
                    energy: energy() / run.E0, bounces: hit.n, J: hit.J, ask: hit.ask, held: hit.held, u: cp.u, v2: cp.v, d: cp.d,
                    broken: surf.broken, pieces: frag.n, touch: el.touch, force: el.f, fmax: el.fmax, membrane: membraneEnergy() / run.E0, damped: el.lost / run.E0,
                    phase: fl.phase, vsim: fl.vsim, vset: fl.vset, boost: fl.boost, vin: fl.vin, reached: prt.nSeen, awake: prt.n, n: N, overlaps: overlaps,
