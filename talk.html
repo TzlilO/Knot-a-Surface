@@ -160,11 +160,11 @@
     <h2>So which one?</h2>
     <div class="trio">
       <div class="glass k-explicit"><b>Explicit</b><small>points · triangles · voxels</small>
-        <ul><li>Fast to draw</li><li>Easy to edit</li><li class="no">Every detail costs more items</li></ul></div>
+        <ul><li>Fast to draw</li><li>Easy to edit</li><li class="no">Triangles: hard edges, no usable gradient</li><li class="no">Points: a hard dot passes no gradient on</li><li class="no">Voxels: memory grows with the cube of the resolution</li></ul></div>
       <div class="glass k-implicit"><b>Implicit</b><small>a function · NeRF</small>
         <ul><li>Smooth and continuous</li><li>Compact</li><li class="no">Many questions for every pixel</li></ul></div>
       <div class="glass k-blob"><b>Explicit, soft</b><small>Gaussians · 3D Gaussian Splatting</small>
-        <ul><li>Fast to draw</li><li>Photographic quality</li><li class="no">No defined surface</li></ul></div>
+        <ul><li>Soft, so it can be learned from photographs</li><li>Fast to draw, photographic quality</li><li class="no">No defined surface</li></ul></div>
     </div>
   </article>
   <article class="step nav k-explicit">
