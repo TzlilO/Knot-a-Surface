@@ -91,7 +91,7 @@
     adaptive: { show: 'uv adapt', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
                 cap: T('<b>adaptive sampling</b> · a fixed budget, warped towards what a camera sees'),
                 hint: T('drag to orbit · we watch from the side') },
-    window:   { show: 'uv adapt win', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.55 },
+    window:   { show: 'uv adapt win', n: 32, view: { th: 1.52, ph: 1.06, r: 8.4, ty: 0.72 },
                 cap: T('<b>view window</b> · every Gaussian inside what a camera sees, plus a margin'),
                 hint: T('drag to orbit · take the buffer slider') },
     features: { show: 'net field feat', n: 72, rim: 0.4, cap: T('<b>control features</b> · colour and opacity ride the same basis') },
@@ -558,8 +558,9 @@
       var obsBody = G.lines(48, C.text, 0.95); ovOwn(obsBody.obj, -5);
       var obsRay = G.lines(16, C.text, 0.55); ovOwn(obsRay.obj, -5);
       var fpLine = G.lines(4096, C.text, 0.95); ovOwn(fpLine.obj, 3);
-      // view window: its polygon on the surface, dashed, in the Gaussians' colour (they live inside it)
-      var wnLine = G.lines(4096, C.splat, 1); ovOwn(wnLine.obj, 4);
+      // view window: its polygon on the surface, dashed, in the Gaussians' colour (they live inside it); on paper a deep
+      // violet, or it would vanish into the outlines along its edge
+      var wnLine = G.lines(4096, LIGHT ? OUTL_ON : C.splat, 1); ovOwn(wnLine.obj, 4);
 
       // floating labels
       function tag(html, tone, color) {
@@ -1216,7 +1217,7 @@
         var sw = Math.min(40, Math.floor(ad.acc)); ad.acc -= sw;
         if (st.show.win) {                            // scene window: the border on the window, the inside solved; the springs alongside
           footprint(); winPoly(); winSolve(n);
-          for (i = 0; i < sw; i++) relax(vw.X2);
+          if (n <= WIN_SPRING) for (i = 0; i < sw; i++) relax(vw.X2);
         } else for (i = 0; i < sw; i++) relax(ad.X);
         var S = aset;
         placeNet(ad.X, n, S);
@@ -1275,11 +1276,12 @@
                     a round at buffer 0.04: uniform weights give even cells but 69-83 % of the Gaussians in the view;
                     the full stiffness 85-91 %, but the buffer's cells stretch into long slivers and the smallest cell
                     is half a percent of an even one; a quarter gives 79-89 % with cells that still read as cells.
-         The spring net of scene adaptive runs alongside (vw.X2, the same sweeps), only to be measured against.
+         The spring net of scene adaptive runs alongside (vw.X2, the same sweeps), only to be measured against (up to
+         WIN_SPRING cells a side: on a larger lab net it would double the cost of a frame, and its number shows '—').
          Measured: Gaussians with their centre in the true view (not the window), the view's and the window's share
          of the surface's area (QA grid), the cell side in the view for this net, the spring net and the even
          lattice, and the share of the surface that carries no Gaussian at all (outside the window). */
-      var WIN_IN = 1.8, WIN_IMP = 3, WIN_DASH = 0.018;
+      var WIN_IN = 1.8, WIN_IMP = 3, WIN_DASH = 0.018, WIN_SPRING = 64;      // the spring net alongside: up to 64 x 64 cells
       var vw = { buf: 0.04, P: null, X2: null, inG2: null, set2: null, stat: null, its: 0, mask: 'outside' };
       function cr2(ax, ay, bx, by) { return ax * by - ay * bx; }
       function hull(pts) {                            // Andrew's monotone chain: counter-clockwise, no collinear points
@@ -1321,6 +1323,16 @@
       function inPoly(P, u, v) {                       // inside or on the convex, counter-clockwise polygon P
         for (var i = 0; i < P.length; i++) { var a = P[i], b = P[(i + 1) % P.length]; if (cr2(b[0] - a[0], b[1] - a[1], u - a[0], v - a[1]) < -1e-9) return false; }
         return true;
+      }
+      /* the point of the polygon's edge nearest (u, v), moved a hair towards the centroid c so it counts as inside */
+      function nearestOn(P, u, v, c) {
+        var best = 1e9, bu = u, bv = v, i, a, b, ex, ey, t, x, y, d;
+        for (i = 0; i < P.length; i++) {
+          a = P[i]; b = P[(i + 1) % P.length]; ex = b[0] - a[0]; ey = b[1] - a[1];
+          t = KT.clamp(((u - a[0]) * ex + (v - a[1]) * ey) / (ex * ex + ey * ey || 1), 0, 1); x = a[0] + ex * t; y = a[1] + ey * t;
+          d = (x - u) * (x - u) + (y - v) * (y - v); if (d < best) { best = d; bu = x; bv = y; }
+        }
+        return [bu + (c[0] - bu) * 1e-6, bv + (c[1] - bv) * 1e-6];
       }
       function winPoly() {
         var N = VF + 1, f = ad.fv, seg = ad.seg, pts = [], i, k, P;
@@ -1408,7 +1420,10 @@
             out[i] = s;
           }
         }
-        var its = 0;
+        // a work budget per frame: at the talk's 32 x 32 the solve always converges (about 120 steps a coordinate); a large
+        // lab net (up to 160 x 160) converges over a few frames from the last one instead of stalling the page
+        var its = 0, cap = Math.min(8 * N, Math.max(30, Math.floor(3e5 / ((n - 1) * (n - 1)))));
+        vw.conv = true;
         for (var cc = 0; cc < 2; cc++) {
           var bb = 0, rz = 0, rr;
           for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; x[i] = X[i * 2 + cc]; }
@@ -1419,9 +1434,10 @@
                       (b === 1 ? wV[i - N] * X[(i - N) * 2 + cc] : 0) + (b === n - 1 ? wV[i] * X[(i + N) * 2 + cc] : 0);
             bb += rhs * rhs; r[i] = rhs - Ap[i]; z[i] = r[i] / D[i]; p[i] = z[i]; rz += r[i] * z[i];
           }
-          for (k = 0; k < 4 * N; k++) {
+          for (k = 0; ; k++) {
             rr = 0; for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; rr += r[i] * r[i]; }
             if (rr <= 1e-18 * bb) break;
+            if (k >= cap) { vw.conv = false; break; }
             lap(p, Ap);
             var pAp = 0; for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; pAp += p[i] * Ap[i]; }
             if (!(pAp > 0)) break;
@@ -1434,6 +1450,10 @@
           for (b = 1; b < n; b++) for (a = 1; a < n; a++) { i = b * N + a; X[i * 2 + cc] = x[i]; }
         }
         vw.its = its;
+        if (!vw.conv) for (b = 1; b < n; b++) for (a = 1; a < n; a++) {      // not converged yet: a corner the window left behind goes to its edge
+          i = (b * N + a) * 2;
+          if (!inPoly(P, X[i], X[i + 1])) { var cl = nearestOn(P, X[i], X[i + 1], c); X[i] = cl[0]; X[i + 1] = cl[1]; }
+        }
       }
       /* the window's numbers, and the checks the tests read: centres outside the window, the smallest cell */
       function winStat(n, ins, seenA, allA, sp, su) {
@@ -1447,12 +1467,15 @@
         }
         // the spring net of scene adaptive at the same budget, in the same view
         if (!vw.set2) { vw.set2 = footSet(NMAX * NMAX); vw.set2.m = new Float32Array(NMAX * NMAX * 4); }
-        placeNet(vw.X2, n, vw.set2);
-        var ins2 = 0; for (i = 0; i < n * n; i++) { var t = i * 3; vw.inG2[i] = seen(vw.set2.cx[t], vw.set2.cx[t + 1], vw.set2.cx[t + 2]) ? 1 : 0; ins2 += vw.inG2[i]; }
-        var s2 = cellSide(vw.set2, vw.inG2, st.gain);
+        var ins2 = null, s2 = { in: null };
+        if (n <= WIN_SPRING) {
+          placeNet(vw.X2, n, vw.set2); ins2 = 0;
+          for (i = 0; i < n * n; i++) { var t = i * 3; vw.inG2[i] = seen(vw.set2.cx[t], vw.set2.cx[t + 1], vw.set2.cx[t + 2]) ? 1 : 0; ins2 += vw.inG2[i]; }
+          s2 = cellSide(vw.set2, vw.inG2, st.gain);
+        }
         vw.stat = { n: n * n, ins: ins, view: seenA / allA, win: winA / allA, bare: 1 - winA / allA, sIn: sp.in, sWin: sp.all, sSpring: s2.in, insSpring: ins2,
                     uIn: su.in, eq: sp.in && su.in ? Math.round(n * n * (su.in / sp.in) * (su.in / sp.in)) : null, buffer: vw.buf,
-                    outside: out, minCell: minA * n * n, cg: vw.its, corners: P.length, intro: st.t < WIN_IN };
+                    outside: out, minCell: minA * n * n, cg: vw.its, converged: vw.conv, corners: P.length, intro: st.t < WIN_IN };
       }
       /* the outlines of a set whose chart ellipses are stored as M (scene adaptive) */
       function outlineM(S) {
@@ -1950,7 +1973,7 @@
         if (sc.sweep) knSet(KN_LEVELS[0]);
         on(tgtDots, s.fit); on(tgtHid, s.fit); on(resid.obj, s.fit); on(residHid, s.fit);
         on(ovMesh, s.tile || s.adapt); ovMat.uniforms.uGap.value = s.tile ? 1 : 0; ovMat.uniforms.uTint.value = s.adapt ? 1 : 0;
-        ovMat.uniforms.uOut.value = s.win ? (LIGHT ? 0.66 : 0.6) : 0; on(wnLine.obj, s.win); vw.stat = null; vw.P = null;
+        ovMat.uniforms.uOut.value = s.win ? (LIGHT ? 0.45 : 0.6) : 0; on(wnLine.obj, s.win); vw.stat = null; vw.P = null;
         on(ovDepth, s.tile || s.stitch || s.adapt);
         outl.mat.color.set(s.field ? OUTL_ON : C.splat); outl.mat.opacity = s.field ? 0.85 : 0.95;   // on the violet Gaussians: a deep violet
         [tri, triEdge.obj, triNew.obj, win, winDot].forEach(function (o) { on(o, s.stitch); });
@@ -1995,6 +2018,9 @@
         nbBar.style.display = s.nbr ? '' : 'none';
         panel.style.display = sc.hero ? 'none' : ''; cap.style.display = sc.hero ? 'none' : '';
         slG.el.style.display = rdG.el.style.display = (s.field || s.ell || s.adapt) ? '' : 'none';
+        // scene window has five more rows: σ / cell and the two parameter counts make room, or the panel covers the window
+        if (s.win) slG.el.style.display = 'none';
+        rdP.el.style.display = rdZ.el.style.display = s.win ? 'none' : '';
         slN.el.style.display = (s.field || s.ell || s.adapt) && !sc.sweep ? '' : 'none';
         rdAng.el.style.display = s.tan ? '' : 'none';
         rdSn.el.style.display = rdSa.el.style.display = rdGap.el.style.display = spBox.style.display = s.nbr ? '' : 'none';
