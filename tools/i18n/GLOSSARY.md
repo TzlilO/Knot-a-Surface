@@ -6,70 +6,12 @@ technical audience, and wrote a short Hebrew deck, `talk-he.html` (with the Hebr
 a sentence in that deck (the talk's opening is its English version), the dictionary uses the deck's own Hebrew, word
 for word. `tools/i18n/README.md` describes how the translation works and the checks.
 
-## Rule one: the field's terms are written in English
-The author's instruction (2026-11): the vocabulary of our field is not translated. Inside a Hebrew sentence it is
-written in English, in Latin letters, lower case (proper names keep their capitals), spelled exactly as the talk's
-English copy spells it (optimiser, regulariser: the spelling of the entry's English key; "optimizer" where the key
-says so). The sentence around it stays Hebrew: Hebrew word order, verbs and connectives; the English term is a noun
-dropped into it, as a Hebrew-speaking graphics researcher says it aloud.
-
-**Written in English:** spline(s), B-spline, cubic spline, knot(s), knot vector, knot span (short: span, u-span,
-v-span), knot insertion, knot removal, control point(s), control net(s), control heights, basis function(s), basis,
-local support, manifold, spline manifold, chart(s), spline chart(s), atlas, patch(es), spline patch, lattice, mesh(es),
-seam, sheet, planoid, splat(s) / splatting, floater(s), densification / densify, pruning / prune, clone, split, coarse
-to fine, refinement, level of detail, tangent frame, loss, optimiser, render(s) / rendering, pipeline(s), depth
-map(s), point cloud, held-out view (label: held-out; "the held-out camera" = מצלמת ה‑held-out), regulariser(s),
-ablation(s), features (image features, DINOv3 features, control features), pose(s), tessellation, watertight,
-non-manifold edge(s), inliers, least squares, robust least squares, conjugate gradients, checkpoint, snapshot(s),
-tensor product, convex combination(s), convex hull.
-
-**Stays Hebrew:** the everyday mathematical and descriptive words: משטח, עקומה, נקודה, נגזרת, משיק, נורמל, מעלה,
-משקל / ממוצע משוקלל, דגימה, רזולוציה, פרמטר, תקציב, מאזן, שגיאה, התאמה, אימון, אופטימיזציה (the process; the
-optimiser, the thing, is English), מצלמה, מבט, קרן, עומק, תצלום, חומר, אטימות, עריכה, רשימה, כתם, גאוסיאן /
-גאוסיאנים, ענן (a cloud of Gaussians; "point cloud" is English), משולשים, ווקסלים, גשר / חור (mesh defects), לתפור /
-תפירה (to stitch), רשת (a net or a grid alone, e.g. "רשת ה‑5 × 5", "רשת הקפיצים", "רשת ווקסלים"; a control net is
-English), מפה only for an ordinary map (the error map of chapter 05, "כמו מפה", "אטלס גאוגרפי"), סריקה, צומת, מעטפת,
-רמה, and every wording of "What is never strengthened" below. Already Latin: 3DGS, NeRF, NURBS, COLMAP, SfM, DINOv3,
-PSNR, RMS, SH, DTU, TSDF, Poisson, Chamfer, the file formats.
-
-**Ambiguous Hebrew, decided per sentence by the English key:** "קשור" (bound) and "קשר" (connection: "אין קשר בין מקום
-ברשימה למקום במרחב") are not "knot"; "רשת" was net, grid or mesh: only "mesh" became English; "מפה" was chart, map or
-depth map; "גס / עדין" stay Hebrew as plain description ("רשת גסה", "לדגום עדין יותר"), only the method name is
-"coarse to fine"; "split" of a knot span (refine) stays "פיצול"; "prune" of knots in chapter 05 is "prune", as in 3DGS.
-
-**Gender.** A borrowed term takes the masculine (ה‑chart הזה, ה‑mesh רך, ה‑control net שלו, ה‑poses המכוילים,
-ה‑snapshots שלה, זה אחר זה), except control point(s) and basis function(s), which keep the feminine of נקודה and
-פונקציה (ה‑control points הכתומות, basis functions שונות מאפס). Prefer rephrasing over an agreement that jars.
-
-**Writing the mix so that it renders** (the page is right to left; the bidi algorithm decides the order of every
-run):
-1. A Hebrew prefix (ה, ב, ל, מ, ש, ו, כ) before an English term takes U+2011, as before a digit: ה‑spline,
-   ב‑lattice, מ‑<em>chart אחד</em> (the prefix goes before the tag). Never a Hebrew letter glued to a Latin word.
-2. A single English word or a plain multi-word term needs no wrapper.
-3. Wrap (`<span dir="ltr">` in HTML, U+2066 … U+2069 in plain strings) a run with digits, ×, a range, =, an arrow,
-   brackets, a slash or a formula, as before. "12 × 16" is wrapped; "14 control points" is not (a number then a
-   term reads in the right order by itself).
-4. **Two English runs must never meet across punctuation alone.** "least squares · conjugate gradients", "charts,
-   121,216 control points", "control points – control features", "knot {k} · {where} · +{n} control points": the
-   algorithm joins them into ONE left-to-right block, so the parts swap sides, a Hebrew prefix lands at the far end of
-   the block and the punctuation moves. Put a Hebrew word between them (שני charts ו‑121,216 control points;
-   least squares · עם conjugate gradients; אלה ה‑control features), or, in a label of " · " fields, wrap each field
-   that holds English in a right-to-left isolate U+2067 … U+2069 (`חסר control points · ⁧⁦{pts}⁩ control points ×
-   ⁦{g}⁩ גאוסיאנים⁩`). The same holds for a number after an English term when the number belongs to the next Hebrew
-   words ("{n} splines · ⁦{m}⁩ נקודות"): a digit after a Latin letter joins the Latin run.
-5. A value may start with an English term ("mesh, <em>רק תבקשו</em>", "knots <b>לא אחידים</b> …"); a value wholly in
-   English (a label such as "control points", "held-out", "→ control points") stays unwrapped and reads left to right.
-6. Do not stack three or more English terms with only prefixes between them; split the sentence. Look at every
-   changed headline at desktop and phone width.
-7. The teleprompter script (`talk/script/he.js`) uses the same English terms where the presenter says them, with no
-   wrappers.
-
 ## Voice
 - Clear, direct, spoken-academic Hebrew: short sentences, no niqqud, no flourish, no slang.
 - Translate the meaning, not the words: a sentence must read as if it had been written in Hebrew, and stay as short
   as the English. This is slide copy.
 - The audience is addressed in the plural imperative: גררו, הזיזו, לחצו, בחרו, שנו, כבו, הפעילו. Narration of what
-  happens on screen is in the plural present: מוסיפים knot, מזיזים control point, מאטים את הסנטימטרים האחרונים.
+  happens on screen is in the plural present: מוסיפים קשר, מזיזים נקודת בקרה, מאטים את הסנטימטרים האחרונים.
 - Labels of controls are nouns, not commands: הוספה, הסרה, איפוס, השהיה, ייצוא, אחיזה. A button that the copy quotes
   keeps the same words in both places ("drop again" = הפילו שוב, quoted as “הפילו שוב”).
 - "we / our / ours" = אנחנו / שלנו ("ours" as a label = שלנו; "our method" = השיטה שלנו).
@@ -102,45 +44,45 @@ always מראש, never "לא מקוון".
 | Gaussian, Gaussians | גאוסיאן, גאוסיאנים |
 | Gaussian Splatting, 3DGS, NeRF, NURBS, B-spline, T-splines, COLMAP, SfM, DINOv3, PSNR, RMS, RMSE, SH, DTU, TSDF, Poisson, Chamfer, PLY / GLB / OBJ / STL | stay Latin |
 | blob (soft blob) | כתם (כתם רך) |
-| splat (one drawn Gaussian) | splat, splats (where the English says splat; "Gaussian" stays גאוסיאן); "Gaussian Splatting" stays Latin |
+| splat (one drawn Gaussian) | גאוסיאן; "splatting" alone = Splatting |
 | surface | משטח |
 | curve | עקומה |
-| spline, splines, cubic spline, B-spline | **English**: spline, splines, cubic spline, cubic B-spline |
-| control point(s), control net | **English**: control point, control points (feminine), control net |
-| control heights | **English**: control heights |
-| knot, knots, knot vector | **English**: knot, knots, knot vector |
-| knot span | **English**: knot span; "span" alone = span; u-span, v-span |
-| knot insertion / removal; interior knots; redundant knot | **English**: knot insertion ("Boehm’s" = knot insertion של Boehm), knot removal; knots פנימיים; knot מיותר. The verb stays Hebrew: מוסיפים knot, הוספת knot |
+| spline, splines | ספליין, ספליינים |
+| control point(s), control net | נקודת בקרה, נקודות בקרה, רשת בקרה |
+| control heights | גובהי בקרה |
+| knot, knots, knot vector | קשר, קשרים, וקטור הקשרים |
+| knot span | מקטע (בין שני קשרים) |
+| knot insertion / removal; interior knots; redundant knot | הוספת קשר / הסרת קשר; קשרים פנימיים; קשר מיותר |
 | degree (of the polynomial) | מעלה |
-| basis function(s), basis, basis weights | **English**: basis function, basis functions (feminine), basis; משקלי ה‑basis |
+| basis function(s) | פונקציית בסיס, פונקציות בסיס |
 | weight(s), rational weights, weighted average | משקל, משקלים, משקלים רציונליים, ממוצע משוקלל |
-| convex combination, tensor product, convex hull; conics | **English**: convex combinations, tensor product, convex hull; חתכי חרוט |
-| local support | **English**: local support |
+| convex combination, tensor product, conics | צירוף קמור, מכפלה טנזורית, חתכי חרוט |
+| local support | תמך מקומי |
 | smooth, continuous, continuity | חלק, רציף, רציפות |
-| patch (surface patch) | **English**: patch, patches, spline patch |
-| chart, atlas of charts | **English**: chart, charts, spline chart, atlas של charts; "the (u, v) chart" = ה‑chart של (u, v). An ordinary map stays מפה |
-| manifold, spline manifold | **English**: manifold ("a manifold of splines" = manifold של splines), spline manifold |
-| sheet (one chart wrapped around an object) | **English**: sheet |
-| seam | **English**: seam |
-| lattice | **English**: lattice ("even lattice" = lattice אחיד, "warped lattice" = lattice מעוות) |
-| grid | רשת; the (u, v) sample lattice is "lattice" |
+| patch (surface patch) | טלאי |
+| chart, atlas of charts | מפה, אטלס של מפות |
+| manifold, spline manifold | יריעה, יריעת ספליינים |
+| sheet (one chart wrapped around an object) | גיליון |
+| seam | תפר |
+| lattice | סריג |
+| grid | רשת (סריג when it is the (u, v) sample lattice) |
 | cell, cell side | תא, צלע התא |
-| mesh, triangles | **English**: mesh, meshes (masculine); משולשים |
+| mesh, triangles | רשת משולשים, משולשים |
 | stitch (a mesh) | לתפור, תפירה |
-| tessellation, triangulation, connectivity | **English**: tessellation; טריאנגולציה, קישוריות |
-| watertight | **English**: watertight; watertight stitching = תפירה watertight |
-| edge (of a mesh), non-manifold edge | צלע; **English**: non-manifold edge(s) |
+| tessellation, triangulation, connectivity | טסלציה, טריאנגולציה, קישוריות |
+| watertight | סגור הרמטית; watertight stitching = תפירה הרמטית |
+| edge (of a mesh), non-manifold edge | צלע, צלע לא־יריעתית |
 | bridge, hole (mesh defects) | גשר, חור |
 | sample, samples, sampling | דגימה, דגימות, דגימה |
 | adaptive; adaptive sampling; view-adaptive sampling | אדפטיבי; דגימה אדפטיבית; דגימה אדפטיבית למבט |
 | even, uniform (lattice, net, knots) | אחיד |
-| warped lattice | lattice מעוות |
+| warped lattice | סריג מעוות |
 | resolution | רזולוציה |
 | budget, fixed budget | תקציב, תקציב קבוע |
 | cap (the most control points) | תקרה |
 | derived (Gaussians derived from the surface) | נגזר, נגזרים |
 | derivative, partial derivative, closed form, finite differences | נגזרת, נגזרת חלקית, ביטוי סגור, הפרשים סופיים |
-| tangent, tangent plane, tangent vectors, tangent frame | משיק, מישור משיק, וקטורים משיקים; **English**: tangent frame |
+| tangent, tangent plane, tangent vectors, tangent frame | משיק, מישור משיק, וקטורים משיקים, מערכת הצירים המשיקה |
 | normal | נורמל |
 | cross product, unit vector | מכפלה וקטורית, וקטור יחידה |
 | position / rotation / scale (of a Gaussian) | מיקום / סיבוב / גודל |
@@ -149,7 +91,7 @@ always מראש, never "לא מקוון".
 | chord | מיתר |
 | outline (1σ), footprints | קו מתאר, טביעות רגל |
 | uncovered; piled three deep | לא מכוסה; בשלוש שכבות |
-| planoid | **English**: planoid |
+| planoid | פלנואיד |
 | parameter(s), learnable parameters | פרמטר, פרמטרים, פרמטרים נלמדים |
 | ledger | מאזן |
 | by construction | מעצם הבנייה |
@@ -157,42 +99,42 @@ always מראש, never "לא מקוון".
 | capacity | קיבולת |
 | degrees of freedom | דרגות חופש |
 | free / bound (Gaussians, model) | חופשי / קשור (the pair as in physics; where "קשור" stands alone, write "קשור למשטח") |
-| optimise, optimisation, optimiser | אופטימיזציה (לבצע אופטימיזציה ל..., עובר אופטימיזציה); **English**: optimiser ("optimizer" where the key spells it so) |
+| optimise, optimisation, optimiser | אופטימיזציה (לבצע אופטימיזציה ל..., עובר אופטימיזציה), אופטימייזר |
 | fit, to fit | התאמה, להתאים |
-| least squares, robust least squares, conjugate gradients | **English**: least squares (ב‑least squares), robust least squares, conjugate gradients |
-| inliers (points the fit kept) | **English**: inliers |
+| least squares, robust least squares, conjugate gradients | ריבועים פחותים, ריבועים פחותים חסינים, גרדיאנטים צמודים |
+| inliers (points the fit kept) | (נקודות ש)נשארו בהתאמה |
 | error, gap, largest miss | שגיאה, פער, הפער הגדול ביותר |
 | drawn error | שגיאת הציור |
 | "of the relief" (an error as a share of the terrain's height range) | מטווח הגבהים |
 | tolerance | סבילות |
-| floaters | **English**: floater, floaters |
+| floaters | מרחפים (גאוסיאנים מרחפים) |
 | training, trained, to train, retrain | אימון, מאומן, לאמן, אימון מחדש |
-| training view; held-out view | מבט אימון; **English**: held-out view (label: held-out; the camera: מצלמת ה‑held-out) |
+| training view; held-out view | מבט אימון; מבט שלא שימש באימון (short label: לא באימון) |
 | converge, convergence | להתכנס, התכנסות |
-| loss | **English**: loss (masculine); training loss = ה‑loss של האימון |
-| iteration, run, snapshot, checkpoint | איטרציה, הרצה; **English**: snapshot(s), checkpoint |
+| loss | הפסד (פונקציית ההפסד) |
+| iteration, run, snapshot, checkpoint | איטרציה, הרצה, תמונת מצב, נקודת ביקורת |
 | replay | הילוך חוזר |
-| prune, densify, clone, split | **English**: pruning / prune, densification, clone, split ("עושים prune", "מבצע split ו‑pruning") |
-| regularisers, heuristics, ablation | **English**: regulariser(s), ablations; היוריסטיקות |
+| prune, densify, clone, split | גיזום (לגזום), ציפוף, שכפול, פיצול |
+| regularisers, heuristics, ablation | איברי רגולריזציה, היוריסטיקות, ניסויי אבלציה |
 | variance, bias | שונות, הטיה |
-| draw / render | לצייר (ציור) for "draw"; **English**: render(s), rendering ("החלטה של rendering") |
+| draw / render | לצייר (ציור); "rendering" as a noun = רינדור |
 | camera, view (camera view) | מצלמה, מבט |
-| pose, pinhole, focal length, field of view | **English**: pose, poses; מודל מצלמת הנקב, אורך מוקד, שדה ראייה |
+| pose, pinhole, focal length, field of view | תנוחה, מודל מצלמת הנקב, אורך מוקד, שדה ראייה |
 | frustum (drawn as a pyramid) | פירמידה |
 | photograph(s) | תצלום, תצלומים |
 | dataset | מערך הנתונים |
-| feature (a matched image feature); features (DINOv3) | **English**: feature, features, DINOv3 features |
-| control features | **English**: control features |
+| feature (a matched image feature); features (DINOv3) | מאפיין; מאפיינים (מאפייני DINOv3) |
+| control features | מאפייני בקרה |
 | triangulated; reprojection error; track length; observations | עבר טריאנגולציה; שגיאת הטלה חוזרת; אורך מסלול; תצפיות |
 | ray | קרן; along / across the ray = לאורך הקרן / בניצב לקרן |
-| depth, depth map | עומק; **English**: depth map(s) |
-| point cloud, sparse, dense | **English**: point cloud (point cloud דליל); דליל, צפוף |
+| depth, depth map | עומק, מפת עומק |
+| point cloud, sparse, dense | ענן נקודות, דליל, צפוף |
 | initialisation, reference implementation | אתחול, מימוש הייחוס |
-| pipeline | **English**: pipeline(s) |
+| pipeline | צינור עיבוד |
 | level (of the coarse-to-fine fit), layout, the shipped net | רמה, פריסה, הרשת הסופית שבהרצאה (label: סופית) |
 | envelope, node, relaxation sweeps, arc-length passes | מעטפת, צומת, סבבי הרפיה, מעברי אורך קשת |
-| level of detail | **English**: level of detail |
-| coarse, fine, refine, refinement; coarse to fine | גס, עדין as plain description; **English**: coarse to fine (the method), refinement ("עבר refinement") |
+| level of detail | רמת פירוט |
+| coarse, fine, refine, refinement | גס, עדין, לעדן, עידון |
 | edit, editable | עריכה, ניתן לעריכה |
 | material, opacity, see-through | חומר, אטימות, שקוף למחצה |
 | gloss, refractive index, albedo, barring | ברק, מקדם שבירה, אלבדו, פסים |
@@ -293,14 +235,14 @@ always מראש, never "לא מקוון".
 - **Presenter view** = תצוגת מציג everywhere (the window title, the button, the message that quotes the button).
 - **Arrows.** Between Hebrew words an arrow points the way Hebrew reads: אותיות ← כתב יד ← טיל. Between two numbers
   it stays inside the left-to-right run: `6.3 → 6.0%`. A link or button arrow is mirrored (↗ becomes ↖, "next →"
-  becomes "הבא ←"). An axis title of a figure is written arrow-first ("→ control points"), so the arrow is drawn at the
+  becomes "הבא ←"). An axis title of a figure is written arrow-first ("→ נקודות בקרה"), so the arrow is drawn at the
   right end, where the axis grows.
 - **Pairs beside a left-to-right pair of values.** The panel labels "one · own" and "in · out" are written with
   their two words swapped ("לפי התא · אחד", "בחוץ · בפנים"): the label reads right to left and the two numbers
   beside it stay left to right, so each word ends up on the same side as its number. Keep the swap.
 - **Left and right.** A stage is not mirrored, so "bottom left", "on the right" inside a figure stay as they are
   (למטה משמאל, מימין). Where the English points at the stage from the text ("the optimiser on the right"), the
-  Hebrew does not name a side (ה‑optimiser שלפניכם): the page is mirrored and the stage is on the other side.
+  Hebrew does not name a side (האופטימייזר שלפניכם): the page is mirrored and the stage is on the other side.
 - **"Can't touch this"** (chapter 09) stays in English: it is the song's title.
 - **Names of people** in method names stay Latin (Boehm, Cox–de Boor, Schlick, Fresnel, Gauss–Newton, Poisson).
 
@@ -327,7 +269,7 @@ always מראש, never "לא מקוון".
   call before adding a span.
 - **Line breaks.** A formula placeholder followed by a comma, a full stop or a colon gets a word joiner between them
   (`<span data-tex="…"></span>\u2060,`): without it the browser may start the next line with the sign. In a
-  headline, `&nbsp;` keeps the words of one phrase on one line ("ה‑control&nbsp;points", a sentence of two words); after
+  headline, `&nbsp;` keeps the words of one phrase on one line ("נקודות&nbsp;הבקרה", a sentence of two words); after
   changing a headline, look at how it breaks at desktop and at phone width.
 - Punctuation: Hebrew uses the same `.` `,` `:` `;` `?`; the English quotation marks “ ” stay; an em dash becomes a
   comma, a colon or ` – ` as reads best (the one em dash in the dictionary is the author's own sentence).
