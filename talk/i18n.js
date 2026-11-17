@@ -94,11 +94,11 @@
   function dict() { return lang === BASE ? null : (KT.i18nData || {})[lang] || {}; }
   function fill(s, vars) { return vars ? s.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : m; }) : s; }
   /* a string that carries its own direction (right-to-left pages only) */
-  var LRI = '⁦', RLI = '⁧', PDI = '⁩', HEB = /[֐-׿יִ-ﭏ]/;
-  var MARKED = /^[⁦-⁨‎‏‪‫]/;                                  // it says its direction itself
+  var LRI = '\u2066', RLI = '\u2067', PDI = '\u2069', HEB = /[\u0590-\u05ff\ufb1d-\ufb4f]/;
+  var MARKED = /^[\u2066-\u2068\u200e\u200f\u202a\u202b]/;                                  // it says its direction itself
   var BLOCKS = /<(?:div|p|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|td|th|h[1-6]|section|article|header|footer|nav|pre|blockquote|figure|hr|svg|canvas|label|button|input|select|option|textarea)\b/i;
   function isolate(s) {
-    if (!KT.rtl || !s || !/[0-9A-Za-z֐-׿יִ-ﭏ]/.test(s) || MARKED.test(s)) return s;
+    if (!KT.rtl || !s || !/[0-9A-Za-z\u0590-\u05ff\ufb1d-\ufb4f]/.test(s) || MARKED.test(s)) return s;
     if (s.indexOf('<') >= 0 && (BLOCKS.test(s) || (s.charAt(0) === '<' && s.charAt(s.length - 1) === '>'))) return s;
     return (HEB.test(s) ? RLI : LRI) + s + PDI;
   }
@@ -230,6 +230,6 @@
     /* s as one left-to-right piece (a number with its unit, a formula written as text) inside right-to-left text */
     ltr: function (s) { return KT.rtl ? LRI + s + PDI : s; },
     /* s without the direction marks KnotTalk.t and i18n.ltr add */
-    strip: function (s) { return String(s).replace(/[⁦-⁩]/g, ''); }
+    strip: function (s) { return String(s).replace(/[\u2066-\u2069]/g, ''); }
   };
 })();

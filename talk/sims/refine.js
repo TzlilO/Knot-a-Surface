@@ -568,16 +568,22 @@
      ===================================================================================== */
   var KT = root.KnotTalk, C = KT.color;
   /* Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js): that string in the page's language,
-     or the English itself where there is no translation (the lab page). A line with numbers in it is one template,
-     T('RMSE {a} → {b}', { a: .., b: .. }); the numbers are formatted as before and passed in. Declared here, below the
-     node exports: PART 1 has no words and no KnotTalk.
+     or the English itself where there is no translation (the lab page). A line with numbers in it is one template
+     with {placeholders}; the numbers are formatted as before and passed in. Declared here, below the node exports:
+     PART 1 has no words and no KnotTalk.
      On a right-to-left page the stage stays a left-to-right island (the kit sets it): the figure, its axes, numbers and
-     every label stay where they are, and a string from T() carries its own direction (it comes inside U+2067 .. U+2069,
+     every label stay where they are, and what T returns carries its own direction (it comes inside U+2067 .. U+2069,
      or U+2066 .. U+2069), so it reads right on the canvas as it is. What is left to this module: Hebrew is drawn
-     without the tracking of the capitals it replaces (trackOf), and a line cut in two keeps its direction (flowTxt).
-     A T() result is for display only: never a key, an id or a test. */
+     without the tracking of the capitals it replaces (trackOf), and a line shown in two keeps its direction (markOf,
+     inMark, cutAt). What T returns is for display only: never a key, an id or a test. */
   var T = KT.t, HEB = /[\u0590-\u05FF]/;
   function trackOf(s, ls) { return HEB.test(s) ? '0px' : (ls || '0px'); }
+  /* A string that is shown on more than one line. A translated one comes inside the marks of its direction (U+2067 or
+     U+2066 .. U+2069): markOf(s) is the opening one ('' on a page without them), cutAt(s, sep) the pieces of s, and
+     inMark(o, t) a piece inside those marks again, so that every line reads as the whole would */
+  function markOf(s) { var o = s.charAt(0); return (o === '\u2067' || o === '\u2066') && s.charAt(s.length - 1) === '\u2069' ? o : ''; }
+  function inMark(o, t) { return o ? o + t + '\u2069' : t; }
+  function cutAt(s, sep) { var o = markOf(s); return (o ? s.slice(1, -1) : s).split(sep).map(function (t) { return inMark(o, t); }); }
   function rgbOf(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
   function rgbaOf(hex, a) { var c = rgbOf(hex); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
   function rgba(key, a) { return rgbaOf(C[key], a); }
@@ -743,7 +749,7 @@
       '.kt-sim-refine .rf-stack .rf-read{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 14px;align-content:center;flex:1 1 0}',
       '.kt-sim-refine .rf-stack .rf-read .kt-panel-title{display:none}',
       '.kt-sim-refine .rf-stack .rf-read .kt-readout{flex-direction:column;align-items:flex-start;gap:3px;min-height:0}',
-      '.kt-sim-refine .rf-stack .rf-read .kt-val{margin-left:0}',
+      '.kt-sim-refine .rf-stack .rf-read .kt-val{margin-left:0;margin-right:0}',      /* right: the kit's value margin on a right-to-left page */
       '.kt-sim-refine .rf-stack.rf-gon .rf-x,.kt-sim-refine .rf-stack:not(.rf-gon) .rf-gx,.kt-sim-refine .rf-stack.rf-non .rf-x2{display:none}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-col .rf-ctrl{flex:1.5 1 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;align-content:center}',
       '.kt-sim-refine .rf-stack:not(.rf-tiny) .rf-ctrl .kt-panel-title{grid-column:1/-1}',
@@ -786,7 +792,10 @@
       '.kt-sim-refine.kt-compact .rf-col .rf-ctrl{position:absolute;left:8px;right:8px;top:40px;z-index:7}',
       /* a light page: the pressed preset and the Gaussians switch as the kit's light controls show a choice */
       '[data-theme="light"] .kt-sim-refine .rf-pre .kt-btn.on{color:var(--text);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}',
-      '[data-theme="light"] .kt-sim-refine .kt-toggle.rf-g.on{color:#fff;background:var(--splat)}'
+      '[data-theme="light"] .kt-sim-refine .kt-toggle.rf-g.on{color:#fff;background:var(--splat)}',
+      /* a right-to-left page (talk.html in Hebrew; the mark kit.css asks for): the three words of the map switch are wider
+         than fit / target / error, and the panel beside the figure is no wider: a little less air around each */
+      ':root[dir="rtl"][data-lang] .kt-sim-refine .rf-wrap:not(.rf-big):not(.rf-tiny) .rf-ctrl .kt-seg-btn{padding-left:.62rem;padding-right:.62rem}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -898,10 +907,18 @@
   var DSTEPS = 64;                        // positions of the (geometric) Gaussian slider
   function densOf(i) { return Math.round(CFG.GMIN * Math.pow(CFG.GMAX / CFG.GMIN, i / DSTEPS)); }
   function densIdx(n) { return Math.round(DSTEPS * Math.log(n / CFG.GMIN) / Math.log(CFG.GMAX / CFG.GMIN)); }
+  /* label: the preset's button; head: the verdict under the balance map; line(v) / tiny(v): the status line of a preset,
+     v = { pts, g } (a sentence of its own in each language, so one template per regime) */
   var REGIMES = {
-    ctrl: { n: 256, label: T('ctrl-starved'), head: T('STARVED OF CONTROL POINTS') },
-    gauss: { n: 8, label: T('gauss-starved'), head: T('STARVED OF GAUSSIANS') },
-    bal: { n: 128, label: T('balanced'), head: T('BALANCED') }
+    ctrl: { n: 256, label: T('ctrl-starved'), head: T('STARVED OF CONTROL POINTS'),
+            line: function (v) { return T('STARVED OF CONTROL POINTS · {pts} CONTROL POINTS × {g} GAUSSIANS', v); },
+            tiny: function (v) { return T('STARVED OF CONTROL POINTS · {pts} × {g}', v); } },
+    gauss: { n: 8, label: T('gauss-starved'), head: T('STARVED OF GAUSSIANS'),
+             line: function (v) { return T('STARVED OF GAUSSIANS · {pts} CONTROL POINTS × {g} GAUSSIANS', v); },
+             tiny: function (v) { return T('STARVED OF GAUSSIANS · {pts} × {g}', v); } },
+    bal: { n: 128, label: T('balanced'), head: T('BALANCED'),
+           line: function (v) { return T('BALANCED · {pts} CONTROL POINTS × {g} GAUSSIANS', v); },
+           tiny: function (v) { return T('BALANCED · {pts} × {g}', v); } }
   };
 
   KT.register('refine', {
@@ -1440,18 +1457,15 @@
         if (ctx.measureText(s).width > maxW) { while (s.length > 4 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1); s += '…'; }
         txt(s, x, y, font(w, p), color, align, ls);
       }
-      /* secondary text: one line if it fits, else broken once at a ' · ' separator. A line from T() comes inside the
-         marks of its direction (U+2067 or U+2066 .. U+2069, talk/i18n.js): each of the two lines gets them again */
+      /* secondary text: one line if it fits, else broken once at a ' · ' separator */
       function flowTxt(s, x, y, px, color, maxW, lead) {
         ctx.font = font(500, px); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
         if (ctx.measureText(s).width <= maxW) { fitTxt(s, x, y, 500, px, color, 'left', '0.02em', maxW); return; }
-        var open = s.charAt(0), marked = (open === '\u2067' || open === '\u2066') && s.charAt(s.length - 1) === '\u2069';
-        var parts = (marked ? s.slice(1, -1) : s).split(' · '), a = parts[0], i = 1;
-        function line(t) { return marked ? open + t + '\u2069' : t; }
+        var o = markOf(s), parts = (o ? s.slice(1, -1) : s).split(' · '), a = parts[0], i = 1;
         while (i < parts.length - 1 && ctx.measureText(a + ' · ' + parts[i]).width <= maxW) a += ' · ' + parts[i++];
         if (parts.length < 2) { fitTxt(s, x, y, 500, px, color, 'left', '0.02em', maxW); return; }
-        fitTxt(line(a), x, y, 500, px, color, 'left', '0.02em', maxW);
-        fitTxt(line(parts.slice(i).join(' · ')), x, y + lead, 500, px, color, 'left', '0.02em', maxW);
+        fitTxt(inMark(o, a), x, y, 500, px, color, 'left', '0.02em', maxW);
+        fitTxt(inMark(o, parts.slice(i).join(' · ')), x, y + lead, 500, px, color, 'left', '0.02em', maxW);
       }
       function toneCol(t) { return t === 'ok' ? C.ok : t === 'err' ? C.err : t === 'ctrl' ? C.ctrl : t === 'splat' ? C.splat : t === 'surf' ? C.surf : C.text; }
 
@@ -1777,9 +1791,10 @@
           if (tiny) {
             halo(T('CTRL-STARVED'), g.x + 4, yT, lf, C.ctrl, 'left', '0px');
             halo(T('GAUSS-STARVED'), g.x + g.w - 4, yB + lh, lf, C.splat, 'right', '0px');
-          } else if (two) {               // on two lines: each line is a phrase of its own in any language
-            halo(T('STARVED OF'), g.x + 7, yT, lf, C.ctrl, 'left', ls); halo(T('CONTROL POINTS'), g.x + 7, yT + lh, lf, C.ctrl, 'left', ls);
-            halo(T('STARVED OF'), g.x + g.w - 7, yB, lf, C.splat, 'right', ls); halo(T('GAUSSIANS'), g.x + g.w - 7, yB + lh, lf, C.splat, 'right', ls);
+          } else if (two) {               // on two lines: one phrase, cut where its own language cuts it
+            var sc2 = cutAt(T('STARVED OF\nCONTROL POINTS'), '\n'), sg2 = cutAt(T('STARVED OF\nGAUSSIANS'), '\n');
+            halo(sc2[0], g.x + 7, yT, lf, C.ctrl, 'left', ls); halo(sc2[1] || '', g.x + 7, yT + lh, lf, C.ctrl, 'left', ls);
+            halo(sg2[0], g.x + g.w - 7, yB, lf, C.splat, 'right', ls); halo(sg2[1] || '', g.x + g.w - 7, yB + lh, lf, C.splat, 'right', ls);
           } else {
             halo(T('STARVED OF CONTROL POINTS'), g.x + 8, yT, lf, C.ctrl, 'left', ls);
             halo(T('STARVED OF GAUSSIANS'), g.x + g.w - 8, yB + lh, lf, C.splat, 'right', ls);
@@ -1849,40 +1864,47 @@
       /* ---------- the main figure ---------- */
       function topTag() {
         var n = st.shade === 'normal', g = st.gauss, G = thousands(st.dens * st.dens);
-        if (st.view === 'target') return [n ? 'TARGET · NORMALS' : 'TARGET · h(x,y)', C.text];
-        if (st.view === 'error') return [n ? 'NORMAL ERROR · ANGLE TO TARGET' : g ? 'ERROR · |drawn − h|' : 'ERROR · |z − h|', C.err];
-        if (g) return [n ? 'NORMALS OF ' + G + ' GAUSSIANS' : 'DRAWN BY ' + G + ' GAUSSIANS', C.splat];
-        return [n ? 'NORMALS · S_u × S_v' : 'FIT · z(u,v)', C.surf];
+        if (st.view === 'target') return [n ? T('TARGET · NORMALS') : T('TARGET · h(x,y)'), C.text];
+        if (st.view === 'error') return [n ? T('NORMAL ERROR · ANGLE TO TARGET') : g ? T('ERROR · |drawn − h|') : T('ERROR · |z − h|'), C.err];
+        if (g) return [n ? T('NORMALS OF {n} GAUSSIANS', { n: G }) : T('DRAWN BY {n} GAUSSIANS', { n: G }), C.splat];
+        return [n ? T('NORMALS · S_u × S_v') : T('FIT · z(u,v)'), C.surf];
       }
       function liveStatus() {
         var d = drawnNow(), G = thousands(st.dens * st.dens), pts = thousands(m.nu * m.nv), reg, e2, ri, cc;
-        if (st.want) { status.tone = 'text'; status.l1 = 'MEASURING THE NETS · ' + Math.round(100 * B.done) + ' %'; status.l2 = 'the auto-insertion sequence, run to ' + thousands(CFG.MAX_PTS) + ' control points'; status.live = null; return; }
+        if (st.want) {
+          status.tone = 'text'; status.l1 = T('MEASURING THE NETS · {done}', { done: Math.round(100 * B.done) + ' %' });
+          status.l2 = T('the auto-insertion sequence, run to {n} control points', { n: thousands(CFG.MAX_PTS) }); status.live = null; return;
+        }
         if (st.scene === 'normals' && d && st.shade === 'normal') {
           var a = angleNow();
-          status.tone = 'splat'; status.l1 = 'GEOMETRIC NORMALS · n = S_u × S_v, PER GAUSSIAN'; status.live = null;
-          status.l2 = 'mean angle to the target’s normals ' + (a == null ? '—' : a.toFixed(1) + '°') + ' · on the 5 × 5 net it is ' + S.coarseAngle().toFixed(1) + '°';
+          status.tone = 'splat'; status.l1 = T('GEOMETRIC NORMALS · n = S_u × S_v, PER GAUSSIAN'); status.live = null;
+          status.l2 = T('mean angle to the target’s normals {a} · on the 5 × 5 net it is {b}', { a: a == null ? '—' : a.toFixed(1) + '°', b: S.coarseAngle().toFixed(1) + '°' });
           return;
         }
         if (!d || (st.manual && status.l1)) return;
         if (st.preset) {
           reg = regime(); status.tone = reg === 'bal' ? 'ok' : reg === 'ctrl' ? 'ctrl' : 'splat'; status.live = null;
-          status.l1 = REGIMES[reg].head + (tiny ? ' · ' + pts + ' × ' + G : ' · ' + pts + ' CONTROL POINTS × ' + G + ' GAUSSIANS');
+          status.l1 = (tiny ? REGIMES[reg].tiny : REGIMES[reg].line)({ pts: pts, g: G });
           if (reg === 'ctrl') {
             ri = B.rows.indexOf(32); e2 = B.cols && B.cols[0].pts === m.nu * m.nv && ri >= 0 ? B.E[ri] : NaN;
-            status.l2 = 'drawn error ' + pctA(d.rmse) + ' · the surface itself is off by ' + pctA(ms.rmse) +
-                        (e2 === e2 && st.dens > 32 ? ' · 1 024 Gaussians draw it at ' + pctA(e2) + ': the other ' + thousands(st.dens * st.dens - 1024) + ' buy nothing' : ' · more Gaussians only redraw it');
+            status.l2 = e2 === e2 && st.dens > 32
+              ? T('drawn error {drawn} · the surface itself is off by {surf} · 1 024 Gaussians draw it at {at}: the other {rest} buy nothing',
+                  { drawn: pctA(d.rmse), surf: pctA(ms.rmse), at: pctA(e2), rest: thousands(st.dens * st.dens - 1024) })
+              : T('drawn error {drawn} · the surface itself is off by {surf} · more Gaussians only redraw it', { drawn: pctA(d.rmse), surf: pctA(ms.rmse) });
           } else if (reg === 'gauss') {
             cc = B.cols && B.balCol != null ? B.cols[B.balCol] : null; ri = B.rows.indexOf(st.dens);
             e2 = cc && ri >= 0 ? B.E[B.balCol * B.rows.length + ri] : NaN;
-            status.l2 = 'the surface is within ' + pctA(ms.rmse) + ' of the target · drawn it is off by ' + pctA(d.rmse) +
-                        (e2 === e2 && cc.pts < m.nu * m.nv ? ' · ' + cc.pts + ' control points drawn the same way: ' + pctA(e2) : ' · the detail is there, unsampled');
-          } else status.l2 = 'drawn error ' + pctA(d.rmse) + ' · surface ' + pctA(ms.rmse) + ' and sampling ' + pctA(d.samp) + ' are of one size: neither knob is wasted';
+            status.l2 = e2 === e2 && cc.pts < m.nu * m.nv
+              ? T('the surface is within {surf} of the target · drawn it is off by {drawn} · {n} control points drawn the same way: {same}',
+                  { surf: pctA(ms.rmse), drawn: pctA(d.rmse), n: cc.pts, same: pctA(e2) })
+              : T('the surface is within {surf} of the target · drawn it is off by {drawn} · the detail is there, unsampled', { surf: pctA(ms.rmse), drawn: pctA(d.rmse) });
+          } else status.l2 = T('drawn error {drawn} · surface {surf} and sampling {samp} are of one size: neither knob is wasted', { drawn: pctA(d.rmse), surf: pctA(ms.rmse), samp: pctA(d.samp) });
           return;
         }
         if (st.scene === 'sampling' || !status.l1) {
           status.tone = 'splat'; status.live = null;
-          status.l1 = (tiny ? '' : 'LAYER B · ') + G + ' GAUSSIANS · DRAWN ERROR ' + pctA(d.rmse);
-          status.l2 = 'surface untouched · still ' + pts + ' parameters · surface RMSE ' + pctA(ms.rmse);
+          status.l1 = tiny ? T('{n} GAUSSIANS · DRAWN ERROR {err}', { n: G, err: pctA(d.rmse) }) : T('LAYER B · {n} GAUSSIANS · DRAWN ERROR {err}', { n: G, err: pctA(d.rmse) });
+          status.l2 = T('surface untouched · still {n} parameters · surface RMSE {rmse}', { n: pts, rmse: pctA(ms.rmse) });
         }
       }
       function drawMain(t, dt) {
@@ -1932,14 +1954,14 @@
         drawCut();
 
         var tg2 = topTag();
-        tag(tiny && st.gauss && st.view === 'fit' ? thousands(st.dens * st.dens) + ' GAUSSIANS' : tg2[0], x + 8, y + 8, tg2[1], s - 16);
+        tag(tiny && st.gauss && st.view === 'fit' ? T('{n} GAUSSIANS', { n: thousands(st.dens * st.dens) }) : tg2[0], x + 8, y + 8, tg2[1], s - 16);
         if (st.view === 'error' && !tiny) legend(x + 8, y + s - 8 - (L.fs + 10), st.shade === 'normal' ? ANG_SCALE : ESCALE, st.shade === 'normal');
-        if (L.bars) drawBars(dt, t); else if (!tiny) txt('TOP VIEW', x, y - 8, font(600, L.fs), C.dim, 'left', '0.12em');
+        if (L.bars) drawBars(dt, t); else if (!tiny) txt(T('TOP VIEW'), x, y - 8, font(600, L.fs), C.dim, 'left', '0.12em');
 
         // the same state from the side
         drawSide(L.side, m, sdA, { gauss: st.gauss, dimCtrl: st.gauss });
         if (L.labS) sideCaption(L.side, st.gauss, L.side.y - 8);
-        else halo('SIDE · v = ' + st.cut.toFixed(2), L.side.x + 5, L.side.y + L.side.h - 5, font(600, 9), C.dim, 'left', '0.06em');
+        else halo(T('SIDE · v = {v}', { v: st.cut.toFixed(2) }), L.side.x + 5, L.side.y + L.side.h - 5, font(600, 9), C.dim, 'left', '0.06em');
         if (L.arr === 'col' && !tiny) {     // the cut, carried down from the map to the side view
           ctx.strokeStyle = LIGHT ? rgba('text', 0.22) : 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath();
           ctx.moveTo(x - 6.5, cutY()); ctx.lineTo(x - 6.5, L.side.y + L.side.h * 0.5); ctx.lineTo(x - 1, L.side.y + L.side.h * 0.5);
@@ -1981,8 +2003,8 @@
         var yc = Math.round(y + st.cut * sp) + 0.5;
         ctx.strokeStyle = LIGHT ? rgba('text', 0.7) : 'rgba(255,255,255,.8)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]); ctx.beginPath();
         ctx.moveTo(xa, yc); ctx.lineTo(xa + sp, yc); ctx.moveTo(xb, yc); ctx.lineTo(xb + sp, yc); ctx.stroke(); ctx.setLineDash([]);
-        fitTxt((tiny ? 'ADAPTIVE · ' : 'ADAPTIVE KNOTS · ') + netStr(m), xa, y - 9, 600, fs, C.ctrl, 'left', '0.12em', sp);
-        fitTxt((tiny ? 'UNIFORM · ' : 'UNIFORM KNOTS · ') + netStr(base), xb, y - 9, 600, fs, C.dim, 'left', '0.12em', sp);
+        fitTxt(tiny ? T('ADAPTIVE · {net}', { net: netStr(m) }) : T('ADAPTIVE KNOTS · {net}', { net: netStr(m) }), xa, y - 9, 600, fs, C.ctrl, 'left', '0.12em', sp);
+        fitTxt(tiny ? T('UNIFORM · {net}', { net: netStr(base) }) : T('UNIFORM KNOTS · {net}', { net: netStr(base) }), xb, y - 9, 600, fs, C.dim, 'left', '0.12em', sp);
         if (st.view === 'error' && !tiny) legend(xa + 8, y + sp - 8 - (fs + 10), st.shade === 'normal' ? ANG_SCALE : esc, st.shade === 'normal');
         // the same cut from the side, under each map
         var ys = y + sp + L.gapV;
@@ -1996,19 +2018,21 @@
         txt(pct(baseMs.rmse, nd), xb, yb, font(600, fb, F_DISP), better ? C.err : C.text, 'left', '-0.01em');
         var yl = tiny ? yb : yb + fs + 9, pts = thousands(m.nu * m.nv);
         if (!tiny) {
-          fitTxt('RMSE · ' + pts + ' CONTROL POINTS', xa, yl, 500, fs, C.dim, 'left', '0.1em', sp);
-          fitTxt('RMSE · ' + pts + ' CONTROL POINTS', xb, yl, 500, fs, C.dim, 'left', '0.1em', sp);
+          fitTxt(T('RMSE · {n} CONTROL POINTS', { n: pts }), xa, yl, 500, fs, C.dim, 'left', '0.1em', sp);
+          fitTxt(T('RMSE · {n} CONTROL POINTS', { n: pts }), xb, yl, 500, fs, C.dim, 'left', '0.1em', sp);
         }
         var ratio = baseMs.rmse / ms.rmse, same = Math.abs(ratio - 1) < 0.005;
-        var head = same ? 'SAME ERROR · THE TWO NETS COINCIDE'
-                 : better ? '×' + ratio.toFixed(1) + ' LOWER ERROR AT EQUAL PARAMETERS' : 'UNIFORM IS ×' + (1 / ratio).toFixed(1) + ' BETTER HERE';
+        var head = same ? T('SAME ERROR · THE TWO NETS COINCIDE')
+                 : better ? T('×{k} LOWER ERROR AT EQUAL PARAMETERS', { k: ratio.toFixed(1) }) : T('UNIFORM IS ×{k} BETTER HERE', { k: (1 / ratio).toFixed(1) });
         var ysx = yl + (tiny ? 7 : 16), tw = 2 * sp + L.gap;
         fitTxt(head, xa, ysx + L.f1, 600, L.f1, same ? C.text : better ? C.ok : C.err, 'left', '0.07em', tw);
         if (bestU) {
           var rb = bestU.rmse / ms.rmse;
-          flowTxt((tiny ? 'best uniform near ' + pts + ' pts: ' : 'strongest uniform net near ' + pts + ' points: ') +
-                  bestU.nu + ' × ' + bestU.nv + ' = ' + bestU.n + ' → ' + pct(bestU.rmse, nd) +
-                  (same ? '' : rb >= 1 ? ' · still ×' + rb.toFixed(1) + ' behind' : ' · ×' + (1 / rb).toFixed(1) + ' ahead of adaptive'),
+          // one sentence in each case: the net, what it reaches, and where that leaves it
+          var bv = { n: pts, net: bestU.nu + ' × ' + bestU.nv + ' = ' + bestU.n + ' → ' + pct(bestU.rmse, nd), k: (rb >= 1 ? rb : 1 / rb).toFixed(1) };
+          flowTxt(tiny ? (same ? T('best uniform near {n} pts: {net}', bv) : rb >= 1 ? T('best uniform near {n} pts: {net} · still ×{k} behind', bv) : T('best uniform near {n} pts: {net} · ×{k} ahead of adaptive', bv))
+                       : (same ? T('strongest uniform net near {n} points: {net}', bv) : rb >= 1 ? T('strongest uniform net near {n} points: {net} · still ×{k} behind', bv)
+                                                                                                    : T('strongest uniform net near {n} points: {net} · ×{k} ahead of adaptive', bv)),
                   xa, ysx + L.f1 + L.f2 + (tiny ? 5 : 9), L.f2, C.dim, tw, L.f2 + 5);
         }
       }

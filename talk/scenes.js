@@ -7,13 +7,21 @@
      garden      — Mip-NeRF 360 style (object in the middle of an unbounded surround)
      studio      — the abstract still life (vase, cloth, torus knot)
      scan        — the one REAL object: a DTU scan fitted offline (only when talk/dtu-data.js is loaded first)
-   Exposed as KnotTalk.scenes[key] = { label, suite, build() -> { charts, views, tour, rig, edit } }; label, suite and
-   note are in the page's language, `en` holds them in English (see entry(), at the end).
+   Exposed as KnotTalk.scenes[key] = { label, suite, build() -> { charts, views, tour, rig, edit } }. label, suite and
+   note are what a viewer reads, in the page's language; `en` holds the same three in English (see the end of the file).
    Depends on nurbs.js + kit.js. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, TAU = 6.283185307;
-  var T = KT.t;                              // what a viewer reads is in the page's language (talk/i18n.js); ids and chart names stay as written
+  /* T: a string in the page's language (talk/i18n.js; the English itself on a page without languages). What it returns
+     is for showing only: keys, chart names and whatever goes into a file stay in English. */
+  var T = KT.t;
+  /* The names that come with a scan's data (talk/dtu-data.js, talk/dtu/scan<N>.js): its label and its charts' names.
+     They are ids as well (the owl's mask, the baked features and the parts of an exported file go by a chart's name),
+     so a viewer reads them through this table, and a chart carries its own as `label`. A name that is not listed (the
+     charts of the hand-modelled stand-ins, a scan this file does not know) is shown as it is written. */
+  var SHOWN = { Owl: T('Owl'), Rabbit: T('Rabbit'), Scan: T('Scan'), owl: T('owl'), rabbit: T('rabbit'), table: T('table') };
+  function shown(name) { return Object.prototype.hasOwnProperty.call(SHOWN, name) ? SHOWN[name] : name; }
   /* the folder this file was loaded from: a scan's own files lie beside it, in dtu/ (see features() in scan(), below) */
   var HERE = (document.currentScript && document.currentScript.src || '').replace(/[^\/]*$/, '');
   var SUN =(function () { var v = [0.35, 0.86, 0.36], l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; })();
@@ -58,7 +66,7 @@
       p.P[q] = r[0]; p.P[q + 1] = r[1]; p.P[q + 2] = r[2]; p.C[q] = r[3]; p.C[q + 1] = r[4]; p.C[q + 2] = r[5];
     }
     var tu = o.tu || 4, tv = o.tv || 4;
-    var c = { name: name, hex: HEX[list.length % HEX.length], patch: p, closed: !!o.closed, flip: 1, ref: o.ref || null,
+    var c = { name: name, label: shown(name), hex: HEX[list.length % HEX.length], patch: p, closed: !!o.closed, flip: 1, ref: o.ref || null,
               tu: tu, tv: tv, gu: tu * (o.cu || 5), gv: tv * (o.cv || 5), minA: o.minA || 2, minB: o.minB || 2, tiles: [], count: 0 };
     for (j = 0; j < tv; j++) for (i = 0; i < tu; i++) c.tiles.push({ iu: i, iv: j, na: 0, nb: 0 });
     c.base = new Float32Array(p.P); list.push(c);
@@ -825,32 +833,32 @@
     };
   }
 
-  /* A scene's entry. Its label, suite and note are what a viewer reads, so they are in the page's language (KnotTalk.t;
-     `vars` fills a {name} of the suite). `en` keeps the three as they are written here, in English: that is what goes
-     into a file, whose name and comments stay Latin and 7-bit (the mesh export of the manifold module, talk/meshio.js) */
-  function entry(label, suite, vars, o) {
-    var en = { label: label, suite: suite.replace(/\{(\w+)\}/g, function (m, k) { return vars[k]; }), note: o.note };
-    return Object.assign(o, { label: T(label), suite: T(suite, vars), note: o.note == null ? o.note : T(o.note), en: en });
-  }
+  /* A scene's label, suite and note are what a viewer reads, in the page's language: T(). `en` holds the same three in
+     English, as they are written here: what goes into a file is taken from it, since a file's name and its comments
+     stay Latin and 7-bit (the mesh export of the manifold module, talk/meshio.js). Keep the two in step. */
   KT.scenes = {
-    barn:   entry('Barn', 'Tanks and Temples style', null, { build: barn }),
-    truck:  entry('Truck', 'Tanks and Temples style', null, { build: truck }),
-    bust:   entry('Bust', 'DTU style', null, { build: bust }),
-    garden: entry('Garden', 'Mip-NeRF 360 style', null, { build: garden }),
-    studio: entry('Studio', 'abstract still life', null, { build: studio }),
+    barn:   { label: T('Barn'),   suite: T('Tanks and Temples style'), en: { label: 'Barn',   suite: 'Tanks and Temples style' }, build: barn },
+    truck:  { label: T('Truck'),  suite: T('Tanks and Temples style'), en: { label: 'Truck',  suite: 'Tanks and Temples style' }, build: truck },
+    bust:   { label: T('Bust'),   suite: T('DTU style'),               en: { label: 'Bust',   suite: 'DTU style' }, build: bust },
+    garden: { label: T('Garden'), suite: T('Mip-NeRF 360 style'),      en: { label: 'Garden', suite: 'Mip-NeRF 360 style' }, build: garden },
+    studio: { label: T('Studio'), suite: T('abstract still life'),     en: { label: 'Studio', suite: 'abstract still life' }, build: studio },
     /* hidden: not offered in the lab's scene picker or on the landing page; the Hebrew deck loads it by name.
        light: its surfaces are light-coloured (on a light page the renderer keeps their rim shading low) */
-    breakfast: entry('Breakfast', 'illustration', null, { hidden: true, light: true, build: breakfast })
+    breakfast: { label: T('Breakfast'), suite: T('illustration'), en: { label: 'Breakfast', suite: 'illustration' }, hidden: true, light: true, build: breakfast }
   };
   /* the real object, when its data file was loaded before this one. `note` is what a caption may say about it */
-  var NOTE = 'fitted offline, not trained';
-  if (KT.dtu) KT.scenes.scan = entry(KT.dtu.label || 'Scan', 'DTU scan {n}', { n: KT.dtu.scan }, { photo: true, note: NOTE,
-                                 build: function () { return scan(KT.dtu); } });
+  var NOTE = 'fitted offline, not trained', NOTE_T = T('fitted offline, not trained');
+  /* a scan: its label comes with its data, its suite is its number */
+  function real(label, n, build) {
+    return { label: shown(label), suite: T('DTU scan {n}', { n: n }), photo: true, note: NOTE_T, en: { label: label, suite: 'DTU scan ' + n, note: NOTE }, build: build };
+  }
+  if (KT.dtu) KT.scenes.scan = real(KT.dtu.label || 'Scan', KT.dtu.scan, function () { return scan(KT.dtu); });
   /* further scans (talk/dtu/scan<N>.js), offered by the lab page's scene picker only */
   Object.keys(KT.dtuScans || {}).forEach(function (n) {
     var D = KT.dtuScans[n];
-    KT.scenes['scan' + n] = entry(D.label, 'DTU scan {n}', { n: n }, { photo: true, note: NOTE, build: function () { return scan(D); } });
+    KT.scenes['scan' + n] = real(D.label, n, function () { return scan(D); });
   });
   /* the cover's pair: not offered in the lab page's scene picker */
-  if (KT.dtu && KT.dtuScans && KT.dtuScans[55]) KT.scenes.duo = entry('Owl and rabbit', 'DTU scans 122 and 55', null, { photo: true, hidden: true, note: NOTE, build: duo });
+  if (KT.dtu && KT.dtuScans && KT.dtuScans[55]) KT.scenes.duo = { label: T('Owl and rabbit'), suite: T('DTU scans 122 and 55'), photo: true, hidden: true, note: NOTE_T,
+                                                                  en: { label: 'Owl and rabbit', suite: 'DTU scans 122 and 55', note: NOTE }, build: duo };
 })();

@@ -776,8 +776,11 @@
       ':where(:root[data-theme="light"]) .kt-sim-flatland :is(.fl-th,.fl-name,.fl-num){font-family:var(--f-ui)}',
       ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-th{letter-spacing:.04em}',
       ':where(:root[data-theme="light"]) .kt-sim-flatland .fl-name{letter-spacing:.02em}',
-      /* Hebrew (talk/i18n.js sets <html lang>) is not letter-spaced */
-      ':root[lang="he"] .kt-sim-flatland :is(.fl-th,.fl-name){letter-spacing:0}'
+      /* Hebrew (talk/i18n.js sets <html lang>) has no capitals and is not letter-spaced */
+      ':root[lang="he"] .kt-sim-flatland :is(.fl-th,.fl-name){letter-spacing:0;text-transform:none}',
+      /* the step readout is a kit readout outside a panel: on a Hebrew page kit.css moves a panel's values to the left end
+         of their row; this one stays at the right end, where it is in English */
+      ':root[lang="he"] .kt-sim-flatland .fl-metrics .kt-readout .kt-val{margin-left:auto;margin-right:0}'
     ].join('\n');
     document.head.appendChild(st);
   }

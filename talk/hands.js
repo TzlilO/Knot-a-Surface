@@ -23,7 +23,8 @@
 
    host = { root, ui, canvas, camera, charts() -> [chart], pick(x, y) -> { c, i, j, pos, n } | null,
             changed(chart, shape) }       shape: true when control points moved (false: colour, opacity, masks)
-   A chart may carry: ground (never touched), feat { dim, scale, lo, hi, nu, nv, step, data (base64 int8) }.
+   A chart may carry: ground (never touched), feat { dim, scale, lo, hi, nu, nv, step, data (base64 int8) }, label (what
+   a viewer reads for its name, in the page's language).
    This layer adds to a chart: sel, pin (Float32Array, one per control point), selRev (counts every change of
    sel, so a host can tell), alpha (the same, when something was hidden; the renderer reads it), and keeps what it
    changed so that reset() puts it back.
@@ -235,7 +236,7 @@
       }
       g.putImageData(img, 0, 0);
       if (mark && mark.c === c) { g.strokeStyle = RING; g.lineWidth = Math.max(1, nu / 120); g.beginPath(); g.arc(mark.i + 0.5, nv - 1 - mark.j + 0.5, nu / 30, 0, 6.3); g.stroke(); }
-      title.textContent = T('atlas · {name} · {size}', { name: T(c.name), size: nu + ' × ' + nv });     // a chart's name is an id: only what is shown of it is translated
+      title.textContent = T('atlas · {name} · {size}', { name: c.label || c.name, size: nu + ' × ' + nv });     // label: what a viewer reads for the chart's name, where the host's charts carry one
       var f = feat(c), n = count(c);
       note.textContent = (st.chan === 'feat' && !f ? T('no features are baked for this object') + ' · ' : '') + T('{n} control points selected', { n: n.toLocaleString('en-US') }) +
         (st.mode === 'select' ? ' · ' + T('select here or on the object') : '');

@@ -18,9 +18,13 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk = window.KnotTalk || {};
-  /* languages: talk/i18n.js (loaded before this file on a page that has them) sets KT.lang and KT.t; on any other
-     page the strings are the English they are written in */
-  KT.lang = KT.lang || 'en';
+  /* languages: talk/i18n.js (loaded before this file on a page that has them) sets KT.lang, KT.rtl and KT.t; on any
+     other page the strings are the English they are written in. A module writes every string it shows as KT.t('…')
+     (numbers through a template: KT.t('{n} samples', { n: n })) and the dictionary, talk/i18n/he.js, is keyed by that
+     English. In Hebrew the page is right to left but a stage is not mirrored (kit.css, "right to left"): a module's
+     own layout, its canvas and SVG text and its numbers stay as they are in English, the kit's panels, captions and
+     hints read right to left, and a string from KT.t carries its own direction wherever it is drawn. */
+  KT.lang = KT.lang || 'en'; KT.rtl = !!KT.rtl;
   if (!KT.t) KT.t = function (en, vars) { return vars ? en.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : m; }) : en; };
   KT.sims = KT.sims || {};
   KT.register = function (name, def) { KT.sims[name] = def; };
@@ -270,7 +274,7 @@
     var api = def.create(env) || {};
 
     // small embedded stages: fold the control panels behind one button so they don't cover the figure
-    var gear = el('button', 'kt-gear', 'controls'); gear.type = 'button';
+    var gear = el('button', 'kt-gear', KT.t('controls')); gear.type = 'button';
     gear.addEventListener('click', function () { root.classList.toggle('kt-open'); });
     root.appendChild(gear);
     function hasPanel() {

@@ -739,10 +739,13 @@
       }
 
       /* ================= plots ================= */
+      /* the plot's type: the mono face, as ever; on a right-to-left page the page's own mono stack (kit.css: the same face
+         first, then the page's Hebrew face), so that a Hebrew label on the canvas is set like the Hebrew around it */
+      var PLOTFONT = '500 9px ' + ((RTL && getComputedStyle(root).getPropertyValue('--f-mono').trim()) || '"JetBrains Mono", ui-monospace, monospace');
       function drawPlot() {
         plotDirty = false;
         var s = pcv.fit(), g = pcv.ctx, w = s.w, h = s.h, id = st.scene;
-        g.clearRect(0, 0, w, h); g.font = '500 9px "JetBrains Mono", ui-monospace, monospace'; g.textBaseline = 'alphabetic';
+        g.clearRect(0, 0, w, h); g.font = PLOTFONT; g.textBaseline = 'alphabetic';
         if (id === 'sfm') plotSfm(g, w, h); else if (id === 'levels') plotLevels(g, w, h); else if (id === 'train') { if (TR) plotTrain(g, w, h); else plotLevels(g, w, h); }
       }
       function plotSfm(g, w, h) {                  // the points each camera completes, and the running total
@@ -1076,7 +1079,7 @@
       '.kt-sim-pipeline .pl-pend b{color:var(--err);font-weight:600;letter-spacing:.08em;text-transform:uppercase}' +
       '.kt-sim-pipeline .pl-note{position:absolute;z-index:4;right:12px;bottom:12px;max-width:min(46%,420px);pointer-events:none;font:500 10px/1.45 var(--f-mono);color:var(--mute);text-align:right}' +
       '.kt-sim-pipeline .pl-inset{position:absolute;z-index:3;pointer-events:none;border:1px solid rgba(var(--splat-rgb),.65);border-radius:6px}' +
-      '.kt-sim-pipeline .pl-inset span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:var(--panel);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
+      '.kt-sim-pipeline .pl-inset>span{position:absolute;left:6px;top:5px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:5px;background:var(--panel);font:500 10px/1.4 var(--f-mono);color:var(--dim)}' +
       '.kt-sim-pipeline .pl-inset b{color:var(--text)}.kt-sim-pipeline .pl-inset em{font-style:normal;color:var(--splat)}' +
       '.kt-sim-pipeline .pl-mark{position:absolute;z-index:3;width:22px;height:22px;margin:-11px 0 0 -11px;border:1.5px solid var(--splat);border-radius:50%;pointer-events:none}' +
       /* the light theme: the boxes lie over the scene (the grey fog of the 3DGS initialisation fills a whole half of the
@@ -1084,7 +1087,7 @@
       ':root[data-theme="light"] .kt-sim-pipeline :is(.pl-side,.pl-plot){background:rgba(255,255,255,.84);border-color:transparent;' +
       'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
       ':root[data-theme="light"] .kt-sim-pipeline .pl-pend{background:rgba(255,255,255,.86)}' +
-      ':root[data-theme="light"] .kt-sim-pipeline .pl-inset span{background:rgba(255,255,255,.84)}' +
+      ':root[data-theme="light"] .kt-sim-pipeline .pl-inset>span{background:rgba(255,255,255,.84)}' +
       // (the split's left half is that fog from top to bottom: the caption over it gets the same glass, its margin drawn
       // as a spread shadow so that the caption keeps its size, and the views fitted around it keep theirs)
       ':root[data-theme="light"] .kt-sim-pipeline.pl-split .kt-caption{border-radius:6px;background:rgba(255,255,255,.84);' +
@@ -1099,14 +1102,14 @@
       '.kt-sim-pipeline.pl-narrow.kt-compact .kt-caption{max-width:calc(100% - 110px)}' +
       '.kt-sim-pipeline.pl-narrow:not(.kt-compact) .kt-panel{top:auto;bottom:12px;right:12px;min-width:0;width:min(230px,calc(100% - 24px))}' +
       '.kt-sim-pipeline.pl-narrow.pl-split:not(.kt-open) .kt-panel{display:none}' +
-      '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset span{font-size:9px;left:4px;top:4px;padding:2px 4px}' +
-      /* Hebrew: the words in this module's own boxes are neither letter-spaced nor set in capitals (a unit inside a Hebrew
-         title must stay "mm"), and take their Hebrew letters from the stage's text face (the mono face has none; the
-         numbers keep it). The run's note, the file's own English, stands on a line of its own under its Hebrew label */
-      ':root[lang="he"] .kt-sim-pipeline :is(.pl-what,.pl-side,.pl-pend,.pl-plot-t,.pl-note,.pl-inset span){letter-spacing:0;text-transform:none}' +
-      ':root[lang="he"] .kt-sim-pipeline :is(.pl-side,.pl-pend) b{letter-spacing:0;text-transform:none}' +
-      ':root[lang="he"] .kt-sim-pipeline :is(.pl-side,.pl-pend,.pl-plot-t,.pl-note,.pl-inset span){font-family:"JetBrains Mono",var(--f-ui)}' +
-      ':root[lang="he"] .kt-sim-pipeline .pl-note span[dir="ltr"]{display:block}';
+      '.kt-sim-pipeline.pl-narrow .pl-side{font-size:9.5px;padding:6px 8px}.kt-sim-pipeline.pl-narrow .pl-inset>span{font-size:9px;left:4px;top:4px;padding:2px 4px}' +
+      /* Hebrew: this module's own small titles are neither letter-spaced nor set in capitals (a unit inside a Hebrew
+         title must stay "mm"); the run's note, the file's own English, stands on a line of its own under its Hebrew
+         label. Right to left (the kit mirrors a panel's rows: label right, value left): a value that wraps keeps its
+         lines against the panel's outer edge, which is now the left one */
+      ':root[lang="he"] .kt-sim-pipeline :is(.pl-plot-t,.pl-side,.pl-side b,.pl-pend b){letter-spacing:0;text-transform:none}' +
+      ':root[lang="he"] .kt-sim-pipeline .pl-note span[dir="ltr"]{display:block}' +
+      ':root[dir="rtl"][data-lang] .kt-sim-pipeline .kt-panel .kt-readout .kt-val{text-align:left}';
     document.head.appendChild(css);
   }
 })();

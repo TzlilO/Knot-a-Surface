@@ -1,4 +1,6 @@
-/* Knot-a-Surface talk — scroll-driven deck layout. Tokens + simulation chrome live in kit.css. */
+/* Knot-a-Surface talk — scroll-driven deck layout. Tokens + simulation chrome live in kit.css.
+   Where a side matters the rules say inline-start / inline-end (left / right in English), so that the deck mirrors
+   by itself in Hebrew; what else right-to-left needs is at the end of this file. */
 html{font-size:clamp(14.5px,.5vw + .52vh + 4px,24px);scroll-behavior:auto;background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-ui);line-height:1.5;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
@@ -12,40 +14,42 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 /* ---------- fixed chrome: progress, chapter rail, presenter HUD ---------- */
 .progress{position:fixed;z-index:60;left:0;top:0;height:3px;width:100%;transform-origin:0 50%;transform:scaleX(0);
   background:linear-gradient(90deg,var(--surf),var(--splat))}
-.rail{position:fixed;z-index:55;left:0;top:0;bottom:0;width:3.1rem;display:flex;flex-direction:column;justify-content:center;
+.rail{position:fixed;z-index:55;inset-inline-start:0;top:0;bottom:0;width:3.1rem;display:flex;flex-direction:column;justify-content:center;
   align-items:center;gap:.25rem}
 .rail a{position:relative;display:grid;place-items:center;width:2.1rem;height:2.1rem;border-radius:50%;
   font:600 .62rem/1 var(--f-mono);color:var(--mute);text-decoration:none;transition:color .2s,background .2s}
 .rail a:hover{color:var(--text)}
 .rail a.on{color:var(--bg);background:var(--text)}
-.rail a span{position:absolute;left:2.6rem;white-space:nowrap;padding:.35rem .6rem;border-radius:6px;background:var(--bg3);
+.rail a span{position:absolute;inset-inline-start:2.6rem;white-space:nowrap;padding:.35rem .6rem;border-radius:6px;background:var(--bg3);
   border:1px solid var(--line2);color:var(--text);font:500 .62rem/1 var(--f-mono);letter-spacing:.06em;opacity:0;pointer-events:none;
   transform:translateX(-4px);transition:opacity .15s,transform .15s}
 .rail a:hover span{opacity:1;transform:none}
-.hud{position:fixed;z-index:55;left:3.3rem;bottom:.9rem;display:flex;align-items:center;gap:.5rem;
+.hud{position:fixed;z-index:55;inset-inline-start:3.3rem;bottom:.9rem;display:flex;align-items:center;gap:.5rem;
   font:600 .6rem/1 var(--f-mono);letter-spacing:.06em;color:var(--mute)}
 .hud button{font:inherit;color:var(--dim);background:var(--panel);border:1px solid var(--line2);border-radius:6px;
   padding:.42rem .55rem;cursor:pointer}
 .hud button:hover{color:var(--text);border-color:var(--dim)}
-.hud .cut{display:flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:var(--panel)}
-.hud .cut button{border:0;border-radius:0;background:transparent}
-.hud .cut button.on{color:var(--bg);background:var(--text)}
+.hud .cut,.hud .lang{display:flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:var(--panel)}
+.hud .cut button,.hud .lang button{border:0;border-radius:0;background:transparent}
+.hud .cut button.on,.hud .lang button.on{color:var(--bg);background:var(--text)}
+/* the language control (talk/i18n.js builds it): a Hebrew label is set in Heebo on the English page too */
+.hud .lang button[lang="he"],.keys [lang="he"]{font-family:'Heebo',var(--f-ui)}
 .hud .clock{padding:.42rem .55rem;border:1px solid var(--line2);border-radius:6px;background:var(--panel);
   font-variant-numeric:tabular-nums;color:var(--dim);cursor:pointer}
 .hud .sound.off{text-decoration:line-through;opacity:.5}
 .hud .clock b{color:var(--text);font-weight:600}
 .hud .clock.late b{color:var(--ctrl)}.hud .clock.ok b{color:var(--ok)}
-.keys{position:fixed;z-index:70;left:3.3rem;bottom:3.2rem;display:none;padding:1rem 1.2rem;border-radius:10px;background:var(--bg3);
+.keys{position:fixed;z-index:70;inset-inline-start:3.3rem;bottom:3.2rem;display:none;padding:1rem 1.2rem;border-radius:10px;background:var(--bg3);
   border:1px solid var(--line2);font:500 .68rem/1.9 var(--f-mono);color:var(--dim)}
 .keys.on{display:block}
-.keys kbd{display:inline-block;min-width:1.5rem;text-align:center;margin-right:.5rem;padding:0 .35rem;border:1px solid var(--line2);
+.keys kbd{display:inline-block;min-width:1.5rem;text-align:center;margin-inline-end:.5rem;padding:0 .35rem;border:1px solid var(--line2);
   border-radius:4px;color:var(--text);font:inherit}
 
 /* ---------- chapters: text column + sticky stage ---------- */
 .chapter{position:relative;display:grid;grid-template-columns:minmax(0,37fr) minmax(0,63fr)}
 /* the stage comes first in the DOM (so it can pin above the steps on small screens) and sits right on wide ones */
-.steps{grid-column:1;grid-row:1;padding:0 2.2rem 14vh 5rem}
-.stage{grid-column:2;grid-row:1;position:sticky;top:0;height:100vh;height:100dvh;padding:2.4vh 2.2vw 2.4vh 0}
+.steps{grid-column:1;grid-row:1;padding:0 0 14vh;padding-inline:5rem 2.2rem}
+.stage{grid-column:2;grid-row:1;position:sticky;top:0;height:100vh;height:100dvh;padding:2.4vh 0;padding-inline:0 2.2vw}
 .stage-frame{position:relative;width:100%;height:100%;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
 .sim-mount{position:absolute;inset:0}
 .stage-tools{position:absolute;z-index:8;right:.7rem;bottom:.7rem;display:flex;gap:.4rem;opacity:0;transition:opacity .2s}
@@ -79,8 +83,8 @@ body.cut-20 .step[data-depth="deep"]{display:none}
 /* a colour word keeps its colour inside a step paragraph (the rule above would otherwise win) */
 .step p b.c-surf,.step li b.c-surf{color:var(--surf)}.step p b.c-ctrl,.step li b.c-ctrl{color:var(--ctrl)}.step p b.c-splat,.step li b.c-splat{color:var(--splat)}.step p b.c-err,.step li b.c-err{color:var(--err)}.step p b.c-ok,.step li b.c-ok{color:var(--ok)}
 .step ul{margin:0 0 .9rem;padding:0;list-style:none;max-width:34em}
-.step li{position:relative;padding:.5rem 0 .5rem 1.3rem;border-top:1px solid var(--line);font-size:.95rem;line-height:1.45;color:var(--dim)}
-.step li:before{content:"";position:absolute;left:0;top:1.05rem;width:.5rem;height:1px;background:var(--dim)}
+.step li{position:relative;padding:.5rem 0;padding-inline-start:1.3rem;border-top:1px solid var(--line);font-size:.95rem;line-height:1.45;color:var(--dim)}
+.step li:before{content:"";position:absolute;inset-inline-start:0;top:1.05rem;width:.5rem;height:1px;background:var(--dim)}
 .eq{margin:.4rem 0 1rem;padding:.9rem 1rem;border-left:2px solid var(--line2);background:var(--bg2);border-radius:0 8px 8px 0;
   font-size:1.02rem;overflow-x:auto;color:var(--text)}
 .eq .katex-display{margin:0;text-align:left}.eq .katex-display>.katex{text-align:left}
@@ -109,7 +113,7 @@ body.has-sound .step p.credit{display:block}
 
 /* ---------- full-width sections ---------- */
 .wide{display:block}
-.wide .step{min-height:100vh;padding:5rem 4rem 5rem 5.5rem;justify-content:center}
+.wide .step{min-height:100vh;padding:5rem 0;padding-inline:5.5rem 4rem;justify-content:center}
 .wide .step>*{max-width:none}
 
 /* legend ("how to read this talk") */
@@ -118,7 +122,7 @@ body.has-sound .step p.credit{display:block}
 .legend b{display:block;font:600 1.25rem/1.15 var(--f-display);letter-spacing:-.01em;color:var(--c);margin-bottom:.5rem}
 .legend span{font-size:.86rem;line-height:1.45;color:var(--dim)}
 .depths{display:flex;flex-wrap:wrap;gap:.8rem 2.4rem;align-items:center;font-size:.9rem;color:var(--dim)}
-.depths .lvl{margin:0 .5rem 0 0}
+.depths .lvl{margin:0;margin-inline-end:.5rem}
 .step .thesis{color:var(--text);margin:0 0 .4rem;font:600 clamp(1.9rem,3.6vw,3.6rem)/1.06 var(--f-display);letter-spacing:-.03em;max-width:22em;text-wrap:balance}
 .step .thesis em{font-size:1.1em}
 
@@ -134,7 +138,7 @@ body.has-sound .step p.credit{display:block}
 .stats div{font:500 .62rem/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 .stats b{display:block;font:600 1.7rem/1 var(--f-display);letter-spacing:-.02em;text-transform:none;color:var(--text);font-variant-numeric:tabular-nums}
 .chart-key{display:flex;gap:1.2rem;font:500 .64rem/1 var(--f-mono);color:var(--dim);margin-bottom:.3rem}
-.chart-key i{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;margin-right:.4rem;vertical-align:-1px}
+.chart-key i{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;margin-inline-end:.4rem;vertical-align:-1px}
 .tip{position:absolute;z-index:5;pointer-events:none;padding:.5rem .65rem;border-radius:7px;background:var(--bg3);border:1px solid var(--line2);
   font:500 .64rem/1.5 var(--f-mono);color:var(--dim);white-space:nowrap;opacity:0;transition:opacity .12s}
 .tip b{color:var(--text)}.tip.on{opacity:1}
@@ -161,7 +165,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 @media (max-width:900px){
   html{font-size:15px}
   .rail{display:none}
-  .hud{left:.6rem;bottom:.5rem}.keys{left:.6rem}.hud .clock,.hud .help{display:none}
+  .hud{inset-inline-start:.6rem;bottom:.5rem}.keys{inset-inline-start:.6rem}.hud .clock,.hud .help{display:none}
   .chapter{display:block}
   .stage{height:52svh;padding:0;z-index:20;background:var(--bg)}
   .stage-frame{border-radius:0;border-width:0 0 1px}
@@ -195,7 +199,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 
 /* a small two-way comparison table inside a step */
 .step table.cmp{border-collapse:collapse;width:100%;margin:.2rem 0 1rem;font:400 .82rem/1.35 var(--f-ui)}
-.step table.cmp th,.step table.cmp td{text-align:left;vertical-align:top;padding:.42rem .5rem .42rem 0;border-bottom:1px solid var(--line)}
+.step table.cmp th,.step table.cmp td{text-align:start;vertical-align:top;padding:.42rem 0;padding-inline-end:.5rem;border-bottom:1px solid var(--line)}
 .step table.cmp thead th{font:600 .62rem/1.2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
 .step table.cmp tbody th{font-weight:600;color:var(--text);white-space:nowrap}
 .step table.cmp td{color:var(--dim)}.step table.cmp td:last-child{color:var(--surf)}
@@ -227,7 +231,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 :where(:root[data-theme="light"]) :is(h1,h2,h3,.thesis,.qa) em{font-style:normal}
 
 /* ---------- stages: glass cards (the opening's, for every chapter) ---------- */
-:where(:root[data-theme="light"]) .stage{padding:2rem 2.2rem 2rem .8rem}
+:where(:root[data-theme="light"]) .stage{padding:2rem 0;padding-inline:.8rem 2.2rem}
 :where(:root[data-theme="light"]) .stage-frame{border:0;border-radius:2rem;overflow:hidden;background:var(--panel);
   backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);box-shadow:var(--glass-edge),var(--glass-drop)}
 :where(:root[data-theme="light"]) .stage-frame .sim-mount{border-radius:inherit;overflow:hidden}
@@ -247,7 +251,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 :where([data-theme="light"] body>section) .step p.credit{font:500 .72rem/1.4 var(--f-ui);letter-spacing:0}
 /* a tag: the opening's glass pill. .lvl keeps its depth dots (intuition, mechanism, math) */
 :where([data-theme="light"] body>section) .lvl{align-self:flex-start;display:inline-flex;align-items:center;gap:.55rem;margin-bottom:1.3rem;
-  padding:.42rem .85rem .42rem .7rem;border-radius:999px;font:600 .72rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;
+  padding:.42rem 0;padding-inline:.7rem .85rem;border-radius:999px;font:600 .72rem/1.2 var(--f-ui);letter-spacing:0;text-transform:none;
   color:var(--dim);background:rgba(255,255,255,.6);box-shadow:var(--glass-edge)}
 :where([data-theme="light"] body>section) .lvl i{gap:3px}
 :where([data-theme="light"] body>section) .lvl i:before,:where([data-theme="light"] body>section) .lvl i:after,
@@ -292,7 +296,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 :where([data-theme="light"] body>section) .legend div{padding:1.3rem 1.3rem 1.4rem}
 :where([data-theme="light"] body>section) .legend b{display:flex;align-items:center;gap:.55rem;font:800 1.2rem/1.15 var(--f-ui);letter-spacing:-.015em}
 :where([data-theme="light"] body>section) .legend b:before{content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--c)}
-:where([data-theme="light"] body>section) .depths .lvl{margin:0 .5rem 0 0}
+:where([data-theme="light"] body>section) .depths .lvl{margin:0;margin-inline-end:.5rem}
 /* evidence */
 :where([data-theme="light"] body>section) .exhibit{padding:1.4rem 1.5rem 1.2rem}
 :where([data-theme="light"] body>section) .exhibit h3{font:700 1.12rem/1.25 var(--f-ui);letter-spacing:-.012em}
@@ -316,7 +320,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 
 /* ---------- the fixed chrome: glass ---------- */
 :where(:root[data-theme="light"]) .rail a span{border:0;border-radius:999px;background:rgba(255,255,255,.88);box-shadow:var(--glass-edge),0 6px 18px -10px rgba(88,56,24,.4)}
-:where(:root[data-theme="light"]) .hud button,:where(:root[data-theme="light"]) .hud .cut,:where(:root[data-theme="light"]) .hud .clock{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+:where(:root[data-theme="light"]) .hud button,:where(:root[data-theme="light"]) .hud .cut,:where(:root[data-theme="light"]) .hud .lang,:where(:root[data-theme="light"]) .hud .clock{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 :where(:root[data-theme="light"]) .keys{border:0;border-radius:1.2rem;background:rgba(255,255,255,.9);box-shadow:var(--glass-edge),var(--glass-drop);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 
@@ -335,3 +339,28 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   :where([data-theme="light"] body>section) .props{grid-template-columns:minmax(0,1fr)}   /* a card holds its title on one line */
 }
 @media (prefers-reduced-motion:reduce){.room i{animation:none}}
+
+/* =====================================================================================================================
+   Right to left (Hebrew: talk/i18n.js sets <html dir="rtl">). The rules above name sides as inline-start / inline-end,
+   so the deck mirrors by itself: the text column and the rail on the right, the stage on the left, the HUD and the
+   keys panel in the right corner, grids, lists and tables from the right. Left here: what has no logical form, what
+   must not mirror (formulas, key caps, numbers, charts; inside a stage nothing mirrors at all, see kit.css), and
+   Hebrew type (Heebo stands behind Inter, kit.css).
+   ===================================================================================================================== */
+:root[dir="rtl"] .progress{transform-origin:100% 50%;background:linear-gradient(270deg,var(--surf),var(--splat))}
+:where(:root[dir="rtl"]) .rail a span{transform:translateX(4px)}
+:root[dir="rtl"] .room>div{transform:scaleX(-1)}                       /* the light comes from the other side, as in talk-he.html */
+/* left to right inside right-to-left text: formulas, key caps, code; a number that stands alone; a chart */
+:root[dir="rtl"] :is(.katex,.eq,[data-tex],kbd,code,.mono){direction:ltr;unicode-bidi:isolate}
+:root[dir="rtl"] .keys kbd{margin-right:0;margin-left:.5rem}             /* a key cap is left to right itself, so its own "end" is the wrong side */
+:root[dir="rtl"] .stats b{direction:ltr;text-align:right}
+:root[dir="rtl"] .exhibit svg{direction:ltr}
+/* type: no tracking on the small labels; headlines a little less tight and a little more open than the Latin ones, as
+   the Hebrew deck sets them (talk/he/he.css); Hebrew is never slanted, so emphasis in running text is a heavier word */
+:root[dir="rtl"] :is(.hud,.rail a span,.stage-tools a,.stage-tools button,.flip div b){letter-spacing:0}
+:root[dir="rtl"] .step h2{letter-spacing:-.02em;line-height:1.14}
+:root[dir="rtl"] .opener h2{line-height:1.06}
+:root[dir="rtl"] .step .thesis{letter-spacing:-.025em;line-height:1.14}
+:root[dir="rtl"] .step p.qa{letter-spacing:-.03em;line-height:1}
+:root[dir="rtl"] em{font-style:normal}
+:root[dir="rtl"] :is(p,li,td):not(.thesis,.qa) em:not([class]){font-weight:600;color:var(--text)}

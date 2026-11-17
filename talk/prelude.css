@@ -31,7 +31,7 @@
   background:linear-gradient(155deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 28%,rgba(255,255,255,0) 72%,rgba(255,255,255,.28) 100%);mix-blend-mode:soft-light}
 
 /* ---------- chapters of the opening: the deck's layout; the stage is a glass card, as everywhere (deck.css) ---------- */
-.prelude .stage{padding:4rem 2.2rem 4rem 1rem}
+.prelude .stage{padding:4rem 0;padding-inline:1rem 2.2rem}
 .prelude .stage-tools a{display:none}                               /* the opening's modules have no lab pages of their own */
 
 .prelude .tag{align-self:flex-start;display:inline-flex;align-items:center;gap:.5rem;margin-bottom:1.3rem;padding:.4rem .85rem;border-radius:999px;
@@ -46,7 +46,7 @@
 /* a quiet number in the corner of a stage: the 3D step's count (.p-read) and the opening modules' readouts (.he-read,
    built by talk/he/sims.js; the Hebrew deck styles them in talk/he/he.css, which this page does not load). Inset far
    enough that the first letter clears the card's rounded corner */
-.prelude .p-read,.he-read{position:absolute;z-index:4;top:1.2rem;left:1.4rem;font:500 .86rem/1.3 var(--f-ui);color:var(--dim);pointer-events:none}
+.prelude .p-read,.he-read{position:absolute;z-index:4;top:1.2rem;inset-inline-start:1.4rem;font:500 .86rem/1.3 var(--f-ui);color:var(--dim);pointer-events:none}
 .prelude .p-read b,.he-read b{display:block;font:800 1.9rem/1.1 var(--f-ui);letter-spacing:-.02em;color:var(--text);font-variant-numeric:tabular-nums}
 /* he-fit pins its target photo to the top-left corner of its picture, where the Hebrew deck (right to left) has no
    readout: here the count goes top-right, and on a folded stage (a phone: the controls button holds that corner) under
@@ -56,7 +56,7 @@
 
 /* ---------- the two title screens: the opening's and the talk's cover, text left, a glass card right ---------- */
 .prelude .p-hero{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:2.4rem;
-  align-items:center;padding:5rem 3rem 5rem 5.5rem}
+  align-items:center;padding:5rem 0;padding-inline:5.5rem 3rem}
 .prelude .p-hero .p-text{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
 .prelude .p-hero h1{margin:0;font:800 clamp(2.8rem,6vw,5.8rem)/1.02 var(--f-ui);letter-spacing:-.035em;text-wrap:balance}
 .prelude .p-hero h1 span{background:linear-gradient(100deg,var(--blob),var(--pink) 55%,var(--implicit));-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -73,13 +73,13 @@
    light card */
 
 /* ---------- full-width moments of the opening ---------- */
-.prelude .wide .step{align-items:center;text-align:center;padding:5rem 2.4rem 6rem 5.5rem}
+.prelude .wide .step{align-items:center;text-align:center;padding:5rem 0 6rem;padding-inline:5.5rem 2.4rem}
 .prelude .wide .step h2{max-width:16em;font-size:clamp(2.2rem,4.6vw,4rem)}
 .prelude .wide .tag{align-self:center}
 .prelude .wide p.big{margin:1.2rem auto 0;max-width:24em;font-size:1.3rem;color:var(--dim)}
 .prelude .p-next{margin-top:2.6rem;font:600 .9rem/1 var(--f-ui);letter-spacing:.02em;color:var(--mute)}
 .prelude .trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.2rem;width:min(64rem,100%);margin-top:2.4rem}
-.prelude .trio>div{padding:1.8rem 1.5rem 1.6rem;text-align:left}
+.prelude .trio>div{padding:1.8rem 1.5rem 1.6rem;text-align:start}
 .prelude .trio b{display:block;font:800 1.5rem/1.2 var(--f-ui);letter-spacing:-.01em;color:var(--c)}
 .prelude .trio small{display:block;margin:.15rem 0 1.1rem;font:500 .78rem/1.3 var(--f-ui);color:var(--mute)}
 .prelude .trio ul{margin:0;padding:0;list-style:none;max-width:none}
@@ -97,7 +97,7 @@
 :root[data-theme="light"] .rail,:root[data-theme="light"] .hud,:root[data-theme="light"] .keys,
 body.lightroom .rail,body.lightroom .hud,body.lightroom .keys{--bg:#f6f1ea;--bg2:#fffaf4;--bg3:#ffffff;--text:#1d1d1f;--dim:#6e6e73;--mute:#a1a1a6;
   --line:rgba(60,45,30,.10);--line2:rgba(60,45,30,.16);--panel:rgba(255,255,255,.7)}
-.rail a,.hud button,.hud .clock,.hud .cut{transition:color .4s,background-color .4s,border-color .4s}
+.rail a,.hud button,.hud .clock,.hud .cut,.hud .lang{transition:color .4s,background-color .4s,border-color .4s}
 
 @media (max-width:900px){
   .prelude .p-hero{grid-template-columns:minmax(0,1fr);gap:1.4rem;padding:3.6rem 1.2rem 5rem;align-content:center}
@@ -111,3 +111,16 @@ body.lightroom .rail,body.lightroom .hud,body.lightroom .keys{--bg:#f6f1ea;--bg2
   .prelude .glass{border-radius:1.5rem}
   .prelude .p-read b,.he-read b{font-size:1.4rem}
 }
+
+/* ---------- right to left (Hebrew: talk/i18n.js sets <html dir="rtl">) ----------
+   The two title screens, the stage's padding, the read-outs and the "Which one?" cards mirror by themselves (the rules
+   above name sides as inline-start / inline-end). The opening's three modules are the Hebrew deck's (talk/he/sims.js)
+   and stay right to left inside (kit.css), so their read-out sits top right, as it does there; on a folded stage (a
+   phone) the controls button of he-shapes and he-field moves to the left, out of its way, and their panel opens
+   under it. he-fit keeps its photo top left: its button stays on the right and its read-out, under the picture, goes
+   bottom right. Headlines as the Hebrew deck sets them (talk/he/he.css). */
+:root[dir="rtl"] :is(.kt-sim-he-shapes,.kt-sim-he-field) .kt-gear{right:auto;left:8px}
+:root[dir="rtl"] :is(.kt-sim-he-shapes,.kt-sim-he-field).kt-compact.kt-open .kt-panel{right:auto;left:8px}
+:root[dir="rtl"] .kt-sim-he-fit.kt-compact .he-read{left:auto;right:1.4rem;text-align:right}
+:root[dir="rtl"] .prelude .p-hero h1{letter-spacing:-.03em}
+:root[dir="rtl"] .prelude :is(.p-next,.p-hero .fine){letter-spacing:0}

@@ -13,11 +13,18 @@
    Between windows: a BroadcastChannel where there is one, postMessage between a window and the one it opened, and
    the storage event for the overrides. Every message has an id, so one that arrives twice is applied once; only the
    window where a switch was turned saves. The talk window is the authority: the presenter view shows what it last
-   said. With none of these channels (some file:// setups) the drawer in the talk window still works on its own. */
+   said. With none of these channels (some file:// setups) the drawer in the talk window still works on its own.
+   Languages (talk/i18n.js): the panel is in the page's language and carries the language control (L switches here
+   too); in Hebrew the presenter view's arrows swap as the deck's do (← next). What windows exchange and what is
+   saved are the steps' English keys, so two windows in different languages agree; see "language" below for how a
+   switch in one window reaches the other. */
 (function () {
   'use strict';
   var KT = window.KnotTalk || {}, D = KT.deck;
   if (!D) return;
+  /* languages (talk/i18n.js): every string here goes through T; the step keys windows exchange and save are English in
+     every language (deck.js), the titles shown are the page's. A switch of language reloads the page: see "language" */
+  var T = KT.t, I18N = KT.i18n || null, RTL = !!KT.rtl;
   function $(s, r) { return (r || document).querySelector(s); }
   function $$(s, r) { return [].slice.call((r || document).querySelectorAll(s)); }
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -63,9 +70,10 @@
     }
     try { ch = new BroadcastChannel(TAG); ch.onmessage = function (e) { take(e.data); }; } catch (e) { ch = null; }
     window.addEventListener('message', function (e) {        // only from the window that opened this one, or one it opened
-      var s = e.source;
+      var s = e.source, mine = false;
       if (!s || s === window || !e.data || e.data.kt !== TAG) return;
-      if (s !== window.opener && peers.indexOf(s) < 0) return;
+      try { mine = s.opener === window; } catch (x) { /* not ours to ask */ }   // a window this one opened, before a reload forgot it (a change of language reloads)
+      if (s !== window.opener && peers.indexOf(s) < 0 && !mine) return;
       if (peers.indexOf(s) < 0) peers.push(s);
       take(e.data);
     });
@@ -96,29 +104,40 @@
   var panel = el('div', 'ktm' + (presenter ? ' ktm-page' : ''));
   panel.innerHTML =
     '<header class="ktm-head">' +
-      '<div class="ktm-top"><div><div class="ktm-kick">Knot‑a‑Surface · ' + (presenter ? 'presenter view' : 'the talk') + '</div>' +
-        '<h2 class="ktm-h" id="ktm-h" tabindex="-1">Slide master</h2></div>' +
+      '<div class="ktm-top"><div><div class="ktm-kick">' + (presenter ? T('Knot‑a‑Surface · presenter view') : T('Knot‑a‑Surface · the talk')) + '</div>' +
+        '<h2 class="ktm-h" id="ktm-h" tabindex="-1">' + T('Slide master') + '</h2></div>' +
         '<div class="ktm-tools">' + (presenter ? '' :
-          '<button type="button" class="ktm-pop" title="The same list in a second window, synced with this one">Presenter view ↗</button>' +
-          '<button type="button" class="ktm-x" aria-label="Close the slide master (Esc)" title="Close · D / esc">×</button>') + '</div></div>' +
-      '<p class="ktm-note">Switch parts of the talk on and off. A part that is off leaves the deck: the arrows skip it, and ' +
-        'the clock and the totals leave it out. ' + (presenter ? 'This window follows the talk window and drives it.' : '<kbd>D</kbd> or <kbd>esc</kbd> closes.') + '</p>' +
-      '<div class="ktm-cuts" role="group" aria-label="Length of what is on, per cut; pick the cut in use">' +
-        '<button type="button" data-cut="40"><span>long cut</span><b></b></button>' +
-        '<button type="button" data-cut="20"><span>short cut</span><b></b></button></div>' +
-      '<div class="ktm-acts"><button type="button" class="ktm-all">Show all</button>' +
-        '<button type="button" class="ktm-reset">Reset to defaults<i></i></button></div>' +
+          '<button type="button" class="ktm-pop">' + T('Presenter view ↗') + '</button>' +
+          '<button type="button" class="ktm-x">×</button>') + '</div></div>' +
+      '<p class="ktm-note">' + T('Switch parts of the talk on and off. A part that is off leaves the deck: the arrows skip it, and the clock and the totals leave it out.') +
+        ' ' + (presenter ? T('This window follows the talk window and drives it.') : T('<kbd>D</kbd> or <kbd>esc</kbd> closes.')) + '</p>' +
+      '<div class="ktm-cuts" role="group">' +
+        '<button type="button" data-cut="40"><span>' + T('long cut') + '</span><b></b></button>' +
+        '<button type="button" data-cut="20"><span>' + T('short cut') + '</span><b></b></button></div>' +
+      '<div class="ktm-acts"><button type="button" class="ktm-all">' + T('Show all') + '</button>' +
+        '<button type="button" class="ktm-reset">' + T('Reset to defaults') + '<i></i></button></div>' +
     '</header>' +
     (presenter ?
-      '<section class="ktm-live" aria-label="The talk window">' +
-        '<div class="ktm-nav"><button type="button" class="ktm-prev" aria-label="Previous step">← prev</button>' +
-          '<button type="button" class="ktm-next" aria-label="Next step">next →</button></div>' +
-        '<div class="ktm-where"><div><span>now</span><b class="ktm-cur">–</b></div><div><span>next</span><b class="ktm-nxt">–</b></div></div>' +
-        '<div class="ktm-clock"><button type="button" class="ktm-clk">start clock</button><span class="ktm-time"></span></div>' +
-        '<p class="ktm-link"><span class="ktm-st" role="status"></span> <button type="button" class="ktm-open">Open the talk ↗</button></p>' +
+      '<section class="ktm-live">' +
+        '<div class="ktm-nav"><button type="button" class="ktm-prev">' + T('← prev') + '</button>' +
+          '<button type="button" class="ktm-next">' + T('next →') + '</button></div>' +
+        '<div class="ktm-where"><div><span>' + T('now') + '</span><b class="ktm-cur">–</b></div><div><span>' + T('next') + '</span><b class="ktm-nxt">–</b></div></div>' +
+        '<div class="ktm-clock"><button type="button" class="ktm-clk">' + T('start clock') + '</button><span class="ktm-time"></span></div>' +
+        '<p class="ktm-link"><span class="ktm-st" role="status"></span> <button type="button" class="ktm-open">' + T('Open the talk ↗') + '</button></p>' +
       '</section>' : '') +
-    '<div class="ktm-body"><div class="ktm-cols" aria-hidden="true"><span>part</span><span>long</span><span>short</span></div>' +
+    '<div class="ktm-body"><div class="ktm-cols" aria-hidden="true"><span>' + T('part') + '</span><span>' + T('long') + '</span><span>' + T('short') + '</span></div>' +
       '<ol class="ktm-list"></ol></div>';
+  /* what is said in an attribute is set here, not written into the markup above: a translation may hold a quote */
+  function say(sel, name, text) { var e = $(sel, panel); if (e) e.setAttribute(name, text); }
+  say('.ktm-pop', 'title', T('The same list in a second window, synced with this one'));
+  say('.ktm-x', 'aria-label', T('Close the slide master (Esc)')); say('.ktm-x', 'title', T('Close · D / esc'));
+  say('.ktm-cuts', 'aria-label', T('Length of what is on, per cut; pick the cut in use'));
+  say('.ktm-live', 'aria-label', T('The talk window'));
+  say('.ktm-prev', 'aria-label', T('Previous step')); say('.ktm-next', 'aria-label', T('Next step'));
+  /* "in use" on the cut that is on is written by the stylesheet (master.css): hand it the words of another language */
+  if (T('in use') !== 'in use') panel.style.setProperty('--ktm-inuse', JSON.stringify(' · ' + T('in use')));
+  /* the language: the HUD's control again, beside "show all" and "reset" (the drawer, and the presenter view) */
+  if (I18N) $('.ktm-acts', panel).appendChild(I18N.switcher('ktm-lang'));
 
   var list = $('.ktm-list', panel), secRows = [], stepRows = [], groups = [], byStep = new Map();
   function tag(t, cls, tip) { var s = el('span', 'ktm-tag' + (cls ? ' ' + cls : ''), t); if (tip) s.title = tip; return s; }
@@ -139,29 +158,29 @@
     var g = sec.closest('.prelude') ? 0 : 1;
     if (g !== grp) {                                       // the light opening and the cover, then the talk
       grp = g;
-      var gl = el('li', 'ktm-grp', '<span>' + (g ? 'The talk' : 'Opening and cover · light') + '</span>');
+      var gl = el('li', 'ktm-grp', '<span>' + (g ? T('The talk') : T('Opening and cover · light')) + '</span>');
       var G = { el: gl, g: g, secs: [], m40: el('span', 'ktm-m'), m20: el('span', 'ktm-m') };
       gl.appendChild(G.m40); gl.appendChild(G.m20); list.appendChild(gl); groups.push(G);
     }
     groups[groups.length - 1].secs.push(sec);
     // a part of one step (the cover, a single slide) is one row: its switch is the step's
     var single = navs.length === 1, title = sec.dataset.title || D.title(navs[0]);
-    var li = el('li', 'ktm-sec'), R = row('ktm-srow' + (single ? ' ktm-one' : ''), sec.dataset.rail || '', title,
-      (sec.dataset.rail || '') + ' · ' + title + (single ? '' : ', all its steps'));
+    var li = el('li', 'ktm-sec'), part = (sec.dataset.rail || '') + ' · ' + title;
+    var R = row('ktm-srow' + (single ? ' ktm-one' : ''), sec.dataset.rail || '', title, single ? part : T('{part}, all its steps', { part: part }));
     R.sec = sec; R.navs = navs; li.appendChild(R.row);
-    if (single && navs[0].matches('.step[data-depth="deep"]')) R.name.appendChild(tag('deep', '', 'A deep-dive: the short cut leaves it out'));
+    if (single && navs[0].matches('.step[data-depth="deep"]')) R.name.appendChild(tag(T('deep'), '', T('A deep-dive: the short cut leaves it out')));
     if (sec.hasAttribute('data-off') || (single && navs[0].hasAttribute('data-off')))
-      R.name.appendChild(tag('off by default', 'def', 'talk.html marks this part data-off: it stays off until you switch it on'));
+      R.name.appendChild(tag(T('off by default'), 'def', T('talk.html marks this part data-off: it stays off until you switch it on')));
     secRows.push(R);
-    if (single) { R.name.appendChild(tag('now', 'now')); byStep.set(navs[0], R); }
+    if (single) { R.name.appendChild(tag(T('now'), 'now')); byStep.set(navs[0], R); }
     else {
       var ol = el('ol', 'ktm-steps');
       navs.forEach(function (n, k) {
         var S = row('ktm-step', String(k + 1), D.title(n), D.title(n));
         S.n = n; S.sec = sec;
-        if (n.matches('.step[data-depth="deep"]')) S.name.appendChild(tag('deep', '', 'A deep-dive: the short cut leaves it out'));
-        if (n.hasAttribute('data-off')) S.name.appendChild(tag('off by default', 'def', 'talk.html marks this step data-off: it stays off until you switch it on'));
-        S.name.appendChild(tag('now', 'now'));
+        if (n.matches('.step[data-depth="deep"]')) S.name.appendChild(tag(T('deep'), '', T('A deep-dive: the short cut leaves it out')));
+        if (n.hasAttribute('data-off')) S.name.appendChild(tag(T('off by default'), 'def', T('talk.html marks this step data-off: it stays off until you switch it on')));
+        S.name.appendChild(tag(T('now'), 'now'));
         var it = el('li'); it.appendChild(S.row); ol.appendChild(it);
         stepRows.push(S); byStep.set(n, S);
       });
@@ -181,8 +200,10 @@
     var part = !off && v > 0 && v < full - 1e-9;
     span.textContent = mins(off ? full : v);
     span.classList.toggle('is-cut', part);
-    span.title = cutName + ': ' + (off ? (full > 0 ? 'off · ' + mins(full) + ' when on' : 'not in it') : mins(v) + (part ? ' of ' + mins(full) : ''));
+    span.title = off ? (full > 0 ? T('{cut}: off · {m} when on', { cut: cutName, m: mins(full) }) : T('{cut}: not in it', { cut: cutName }))
+      : part ? T('{cut}: {m} of {full}', { cut: cutName, m: mins(v), full: mins(full) }) : T('{cut}: {m}', { cut: cutName, m: mins(v) });
   }
+  var LONG = T('long cut'), SHORT = T('short cut');
   var lastCur = null;
   function paint() {
     var m = cutNow(), cur = curNow();
@@ -192,7 +213,8 @@
     });
     var nOver = Object.keys(D.overrides()).length;
     resetBtn.disabled = !nOver; $('i', resetBtn).textContent = nOver ? String(nOver) : '';
-    resetBtn.title = nOver ? nOver + ' step' + (nOver > 1 ? 's differ' : ' differs') + ' from the page’s defaults' : 'Everything is as the page sets it';
+    resetBtn.title = !nOver ? T('Everything is as the page sets it')
+      : nOver > 1 ? T('{n} steps differ from the page’s defaults', { n: nOver }) : T('{n} step differs from the page’s defaults', { n: nOver });
     allBtn.disabled = D.steps.every(D.isOn);
     groups.forEach(function (G) {
       var a = 0, b = 0;
@@ -207,12 +229,12 @@
       R.row.classList.toggle('is-out', on > 0 && !shown);
       R.row.classList.toggle('is-now', !!cur && (cur === R.sec || R.sec.contains(cur)));
       R.go.setAttribute('aria-disabled', String(!shown));
-      R.go.title = shown ? 'Go to this part' : on ? 'The short cut leaves it out' : 'Off: switch it on to go there';
+      R.go.title = shown ? T('Go to this part') : on ? T('The short cut leaves it out') : T('Off: switch it on to go there');
       // a section's full minutes in a cut are what the cut shows of it (a section of deep steps only has none in the short one)
       var f40 = R.navs.some(function (n) { return D.inCut(n, 40); }) ? D.minutes(R.sec, 40) : 0;
       var f20 = R.navs.some(function (n) { return D.inCut(n, 20); }) ? D.minutes(R.sec, 20) : 0;
-      setNum(R.m40, D.budget(R.sec, 40), f40, 'long cut', !on);
-      setNum(R.m20, D.budget(R.sec, 20), f20, 'short cut', !on);
+      setNum(R.m40, D.budget(R.sec, 40), f40, LONG, !on);
+      setNum(R.m20, D.budget(R.sec, 20), f20, SHORT, !on);
     });
     stepRows.forEach(function (S) {
       var on = D.isOn(S.n), shown = on && D.inCut(S.n, m);
@@ -221,22 +243,21 @@
       S.row.classList.toggle('is-out', on && !shown);
       S.row.classList.toggle('is-now', S.n === cur);
       S.go.setAttribute('aria-disabled', String(!shown));
-      S.go.title = shown ? 'Go to this step' : on ? 'A deep-dive: the short cut leaves it out' : 'Off: switch it on to go there';
+      S.go.title = shown ? T('Go to this step') : on ? T('A deep-dive: the short cut leaves it out') : T('Off: switch it on to go there');
       var a = D.share(S.n, 40), b = D.share(S.n, 20);          // share() is 0 where the cut leaves the step out
-      setNum(S.m40, on ? a : 0, a, 'long cut', !on);
-      setNum(S.m20, on ? b : 0, b, 'short cut', !on);
+      setNum(S.m40, on ? a : 0, a, LONG, !on);
+      setNum(S.m20, on ? b : 0, b, SHORT, !on);
     });
     if (live) {
       live.cur.textContent = cur ? label(cur) : '–';
       var nx = cur ? nextAfter(cur, m) : null;
-      live.nxt.textContent = nx ? label(nx) : cur ? 'the end' : '–';
+      live.nxt.textContent = nx ? label(nx) : cur ? T('the end') : '–';
       if (live.was !== view.linked) {
         live.was = view.linked;
         live.link.classList.toggle('on', view.linked); live.open.hidden = view.linked;
-        live.st.textContent = view.linked ? 'Linked to the talk window.' :
-          'Waiting for the talk window: open talk.html in this browser and this page follows it.' +
-          (bus.bc ? '' : ' This browser gives the page no BroadcastChannel: open this view from the talk’s slide master ' +
-            '(D, then “Presenter view”), or serve the folder over http.');
+        live.st.textContent = view.linked ? T('Linked to the talk window.') :
+          T('Waiting for the talk window: open talk.html in this browser and this page follows it.') +
+          (bus.bc ? '' : ' ' + T('This browser gives the page no BroadcastChannel: open this view from the talk’s slide master (D, then “Presenter view”), or serve the folder over http.'));
       }
       paintClock();
     }
@@ -245,11 +266,11 @@
   function paintClock() {
     if (!live) return;
     var t0 = view.t0, p = view.plan, tot = mmss(D.total(cutNow()) * 60);
-    live.clk.textContent = t0 ? 'reset clock' : 'start clock';
-    if (!t0) { live.time.className = 'ktm-time'; live.time.innerHTML = 'plan <b>' + mmss(p) + '</b> / ' + tot; return; }
+    live.clk.textContent = t0 ? T('reset clock') : T('start clock');
+    if (!t0) { live.time.className = 'ktm-time'; live.time.innerHTML = T('plan <b>{p}</b> / {tot}', { p: mmss(p), tot: tot }); return; }
     var e = (Date.now() - t0) / 1000;
     live.time.className = 'ktm-time ' + (e > p + 45 ? 'late' : 'ok');
-    live.time.innerHTML = '<b>' + mmss(e) + '</b> · plan ' + mmss(p) + ' / ' + tot;
+    live.time.innerHTML = T('<b>{e}</b> · plan {p} / {tot}', { e: mmss(e), p: mmss(p), tot: tot });
   }
   if (presenter) setInterval(paintClock, 1000);
   /* keep the active step's row in sight (the drawer only while it is open) */
@@ -334,8 +355,13 @@
     else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     back = null;
   }
+  /* a link to this page in another role, in this window's language (said in the address: it holds without storage) */
+  function pageUrl(query) {
+    var u = location.href.split('#')[0].split('?')[0] + query;
+    return I18N ? I18N.url(KT.lang, true, u) : u;
+  }
   function openPresenter() {
-    var url = location.href.split('#')[0].split('?')[0] + '?master', w = null;
+    var url = pageUrl('?master'), w = null;
     try { w = window.open(url, 'knot-talk-master', 'popup,width=600,height=900'); } catch (e) {}
     if (w) { bus.peer(w); try { w.focus(); } catch (e) {} }
   }
@@ -344,8 +370,8 @@
     dlg = el('dialog', 'ktm-dialog'); dlg.setAttribute('aria-labelledby', 'ktm-h');
     dlg.appendChild(panel); document.body.appendChild(dlg);
     hb = el('button', 'master', '<svg viewBox="0 0 16 13" aria-hidden="true"><path d="M1.5 2h2.5M1.5 6.5h2.5M1.5 11h2.5M6.5 2h8M6.5 6.5h8M6.5 11h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>');
-    hb.type = 'button'; hb.title = 'D · slide master: show / hide parts';
-    hb.setAttribute('aria-label', 'Slide master: show or hide parts of the talk (D)');
+    hb.type = 'button'; hb.title = T('D · slide master: show / hide parts');
+    hb.setAttribute('aria-label', T('Slide master: show or hide parts of the talk (D)'));
     hb.setAttribute('aria-haspopup', 'dialog'); hb.setAttribute('aria-expanded', 'false');
     var hud = $('.hud'), help = hud && $('.help', hud);
     if (hud) hud.insertBefore(hb, help || null);
@@ -355,15 +381,16 @@
     dlg.addEventListener('cancel', function (e) { e.preventDefault(); close(); });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) close(); });        // the dimmed deck around it
     dlg.addEventListener('keydown', function (e) {
-      var k = e.key;
+      var k = D.letter(e);                                  // D and L by position on a keyboard that types Hebrew
       if (!(e.metaKey || e.ctrlKey || e.altKey)) {
-        if (k === 'Escape' || ((k === 'd' || k === 'D') && !e.repeat)) { e.preventDefault(); close(); }
+        if (k === 'Escape' || (k === 'd' && !e.repeat)) { e.preventDefault(); close(); }
+        else if (k === 'l' && !e.repeat && I18N) { e.preventDefault(); I18N.toggle(); }
         else if (rove(e, true)) e.preventDefault();
       }
       e.stopPropagation();                                  // the deck behind does not see keys while the drawer is open
     });
     document.addEventListener('keydown', function (e) {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || (e.key !== 'd' && e.key !== 'D')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || D.letter(e) !== 'd') return;
       var t = e.target, tag = t && t.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
       e.preventDefault(); if (isOpen) close(); else open(false);
@@ -372,23 +399,25 @@
     /* ---------- the presenter view: this page is the panel ---------- */
     document.body.classList.add('kt-presenter');
     document.body.appendChild(panel);
-    document.title = 'Slide master · Knot‑a‑Surface';
+    document.title = I18N ? I18N.strip(T('Slide master · Knot‑a‑Surface')) : T('Slide master · Knot‑a‑Surface');
     $('.ktm-prev', panel).addEventListener('click', function () { bus.post({ type: 'step', d: -1 }); });
     $('.ktm-next', panel).addEventListener('click', function () { bus.post({ type: 'step', d: 1 }); });
     live.clk.addEventListener('click', function () { bus.post({ type: 'clock' }); });
     live.open.addEventListener('click', function () {
       var w = null;
-      try { w = window.open(location.href.split('#')[0].split('?')[0], 'knot-talk'); } catch (x) {}
+      try { w = window.open(pageUrl(''), 'knot-talk'); } catch (x) {}
       if (w) bus.peer(w);
     });
     // a clicker or the keyboard drives the talk window; this page's own (hidden) deck never sees a key
     window.addEventListener('keydown', function (e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      var t = e.target, k = e.key, ctl = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT');
-      var fwd = k === 'ArrowRight' || k === 'PageDown' || (k === ' ' && !ctl && !e.shiftKey);
-      var bwd = k === 'ArrowLeft' || k === 'PageUp' || (k === ' ' && !ctl && e.shiftKey);
+      var t = e.target, k = D.letter(e), ctl = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT');
+      var ahead = RTL ? 'ArrowLeft' : 'ArrowRight', behind = RTL ? 'ArrowRight' : 'ArrowLeft';   // right to left: ← is forward, as in the deck
+      var fwd = k === ahead || k === 'PageDown' || (k === ' ' && !ctl && !e.shiftKey);
+      var bwd = k === behind || k === 'PageUp' || (k === ' ' && !ctl && e.shiftKey);
       if (fwd || bwd) { e.preventDefault(); bus.post({ type: 'step', d: fwd ? 1 : -1 }); }
-      else if ((k === 't' || k === 'T') && !e.repeat) bus.post({ type: 'clock' });
+      else if (k === 't' && !e.repeat) bus.post({ type: 'clock' });
+      else if (k === 'l' && !e.repeat && I18N) I18N.toggle();
       else if (rove(e, false)) e.preventDefault();
       e.stopPropagation();
     }, true);
@@ -403,7 +432,23 @@
     var c = D.current();
     bus.post({ type: 'state', over: D.overrides(), cut: D.cut(), cur: c ? D.key(c) : null, t0: D.clock(), plan: D.plan() });
   }
+  /* ---------- language ----------
+     A switch reloads the window it is made in (talk/i18n.js, its `kt-lang` event comes first). That window says so on
+     the bus, and the windows of the other kind follow without saying it again: the presenter view follows the talk
+     window, a talk window follows the presenter view that drives it (two talk windows side by side keep their own
+     languages). A presenter view that hears no talk window follows the saved language instead (the storage event).
+     The drawer, if the switch was made in it, opens again after the reload. */
+  var keptHere = (I18N && I18N.kept && I18N.kept.master) || {};
+  function follow(l) { if (I18N && l !== KT.lang) fromAfar(function () { I18N.setLang(l); }); }
+  document.addEventListener('kt-lang', function (e) {
+    e.detail.keep.master = { open: isOpen };
+    if (!afar) bus.post({ type: 'lang', lang: e.detail.lang, presenter: presenter });
+  });
+  if (presenter) window.addEventListener('storage', function (e) {
+    if (e.key === 'kt-lang' && e.newValue && !view.linked) follow(e.newValue);
+  });
   bus.on(function (d) {
+    if (d.type === 'lang') { if (!!d.presenter !== presenter) follow(d.lang); return; }
     if (presenter) {
       if (d.type === 'state') {
         view.linked = true; view.cut = d.cut === 20 ? 20 : 40; view.cur = d.cur || null; view.t0 = +d.t0 || 0; view.plan = +d.plan || 0;
@@ -447,6 +492,7 @@
   /* ---------- boot: deck.js has applied the saved choices already (before its first frame); show them, say hello ---------- */
   paint(); sendState();
   if (presenter) bus.post({ type: 'hello' });
+  else if (keptHere.open) open(true);                  // the language was switched from the drawer: back in it
 
   KT.master = { open: open, close: close, isOpen: function () { return isOpen; }, paint: paint, presenter: presenter,
                 bus: bus, view: view };

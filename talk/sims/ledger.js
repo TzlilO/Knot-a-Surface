@@ -173,8 +173,9 @@
           '.lg-show-3 .lg-grp-l{display:none}.lg-show-3 .lg-rec{padding:9px 14px}.lg-show-3 .lg-rec-s{margin-bottom:7px}',
           '.lg-show-3 .lg-grp-c i{width:7px;height:7px}.lg-show-3 .lg-grp-c{max-width:none}.lg-show-3 .lg-none{padding:5px 10px;font-size:11px}',
           '@container (max-width:560px){.lg-bar{grid-template-columns:1fr}.lg-bar-v{grid-column:1}.lg-grp-c i{width:8px;height:8px}.lg-wrap{justify-content:flex-start}}',
-          /* Hebrew (talk/i18n.js sets <html lang>) is not letter-spaced */
-          ':root[lang="he"] .lg-rec-s,:root[lang="he"] .lg-fine{letter-spacing:0}'
+          /* Hebrew (talk/i18n.js sets <html lang>) has no capitals and is not letter-spaced: a name or a formula inside
+             a label keeps its case */
+          ':root[lang="he"] .lg-rec-s{letter-spacing:0;text-transform:none}:root[lang="he"] .lg-fine{letter-spacing:0}'
         ].join('\n');
         document.head.appendChild(css);
       }

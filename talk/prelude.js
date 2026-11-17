@@ -12,7 +12,7 @@
     try { var o = JSON.parse(sec.dataset.mount || '{}'); o.budget = 24000; sec.dataset.mount = JSON.stringify(o); } catch (e) { /* keep the page's own */ }
   }
   sec.addEventListener('kt-stats', function (e) {
-    num.innerHTML = '<b>' + Math.round(e.detail.drawn).toLocaleString('en-US') + '</b>Gaussians on screen';
+    num.innerHTML = '<b>' + Math.round(e.detail.drawn).toLocaleString('en-US') + '</b>' + window.KnotTalk.t('Gaussians on screen');
   });
   sl.addEventListener('input', function () { if (sec._sim) sec._sim.api.setBudget(+sl.value); });
   sl.addEventListener('pointerup', function () { sl.blur(); });      // the deck's keys must not move the slider afterwards

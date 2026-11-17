@@ -217,7 +217,7 @@
         atlas.style.gridTemplateColumns = 'repeat(' + Math.min(charts.length, small ? 4 : 8) + ',minmax(0,76px))';
         charts.forEach(function (c) {
           var tile = ui.el('div', 'kt-tile'); tile.style.setProperty('--c', c.hex);
-          tile.appendChild(ui.el('div', 'kt-tile-name', T(c.name)));      // a chart's name is an id (a mask, the features and a file's parts go by it): only what is shown is translated
+          tile.appendChild(ui.el('div', 'kt-tile-name', c.label));        // what a viewer reads for the chart's name (talk/scenes.js); the name itself is an id
           var box = ui.el('div', 'kt-tile-box'); tile.appendChild(box);
           c.cv = ui.canvas(box, 'kt-tile-cv');
           c.lab = ui.el('div', 'kt-tile-n'); tile.appendChild(c.lab);
@@ -648,7 +648,7 @@
         var s = scaleOf();
         ioNote.classList.remove('bad');
         ioNote.textContent = T('{parts} · {points} points · {triangles} triangles · {unit}', {
-          parts: mesh.parts.map(function (m) { return T(m.c.name); }).join(' + '), points: mesh.V.toLocaleString('en-US'), triangles: (mesh.Q * 2).toLocaleString('en-US'),
+          parts: mesh.parts.map(function (m) { return m.c.label; }).join(' + '), points: mesh.V.toLocaleString('en-US'), triangles: (mesh.Q * 2).toLocaleString('en-US'),
           unit: s.scan ? T('in metres (1 scene unit = {mm} mm)', { mm: s.mm }) : T('in scene units') });
       }
       /* what is written into the file, and the file's name, stay English (KT.scenes[..].en): the writers keep comment

@@ -27,12 +27,12 @@
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
   /* Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js): that string in the page's language,
      or the English itself where there is no translation (the lab page). A sentence with a number or a name in it is
-     one template, T('{n} of {m}', { n: .., m: .. }); the numbers are formatted as before and passed in.
-     On a right-to-left page the stage stays a left-to-right island (the kit sets it): nothing in it moves, and a
-     string from T() carries its own direction, so it reads right in a label, a tag or on a canvas as it is. What is
-     left to this module: LTRH() around a formula with no words in it where it sits in the kit's panel (the one part of
-     the stage that runs right to left), the numbers under the caption as a right-to-left block, and no tracking on
-     Hebrew (the end of the stylesheet). A T() result is for display only: never a key, an id or a test. */
+     one template with {placeholders}; the numbers are formatted as before and passed in.
+     On a right-to-left page the stage stays a left-to-right island (the kit sets it): nothing in it moves, and what T
+     returns carries its own direction, so it reads right in a label, a tag or on a canvas as it is. What is left to
+     this module: LTRH around a formula with no words in it where it sits in the kit's panel (the one part of the stage
+     that runs right to left), the numbers under the caption as a right-to-left block, and no tracking on Hebrew (the
+     end of the stylesheet). What T returns is for display only: never a key, an id or a test. */
   var T = KT.t;
   function LTRH(html) { return KT.rtl ? '<span dir="ltr">' + html + '</span>' : html; }
   var CTRL_WORD = window.KnotTalk.theme === 'light' ? T('orange') : T('amber');   // the control points' colour, as the copy names it
@@ -617,7 +617,7 @@
       [rdIn, rdFp, rdSpc, rdUni, rdEq].forEach(function (r) { panel.insertBefore(r.el, rdP.el); });
       // the numbers that must stay readable when the panel is folded away (a phone, the deck): under the caption
       var hud = ui.el('div', 'kt-pl-hud'); root.appendChild(hud);
-      if (KT.rtl) hud.dir = 'rtl';                // a few lines of running text: on a right-to-left page they line up on the right
+      if (KT.rtl) hud.classList.add('kt-text');   // a few lines of running text: on a right-to-left page they take its direction (kit.css)
       var hudDirty = true, hudHtml = '';
       var segNb = ui.seg(nbBar, { label: T('size from'), value: st.nb,
         options: [{ v: 4, label: T('{n} neighbours', { n: 4 }) }, { v: 8, label: '8' }],
@@ -1927,7 +1927,8 @@
           '.kt-sim-planoid .kt-nbsw{position:absolute;z-index:5;left:12px;bottom:calc(20px + var(--kt-ins));padding:4px 4px 4px 10px;' +
           'background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(10px)}' +
           '.kt-sim-planoid .kt-nbsw .kt-seg-btn.on{background:var(--splat)}' +
-          '.kt-sim-planoid .kt-pl-spark{position:relative;height:92px;margin-top:2px;border-top:1px solid var(--line)}' +
+          /* (a plot in the kit's panel: left to right, also where the panel runs right to left) */
+          '.kt-sim-planoid .kt-pl-spark{position:relative;height:92px;margin-top:2px;border-top:1px solid var(--line);direction:ltr}' +
           '.kt-sim-planoid .kt-pl-spark-cv{position:absolute;inset:0;width:100%;height:100%}' +
           '.kt-sim-planoid .kt-readout .kt-lab sub,.kt-sim-planoid .kt-readout .kt-lab sup{font-size:8px;line-height:0}' +
           '.kt-sim-planoid .kt-readout .kt-lab i,.kt-sim-planoid .kt-readout .kt-val i{font-style:normal;color:var(--mute)}' +
@@ -1960,8 +1961,10 @@
           'backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);' +
           'box-shadow:var(--glass-edge),0 10px 26px -16px rgba(88,56,24,.3)}' +
           '[data-theme="light"] .kt-sim-planoid .kt-pl-hud .big{font-family:var(--f-ui);font-weight:700;letter-spacing:-.01em}' +
-          /* a Hebrew page (talk.html?lang=he): this module's own labels are set without the tracking of the capitals they replace */
-          ':root[lang="he"] .kt-sim-planoid .kt-uv-lab,:root[lang="he"] .kt-sim-planoid .kt-pl-hud,:root[lang="he"] .kt-sim-planoid .kt-tag i{letter-spacing:0}';
+          /* a right-to-left page (talk.html in Hebrew; the same mark as kit.css asks for): this module's own labels are set
+             without the tracking of the capitals they replace */
+          ':root[dir="rtl"][data-lang] .kt-sim-planoid .kt-uv-lab,:root[dir="rtl"][data-lang] .kt-sim-planoid .kt-pl-hud,' +
+          ':root[dir="rtl"][data-lang] .kt-sim-planoid .kt-tag i{letter-spacing:0}';
         document.head.appendChild(css);
       }
 
