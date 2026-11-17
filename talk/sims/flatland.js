@@ -838,11 +838,13 @@
       var cap = ui.el('div', 'kt-caption fl-cap'); rootEl.appendChild(cap);
       var met = ui.el('div', 'fl-metrics'); rootEl.appendChild(met);
       var table = ui.el('div', 'fl-table'); met.appendChild(table);
-      var HEAD = [[T('train'), 'dB'], [T('held-out'), 'dB'], [T('geom err'), 'cm'], [T('floaters'), '>' + Math.round(CFG.tau * 100) + ' cm'], [T('params'), '']];
+      // the column heads, each with its unit: one template apiece
+      var HEAD = [T('train <small>dB</small>'), T('held-out <small>dB</small>'), T('geom err <small>cm</small>'),
+                  T('floaters <small>>{d} cm</small>', { d: Math.round(CFG.tau * 100) }), T('params')];
       var NAME = { free: T('free'), bound: T('bound') };       // the two models, as the table and the control name them
       var cells = { free: {}, bound: {} }, rowEls = { free: [], bound: [] };
       table.appendChild(ui.el('span', 'fl-th', ''));
-      HEAD.forEach(function (h) { table.appendChild(ui.el('span', 'fl-th', h[0] + (h[1] ? ' <small>' + h[1] + '</small>' : ''))); });
+      HEAD.forEach(function (h) { table.appendChild(ui.el('span', 'fl-th', h)); });
       ['free', 'bound'].forEach(function (kind) {
         var nm = ui.el('span', 'fl-name ' + kind, NAME[kind]); table.appendChild(nm); rowEls[kind].push(nm);
         ['train', 'novel', 'geo', 'fl', 'par'].forEach(function (k) {

@@ -43,17 +43,16 @@
    speeds), a whoosh at the launch (its speed), a click for each candidate moment of contact, when it happened. All of it
    sits above the bass of the chapter's music (talk/audio/beat.js), so it carries over it. Nothing plays before a key
    or pointer press (browsers forbid it), while KnotTalk.muted is true, or while the module is paused.
-   Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js), keyed by its English, a sentence with
-   numbers in it as one template. On a right-to-left page a number with its unit, a formula or an address (u, v) is read
-   left to right as one piece: a <span dir="ltr"> written into the translation, ltr() for plain text. The timeline, the
-   address pin and the boxes stay where they are, left to right; the sentences in them run with the page.
+   Words: every string a viewer reads goes through T = KnotTalk.t (talk/i18n.js), keyed by its English, one statement
+   (numbers and all) as one template; a line of the numbers box is statements joined by " · ". In Hebrew the stage stays
+   a left-to-right island: the timeline, the address pin and the boxes are where they are in English, T gives each
+   string its own direction, and the sentences under the timeline are marked right-to-left as a block.
    Tool: WebGL (three.js), Web Audio. Standalone: talk/sims/touch.html.
    Depends on vendor/three.min.js, nurbs.js, kit.js, gl.js. */
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
   var T = KT.t, RTL = !!KT.rtl;                // the page's language: T(english, vars) -> that string in it (the English itself when there is no translation)
-  function ltr(s) { return RTL ? '⁦' + s + '⁩' : s; }   // plain text read left to right as one piece on a right-to-left page ("5.0 N·s")
 
   var NA = 88, N = NA * NA;                    // Gaussians per bowl: an NA x NA lattice in (u, v)
   var NC = 13, SPANS = NC - 3;                 // control points per side: one cubic patch of 10 x 10 spans
@@ -372,6 +371,7 @@
       var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
       var tag = ui.el('div', 'kt-side'); root.appendChild(tag);
       var tlm = ui.el('div', 'kt-mo'), tagT = ui.el('div'); tag.appendChild(tlm); tag.appendChild(tagT);   // moment's timeline, then the words
+      if (RTL) tagT.setAttribute('dir', 'rtl');                  // the words run right to left on a right-to-left page; the timeline and the stage do not
       var pin = ui.el('div', 'kt-pin'); root.appendChild(pin);
       SFX.arm();
 
@@ -1134,10 +1134,9 @@
         for (i = 0; i < CANDS.length; i++) if (Tt[i] != null) { idx.push(i); lo = Math.min(lo, Tt[i]); hi = Math.max(hi, Tt[i]); }
         var W = tl.w, L0 = tl.x0, R1 = W - 12;
         function ln(x1, x2, y1, y2, col, wd, op) { return '<line x1="' + x1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y1="' + y1 + '" y2="' + y2 + '" stroke="' + col + '"' + (wd ? ' stroke-width="' + wd + '"' : '') + (op ? ' stroke-opacity="' + op + '"' : '') + '/>'; }
-        // word: a translated label. On a right-to-left page it carries a class, so that Hebrew is set in the stage's text face (the mono face of the numbers has none)
-        function tx(x, y, col, s, anc, word) { return '<text x="' + x.toFixed(1) + '" y="' + y + '" fill="' + col + '"' + (anc ? ' text-anchor="' + anc + '"' : '') + (word && RTL ? ' class="kt-mo-w"' : '') + '>' + s + '</text>'; }
+        function tx(x, y, col, s, anc) { return '<text x="' + x.toFixed(1) + '" y="' + y + '" fill="' + col + '"' + (anc ? ' text-anchor="' + anc + '"' : '') + '>' + s + '</text>'; }
         var rows = '<svg width="' + W + '" height="84" viewBox="0 0 ' + W + ' 84">' + ln(L0, R1, 70, 70, C.mute, 0, 0.6) + tx(0, 82, C.mute, 'ms') +
-                   tx(0, 35, C.splat, T('list'), '', 1) + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, T('spline'), '', 1) + ln(L0, R1, 54, 54, C.line, 1);
+                   tx(0, 35, C.splat, T('list')) + ln(L0, R1, 31, 31, C.line, 1) + tx(0, 58, C.surf, T('spline')) + ln(L0, R1, 54, 54, C.line, 1);
         if (!idx.length) {                                          // nothing has said "contact" yet: the empty rows, at their full height
           if (tl.key !== 'none,' + W) { tl.key = 'none,' + W; tlm.innerHTML = rows + '</svg>'; tl.cur = null; }
           return;
@@ -1158,7 +1157,7 @@
             s += ln(x, x, 25, 37, C.err, 2) + tx(x, row ? 9 : 20, C.err, lab, 'middle');
           });
           if (idx.length > 1) s += ln(X(llo), X(lhi), 42, 42, C.err, 1, 0.7) + ln(X(llo), X(llo), 39, 45, C.err, 1, 0.7) + ln(X(lhi), X(lhi), 39, 45, C.err, 1, 0.7);
-          if (r) { x = X(r.t); s += ln(x, x, 48, 60, C.surf, 2) + tx(x + 6 > R1 - 40 ? x - 6 : x + 6, 58, C.surf, T('one root'), x + 6 > R1 - 40 ? 'end' : '', 1); }
+          if (r) { x = X(r.t); s += ln(x, x, 48, 60, C.surf, 2) + tx(x + 6 > R1 - 40 ? x - 6 : x + 6, 58, C.surf, T('one root'), x + 6 > R1 - 40 ? 'end' : ''); }
           s += '<line class="kt-mo-now" x1="0" x2="0" y1="2" y2="62" stroke="' + C.text + '" stroke-opacity="0.6"/></svg>';
           tlm.innerHTML = s; tl.cur = tlm.querySelector('.kt-mo-now');
         }
@@ -1232,8 +1231,8 @@
       var panel = ui.panel(root, { pos: 'tr', title: T('material') });
       var sl = {
         e: ui.slider(panel, { label: T('restitution'), min: 0, max: 1, step: 0.05, value: mat.e, fmt: function (v) { return v.toFixed(2); }, onInput: function (v) { mat.e = v; } }),
-        tough: ui.slider(panel, { label: T('toughness'), min: 1, max: 16, step: 0.5, value: mat.tough, fmt: function (v) { return ltr(v.toFixed(1) + ' N·s'); }, onInput: function (v) { mat.tough = v; } }),
-        stiff: ui.slider(panel, { label: T('stiffness'), min: 60, max: 400, step: 10, value: mat.stiff, fmt: function (v) { return ltr(v + ' N/m'); }, onInput: function (v) { mat.stiff = v; } })
+        tough: ui.slider(panel, { label: T('toughness'), min: 1, max: 16, step: 0.5, value: mat.tough, fmt: function (v) { return v.toFixed(1) + ' N·s'; }, onInput: function (v) { mat.tough = v; } }),
+        stiff: ui.slider(panel, { label: T('stiffness'), min: 60, max: 400, step: 10, value: mat.stiff, fmt: function (v) { return v + ' N/m'; }, onInput: function (v) { mat.stiff = v; } })
       };
       ui.button(panel, { label: T('drop again'), kind: 'go', onClick: function () { var m = st.sc.model; letGo(m === 'flight' || m === 'moment' ? 0 : run.k + (m === 'solid' || m === 'elastic' ? 1 : 0)); } });
       // on the lab page there is no deck to carry the mute: the module has its own switch (KnotTalk.muted, as in the deck)
@@ -1323,13 +1322,10 @@
           ':root[data-theme="light"] .kt-sim-touch.tc-close .kt-caption{border-radius:6px;background:rgba(255,255,255,.86);' +
           'box-shadow:0 0 0 6px rgba(255,255,255,.86),0 10px 26px -16px rgba(88,56,24,.45)}' +   // its margin as a spread: the caption keeps its place and size
           '@media (max-width:640px){.kt-sim-touch .kt-side{font-size:9.5px;padding:6px 8px}}' +
-          // Hebrew (the page is right-to-left): the words run right to left in the stage's text face (the mono face has no
-          // Hebrew), neither letter-spaced nor in capitals (a unit inside a Hebrew title must stay as it is written); the
-          // timeline keeps its axis left to right, and so does the address pin, which is a formula
-          ':root[lang="he"] .kt-sim-touch .kt-side{direction:rtl;font-family:var(--f-ui);letter-spacing:0}' +
-          ':root[lang="he"] .kt-sim-touch .kt-side b{letter-spacing:0;text-transform:none}' +
-          ':root[lang="he"] .kt-sim-touch :is(.kt-mo,.kt-pin){direction:ltr}' +
-          ':root[lang="he"] .kt-sim-touch .kt-mo text.kt-mo-w{font-family:var(--f-ui);letter-spacing:0}';
+          // Hebrew: the words are neither letter-spaced nor set in capitals, and take their Hebrew letters from the stage's
+          // text face (the mono face has none; the numbers keep it)
+          ':root[lang="he"] .kt-sim-touch .kt-side,:root[lang="he"] .kt-sim-touch .kt-side b{letter-spacing:0;text-transform:none}' +
+          ':root[lang="he"] .kt-sim-touch :is(.kt-side,.kt-mo text){font-family:"JetBrains Mono",var(--f-ui)}';
         document.head.appendChild(css);
       }
 

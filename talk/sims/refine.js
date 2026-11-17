@@ -1549,10 +1549,10 @@
         }
         // labels
         var lf = font(600, L.fs), wide = s > 330;
-        txt(wide ? 'ERROR MEASURED IN u' : 'ERROR IN u', x, y - gap - bar - 7, lf, C.dim, 'left', '0.12em');
+        txt(wide ? T('ERROR MEASURED IN u') : T('ERROR IN u'), x, y - gap - bar - 7, lf, C.dim, 'left', '0.12em');
         ctx.save(); ctx.translate(x + s + gap + bar + L.fs + 1, y); ctx.rotate(Math.PI / 2);
-        txt(wide ? 'ERROR MEASURED IN v' : 'ERROR IN v', 0, 0, lf, C.dim, 'left', '0.12em'); ctx.restore();
-        if (!tiny) txt('full bar ' + (st.barScale < 0.00995 ? pctA(st.barScale) : pct(st.barScale, 1)), x + s, y - gap - bar - 7, font(500, L.fs), C.mute, 'right', '0.04em');
+        txt(wide ? T('ERROR MEASURED IN v') : T('ERROR IN v'), 0, 0, lf, C.dim, 'left', '0.12em'); ctx.restore();
+        if (!tiny) txt(T('full bar {size}', { size: st.barScale < 0.00995 ? pctA(st.barScale) : pct(st.barScale, 1) }), x + s, y - gap - bar - 7, font(500, L.fs), C.mute, 'right', '0.04em');
       }
 
       function drawStatus(x, y, maxW, align) {
@@ -1700,19 +1700,19 @@
       /* caption of the side view: what the lines are, in their colours */
       function sideCaption(R, useG, y) {
         var f = font(600, L.fs), f5 = font(500, L.fs), x, parts, i, w, tot = 0, lw;
-        var long = 'SIDE VIEW · CUT AT v = ' + st.cut.toFixed(3), short = 'SIDE · v = ' + st.cut.toFixed(2);
-        parts = [['target', LIGHT ? C.dim : 'rgba(221,229,240,.9)'], ['surface', C.surf], ['control', C.ctrl]];
-        if (useG) parts.push(['Gaussians', C.splat]);
-        parts.push(['error', C.err]);
-        ctx.font = f5; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.02em';
-        for (i = 0; i < parts.length; i++) tot += ctx.measureText(parts[i][0]).width + 12;
-        ctx.font = f; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.12em';
+        var long = T('SIDE VIEW · CUT AT v = {v}', { v: st.cut.toFixed(3) }), short = T('SIDE · v = {v}', { v: st.cut.toFixed(2) });
+        parts = [[T('target'), LIGHT ? C.dim : 'rgba(221,229,240,.9)'], [T('surface'), C.surf], [T('control'), C.ctrl]];
+        if (useG) parts.push([T('Gaussians'), C.splat]);
+        parts.push([T('error'), C.err]);
+        ctx.font = f5;
+        for (i = 0; i < parts.length; i++) { if ('letterSpacing' in ctx) ctx.letterSpacing = trackOf(parts[i][0], '0.02em'); tot += ctx.measureText(parts[i][0]).width + 12; }
+        ctx.font = f; if ('letterSpacing' in ctx) ctx.letterSpacing = trackOf(long, '0.12em');
         lw = ctx.measureText(long).width;
-        if (lw + 14 + tot > R.w) { long = short; lw = ctx.measureText(short).width; }
+        if (lw + 14 + tot > R.w) { long = short; if ('letterSpacing' in ctx) ctx.letterSpacing = trackOf(short, '0.12em'); lw = ctx.measureText(short).width; }
         txt(long, R.x, y, f, C.dim, 'left', '0.12em');
         if (lw + 14 + tot > R.w) return;
         x = R.x + R.w;
-        for (i = parts.length - 1; i >= 0; i--) { ctx.font = f5; if ('letterSpacing' in ctx) ctx.letterSpacing = '0.02em'; w = ctx.measureText(parts[i][0]).width; txt(parts[i][0], x, y, f5, parts[i][1], 'right', '0.02em'); x -= w + 12; }
+        for (i = parts.length - 1; i >= 0; i--) { ctx.font = f5; if ('letterSpacing' in ctx) ctx.letterSpacing = trackOf(parts[i][0], '0.02em'); w = ctx.measureText(parts[i][0]).width; txt(parts[i][0], x, y, f5, parts[i][1], 'right', '0.02em'); x -= w + 12; }
       }
 
       /* the cut line on the map, with its grip */
@@ -1727,7 +1727,7 @@
         ctx.strokeStyle = GRIP_EDGE; ctx.lineWidth = 1.2; ctx.beginPath();
         ctx.moveTo(gx - 2.2, y - 1.2); ctx.lineTo(gx, y - 3.2); ctx.lineTo(gx + 2.2, y - 1.2);
         ctx.moveTo(gx - 2.2, y + 1.2); ctx.lineTo(gx, y + 3.2); ctx.lineTo(gx + 2.2, y + 1.2); ctx.stroke();
-        if (!tiny) halo('CUT', x + s - 7, y - 5, font(600, L.fs - 1), LIGHT ? rgba('text', 0.85) : 'rgba(255,255,255,.92)', 'right', '0.14em');
+        if (!tiny) halo(T('CUT'), x + s - 7, y - 5, font(600, L.fs - 1), LIGHT ? rgba('text', 0.85) : 'rgba(255,255,255,.92)', 'right', '0.14em');
       }
 
       /* ---------- the balance map ---------- */
@@ -1750,10 +1750,10 @@
         if (!vb && !tiny) g.y += Math.round(Math.max(0, R.h - titleH - axB - axT - g.h) / 2);
         L.bg = g;
         // title
-        if (tiny) fitTxt(B.ready ? 'DRAWN ERROR' : 'MEASURING ' + Math.round(100 * B.done) + ' %', R.x, g.y - 8, 600, fs, C.dim, 'left', '0.1em', R.w);
+        if (tiny) fitTxt(B.ready ? T('DRAWN ERROR') : T('MEASURING {done}', { done: Math.round(100 * B.done) + ' %' }), R.x, g.y - 8, 600, fs, C.dim, 'left', '0.1em', R.w);
         else {
-          fitTxt('DRAWN ERROR · MEASURED', R.x, g.y - 8, 600, fs + 1, C.dim, 'left', '0.12em', B.ready ? R.w : R.w - 110);
-          if (!B.ready) txt('measuring ' + Math.round(100 * B.done) + ' %', g.x + g.w, g.y - 8, f, C.mute, 'right', '0.04em');
+          fitTxt(T('DRAWN ERROR · MEASURED'), R.x, g.y - 8, 600, fs + 1, C.dim, 'left', '0.12em', B.ready ? R.w : R.w - 110);
+          if (!B.ready) txt(T('measuring {done}', { done: Math.round(100 * B.done) + ' %' }), g.x + g.w, g.y - 8, f, C.mute, 'right', '0.04em');
         }
         // cells
         ctx.fillStyle = LIGHT ? rgba('text', 0.03) : 'rgba(255,255,255,.025)'; ctx.fillRect(g.x, g.y, g.w, g.h);
@@ -1775,21 +1775,21 @@
           var two = g.w < 330;
           var yT = g.y + Math.round(g.h * (tiny ? 0.24 : 0.30)), yB = g.y + Math.round(g.h * (tiny ? 0.58 : 0.74));
           if (tiny) {
-            halo('CTRL-STARVED', g.x + 4, yT, lf, C.ctrl, 'left', '0px');
-            halo('GAUSS-STARVED', g.x + g.w - 4, yB + lh, lf, C.splat, 'right', '0px');
-          } else if (two) {
-            halo('STARVED OF', g.x + 7, yT, lf, C.ctrl, 'left', ls); halo('CONTROL POINTS', g.x + 7, yT + lh, lf, C.ctrl, 'left', ls);
-            halo('STARVED OF', g.x + g.w - 7, yB, lf, C.splat, 'right', ls); halo('GAUSSIANS', g.x + g.w - 7, yB + lh, lf, C.splat, 'right', ls);
+            halo(T('CTRL-STARVED'), g.x + 4, yT, lf, C.ctrl, 'left', '0px');
+            halo(T('GAUSS-STARVED'), g.x + g.w - 4, yB + lh, lf, C.splat, 'right', '0px');
+          } else if (two) {               // on two lines: each line is a phrase of its own in any language
+            halo(T('STARVED OF'), g.x + 7, yT, lf, C.ctrl, 'left', ls); halo(T('CONTROL POINTS'), g.x + 7, yT + lh, lf, C.ctrl, 'left', ls);
+            halo(T('STARVED OF'), g.x + g.w - 7, yB, lf, C.splat, 'right', ls); halo(T('GAUSSIANS'), g.x + g.w - 7, yB + lh, lf, C.splat, 'right', ls);
           } else {
-            halo('STARVED OF CONTROL POINTS', g.x + 8, yT, lf, C.ctrl, 'left', ls);
-            halo('STARVED OF GAUSSIANS', g.x + g.w - 8, yB + lh, lf, C.splat, 'right', ls);
+            halo(T('STARVED OF CONTROL POINTS'), g.x + 8, yT, lf, C.ctrl, 'left', ls);
+            halo(T('STARVED OF GAUSSIANS'), g.x + g.w - 8, yB + lh, lf, C.splat, 'right', ls);
           }
           // "balanced", written along the line
           var ia = Math.floor(nc * 0.36), ib = Math.min(nc - 1, ia + 2);
           var ax = g.x + (ia + 0.5) * cell, ay = balY(g, B.nstar[ia]), bx = g.x + (ib + 0.5) * cell, by = balY(g, B.nstar[ib]);
           if (!tiny) {
             ctx.save(); ctx.translate((ax + bx) / 2, (ay + by) / 2); ctx.rotate(Math.atan2(by - ay, bx - ax));
-            halo('BALANCED', 0, -6, lf, C.ok, 'center', ls); ctx.restore();
+            halo(T('BALANCED'), 0, -6, lf, C.ok, 'center', ls); ctx.restore();
           }
         }
         // axes: control points along x, Gaussians along y
@@ -1808,9 +1808,9 @@
           if (yy - lastY < fs + 3 && ri !== 0) continue;
           v = B.rows[ri] * B.rows[ri]; txt(tiny && v >= 1000 ? Math.floor(v / 1000) + 'k' : kfmt(v), g.x - 5, yy, f, C.dim, 'right'); lastY = yy;
         }
-        txt(tiny ? 'control points →' : 'CONTROL POINTS →', g.x, g.y + g.h + axB + fs + (tiny ? 1 : 4), f6, C.ctrl, 'left', tiny ? '0px' : '0.1em');
-        if (tiny) { txt('Gaussians ↑', g.x, g.y + g.h + axB + 2 * fs + 5, f6, C.splat, 'left', '0px'); if (B.ready) txt('┄ balanced', g.x + g.w, g.y + g.h + axB + 2 * fs + 5, f6, C.ok, 'right', '0px'); }
-        else { ctx.save(); ctx.translate(g.x - axL + fs - 1, g.y + g.h); ctx.rotate(-Math.PI / 2); txt('GAUSSIANS →', 0, 0, f6, C.splat, 'left', '0.1em'); ctx.restore(); }
+        txt(tiny ? T('control points →') : T('CONTROL POINTS →'), g.x, g.y + g.h + axB + fs + (tiny ? 1 : 4), f6, C.ctrl, 'left', tiny ? '0px' : '0.1em');
+        if (tiny) { txt(T('Gaussians ↑'), g.x, g.y + g.h + axB + 2 * fs + 5, f6, C.splat, 'left', '0px'); if (B.ready) txt(T('┄ balanced'), g.x + g.w, g.y + g.h + axB + 2 * fs + 5, f6, C.ok, 'right', '0px'); }
+        else { ctx.save(); ctx.translate(g.x - axL + fs - 1, g.y + g.h); ctx.rotate(-Math.PI / 2); txt(T('GAUSSIANS →'), 0, 0, f6, C.splat, 'left', '0.1em'); ctx.restore(); }
         // colour bar
         if (cbw) {
           var cx = g.x + g.w + 12, k;
@@ -1833,15 +1833,15 @@
         // the verdict: which layer the drawn error belongs to
         if (vb) {
           var vy = g.y + g.h + axB + axT + 16, vw = Math.min(R.w, Math.max(g.w + axL, 300)), vx = R.x;
-          if (!d) fitTxt('GAUSSIANS OFF · NOTHING IS DRAWN FROM SAMPLES', vx, vy + L.f1, 600, L.f1, C.dim, 'left', '0.07em', vw);
+          if (!d) fitTxt(T('GAUSSIANS OFF · NOTHING IS DRAWN FROM SAMPLES'), vx, vy + L.f1, 600, L.f1, C.dim, 'left', '0.07em', vw);
           else {
             var F2 = ms.rmse * ms.rmse, S2 = d.samp * d.samp, share = F2 / (F2 + S2 || 1);
             fitTxt(REGIMES[reg].head, vx, vy + L.f1, 600, L.f1, reg === 'bal' ? C.ok : reg === 'ctrl' ? C.ctrl : C.splat, 'left', '0.07em', vw);
             var by0 = vy + L.f1 + 9, bw0 = vw, sw = Math.round(KT.clamp(share, 0.01, 0.99) * bw0);
             ctx.fillStyle = C.ctrl; ctx.fillRect(vx, by0, sw - 1, 7); ctx.fillStyle = C.splat; ctx.fillRect(vx + sw + 1, by0, bw0 - sw - 1, 7);
             var ty = by0 + 7 + L.f2 + 5;
-            fitTxt('surface ' + pctA(ms.rmse), vx, ty, 500, L.f2, C.ctrl, 'left', '0.02em', vw * 0.5 - 6);
-            fitTxt('sampling ' + pctA(d.samp), vx + vw, ty, 500, L.f2, C.splat, 'right', '0.02em', vw * 0.5 - 6);
+            fitTxt(T('surface {err}', { err: pctA(ms.rmse) }), vx, ty, 500, L.f2, C.ctrl, 'left', '0.02em', vw * 0.5 - 6);
+            fitTxt(T('sampling {err}', { err: pctA(d.samp) }), vx + vw, ty, 500, L.f2, C.splat, 'right', '0.02em', vw * 0.5 - 6);
           }
         }
       }

@@ -24,7 +24,7 @@
 <meta name="twitter:image" content="https://tzlilo.github.io/Knot-a-Surface/talk/share.jpg">
 <meta name="twitter:image:alt" content="A scanned stone owl in three slanted bands: its Gaussians, the picture they draw, and its surface normals.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="talk/vendor/katex.min.css">
 <link rel="stylesheet" href="talk/kit.css">
 <link rel="stylesheet" href="talk/deck.css">
@@ -44,12 +44,13 @@
   <button type="button" class="sound" aria-label="Mute the sound" title="M · mute" hidden>♪</button>
 </div>
 <div class="keys">
-  <div><kbd>→</kbd><kbd>space</kbd>next step</div>
-  <div><kbd>←</kbd>previous step</div>
+  <div><kbd class="k-fwd">→</kbd><kbd>space</kbd>next step</div>
+  <div><kbd class="k-back">←</kbd>previous step</div>
   <div><kbd>F</kbd>focus the simulation · <kbd>esc</kbd>back</div>
   <div><kbd>1</kbd>–<kbd>9</kbd>jump to a chapter · <kbd>0</kbd>the talk’s cover · <kbd>Home</kbd>the opening</div>
   <div><kbd>T</kbd>start / reset the pace clock · <kbd>M</kbd>mute the sound</div>
   <div><kbd>D</kbd>slide master: show / hide parts · talk.html?master = the same in a second window</div>
+  <div><kbd>L</kbd>language: English / <span lang="he">עברית</span></div>
   <div>the short cut hides the deep‑dive steps · the long one shows everything</div>
 </div>
 
@@ -790,6 +791,8 @@
   </article>
 </section>
 
+<!-- the copy in the chosen language, before the heavy scripts load: no flash of English (talk/i18n.js; deck.js calls it again) -->
+<script>KnotTalk.i18n.apply();</script>
 <script src="talk/vendor/three.min.js"></script>
 <script src="talk/vendor/katex.min.js"></script>
 <script src="talk/nurbs.js"></script>
