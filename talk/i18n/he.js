@@ -97,7 +97,7 @@
   "This is flatland — a 2‑D slice of the idea. The cameras see 1‑D strips of pixels, and <b>the optimiser on the right is real</b>: it is running now, in your browser.": "זהו עולם שטוח – חתך דו־ממדי של הרעיון. המצלמות רואות רצועות חד־ממדיות של פיקסלים, ו<b>ה‑optimiser שלפניכם אמיתי</b>: הוא רץ עכשיו, בדפדפן שלכם.",
   "Now look from somewhere <em>new</em>": "עכשיו מביטים ממקום <em>חדש</em>",
   "The training strips match almost perfectly. But move to a camera the optimiser never saw and the picture breaks: many Gaussians sit off the surface entirely. These are <b class=\"c-err\">floaters</b>.": "ברצועות האימון ההתאמה כמעט מושלמת. אבל כשעוברים למצלמה שה‑optimiser מעולם לא ראה, התמונה מתפרקת: גאוסיאנים רבים בכלל לא נמצאים על המשטח. אלה הם <b class=\"c-err\">floaters</b>.",
-  "Drag the held‑out camera": "גררו את המצלמה שלא שימשה באימון",
+  "Drag the held‑out camera": "גררו את מצלמת ה‑held-out",
   "<i><b></b></i>Mechanism": "<i><b></b></i>מנגנון",
   "Depth along a ray is a <em class=\"c-err\">free choice</em>": "העומק לאורך קרן הוא <em class=\"c-err\">בחירה חופשית</em>",
   "Down to two views, about half of the floaters are seen by one camera only. Slide one along its ray and that camera’s strip barely changes — the figure measures it. The loss cannot tell, and nothing else ties a Gaussian to a surface.": "כשיורדים לשני מבטים, כמחצית מה‑floaters נראים למצלמה אחת בלבד. מזיזים floater כזה לאורך הקרן שלו, והרצועה של אותה מצלמה כמעט לא משתנה – האיור מודד זאת. ה‑loss לא יכול להבחין בכך, ושום דבר אחר לא קושר גאוסיאן למשטח.",
