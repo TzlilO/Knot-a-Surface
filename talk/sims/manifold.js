@@ -12,6 +12,7 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
+  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
   var PER_CP = 16;                  // 3 position + 12 SH1 colour + 1 opacity per control point
   var CAP0 = 320000, FLOOR = 0.10;  // the most Gaussians a mount holds (opts.cap may lower it); FLOOR = share of the budget kept as view-independent coverage
   var DENSE = 96;                   // a control net longer than this along either side is drawn thinned out
@@ -32,7 +33,7 @@
     scene:  { scn: 'scan', view: 'splats', cam: 'wide', cap: 'every Gaussian derived from a spline chart', hint: 'drag to orbit' },
     modes:  { scn: 'scan', view: 'split', cam: 'wide', cap: 'one set of Gaussians, read five ways at once' },
     charts: { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, cap: 'an atlas of charts · each coherent surface gets its own (u,v) domain' },
-    nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the amber points' },
+    nets:   { scn: 'scan', view: 'charts', cam: 'wide', atlas: 1, nets: 1, cap: 'control nets · geometry and appearance live on the ' + CTRL_WORD + ' points' },
     budget: { scn: 'scan', view: 'splats', tour: 1, atlas: 1, cap: 'fixed budget, moving camera · samples flow to what is seen' },
     lod:    { scn: 'scan', view: 'splats', cam: 'close', ab: 1, rim: 0.6, atlas: 1, cap: 'level of detail · the same budget, with and without view-adaptive sampling' },
     /* the same Gaussians meshed twice: as an (emulated) list, by neighbour search, and on the charts' lattices, by a 2 x 2 window */

@@ -25,6 +25,7 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
+  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
   var NU = 6, NV = 6, SPAN = 3.2, PER_CP = 16;      // 3 position + 12 SH1 colour + 1 opacity
   var NMAX = 160, FLOOR = -1.15;
   var VEC = 0.26;            // a tangent arrow is drawn at this fraction of its true length
@@ -59,7 +60,7 @@
 
   var SCENES = {
     net:      { show: 'net wire fit', fit: 1, cap: '<b>a spline fitted to a terrain</b> · 36 control heights, least squares',
-                hint: 'drag to orbit · drag an amber point to reshape' },
+                hint: 'drag to orbit · drag an ' + CTRL_WORD + ' point to reshape' },
     probe:    { show: 'net wire probe uv', cap: '<b>position</b> · μ = S(u, v)', hint: 'drag the cross in the (u,v) chart' },
     tangents: { show: 'wire probe tan iso plane face uv', rock: 1,
                 cap: '<b>tangents</b> · S<sub>u</sub> and S<sub>v</sub>, in closed form — two directions that span the tangent plane' },

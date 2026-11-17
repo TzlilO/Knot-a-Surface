@@ -5,6 +5,7 @@
 (function () {
   'use strict';
   var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color, LIGHT = KT.theme === 'light';
+  var CTRL_WORD = window.KnotTalk.theme === 'light' ? 'orange' : 'amber';   // the control points' colour, as the copy names it
   var NS = 'http://www.w3.org/2000/svg';
   /* the colour t of the way from h1 to h2, as #rrggbb (the same function in flatland.js: the hand-off's colours agree) */
   function hexMix(h1, h2, t) {
@@ -127,19 +128,19 @@
   var SCENES = {
     ducks:     { cap: '<b>a spline</b> · a flexible strip, pinned by weights', wiggle: 4, strip: 1 },
     letters:   { cap: '<b>one spline per letter</b> · twelve short curves, each with its own control points', multi: 'letters', rate: 70,
-                 hint: 'drag any amber point' },
+                 hint: 'drag any ' + CTRL_WORD + ' point' },
     script:    { cap: '<b>handwriting</b> · three strokes · the pen is a point sliding along the curve', multi: 'script', rate: 26, again: 1 },
     morph:     { cap: '<b>morphing</b> · letters → handwriting → a missile · only the control points move', morph: 1 },
     lens:      { cap: '<b>Gaussians on the tracks</b> · a fixed number, spread over what is in view · move closer: same count, finer', morph: 1, lens: 1,
                  hint: 'zoom with the slider · drag to pan' },
     fit:       { cap: '<b>how close?</b> · control points set what the curve can say · samples set how finely it is read', fit: 1 },
-    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any amber point' },
+    drag:      { cap: '<b>control points</b> steer · the curve follows', wiggle: 5, hint: 'drag any ' + CTRL_WORD + ' point' },
     blend:     { cap: '<b>every curve point</b> is a weighted average of nearby control points', basis: 1, blend: 1,
                  hint: 'scrub the plot to move u' },
     local:     { cap: '<b>local support</b> · one point moves, only p + 1 spans change', basis: 1, local: 1, sel: 4, wiggle: 4 },
     degree:    { cap: '<b>degree p</b> · smoothness C<sup>p−1</sup> across every knot', basis: 1, cycle: 1 },
     knots:     { cap: '<b>knots</b> · where the polynomial pieces join', basis: 1, ticks: 1, knotAuto: 1,
-                 hint: 'drag the amber knots on the axis' },
+                 hint: 'drag the ' + CTRL_WORD + ' knots on the axis' },
     rational:  { cap: '<b>rational weights</b> · the R in NURBS — exact conics', basis: 1, circle: 1, sel: 1,
                  hint: 'select a point · change its weight' },
     recursion: { cap: '<b>Cox–de Boor</b> · boxes → hats → parabolas → cubics', basis: 1, pyramid: 1, sel: 4 }
