@@ -1,7 +1,11 @@
 <!doctype html>
-<!-- The stage tools/share/render.js photographs for the talk's link preview (talk/share.jpg): the scanned owl in the
-     `manifold` module's teaser, whose split screen shows three readings in slanted bands, on the talk's light page.
-     1200 x 630, no chrome. Not a page of the site. -->
+<!-- The stage tools/share/render.js photographs for the talk's link preview (talk/share.jpg), 1200 x 630, on the
+     talk's light page. Not a page of the site.
+     It shows the scanned owl several times; each owl is cut into slanted bands (the lean of the talk's split screen),
+     and each band is its own instance of the `manifold` module in scene `paint`, with one material fully wiped in
+     or one reading (normals), all from one camera and at one moment, stacked and clipped to the band. So every band
+     is a real drawing of the same owl; only the cutting into bands is done here.
+     ?owls=<json> gives the layout (render.js passes it): [{ left, w, cuts: [x at mid-height...], bands: [{ mat, view, label }] }]. -->
 <html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
@@ -11,13 +15,18 @@
 <style>
   html,body{margin:0;height:100%;overflow:hidden}
   *{animation-play-state:paused!important}
-  #stage{position:fixed;left:0;top:0;width:1200px;height:630px}
-  #stage .kt-sim{background:transparent}
+  #frame{position:fixed;left:0;top:0;width:1200px;height:630px;overflow:hidden}
+  .owl{position:absolute;top:0;height:630px}
+  .layer{position:absolute;inset:0}
+  .layer .kt-sim{background:transparent}
+  .cut{position:absolute;top:0;left:0;width:2px;height:100%;transform-origin:0 0;background:rgba(29,29,31,.22)}
+  .lab{position:absolute;left:0;top:0;white-space:nowrap;font:600 17px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+    color:#1d1d1f;padding:9px 15px;border-radius:999px;background:rgba(255,255,255,.86);box-shadow:0 1px 3px rgba(60,45,30,.14),inset 0 0 0 1px rgba(255,255,255,.6)}
 </style>
 </head>
 <body>
 <div class="room" aria-hidden="true"><div><i></i><i></i><i></i><i></i></div></div>
-<div id="stage"></div>
+<div id="frame"></div>
 <script src="../../talk/vendor/three.min.js"></script>
 <script src="../../talk/nurbs.js"></script>
 <script src="../../talk/kit.js"></script>
@@ -27,8 +36,27 @@
 <script src="../../talk/scenes.js"></script>
 <script src="../../talk/sims/manifold.js"></script>
 <script>
-  window.sim = KnotTalk.mount('manifold', document.getElementById('stage'),
-    { bare: true, scene: 'teaser', clear: 'transparent', budget: +(new URLSearchParams(location.search).get('budget') || 300000) });
+  var q = new URLSearchParams(location.search), BUDGET = +(q.get('budget') || 200000), OWLS = JSON.parse(q.get('owls'));
+  var LEAN = 0.2, H = 630, LABEL_Y = 578, frame = document.getElementById('frame');
+  window.sims = [];
+  function xAt(c, y) { return c + LEAN * (H / 2 - y); }                 // a cut passes through x = c at mid-height and leans like the split's dividers
+  OWLS.forEach(function (o) {
+    var W = o.w, box = document.createElement('div'); box.className = 'owl'; box.style.left = o.left + 'px'; box.style.width = W + 'px'; frame.appendChild(box);
+    o.bands.forEach(function (b, j) {
+      var el = document.createElement('div'); el.className = 'layer'; box.appendChild(el);
+      var l = j ? o.cuts[j - 1] : -400, r = j < o.cuts.length ? o.cuts[j] : W + 400;
+      el.style.clipPath = 'polygon(' + xAt(l, 0) + 'px 0,' + xAt(r, 0) + 'px 0,' + xAt(r, H) + 'px ' + H + 'px,' + xAt(l, H) + 'px ' + H + 'px)';
+      var sim = KnotTalk.mount('manifold', el, { bare: true, scene: 'paint', clear: 'transparent', budget: BUDGET });
+      sim.api.setMaterial(b.mat);
+      if (b.view) Array.prototype.forEach.call(el.querySelectorAll('.kt-seg-btn'), function (n) { if (n.textContent.replace(/[⁦-⁩]/g, '').trim() === b.view) n.click(); });   // the module's own view switch
+      window.sims.push(sim);
+      var lab = document.createElement('div'); lab.className = 'lab'; lab.textContent = b.label; frame.appendChild(lab);
+      var cl = j ? xAt(o.cuts[j - 1], LABEL_Y) : null, cr = j < o.cuts.length ? xAt(o.cuts[j], LABEL_Y) : null, half = (o.bandw || 150) / 2;
+      var xc = cl == null ? (cr == null ? W / 2 : cr - half) : cr == null ? cl + half : (cl + cr) / 2;
+      lab.style.transform = 'translate(' + (o.left + xc) + 'px,' + LABEL_Y + 'px) translate(-50%,-50%)';
+    });
+    o.cuts.forEach(function (c) { var d = document.createElement('i'); d.className = 'cut'; d.style.transform = 'translateX(' + (o.left + xAt(c, 0)) + 'px) skewX(' + (-Math.atan(LEAN)) + 'rad)'; frame.appendChild(d); });
+  });
 </script>
 </body>
 </html>
