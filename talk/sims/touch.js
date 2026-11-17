@@ -31,16 +31,23 @@
               into pieces of the (u,v) domain; each piece is a rigid body carrying its Gaussians.
      elastic  the control points sit on damped springs (a membrane over the control net); the contact
               force is spread to them by the basis weights; the Gaussians are re-derived every frame.
-     flight   two headers, then the lists. The cast are real objects stored as spline charts: the owl (DTU scan 122,
-              on its books) and the rabbit (DTU scan 55) in the talk's clear glass, both fitted offline to the
-              dataset (talk/dtu-data.js, talk/dtu/scan55.js; never trained). The ball comes down on the owl's head;
-              the owl nods it to the rabbit, which jumps and heads it on into the list bowl, where list versions of
-              the owl and the rabbit stand (EMULATED from the same charts, as the bowl's list is). There nothing
-              scatters: the Gaussians near the ball's path drift aside like floating balloons and the ball falls
-              through. COMPUTED: where and when the ball meets each figure (closest point by Gauss-Newton in (u, v)
-              in a window of the chart around the head, normal S_u x S_v, the root of |S(u, v) - c| = r inside the
-              sub-step). SCRIPTED: the owl's nod, the rabbit's jump, squash and nod, and where each header sends the
-              ball (see `header`). INVENTED: the balloon drift (see `balloons`): a list defines no force.
+     flight   from the spline bowl to the lists. The ball rests in the elastic bowl (the control points on springs). The
+              presenter drags a ring on the ball back and down and lets go: a slingshot. The pull stretches the bowl (a
+              pouch drags the control points with the ball) and the path the ball will fly is drawn ahead, predicted
+              with the very integrator and contact test the flight then runs (`shotAhead`): valid when it meets the
+              owl's head. The cast are real objects stored as spline charts: the owl (DTU scan 122, on its books)
+              and the rabbit (DTU scan 55) in the talk's clear glass, both fitted offline to the dataset
+              (talk/dtu-data.js, talk/dtu/scan55.js; never trained). The owl nods the ball to the rabbit, which jumps and
+              heads it on into the list bowl, where list versions of the owl and the rabbit stand (EMULATED from the
+              same charts, as the bowl's list is). There nothing pushes back: the Gaussians dissolve like smoke and
+              the ball falls through. COMPUTED: where and when the ball meets each figure (closest point by
+              Gauss-Newton in (u, v) in a window of the chart around the head, normal S_u x S_v, the root of
+              |S(u, v) - c| = r inside the sub-step), the flight under gravity, the prediction. A RULE, named as one on
+              screen: the throw is a spring pouch around the ball (`K_SLING`: the ball is pulled back by D, released,
+              and the pouch spring p'' = -K^2 (p - rest) throws it, so it leaves the rest point at K |D|; the
+              membrane follows it, but its own springs do not set the speed). SCRIPTED: the owl's nod, the rabbit's
+              jump, squash and nod, and where each header sends the ball (see `header`), and "launch for me".
+              INVENTED: the smoke (see `smoke`): a list defines no force and no boundary.
               Without the scans' data (a page that does not load them) `flight` is the older finale: a hard bounce on
               the elastic bowl throws the ball across to the list, whose Gaussians it scatters as loose particles
               (only the direction of the launch is chosen, see `launch`).
@@ -90,12 +97,23 @@
      feet), how big (FS: metres per unit of the owl's scan, 80 mm; the rabbit keeps its true size beside it, 71 mm a
      unit), and the script's times */
   var FS = 0.5;                                // the owl is 1.75 m tall and its head about as wide as the ball
-  var OWL_AT = [5.3, -0.75, -0.15], RAB_AT = [1.35, -0.75, 0.35], RFACE = 0.32;   // RFACE: the rabbit faces this far (rad) from the eye towards the owl
+  var OWL_AT = [2.7, -0.75, -0.15], RAB_AT = [-1.8, -0.75, 0.35], RFACE = 0.32;   // RFACE: the rabbit faces this far (rad) from the eye towards the owl
   var T1 = 1.0, T2 = 1.3;                      // SCRIPTED: how long the ball flies after each header
   var HJ = 0.5, CROUCH = 0.2, LAND = 0.24;     // SCRIPTED: the rabbit's jump: its height (m), its crouch and its landing (s)
-  /* INVENTED, the balloon rule (`balloons`): reach beyond the ball (m), push (m/s^2), drag along with the ball (1/s),
-     the spring home (1/s^2), its damping (1/s), lift while displaced (1/s^2), sway (1/s^2), top speed (m/s) */
-  var BREACH = 0.14, BKP = 22, BKD = 2.4, BK = 3.5, BC = 1.5, BLIFT = 0.9, BSWAY = 0.7, BVMAX = 1.5;
+  /* flight: the slingshot. THE RULE of the throw (a named constant, said so on screen): a pouch spring around the ball,
+     p'' = -K_SLING^2 (p - rest), so a ball pulled back by D leaves the rest point at K_SLING |D| m/s (stiffness m K^2).
+     The pull is clamped to DMAX m, to at least MINUP degrees below the horizontal (the ball is thrown up and clear of the
+     bowl's wall) and to the back half (x >= 0 from the rest point); a pull shorter than DMIN is no throw. KPO: how hard
+     the pouch drags the bowl's control points along with the ball (N/m at the centre point). */
+  var K_SLING = 3.4, DMAX = 2.1, DMIN = 0.25, MINUP = 35 * Math.PI / 180, KPO = 2000;
+  var AUTO_IDLE = 12, AUTO_PULL = 1.1, AUTO_HOLD = 0.35, RESET_AFTER = 1.5;   // the hint after 12 s untouched; the scripted pull: seconds to draw, to hold; the pause before a restart
+  /* INVENTED, the smoke rule (`smoke`): a list defines no force and no boundary, so what happens to it when a ball
+     passes is made up. Once the ball first reaches a list Gaussian, a dissolve front runs out from that point at
+     SM_FRONT m/s through every list in the bowl. A Gaussian the front has reached lives SM_LIFE s (0.8 to 1.2 times
+     that, each its own): it rises (SM_RISE m/s, a little faster as it goes), is carried by a slow turbulent sway
+     (SM_SWAY m, SM_FREQ rad/s), grows (its axes by 1 + SM_GROW sqrt(age / life)), and its opacity falls to zero as
+     (1 - age / life)^1.5. The ball feels nothing. */
+  var SM_FRONT = 2.2, SM_LIFE = 2.5, SM_RISE = 0.55, SM_SWAY = 0.2, SM_FREQ = 1.3, SM_GROW = 1.6;
 
   var SCENES = {
     ghost:   { cap: T('<b>a ball meets a list of Gaussians</b> · a density, not a boundary'), model: 'ghost', side: -1 },
@@ -164,7 +182,7 @@
   var SFX = (function () {
     var ctx = null, bus = null, noise = null, dead = false, armed = false, live = [], cnt = {}, next = {}, rr = KT.rng(4242);
     var VOICES = 8, HOLD = 0.22, LAG = 0.012;
-    ['knock', 'roll', 'hiss', 'scatter', 'rattle', 'wobble', 'crack', 'shards', 'whoosh', 'tick', 'glass', 'puff'].forEach(function (k) { cnt[k] = 0; });
+    ['knock', 'roll', 'hiss', 'scatter', 'rattle', 'wobble', 'crack', 'shards', 'whoosh', 'tick', 'glass', 'twang', 'creak', 'smoke'].forEach(function (k) { cnt[k] = 0; });
     function wake() {
       if (dead) return;
       try {
@@ -330,14 +348,15 @@
       chain(play(v, grains(L, 1.6), v.t), v.out);
       chain(hiss(v, v.t, 0.03), biq('highpass', 2600, 0.7), amp(v.t, A * 0.45, 0.0005, 0.004), v.out);   // the tap
     }
-    /* flight: the ball meets the lists in the bowl, whose Gaussians drift aside like balloons (the invented rule): a soft,
-       rubbery push, louder for more of them (n = how many the ball reached at once) */
-    function puff(n, pan) {
-      if (!ok() || n < 1) return;
-      var h = KT.clamp(Math.log2(1 + n) / 9, 0, 1), A = 0.05 + 0.11 * h, v = voice('puff', A, 0.2, pan); if (!v) return;
-      var t = v.t, o = osc(v, 300, t, 0.7);
-      o.frequency.exponentialRampToValueAtTime(175, t + 0.35); chain(o, biq('lowpass', 700, 0.7), amp(t, A, 0.035, 0.15), v.out);
-      chain(hiss(v, t, 0.5), biq('lowpass', 520, 0.6), amp(t, A * 0.6, 0.05, 0.12), v.out);
+    /* flight: the pouch lets go. sp = the launch speed (m/s): a plucked string, its pitch and loudness from the speed (the
+       pouch spring's own frequency goes with K, and the speed with K |D|), a second partial and the tap of the release */
+    function twang(sp, pan) {
+      if (!ok()) return;
+      var h = KT.clamp(sp / 8, 0, 1), A = 0.06 + 0.2 * Math.pow(h, 0.8), F = 120 + 24 * sp, v = voice('twang', A, 0.22, pan); if (!v) return;
+      var t = v.t, o = osc(v, F * 1.22, t, 1.2), o2 = osc(v, F * 2.01, t, 0.6);
+      o.frequency.exponentialRampToValueAtTime(F, t + 0.05); chain(o, amp(t, A, 0.002, 0.22), v.out);
+      o2.frequency.exponentialRampToValueAtTime(F * 2.01, t + 0.05); chain(o2, amp(t, A * 0.35, 0.002, 0.1), v.out);
+      chain(hiss(v, t, 0.05), biq('bandpass', 1500, 0.9), amp(t, A * 0.5, 0.001, 0.008), v.out);
     }
     function hush() { if (!ctx) return; var t = ctx.currentTime; live.forEach(function (v) { cut(v, t); }); live = []; }
 
@@ -348,7 +367,12 @@
       function make(t, f0) {
         var g = c.g = ctx.createGain(), s, f;
         g.gain.value = 0; g.connect(bus); c.srcs = []; c.p = {};                 // silent until set() raises it
-        if (kind === 'wobble') {                                                 // a soft tone and its octave
+        if (kind === 'creak') {                                                  // a stretched cord: a saw through a low-pass, wavering
+          var oc = ctx.createOscillator(), lf = ctx.createOscillator(), lg = amp(null, 14), lq = biq('lowpass', 900, 0.8);
+          oc.type = 'sawtooth'; oc.frequency.value = f0 || 120; lf.frequency.value = 27;
+          oc.start(t); lf.start(t); c.srcs.push(oc, lf);
+          chain(lf, lg); lg.connect(oc.frequency); chain(oc, lq, g); c.p.f = oc.frequency;
+        } else if (kind === 'wobble') {                                          // a soft tone and its octave
           var o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), lp = biq('lowpass', 1400, 0.6);
           o1.frequency.value = f0 || FSPR; o2.frequency.value = 2 * (f0 || FSPR);
           o1.start(t); o2.start(t); c.srcs.push(o1, o2);
@@ -395,7 +419,7 @@
       arm: arm, wake: wake, ok: function () { try { return ok(); } catch (e) { return false; } }, now: function () { return ctx ? ctx.currentTime : 0; },
       counts: function () { return Object.assign({}, cnt); },
       knock: safe(knock), crack: safe(crack), shards: safe(shards), scatter: safe(scatter), rattle: safe(rattle),
-      pluck: safe(pluck), whoosh: safe(whoosh), tick: safe(tick), glass: safe(glass), puff: safe(puff), hush: safe(hush),
+      pluck: safe(pluck), whoosh: safe(whoosh), tick: safe(tick), glass: safe(glass), twang: safe(twang), hush: safe(hush),
       channel: function (kind) {
         var c = channel(kind);
         return { set: safe(c.set), stop: safe(c.stop) };
@@ -423,6 +447,8 @@
       var tlm = ui.el('div', 'kt-mo'), tagT = ui.el('div'); tag.appendChild(tlm); tag.appendChild(tagT);   // moment's timeline, then the words
       if (RTL) tagT.setAttribute('dir', 'rtl');                  // the words run right to left on a right-to-left page; the timeline and the stage do not
       var pin = ui.el('div', 'kt-pin'); root.appendChild(pin);
+      var tip = ui.el('div', 'kt-tip'); root.appendChild(tip);      // flight: the one line that says whether the pull is valid, and what to change
+      if (RTL) tip.setAttribute('dir', 'rtl');
       SFX.arm();
 
       scene.add(new THREE.HemisphereLight(0xe6efff, 0x2a3650, 1.5));
@@ -571,6 +597,13 @@
       var cpts = points(NC * NC, 4.5, 0.85), sup = points(16, 10, 1);
       var stem = G.lines(2 * NC * NC, C.ctrl, 1); stem.mat.depthTest = false; stem.obj.renderOrder = 12; scene.add(stem.obj);   // each spring, from its anchor to its control point
       var TR = 220, trail = G.lines(2 * TR, C.text, 0.4), tr = { p: new Float32Array(TR * 3), n: 0, k: 0 }; scene.add(trail.obj);
+      /* flight: the handle (a ring on the ball, a screen-sized grip of at least KnotTalk.HIT), its pulsing hint, the rope back to the rest point,
+         the predicted path (dashed, no glow) and the target on the owl's head */
+      var ringG = new THREE.RingGeometry(0.86, 1, 48);
+      function ringMesh() { var m = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({ color: C.dim, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide })); m.renderOrder = 32; m.visible = false; scene.add(m); return m; }
+      var ring = ringMesh(), halo = ringMesh();
+      var rope = G.lines(2, C.dim, 0.7), pred = G.lines(2 * PRED_N, C.surf, 0.95), TGN = 40, tgt = G.lines(2 * TGN, C.dim, 0.9);
+      [rope, pred, tgt].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 15; l.obj.visible = false; scene.add(l.obj); });
       // moment: where the ball's lowest point was when each definition said "contact" (red: the list; cyan: the spline), on its vertical
       var mkL = G.lines(2 * CANDS.length, C.err, 0.95), mkS = G.lines(2, C.surf, 1), mkG = G.lines(2, C.text, 0.3);
       [mkL, mkS, mkG].forEach(function (l) { l.mat.depthTest = false; l.obj.renderOrder = 14; scene.add(l.obj); });
@@ -593,7 +626,7 @@
       var mo = { side: -1, D: 9, slow: 1, near: [], top: 0, spot: [0, 0, 0], val: null, t: [], y: [], who: [], root: null, end: 0, cpm: newCp(), cpr: newCp(), cps: newCp() };
       /* what the sound hears: the physics only ever adds to these, and they never feed back */
       var au = { simT: 0, J: 0, Jn: 0, tone: 1, rest: 0, restV: 0, inside: 0, calls: 0, hits: 0, jl: 0, crack: 0, pluck: 0, launch: 0, tick: [],
-                 first: true, lastN: 0, rat: 0, ratT: -9, env: 0, glass: 0, puff: 0 };
+                 first: true, lastN: 0, rat: 0, ratT: -9, env: 0, glass: 0, twang: 0 };
 
       /* ---------- closest point on the spline ----------
          Minimise |S(u,v) - c|^2 over the address: a few Gauss-Newton steps in (u,v), started from the last
@@ -624,7 +657,8 @@
       }
 
       /* ---------- the ball in free flight: the exact parabola over one sub-step ---------- */
-      function fly(h) { var p = ball.p, v = ball.v; p[0] += v[0] * h; p[1] += v[1] * h - 0.5 * GRAV * h * h; p[2] += v[2] * h; v[1] -= GRAV * h; }
+      function flyB(b, h) { var p = b.p, v = b.v; p[0] += v[0] * h; p[1] += v[1] * h - 0.5 * GRAV * h * h; p[2] += v[2] * h; v[1] -= GRAV * h; }
+      function fly(h) { flyB(ball, h); }
       function speed() { return Math.hypot(ball.v[0], ball.v[1], ball.v[2]); }
       function energy() { var v = ball.v; return 0.5 * BM * (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) + BM * GRAV * (ball.p[1] - YB - BR); }
 
@@ -728,9 +762,14 @@
          with a stiff, damped contact spring along the normal at the closest point; the surface's share goes to
          the 16 control points that shape that address, each by its basis weight N_i(u) N_j(v). */
       var MX = new Float32Array(NC * NC * 3), MV = new Float32Array(NC * NC * 3), MF = new Float32Array(NC * NC * 3);
+      var PO = { on: false, D: [0, 0, 0], S: NB.patchSupport(patch, 0.5, 0.5), wmax: 0 };   // flight's pouch: how far the ball is from its rest point, and the 16 control points around the middle it drags
+      PO.S.forEach(function (w) { PO.wmax = Math.max(PO.wmax, w.w); });
       function membrane(contact) {
         var km = mat.stiff, ka = km * KA, i, j, q, k, w3 = NC * 3, n, pen, s;
         MF.fill(0); el.f = 0; el.pen = 0;
+        if (PO.on) {                                              // flight: the pouch drags the control points around the rest address along with the ball
+          for (s = 0; s < PO.S.length; s++) { q = (PO.S[s].j * NC + PO.S[s].i) * 3; for (k = 0; k < 3; k++) MF[q + k] += KPO * PO.S[s].w / PO.wmax * (PO.D[k] - MX[q + k]); }
+        }
         if (contact && ball.on) {
           closest(ball.p, cp);
           pen = cp.edge ? BR - cp.d : BR - cp.sd; n = cp.edge ? cp.nc : cp.n;
@@ -896,6 +935,9 @@
         F.grid = { pos: new Float32Array(na * nb * 3), su: new Float32Array(na * nb * 3), sv: new Float32Array(na * nb * 3), col: new Float32Array(na * nb * 3) };
         NB.patchGrid(patch, F.us, F.vs, F.grid);
         F.seed = []; for (j = 0; j < nb; j++) if (F.vs[j] >= F.vlo) for (i = 0; i < na; i++) F.seed.push(j * na + i);
+        // every fourth sample of the window, as the figure stands at rest: a cheap lower bound on how far the ball is from it (see `farFrom`)
+        var cs = []; F.seed.forEach(function (q) { if (q % na % 4 === 0 && ((q / na) | 0) % 4 === 0) cs.push(F.grid.pos[q * 3], F.grid.pos[q * 3 + 1], F.grid.pos[q * 3 + 2]); });
+        F.cs = new Float32Array(cs);
         // which way is out: S_u x S_v against the way from the chart's vertical axis (its control points' mean), by a vote of
         // every lattice sample
         var g = F.grid, mx = 0, mz = 0, vote = 0, t;
@@ -1145,14 +1187,24 @@
         return Math.hypot(c[0] - o.wp[0], c[1] - o.wp[1], c[2] - o.wp[2]);
       }
       function along(t, c) { c[0] = BP0[0] + BV0[0] * t; c[1] = BP0[1] + BV0[1] * t - 0.5 * GRAV * t * t; c[2] = BP0[2] + BV0[2] * t; return c; }
-      /* after a sub-step: if the ball now overlaps the figure, find the moment inside the sub-step when it first touched (the
-         root of |S(u, v) - c(t)| - r, by bisection, the figure moving with its script), put the ball there, and head it */
-      function meet(who) {
-        var F = who ? FR : FO, o = fl.cps[who], cen = who ? toWorld(rabbitPose(run.t, RP), FR.hc, HCW) : FO.hc;
-        if (Math.hypot(ball.p[0] - cen[0], ball.p[1] - cen[1], ball.p[2] - cen[2]) > F.reach) { o.near = false; return; }
+      /* after a sub-step: if the ball b now overlaps the figure, find the moment inside the sub-step when it first touched (the
+         root of |S(u, v) - c(t)| - r, by bisection, the figure moving with its script), put the ball there, and return the
+         contact (null when there is none). tNow = the time at the end of the sub-step, o = the contact's own warm start.
+         The prediction (`shotAhead`) calls this very function on a copy of the ball, so what it says is what then happens. */
+      /* true when the ball cannot be touching the owl: its distance to every fourth sample of the window, less the largest gap
+         between those samples (0.08 m, the lattice is 2.5 cm) and how far the nod can carry the head (0.2 m), is more than the radius */
+      function farFrom(F, c) {
+        var cs = F.cs, n = cs.length, i, dx, dy, dz, lim = (BR + 0.28) * (BR + 0.28);
+        for (i = 0; i < n; i += 3) { dx = cs[i] - c[0]; dy = cs[i + 1] - c[1]; dz = cs[i + 2] - c[2]; if (dx * dx + dy * dy + dz * dz < lim) return false; }
+        return true;
+      }
+      function touch(who, b, tNow, o, dry) {
+        var F = who ? FR : FO, cen = who ? toWorld(rabbitPose(tNow, RP), FR.hc, HCW) : FO.hc;
+        if (Math.hypot(b.p[0] - cen[0], b.p[1] - cen[1], b.p[2] - cen[2]) > F.reach) { o.near = false; return null; }
         o.near = true;
-        var d = gapAt(who, ball.p, run.t, o), t0 = run.t - H, lo = 0, hi = H, it, m, g, k = { u: o.u, v: o.v, wp: o.wp, wn: o.wn, edge: o.edge };
-        if (d > BR) return;
+        if (!who && farFrom(F, b.p)) return null;
+        var d = gapAt(who, b.p, tNow, o), t0 = tNow - H, lo = 0, hi = H, it, m, g, k = { u: o.u, v: o.v, wp: o.wp, wn: o.wn, edge: o.edge };
+        if (d > BR) return null;
         for (it = 0; it < 48 && hi - lo > 1e-15; it++) {
           m = 0.5 * (lo + hi); g = gapAt(who, along(m, CQ), t0 + m, o);
           if (g > BR) lo = m; else { hi = m; d = g; k = { u: o.u, v: o.v, wp: o.wp, wn: o.wn, edge: o.edge }; }   // the answer at the touching end
@@ -1160,15 +1212,19 @@
         along(hi, CQ); o.u = k.u; o.v = k.v; o.wp = k.wp; o.wn = k.wn; o.edge = k.edge;
         if (who) rabbitPose(t0 + hi, RP);
         // an independent look at the same answer: the nearest of a fine (u, v) grid around it, with the figure as it was then
-        var chk = 1e9, a, b, uu, vv, th = who ? 0 : owlTh(t0 + hi), cl = who ? toLocal(RP, CQ, [0, 0, 0]) : CQ;
-        for (b = -12; b <= 12; b++) for (a = -12; a <= 12; a++) {
-          uu = KT.clamp(o.u + a * 0.0025, 0, 1); vv = KT.clamp(o.v + b * 0.0025, F.vlo, 1); evalF(F, uu, vv, FE, th);
+        var chk = 1e9, a, c, uu, vv, th = who ? 0 : owlTh(t0 + hi), cl = who ? toLocal(RP, CQ, [0, 0, 0]) : CQ;
+        if (!dry) for (c = -12; c <= 12; c++) for (a = -12; a <= 12; a++) {
+          uu = KT.clamp(o.u + a * 0.0025, 0, 1); vv = KT.clamp(o.v + c * 0.0025, F.vlo, 1); evalF(F, uu, vv, FE, th);
           chk = Math.min(chk, Math.hypot(cl[0] - FE.p[0], cl[1] - FE.p[1], cl[2] - FE.p[2]) * (who ? RP.S[0] : 1));
         }
-        ball.p[0] = CQ[0]; ball.p[1] = CQ[1]; ball.p[2] = CQ[2]; ball.v[0] = BV0[0]; ball.v[1] = BV0[1] - GRAV * hi; ball.v[2] = BV0[2];
-        var rec = { who: who, t: t0 + hi - run.tr, at: t0 + hi, u: o.u, v: o.v, d: d, gap: d - BR, check: chk - BR, p: o.wp.slice(), n: o.wn.slice(), c: CQ.slice(), vin: ball.v.slice(), edge: o.edge };
+        b.p[0] = CQ[0]; b.p[1] = CQ[1]; b.p[2] = CQ[2]; b.v[0] = BV0[0]; b.v[1] = BV0[1] - GRAV * hi; b.v[2] = BV0[2];
+        return { who: who, t: t0 + hi - (dry ? 0 : run.tr), at: t0 + hi, hi: hi, u: o.u, v: o.v, d: d, gap: d - BR, check: chk - BR, p: o.wp.slice(), n: o.wn.slice(), c: CQ.slice(), vin: b.v.slice(), edge: o.edge };
+      }
+      function meet(who) {
+        var rec = touch(who, ball, run.t, fl.cps[who], false);
+        if (!rec) return;
         header(who, rec);
-        fly(H - hi);
+        fly(H - rec.hi);
       }
       /* SCRIPTED, where a header sends the ball: the parabola from where it is to the next target in a set time (T1 to the
          rabbit's forehead, one radius out, at the top of its jump; T2 to the head of the rabbit's list in the bowl). The
@@ -1185,69 +1241,190 @@
         if (who) au.glass = Math.max(au.glass, J); else { au.J = Math.max(au.J, J); au.Jn++; au.tone = 0.82; }   // glass rings; stone knocks
         fl.phase = who ? 'air2' : 'air1';
       }
-      /* at the drop: the moment the ball will meet the owl's head with the head at the middle of its swing, so that the nod
-         can be timed to it (the actual contact is computed as it happens, with the head where it is) */
-      function predictOwl() {
-        var o = newCp(), c = ball.p.slice(), th = owlNod(0), y, lo, hi, it, vy = ball.v[1];
-        for (y = c[1]; y > OWL_AT[1]; y -= 0.01) { c[1] = y; if (closestF(FO, c, o, th).d < BR) break; }
-        lo = y + 0.01; hi = y;
-        for (it = 0; it < 40; it++) { c[1] = 0.5 * (lo + hi); if (closestF(FO, c, o, th).d < BR) hi = c[1]; else lo = c[1]; }
-        return (vy + Math.sqrt(vy * vy + 2 * GRAV * (ball.p[1] - hi))) / GRAV;
+      /* at the launch: the moment the ball will meet the owl's head with the head at the middle of its swing, so that the
+         nod can be timed to it (the actual contact is computed as it happens, with the head where it is). The ball's path
+         from p0, v0 (the parabola, exactly), seconds after the launch; null when it never reaches the head. */
+      function owlTime(p0, v0) {
+        var o = newCp(), c = [0, 0, 0], th = owlNod(0), k, t, lo, hi, it, tm;
+        function at(t) { c[0] = p0[0] + v0[0] * t; c[1] = p0[1] + v0[1] * t - 0.5 * GRAV * t * t; c[2] = p0[2] + v0[2] * t; return c; }
+        for (k = 1; k <= 1500; k++) {
+          t = k * H; at(t);
+          if (c[1] < -4) return null;
+          if (Math.hypot(c[0] - FO.hc[0], c[1] - FO.hc[1], c[2] - FO.hc[2]) > FO.reach || farFrom(FO, c)) continue;
+          if (closestF(FO, c, o, th).d < BR) {
+            lo = t - H; hi = t;
+            for (it = 0; it < 24; it++) { tm = 0.5 * (lo + hi); if (closestF(FO, at(tm), o, th).d < BR) hi = tm; else lo = tm; }
+            return hi;
+          }
+        }
+        return null;
       }
 
-      /* ---------- INVENTED: the lists answer the ball like floating balloons ----------
-         A list defines no force: there is no surface to push back and nothing ties a Gaussian to another. To show the ball
-         passing through without breaking anything, each Gaussian near the ball's path is given this rule: inside a reach of
-         BREACH beyond the ball (and its own size) it is pushed away from the ball's centre and dragged a little along with
-         the ball (both falling off as (1 - d / reach)^2); once displaced it is pulled home by a soft, under-damped spring,
-         lifted a little while away (it floats up) and swayed a little (each with its own phase): it bobs and wanders home.
-         The ball feels nothing back (the rule is one-way) and falls through. Every fourth sub-step, on the bowl's list and
-         the figures' lists alike. */
-      var BV = new Float32Array(NT * 3), BA = new Uint8Array(NT), BPU = new Uint8Array(NT), BSTEP = 4;
-      var bal = { sub: 0, moved: 0, inside: 0, reach: 0, dmax: 0, dnow: 0 };
-      function balReset() { BV.fill(0); BA.fill(0); BPU.fill(0); bal.sub = bal.moved = bal.inside = bal.reach = bal.dmax = bal.dnow = 0; }
-      function balloons() {
-        if (++bal.sub % BSTEP) return;
-        var h = BSTEP * H, P = fL.center, c = ball.p, bv = ball.v, i, o, dx, dy, dz, d2, d, R, q, ins = 0, rch = 0, sp, w;
-        if (ball.on && Math.abs(c[0] + X0) < RB + 1.4 && c[1] > -1.6 && c[1] < 3.4) {
-          au.calls++;
-          for (i = 0; i < NT; i++) {
-            o = i * 3; R = BR + BREACH + LSZ[i];
-            dx = P[o] - c[0]; if (dx > R || dx < -R) continue; dy = P[o + 1] - c[1]; if (dy > R || dy < -R) continue;
-            dz = P[o + 2] - c[2]; d2 = dx * dx + dy * dy + dz * dz; if (d2 >= R * R) continue;
-            d = Math.sqrt(d2) || 1e-6; q = 1 - d / R; q *= q; rch++;
-            if (d < BR) ins++;
-            if (!BPU[i]) { BPU[i] = 1; bal.moved++; }
-            BA[i] = 1;
-            BV[o] += (BKP * q * dx / d + BKD * q * (bv[0] - BV[o])) * h; BV[o + 1] += (BKP * q * dy / d + BKD * q * (bv[1] - BV[o + 1])) * h;
-            BV[o + 2] += (BKP * q * dz / d + BKD * q * (bv[2] - BV[o + 2])) * h;
-          }
-          au.inside += ins;
-        }
-        bal.inside = ins; bal.reach = rch;
-        var dm = 0, ts = run.t;
-        for (i = 0; i < NT; i++) {
-          if (!BA[i]) continue; o = i * 3;
-          dx = P[o] - LH[o]; dy = P[o + 1] - LH[o + 1]; dz = P[o + 2] - LH[o + 2]; d = Math.sqrt(dx * dx + dy * dy + dz * dz); w = 3.1 * ts + 2.39996 * i;
-          BV[o] += (-BK * dx - BC * BV[o] + BSWAY * d * Math.sin(w)) * h;
-          BV[o + 1] += (-BK * dy - BC * BV[o + 1] + BLIFT * d) * h;
-          BV[o + 2] += (-BK * dz - BC * BV[o + 2] + BSWAY * d * Math.cos(w)) * h;
-          sp = Math.hypot(BV[o], BV[o + 1], BV[o + 2]); if (sp > BVMAX) { BV[o] *= BVMAX / sp; BV[o + 1] *= BVMAX / sp; BV[o + 2] *= BVMAX / sp; }
-          P[o] += BV[o] * h; P[o + 1] += BV[o + 1] * h; P[o + 2] += BV[o + 2] * h;
-          if (d < 2e-4 && sp < 2e-3) { P[o] = LH[o]; P[o + 1] = LH[o + 1]; P[o + 2] = LH[o + 2]; BV[o] = BV[o + 1] = BV[o + 2] = 0; BA[i] = 0; }   // home: asleep again
-          if (d > dm) dm = d;
-        }
-        bal.dnow = dm; if (dm > bal.dmax) bal.dmax = dm;
+      /* ---------- flight: the slingshot ----------
+         The ball rests in the elastic bowl at SL.r0. THE HANDLE: a ring on the ball. Pulled back by D (clamped, see
+         `clampPull`), the ball is kinematic and a pouch drags the control points around the bowl's middle along with it
+         (the springs of the net do the rest: that is the stretch you see). THE THROW, a rule (`K_SLING`): on release the
+         ball sits in a spring pouch, p'' = -K^2 (p - r0), integrated on the module's sub-steps, and leaves when it passes
+         the rest point, at K |D| along -D; gravity acts from then on. The control points are dragged along while it
+         travels and ring afterwards, but they do not set the speed: the same pull gives the same flight whatever the
+         net was doing. THE PREDICTION: `shotAhead` runs the same two integrators (the pouch, then the flight with the
+         owl's nod timed by `owlTime` and the contact test `touch`) ahead from the pull, on a copy of the ball. */
+      var SL = { r0: [X0, YB + BR, 0], D: [0, 0, 0], D0: [0, 0, 0], tgt: null, grab: false, rel: false, id: -1, off: [0, 0, 0], idle: 0, touched: false,
+                 auto: null, mv: 0, pred: null, predKey: '', why: 'none', tPull: 0, valid0: false };
+      var SPRING = { p: [0, 0, 0], v: [0, 0, 0], n: 0 }, PRED_N = 420, PRED = { pts: new Float32Array(PRED_N * 3) }, AUTOPULL = null;
+      function holding() { return fl.phase === 'ready' || fl.phase === 'pull' || fl.phase === 'throw'; }
+      /* the pull allowed: the back half, at least MINUP below the horizontal, at most DMAX long */
+      function clampPull(D, out) {
+        var dx = Math.max(D[0], 0), dz = D[2], dy = D[1], h = Math.hypot(dx, dz), len;
+        if (dy > -Math.tan(MINUP) * h) dy = -Math.tan(MINUP) * h;
+        len = Math.hypot(dx, dy, dz); if (len > DMAX) { dx *= DMAX / len; dy *= DMAX / len; dz *= DMAX / len; }
+        out[0] = dx; out[1] = dy; out[2] = dz; return out;
       }
-      /* the cast on stage or off it; the lists of the figures stay out of the list's field (parked far below, where its
-         drawing skips them) in every other scene */
+      /* one sub-step of the pouch spring on b (symplectic: the velocity first, as the membrane does); true once the ball
+         has passed the rest point (its pull D0 behind it) */
+      function springStep(b, D0) {
+        var k2 = K_SLING * K_SLING, k, dot = 0;
+        for (k = 0; k < 3; k++) { b.v[k] -= k2 * (b.p[k] - SL.r0[k]) * H; b.p[k] += b.v[k] * H; dot += (b.p[k] - SL.r0[k]) * D0[k]; }
+        return dot <= 0;
+      }
+      function springThrow(D0, o) {
+        var k, n = 0;
+        for (k = 0; k < 3; k++) { o.p[k] = SL.r0[k] + D0[k]; o.v[k] = 0; }
+        while (n < 4000) { n++; if (springStep(o, D0)) break; }
+        o.n = n; return o;
+      }
+      /* from a pull D0: throw it, fly it ahead with the real contact test, and say whether the ball meets the owl's head,
+         where, and when (seconds after the launch); if not, why. Draws nothing, changes nothing the flight reads. */
+      function shotAhead(D0) {
+        var b = springThrow(D0, SPRING), save = fl.t1, o = newCp(), t = 0, n = 0, rec = null, cross = null, np = 0, out, v0 = Math.hypot(b.v[0], b.v[1], b.v[2]), ang;
+        ang = Math.atan2(b.v[1], Math.hypot(b.v[0], b.v[2]));
+        out = { valid: false, reason: 'none', n: 0, pts: PRED.pts, rec: null, speed: v0, angle: ang, len: Math.hypot(D0[0], D0[1], D0[2]), tl: SPRING.n * H, ds: 0, dy: 0, dz: 0 };
+        PRED.pts[0] = b.p[0]; PRED.pts[1] = b.p[1]; PRED.pts[2] = b.p[2]; np = 1;
+        fl.t1 = owlTime(b.p, b.v);
+        while (n < 1500) {
+          n++; t += H; BP0[0] = b.p[0]; BP0[1] = b.p[1]; BP0[2] = b.p[2]; BV0[0] = b.v[0]; BV0[1] = b.v[1]; BV0[2] = b.v[2];
+          flyB(b, H);
+          rec = touch(0, b, t, o, true);
+          if (rec) break;
+          if (n % 6 === 0 && np < PRED_N) { PRED.pts[np * 3] = b.p[0]; PRED.pts[np * 3 + 1] = b.p[1]; PRED.pts[np * 3 + 2] = b.p[2]; np++; }
+          if (!cross && b.p[0] <= FO.hc[0]) cross = { y: b.p[1] - FO.hc[1], z: b.p[2] - FO.hc[2] };
+          if (b.p[0] < OWL_AT[0] - 1.0 || b.p[1] < -3 || (b.v[1] < 0 && b.p[1] < SL.r0[1] && b.p[0] > X0 - RB - 0.4)) break;
+        }
+        fl.t1 = save;
+        if (rec) {
+          if (np < PRED_N) { PRED.pts[np * 3] = rec.c[0]; PRED.pts[np * 3 + 1] = rec.c[1]; PRED.pts[np * 3 + 2] = rec.c[2]; np++; }
+          out.valid = true; out.reason = 'ok'; out.rec = { u: rec.u, v: rec.v, t: rec.at, p: rec.p, c: rec.c };
+        } else if (!cross) out.reason = 'short';
+        else {
+          out.dy = cross.y; out.dz = cross.z;
+          if (Math.abs(cross.z) > 0.6) out.reason = 'side';
+          else if (cross.y > 0) out.reason = ang > 50 * Math.PI / 180 ? 'steep' : 'high';
+          else out.reason = 'short';
+        }
+        out.n = np; return out;
+      }
+      /* a valid pull for "launch for me", found once with the prediction itself: at a fixed elevation, the middle of the
+         longest run of pull lengths that is valid */
+      function autoPull() {
+        if (AUTOPULL) return AUTOPULL;
+        var el, k, h = FO.hc, dx = SL.r0[0] - (h[0] + 0.1), dy = h[1] + 0.2 - SL.r0[1], th, v2, len, D;
+        for (el = 0; el < 4 && !AUTOPULL; el++) {
+          th = [42, 46, 38, 50][el] * Math.PI / 180;
+          v2 = GRAV * dx * dx / (2 * Math.cos(th) * Math.cos(th) * (dx * Math.tan(th) - dy));
+          if (!(v2 > 0)) continue;
+          for (k = 0; k < 7 && !AUTOPULL; k++) {                    // the speed that passes the head, and a little either side, until the prediction says yes
+            len = Math.sqrt(v2) / K_SLING + [0, 0.04, -0.04, 0.08, -0.08, 0.12, -0.12][k];
+            D = clampPull([len * Math.cos(th), -len * Math.sin(th), 0], [0, 0, 0]);
+            if (shotAhead(D).valid) AUTOPULL = D;
+          }
+        }
+        if (!AUTOPULL) AUTOPULL = clampPull([1.3, -1.2, 0], [0, 0, 0]);
+        return AUTOPULL;
+      }
+
+      /* ---------- INVENTED: the lists dissolve like smoke ----------
+         A list defines no force and no boundary: there is nothing to push the ball back, nothing to hold a Gaussian to its
+         neighbour, nothing that says what happens to it when something passes. So this is made up, in the constants at
+         the top (SM_*). Once the ball has reached a Gaussian of any list in the bowl (the bowl's own, the owl's, the
+         rabbit's) a front runs out from there at SM_FRONT m/s through all of them; each Gaussian the front reaches rises,
+         sways, grows and fades for SM_LIFE s, as a closed function of the time since the front reached it (no state, so a
+         scene replays the same). The ball feels nothing. */
+      var sm = { t0: null, o: [0, 0, 0], tEnd: 0, sub: 0, reach: new Uint8Array(NT), nReach: 0, dirty: false,
+                 onset: new Float32Array(NT), life: new Float32Array(NT), ph: new Float32Array(NT * 3), prog: new Float32Array(NT),
+                 U: new Float32Array(NT * 3), V: new Float32Array(NT * 3), W: new Float32Array(NT * 3), A: new Float32Array(NT), K: new Float32Array(NT * 3),
+                 n: 0, gone: 0, live: 0 };
+      var SMK = G.rgb(C.mute), SMF = 4;
+      (function () {
+        var r = KT.rng(808), i;
+        for (i = 0; i < NT; i++) { sm.life[i] = SM_LIFE * (0.8 + 0.4 * r()); sm.ph[i * 3] = r() * 6.2832; sm.ph[i * 3 + 1] = r() * 6.2832; sm.ph[i * 3 + 2] = 0.7 + 0.6 * r(); }
+        sm.U.set(fL.axU); sm.V.set(fL.axV); sm.W.set(fL.axW); sm.A.set(fL.alpha); sm.K.set(fL.color); sm.onset.fill(1e9);
+      })();
+      function smokeReset() {
+        if (!sm.dirty && sm.t0 == null) { sm.reach.fill(0); sm.nReach = 0; return; }
+        fL.axU.set(sm.U); fL.axV.set(sm.V); fL.axW.set(sm.W); fL.alpha.set(sm.A); sm.onset.fill(1e9); sm.prog.fill(0);
+        for (var i = N * 3; i < NT * 3; i++) fL.color[i] = sm.K[i];            // (the bowl's own colours are painted every frame)
+        sm.t0 = null; sm.dirty = false; sm.reach.fill(0); sm.nReach = 0; sm.sub = 0; sm.n = sm.gone = sm.live = 0;
+      }
+      /* every fourth sub-step on the way in: has the ball reached a Gaussian of a list (its 1-sigma extent touches the ball)? */
+      function reachStep() {
+        if (++sm.sub % SMF) return;
+        var c = ball.p, P = LH, i, o, dx, dy, dz, R, ins = 0;
+        if (Math.abs(c[0] + X0) > RB + 1.4 || c[1] < -1.6 || c[1] > 3.4) return;
+        for (i = 0; i < NT; i++) {
+          o = i * 3; R = BR + LSZ[i];
+          dx = P[o] - c[0]; if (dx > R || dx < -R) continue; dy = P[o + 1] - c[1]; if (dy > R || dy < -R) continue;
+          dz = P[o + 2] - c[2]; if (dx * dx + dy * dy + dz * dz >= R * R) continue;
+          ins++; if (!sm.reach[i]) { sm.reach[i] = 1; sm.nReach++; }
+        }
+        if (ins && sm.t0 == null) startSmoke();
+      }
+      function startSmoke() {
+        var P = LH, i, o, d, mx = 0;
+        sm.t0 = run.t; sm.o = ball.p.slice(); sm.dirty = true;
+        for (i = 0; i < NT; i++) {
+          o = i * 3; d = Math.hypot(P[o] - sm.o[0], P[o + 1] - sm.o[1], P[o + 2] - sm.o[2]);
+          sm.onset[i] = sm.t0 + d / SM_FRONT; mx = Math.max(mx, sm.onset[i] + sm.life[i]);
+        }
+        sm.tEnd = mx; au.smoke = 1;
+      }
+      /* the smoke at time t: where each Gaussian is, how big, how opaque (and how grey); counts how many have been reached, how many are
+         gone and how many are on their way */
+      function smokeCount(t) {
+        var i, a, n = 0, g = 0, l = 0;
+        for (i = 0; i < NT; i++) { a = t - sm.onset[i]; if (a < 0) continue; n++; if (a >= sm.life[i]) g++; else l++; }
+        sm.n = n; sm.gone = g; sm.live = l;
+      }
+      function smokeDraw() {
+        if (sm.t0 == null) return;
+        var t = run.t, P = fL.center, i, o, a, s, e, h, w, ww, rise, g, sw, k1, k2, kk;
+        for (i = 0; i < NT; i++) {
+          a = t - sm.onset[i]; if (a < 0) continue;
+          o = i * 3; s = a / sm.life[i];
+          if (s >= 1) { fL.alpha[i] = 0; sm.prog[i] = 1; continue; }
+          h = sm.ph[o + 2]; e = 1 - Math.exp(-a / 0.7); sw = SM_SWAY * e * h;
+          w = SM_FREQ * t; ww = sm.ph[o];
+          rise = SM_RISE * h * (a + 0.4 * a * a / sm.life[i]);
+          P[o] = LH[o] + sw * (Math.sin(w + ww + 2.1 * LH[o + 1]) + 0.6 * Math.sin(2.3 * w + sm.ph[o + 1] + 3.3 * LH[o + 2]));
+          P[o + 1] = LH[o + 1] + rise + 0.3 * sw * Math.sin(1.7 * w + ww + 1.7 * LH[o]);
+          P[o + 2] = LH[o + 2] + sw * (Math.cos(0.9 * w + sm.ph[o + 1] + 1.9 * LH[o]) + 0.6 * Math.cos(2.1 * w + ww + 2.7 * LH[o + 1]));
+          g = 1 + SM_GROW * Math.sqrt(s);
+          fL.axU[o] = sm.U[o] * g; fL.axU[o + 1] = sm.U[o + 1] * g; fL.axU[o + 2] = sm.U[o + 2] * g;
+          fL.axV[o] = sm.V[o] * g; fL.axV[o + 1] = sm.V[o + 1] * g; fL.axV[o + 2] = sm.V[o + 2] * g;
+          fL.axW[o] = sm.W[o] * g; fL.axW[o + 1] = sm.W[o + 1] * g; fL.axW[o + 2] = sm.W[o + 2] * g;
+          kk = 1 - s; fL.alpha[i] = sm.A[i] * kk * Math.sqrt(kk); sm.prog[i] = s;
+          if (i >= N) { k1 = 0.5 * s; k2 = 1 - k1; fL.color[o] = sm.K[o] * k2 + SMK[0] * k1; fL.color[o + 1] = sm.K[o + 1] * k2 + SMK[1] * k1; fL.color[o + 2] = sm.K[o + 2] * k2 + SMK[2] * k1; }
+        }
+        smokeCount(t);
+      }
+      /* the cast on stage or off it (the spline bowl stays: the ball starts in it); the lists of the figures stay out of the
+         list's field (parked far below, where its drawing skips them) in every other scene */
       function figShow(on) {
         if (!FIG) return;
-        fF.mesh.visible = on; fR.mesh.visible = !on;
+        smokeReset();                                              // (the smoke scaled and faded the list's Gaussians: back as they were stored)
+        fF.mesh.visible = on; fR.mesh.visible = true;
         var P = fL.center, i;
         if (on) P.set(LH.subarray(N * 3), N * 3);
         else for (i = N; i < NT; i++) { P[i * 3] = 0; P[i * 3 + 1] = -100; P[i * 3 + 2] = 0; }
-        balReset();
       }
       /* every frame on stage: the owl's head where the script has it (its control points turned, the lattice evaluated
          again only when they moved), its front half written as Gaussians for this eye; the rabbit's lattice carried by its
@@ -1399,13 +1576,14 @@
         run.E0 = energy(); el.lost = 0;
         if (m === 'ghost' || m === 'flight' || m === 'moment') restoreList();
         if (surf.broken) mend();
-        if (m === 'flight') { flatten(); derive(); fl.phase = 'drop'; fl.tt = fl.th = 0; fl.boost = false; }
+        if (m === 'flight') { flatten(); derive(); fl.phase = FIG ? 'ready' : 'drop'; fl.tt = fl.th = 0; fl.boost = false; }
         figShow(FIG && m === 'flight');
-        if (FIG && m === 'flight') {                               // the ball is let go over the owl's head, from rest
-          ball.p = [FO.hc[0] - 0.04, FO.top + 1.7, FO.hc[2]]; ball.v = [0, 0, 0]; run.E0 = energy();
-          fl.t1 = fl.ta = null; fl.tb = 0; fl.miss = false; fl.hit = [null, null]; fl.cps = [newCp(), newCp()]; fl.loops++;
+        if (FIG && m === 'flight') {                               // the ball rests in the spline bowl, the handle on it, nothing pulled
+          PO.on = false; SL.D = [0, 0, 0]; SL.tgt = null; SL.grab = false; SL.rel = false; SL.id = -1; SL.auto = null; SL.idle = 0; SL.touched = false; SL.pred = null; SL.predKey = '';
+          SL.mv = 0; SL.why = 'none'; SL.valid0 = false; SL.pred0 = null;
+          ball.p = SL.r0.slice(); ball.v = [0, 0, 0]; ball.on = true; run.hover = 0; run.E0 = energy();
+          fl.t1 = fl.ta = null; fl.tb = 0; fl.miss = false; fl.end = null; fl.cont = false; fl.vl = 0; fl.rest = 0; fl.hit = [null, null]; fl.cps = [newCp(), newCp()]; fl.loops++;
           FO.th = NaN; FR.key = '';                                // drawn afresh
-          fl.tf = predictOwl();
         }
         if (close) momentDrop(side); else mo.slow = 1;             // (no slow motion is carried out of a close-up)
         au.first = true; au.lastN = 0;
@@ -1427,13 +1605,84 @@
         ball.v = [dx / bt, dy / bt + 0.5 * GRAV * bt, dz / bt]; fl.vset = speed(); fl.phase = 'air'; fl.tl = run.t; el.touch = false; el.f = 0;
         au.launch = fl.vset;
       }
+      /* ---------- flight: the handle, the throw, the chain, one sub-step at a time ---------- */
+      function setHandle(Tg) {                                    // the ring is at the rest point + Tg (clamped)
+        var D = clampPull(Tg, [0, 0, 0]), k;
+        SL.mv += Math.hypot(D[0] - SL.D[0], D[1] - SL.D[1], D[2] - SL.D[2]);
+        SL.D = D; SL.touched = true; fl.phase = 'pull';
+        for (k = 0; k < 3; k++) { ball.p[k] = SL.r0[k] + D[k]; ball.v[k] = 0; }
+      }
+      function releaseHandle() {
+        var len = Math.hypot(SL.D[0], SL.D[1], SL.D[2]), k;
+        SL.grab = false; SL.tgt = null;
+        if (len < DMIN) {                                           // let go of a pull too short to throw anything: the ball settles back
+          SL.D = [0, 0, 0]; fl.phase = 'ready'; for (k = 0; k < 3; k++) { ball.p[k] = SL.r0[k]; ball.v[k] = 0; }
+          return false;
+        }
+        SL.D0 = SL.D.slice(); SL.pred0 = shotAhead(SL.D0); SL.pred0.pts = null;    // what was predicted at the moment of the release
+        fl.phase = 'throw'; return true;
+      }
+      /* the pouch lets go: the ball is at the rest point, its speed K |D|, and from here it is a parabola */
+      function launchNow() {
+        run.t = 0; run.tr = 0; fl.phase = 'toowl'; fl.t1 = owlTime(ball.p, ball.v); fl.cps = [newCp(), newCp()]; fl.hit = [null, null];
+        fl.vl = speed(); fl.miss = false; fl.cont = false; au.twang = fl.vl; tr.n = tr.k = 0; PO.on = false;
+      }
+      function autoStep() {                                       // "launch for me": SCRIPTED, the ring is drawn back along a valid pull and let go
+        var a = SL.auto, e, k, Tg = [0, 0, 0];
+        if (SL.grab) { SL.auto = null; return; }                  // a hand took the ring
+        a.t += H; SL.touched = true;
+        if (a.t >= AUTO_PULL + AUTO_HOLD) { SL.auto = null; SL.tgt = null; SL.rel = true; return; }
+        e = KT.ease(Math.min(1, a.t / AUTO_PULL));
+        for (k = 0; k < 3; k++) Tg[k] = a.D[k] * e;
+        SL.tgt = Tg;
+      }
+      function flightStep() {
+        var ph = fl.phase, rec, k, c, done, s;
+        if (ph === 'ready' || ph === 'pull') {
+          if (SL.auto) autoStep();
+          if (SL.rel) { SL.rel = false; releaseHandle(); }
+          else if (SL.tgt) { setHandle(SL.tgt); SL.tgt = null; }
+          else if (ph === 'ready' && !SL.touched) SL.idle += H;
+          ph = fl.phase;
+        }
+        if (ph === 'ready' || ph === 'pull') {                    // the ball is held where the ring is; the pouch drags the net along
+          for (k = 0; k < 3; k++) { ball.p[k] = SL.r0[k] + SL.D[k]; ball.v[k] = 0; }
+          PO.on = ph === 'pull'; PO.D = SL.D; membrane(false);
+        } else if (ph === 'throw') {
+          done = springStep(ball, SL.D0);
+          PO.on = true; for (k = 0; k < 3; k++) PO.D[k] = ball.p[k] - SL.r0[k];
+          membrane(false);
+          if (done) launchNow();
+        } else {
+          PO.on = false;
+          c = (ph === 'toowl' || ph === 'miss') && run.t > 0.3 && (fl.cont || ball.v[1] < 0) && Math.abs(ball.p[0] - X0) < RB + 0.6 && ball.p[1] < 2.2;   // back over the bowl: it is elastic, and the ball may land in it
+          membrane(c); if (el.touch) fl.cont = true;
+          if (ph === 'toowl') {
+            rec = touch(0, ball, run.t, fl.cps[0], false);
+            if (rec) { header(0, rec); fly(H - rec.hi); }
+            else if (ball.p[0] < OWL_AT[0] - 1.0) { fl.phase = 'miss'; fl.miss = true; }
+          } else if (ph === 'air1') { meet(1); if (fl.phase === 'air1' && run.t > fl.ta + 0.5) { fl.phase = 'air2'; fl.miss = true; } }
+          if (fl.phase === 'air2' || fl.phase === 'bowl') reachStep();
+          if (fl.phase === 'air2' && sm.t0 != null) { fl.phase = 'bowl'; fl.tb = run.t; fl.vin = speed(); }
+          // the end: the smoke has cleared (or, after a miss, the ball has left the frame or come to rest); then a pause, and the start state again
+          if (fl.end == null) {
+            if (fl.phase === 'bowl' && run.t > sm.tEnd) fl.end = run.t;
+            else if (fl.phase === 'miss' || (fl.phase === 'air2' && fl.miss)) {
+              if (ball.p[1] < -6 || Math.abs(ball.p[0]) > 16) fl.end = run.t;
+              else { s = speed(); fl.rest = s < 0.12 && el.touch ? fl.rest + H : 0; if (fl.rest > 1.0) fl.end = run.t; }
+            }
+            if (run.t > 30) fl.end = run.t - RESET_AFTER;
+          }
+          if (fl.end != null && run.t - fl.end > RESET_AFTER) letGo(0);
+        }
+      }
       function substep() {
         var m = model(), s;
         if (m === 'moment') { for (s = 0; s < 8 && run.close; s++) substepMoment(); return; }   // (ghost's close-up may hand back to its pass inside)
         run.t += H; au.simT += H;
         if (!ball.on && run.t >= run.hover) { ball.on = true; run.tr = run.t - H; run.E0 = energy(); }
         BP0[0] = ball.p[0]; BP0[1] = ball.p[1]; BP0[2] = ball.p[2]; BV0[0] = ball.v[0]; BV0[1] = ball.v[1]; BV0[2] = ball.v[2];   // (flight's contacts look back into the sub-step)
-        if (ball.on) fly(H);
+        if (ball.on && !(m === 'flight' && FIG && holding())) fly(H);
         if (m === 'ghost') {
           if (ball.on) ballVsList(run.rule === 1);
           if (run.t > (run.rule ? 5.2 : 3.0)) letGo(run.k + 1);
@@ -1449,12 +1698,7 @@
           s = speed(); run.still = s < 0.12 && el.touch ? run.still + H : 0;
           if (run.still > 1.3 || run.t > 9.5 || ball.p[1] < -6) letGo(run.k + 1);
         } else if (FIG) {                                          // flight, with the cast
-          if (ball.on && fl.t1 == null) fl.t1 = run.tr + fl.tf;    // the nod is timed to the predicted contact
-          if (fl.phase === 'drop' && ball.on) meet(0);
-          else if (fl.phase === 'air1') { meet(1); if (fl.phase === 'air1' && run.t > fl.ta + 0.5) { fl.phase = 'air2'; fl.miss = true; } }
-          balloons();
-          if (fl.phase === 'air2' && bal.inside) { fl.phase = 'bowl'; fl.tb = run.t; fl.vin = speed(); au.puff = bal.reach; }
-          if ((fl.phase === 'bowl' && run.t - fl.tb > 4.6) || run.t > 18 || (fl.phase !== 'bowl' && ball.p[1] < -12)) letGo(0);   // the lists have time to settle
+          flightStep();
         } else {
           if (fl.phase === 'drop') {
             membrane(true);
@@ -1467,17 +1711,17 @@
           }
         }
         if (prt.n) particles();
-        if (m === 'flight' && fl.phase !== 'drop' && ++tr.k % 6 === 0 && ball.p[1] > -8) { tr.p.set(ball.p, (tr.n % TR) * 3); tr.n++; }
+        if (m === 'flight' && !(FIG ? holding() : fl.phase === 'drop') && ++tr.k % 6 === 0 && ball.p[1] > -8) { tr.p.set(ball.p, (tr.n % TR) * 3); tr.n++; }
       }
 
       /* ---------- sound: one frame's worth of events, heard ---------- */
-      var chRoll = SFX.channel('roll'), chHiss = SFX.channel('hiss'), chWob = SFX.channel('wobble');
+      var chRoll = SFX.channel('roll'), chHiss = SFX.channel('hiss'), chWob = SFX.channel('wobble'), chCreak = SFX.channel('creak'), chSmoke = SFX.channel('smoke');
       var SINW = []; (function () { for (var i = 0; i < NC; i++) SINW.push(Math.sin(Math.PI * i / (NC - 1))); })();   // the membrane's first mode
-      function quiet() { au.simT = au.J = au.Jn = au.rest = au.restV = au.inside = au.calls = au.hits = au.jl = au.crack = au.pluck = au.launch = au.glass = au.puff = 0; au.tick.length = 0; }
-      function silence() { chRoll.stop(); chHiss.stop(); chWob.stop(); SFX.hush(); au.env = 0; au.rat = 0; }
+      function quiet() { au.simT = au.J = au.Jn = au.rest = au.restV = au.inside = au.calls = au.hits = au.jl = au.crack = au.pluck = au.launch = au.glass = au.twang = 0; au.tick.length = 0; }
+      function silence() { chRoll.stop(); chHiss.stop(); chWob.stop(); chCreak.stop(); chSmoke.stop(); SFX.hush(); au.env = 0; au.rat = 0; }
       function listen(dt) {
         var m = model(), s, pan = 0, x, w;
-        if (!SFX.ok()) { quiet(); chRoll.stop(); chHiss.stop(); chWob.stop(); au.lastN = prt.n; if (prt.n || prt.nSeen) au.first = false; return; }
+        if (!SFX.ok()) { quiet(); SL.mv = 0; chRoll.stop(); chHiss.stop(); chWob.stop(); chCreak.stop(); chSmoke.stop(); au.lastN = prt.n; if (prt.n || prt.nSeen) au.first = false; return; }
         s = G.project(cam, ball.p[0], ball.p[1], ball.p[2], size.w, size.h);
         if (s) pan = KT.clamp((s[0] / size.w - 0.5) * 0.9, -0.45, 0.45);
         var stretch = m === 'moment' ? 1 / mo.slow : 1;
@@ -1497,8 +1741,14 @@
         }
         if (au.pluck > 0.2) SFX.pluck(au.pluck, mat.stiff, pan);                      // a contact begins on the springs
         if (au.glass) SFX.glass(au.glass, pan);                                       // the glass rabbit heads the ball
-        if (au.puff) SFX.puff(au.puff, pan);                                          // the lists in the bowl give way
-        if (m === 'elastic' || (m === 'flight' && !FIG)) {                            // and the net rings: loudness from its motion, the wobble from its first mode
+        if (au.twang) SFX.twang(au.twang, pan);                                       // the pouch lets go
+        if (FIG && m === 'flight') {                                                  // the stretch creaks (its pitch from the pull's length, its loudness from how fast it is being stretched), the smoke hisses
+          x = fl.phase === 'pull' ? SL.mv / Math.max(dt, 1e-3) : 0; SL.mv = 0;
+          chCreak.set(x > 0.04 ? 0.1 * Math.pow(KT.clamp(x / 1.2, 0, 1), 0.7) : 0, 70 + 260 * Math.hypot(SL.D[0], SL.D[1], SL.D[2]) / DMAX);
+          x = sm.t0 != null ? sm.live / NT : 0;                                       // (how many are dissolving now)
+          chSmoke.set(x > 0.002 ? 0.13 * Math.sqrt(KT.clamp(x, 0, 1)) : 0, 2300 + 900 * x);
+        } else { chCreak.set(0); chSmoke.set(0); SL.mv = 0; }
+        if (m === 'elastic' || (m === 'flight' && !FIG) || (m === 'flight' && FIG && fl.phase !== 'ready' && fl.phase !== 'pull')) {                            // and the net rings: loudness from its motion, the wobble from its first mode
           var e2 = 0, vm = 0, ws = 0, q, i, j;
           for (j = 1; j < NC - 1; j++) for (i = 1; i < NC - 1; i++) {
             q = (j * NC + i) * 3; e2 += MV[q] * MV[q] + MV[q + 1] * MV[q + 1] + MV[q + 2] * MV[q + 2];
@@ -1542,6 +1792,7 @@
             if (prt.aw[k]) r = Math.min(0.85, 0.3 + 0.25 * Math.hypot(V[o], V[o + 1], V[o + 2]));
             else if (pass && prt.seen[k]) r = d2 < in2 * 1.3 ? 0.9 : 0.45;        // inside the ball right now, or was
             cl[o] = baseL[o] * f * (1 - r) + ERR[0] * r; cl[o + 1] = baseL[o + 1] * f * (1 - r) + ERR[1] * r; cl[o + 2] = baseL[o + 2] * f * (1 - r) + ERR[2] * r;
+            if (sm.t0 != null && sm.prog[k] > 0) { r = 0.5 * sm.prog[k]; cl[o] = cl[o] * (1 - r) + SMK[0] * r; cl[o + 1] = cl[o + 1] * (1 - r) + SMK[1] * r; cl[o + 2] = cl[o + 2] * (1 - r) + SMK[2] * r; }   // flight: the smoke greys
           }
           if (m === 'moment' && mo.side < 0) mo.who.forEach(function (i) {          // the Gaussians that decided a definition: lit up (inked, on a light page)
             if (i < 0) return; o = i * 3; cl[o] = 0.4 * cl[o] + MARK[0]; cl[o + 1] = 0.4 * cl[o + 1] + MARK[1]; cl[o + 2] = 0.4 * cl[o + 2] + MARK[2];
@@ -1552,7 +1803,7 @@
       /* ---------- what is drawn about the contact ---------- */
       function overlays() {
         var m = model(), onSpline = m === 'solid' || m === 'elastic' || (m === 'brittle' && !surf.broken) || (m === 'flight' && !FIG && fl.phase === 'drop') || (m === 'moment' && mo.side > 0);
-        var soft = m === 'elastic' || (m === 'flight' && !FIG), k, i, o, q, bm = ballMesh.material, see = m === 'moment';
+        var soft = m === 'elastic' || (m === 'flight' && (!FIG || netShown())), k, i, o, q, bm = ballMesh.material, see = m === 'moment';
         ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
         if (bm.transparent !== see) { bm.transparent = see; bm.opacity = see ? 0.3 : 1; bm.depthWrite = !see; bm.needsUpdate = true; }   // close up: see under the ball
         dot.scale.setScalar(see ? 0.35 : 1);
@@ -1561,7 +1812,12 @@
         var near = onSpline && cp.d < BR + 0.75 && (soft || !cp.edge || cp.d < BR * 1.6), since = run.t - hit.t;
         iso.obj.visible = dot.visible = arrow.obj.visible = drop.obj.visible = near;
         var pinAt = near ? cp.p : null, pinU = cp.u, pinV = cp.v;
-        if (FIG && m === 'flight') { var fo = figMarks(); if (fo) { pinAt = fo.p; pinU = fo.u; pinV = fo.v; } }
+        var pinTxt = null;
+        if (FIG && m === 'flight') {
+          var fo = figMarks(); if (fo) { pinAt = fo.p; pinU = fo.u; pinV = fo.v; }
+          else if (fl.phase === 'ready' || fl.phase === 'pull') { pinAt = FO.hc; pinTxt = T('target · the owl’s head'); }   // where the path has to arrive
+          slingDraw(true);
+        } else if (FIG) slingDraw(false);
         if (near) {
           var up = 0.012, n = cp.nc, len;
           for (i = 0; i < NS; i++) for (k = 0; k < 2; k++) {
@@ -1614,16 +1870,17 @@
         // the address, written next to the contact
         var s = pinAt ? G.project(cam, pinAt[0], pinAt[1], pinAt[2], size.w, size.h) : null;
         if (s && s[0] > 40 && s[0] < size.w - 150 && s[1] > 40 && s[1] < size.h - 30) {
-          pin.style.display = 'block'; pin.style.transform = 'translate(' + (s[0] + 16).toFixed(1) + 'px,' + (s[1] + 10).toFixed(1) + 'px)';
-          setText(pin, '(u, v) = (' + pinU.toFixed(2) + ', ' + pinV.toFixed(2) + ')');
+          pin.style.display = 'block'; pin.style.transform = 'translate(' + (s[0] + (pinTxt ? 38 : 16)).toFixed(1) + 'px,' + (s[1] + (pinTxt ? -26 : 10)).toFixed(1) + 'px)';
+          setText(pin, pinTxt || '(u, v) = (' + pinU.toFixed(2) + ', ' + pinV.toFixed(2) + ')');
         } else pin.style.display = 'none';
       }
+      function netShown() { return fl.phase === 'ready' || fl.phase === 'pull' || fl.phase === 'throw' || fl.phase === 'toowl' || fl.phase === 'miss'; }
       /* flight: on the figure the ball is coming down on, while it is near, the closest point S(u, v), the line to the ball's
          centre, the normal and the chart's two parameter lines through the point; for a moment after a header, the contact
          itself (its normal drawn longer with the impulse). -> { p, u, v } for the address pin, or null */
       var IE = { p: [0, 0, 0], su: [0, 0, 0], sv: [0, 0, 0] }, IW = [0, 0, 0];
       function figMarks() {
-        var who = fl.phase === 'drop' ? 0 : fl.phase === 'air1' ? 1 : -1, rec = null, o = null, P, Nn, u, v, F, th, k, i, a, since = 9, len;
+        var who = fl.phase === 'toowl' ? 0 : fl.phase === 'air1' ? 1 : -1, rec = null, o = null, P, Nn, u, v, F, th, k, i, a, since = 9, len;
         for (k = 0; k < 2; k++) if (fl.hit[k] && run.t - fl.hit[k].at < 0.7) { rec = fl.hit[k]; since = run.t - rec.at; }
         if (rec) { who = rec.who; P = rec.p; Nn = rec.n; u = rec.u; v = rec.v; }
         else if (who >= 0 && (o = fl.cps[who]) && o.near && o.ok && o.wp && o.d < BR + 0.75) { P = o.wp; Nn = o.wn; u = o.u; v = o.v; }
@@ -1642,6 +1899,69 @@
         len = 0.45 + (rec ? Math.min(1, rec.J * 0.06) * (1 - since / 0.7) : 0);
         arrow.aim(P, Nn[0], Nn[1], Nn[2], len, rec ? 1.5 : 1);
         return { p: P, u: u, v: v };
+      }
+      /* flight: the handle, the rope, the predicted path, the target, and the one line of guidance */
+      /* what to change, in the order the prediction decides it (short, high, steep, side): the line over the stage, and the sentence in the numbers box */
+      function whyTip(r) { return r === 'high' ? T('too far · pull less far back') : r === 'steep' ? T('too steep · aim lower') : r === 'side' ? T('off to the side · aim straight at the owl') : T('too short · pull further back'); }
+      function whyBox(r) {
+        return r === 'high' ? T('the path passes over the owl’s head') : r === 'steep' ? T('the path comes down too steeply and passes over the owl’s head') :
+               r === 'side' ? T('the path passes to the side of the owl’s head') : T('the path falls short of the owl’s head');
+      }
+      function slingDraw(on) {
+        var ph = fl.phase, pull = on && ph === 'pull', held = on && (ph === 'ready' || ph === 'pull'), k, i, n, px, upp, sc, dist, pr, col, ok, bad, txt = '', cls = '';
+        if (!on) { ring.visible = halo.visible = rope.obj.visible = pred.obj.visible = tgt.obj.visible = false; tip.style.display = 'none'; return; }
+        if (pull) {
+          var key = SL.D[0].toFixed(5) + ',' + SL.D[1].toFixed(5) + ',' + SL.D[2].toFixed(5);
+          if (key !== SL.predKey) { SL.predKey = key; SL.pred = shotAhead(SL.D); }
+        }
+        pr = pull ? SL.pred : null; ok = !!(pr && pr.valid); bad = !!(pr && !pr.valid && pr.len >= DMIN);
+        col = ok ? C.surf : bad ? C.err : C.dim;
+        // the ring: a grip on the ball, the size of a fingertip target at any zoom
+        ring.visible = held;
+        if (held) {
+          dist = cam.position.distanceTo(ballMesh.position); upp = 2 * dist * Math.tan(cam.fov * Math.PI / 360) / size.h; px = KT.HIT + 6; sc = px * upp;
+          ring.position.copy(ballMesh.position); ring.quaternion.copy(cam.quaternion); ring.scale.setScalar(sc * (ph === 'pull' ? 1 : 1));
+          ring.material.color.set(col);
+          var hint = ph === 'ready' && !SL.touched && SL.idle > AUTO_IDLE, fr = (st.clock % 1.4) / 1.4;
+          halo.visible = hint;
+          if (hint) { halo.position.copy(ring.position); halo.quaternion.copy(cam.quaternion); halo.scale.setScalar(sc * (1 + 0.9 * fr)); halo.material.opacity = 0.8 * (1 - fr); halo.material.color.set(C.surf); }
+        } else halo.visible = false;
+        // the rope back to the rest point, while pulled or thrown
+        rope.obj.visible = on && (ph === 'pull' || ph === 'throw');
+        if (rope.obj.visible) { rope.arr.set(SL.r0, 0); rope.arr.set(ball.p, 3); rope.set(2); }
+        // the predicted path, dashed (two samples drawn, two left out), up to the contact or a little past the owl
+        pred.obj.visible = pull && pr && pr.n > 1;
+        if (pred.obj.visible) {
+          pred.mat.color.set(col); n = 0;
+          for (k = 0; k + 1 < pr.n; k++) if ((k & 3) < 2) {
+            for (i = 0; i < 3; i++) { pred.arr[n * 3 + i] = pr.pts[k * 3 + i]; pred.arr[n * 3 + 3 + i] = pr.pts[k * 3 + 3 + i]; } n += 2;
+          }
+          pred.set(n);
+        }
+        // the target: a circle on the owl's head, facing the eye
+        tgt.obj.visible = held;
+        if (held) {
+          var ce = cam.matrixWorld.elements, h = FO.hc, rr = 0.5, a0, a1;
+          tgt.mat.color.set(ok ? C.surf : C.dim);
+          for (k = 0; k < TGN; k++) {
+            a0 = k / TGN * 6.2832; a1 = (k + 1) / TGN * 6.2832;
+            for (i = 0; i < 3; i++) { tgt.arr[k * 6 + i] = h[i] + rr * (Math.cos(a0) * ce[i] + Math.sin(a0) * ce[4 + i]); tgt.arr[k * 6 + 3 + i] = h[i] + rr * (Math.cos(a1) * ce[i] + Math.sin(a1) * ce[4 + i]); }
+          }
+          tgt.set(2 * TGN);
+        }
+        // the guidance line
+        if (SL.auto) { txt = T('SCRIPTED · the pull is drawn by the script, from a valid pull'); cls = 'auto'; }
+        else if (ph === 'ready') { txt = T('pull the ring back and down, then let go'); cls = SL.idle > AUTO_IDLE && !SL.touched ? 'hint' : ''; }
+        else if (ph === 'pull') {
+          if (ok) { txt = T('valid · owl → rabbit → the lists'); cls = 'ok'; }
+          else if (bad) { txt = whyTip(pr.reason); cls = 'bad'; }
+          else txt = T('keep pulling: back and down');
+        } else if (ph === 'miss') { txt = T('missed the owl · starting again in a moment'); cls = 'bad'; }
+        if (!txt) tip.style.display = 'none';
+        else {
+          setText(tip, txt); tip.className = 'kt-tip' + (cls ? ' ' + cls : ''); tip.style.display = 'block';
+          tip.style.bottom = (tag.offsetHeight + 20) + 'px';
+        }
       }
       function setText(e, html) { if (e._h !== html) { e._h = html; e.innerHTML = html; } }
 
@@ -1735,14 +2055,25 @@
             (el.touch ? T('contact force <em>{f} N</em> on {n} control points, by basis weight', { f: el.f.toFixed(0), n: el.sup.length }) : T('the Gaussians are derived again every frame')) +
             '<br>' + T('energy: ball <em>{b}</em> · surface <em>{s}</em> · damped {d}', { b: pct(e), s: pct(em), d: pct(el.lost / run.E0) }) + (hit.n ? ' · ' + T('bounce {n}', { n: hit.n }) : '');
         } else if (FIG) {                                          // flight, with the cast
-          var h0 = fl.hit[0], h1 = fl.hit[1], o0 = fl.cps[0];
-          if (fl.phase === 'drop') {
-            s = T('<b>two spline charts</b> · the owl, {a} × {b} control points', { a: FO.nu, b: FO.nv }) + ' · ' +
-              (FR.glass ? T('the rabbit, {a} × {b}, in clear glass', { a: FR.nu, b: FR.nv }) : T('the rabbit, {a} × {b}', { a: FR.nu, b: FR.nv })) + ' · ' +
-              T('{n} Gaussians derived', { n: (fig.nO + fig.nR).toLocaleString('en-US') }) + '<br>' +
-              (!ball.on ? T('the ball is let go over the owl’s head')
-                : o0 && o0.near && o0.ok ? T('closest point on the owl S(<em>{u}</em>, <em>{v}</em>) by Gauss–Newton in (u, v) · {d} m to go', { u: o0.u.toFixed(2), v: o0.v.toFixed(2), d: Math.max(0, o0.d - BR).toFixed(2) })
-                : T('falling at {v} m/s', { v: speed().toFixed(1) }));
+          var h0 = fl.hit[0], h1 = fl.hit[1], o0 = fl.cps[0], pr = fl.phase === 'pull' ? SL.pred : null, dd = Math.hypot(SL.D[0], SL.D[1], SL.D[2]);
+          if (fl.phase === 'ready') {
+            s = SPL + T('the ball rests in the bowl · the control points are on springs, {k} N/m', { k: mat.stiff.toFixed(0) }) + '<br>' +
+              T('drag the ring back and down, then let go · the throw is a spring pouch of the ball: speed = {k} × the pull <i>(a rule)</i>', { k: K_SLING.toFixed(1) });
+          } else if (fl.phase === 'pull' || fl.phase === 'throw') {
+            var dv = fl.phase === 'pull' ? K_SLING * dd : Math.hypot(SL.D0[0], SL.D0[1], SL.D0[2]) * K_SLING, an = Math.atan2(-(fl.phase === 'pull' ? SL.D[1] : SL.D0[1]), Math.hypot(fl.phase === 'pull' ? SL.D[0] : SL.D0[0], fl.phase === 'pull' ? SL.D[2] : SL.D0[2]));
+            s = (SL.auto ? T('<b>scripted</b> · the pull is drawn by the script, from a pull that the prediction found valid') : T('<b>pull</b> <em>{d} m</em> at {a}°', { d: (fl.phase === 'pull' ? dd : Math.hypot(SL.D0[0], SL.D0[1], SL.D0[2])).toFixed(2), a: (an * 57.2958).toFixed(0) })) +
+              ' · ' + T('launch speed <em>{v} m/s</em> = {k} × the pull <i>(the spring pouch, a rule)</i>', { v: dv.toFixed(1), k: K_SLING.toFixed(1) }) + '<br>' +
+              (fl.phase === 'throw' ? T('let go: the pouch spring throws the ball, the net follows it')
+                : !pr ? T('the path is predicted with the same physics as the flight, once the ring is pulled')
+                : pr.valid ? T('predicted with the same physics: it meets the owl at S(<em>{u}</em>, <em>{v}</em>) {t} after the release · <em>valid</em>', { u: pr.rec.u.toFixed(2), v: pr.rec.v.toFixed(2), t: ms(pr.rec.t) })
+                : T('predicted with the same physics: it misses the owl · <em class="bad">{why}</em>', { why: whyBox(pr.reason) }));
+          } else if (fl.phase === 'toowl') {
+            s = T('<b>released</b> · left the bowl at <em>{v} m/s</em>, {a}° up', { v: fl.vl.toFixed(1), a: (Math.atan2(-SL.D0[1], Math.hypot(SL.D0[0], SL.D0[2])) * 57.2958).toFixed(0) }) + '<br>' +
+              (o0 && o0.near && o0.ok ? T('closest point on the owl S(<em>{u}</em>, <em>{v}</em>) by Gauss–Newton in (u, v) · {d} m to go', { u: o0.u.toFixed(2), v: o0.v.toFixed(2), d: Math.max(0, o0.d - BR).toFixed(2) })
+                : T('flying at {v} m/s', { v: speed().toFixed(1) }));
+          } else if (fl.phase === 'miss') {
+            s = T('<b>missed the owl</b> · it flies on, nothing to hit') + (SL.pred0 ? ' · ' + T('<em class="bad">{why}</em>, as predicted', { why: whyBox(SL.pred0.reason) }) : '') + '<br>' +
+              T('speed {v} m/s', { v: speed().toFixed(1) }) + ' · ' + T('the scene starts again in a moment');
           } else if (fl.phase === 'air1') {
             s = T('header 1 · the ball met the owl at S(<em>{u}</em>, <em>{v}</em>), {t} after release · |S − c| − r = <em>{g} m</em> · impulse {J} N·s',
                   { u: h0.u.toFixed(2), v: h0.v.toFixed(2), t: ms(h0.t), g: sci(Math.abs(h0.gap)), J: h0.J.toFixed(1) }) + '<br>' +
@@ -1755,8 +2086,8 @@
                   : T('speed {v} m/s', { v: speed().toFixed(1) }));
           } else {
             s = T('<b>three lists</b> · the bowl, the owl and the rabbit · {n} Gaussians, unordered <i>(emulated)</i>', { n: NT.toLocaleString('en-US') }) + '<br>' +
-              T('the ball passes through · <em>{k}</em> Gaussians drift aside, the farthest {d} cm · <em>{loose}</em> knocked loose', { k: bal.moved.toLocaleString('en-US'), d: (100 * bal.dmax).toFixed(0), loose: prt.n }) +
-              ' · ' + T('the drift is an invented rule: a list defines no force');
+              T('the ball passes through and feels nothing · it reached <em>{r}</em> Gaussians · <em>{k}</em> of {n} dissolved like smoke, {g} gone', { r: sm.nReach.toLocaleString('en-US'), k: sm.n.toLocaleString('en-US'), n: NT.toLocaleString('en-US'), g: sm.gone.toLocaleString('en-US') }) +
+              ' · ' + T('the smoke is an invented rule: a list defines no force and no boundary');
           }
         } else if (fl.phase === 'drop') {
           s = SPL + T('elastic, {k} N/m · the ball is thrown down at {v} m/s', { k: mat.stiff.toFixed(0), v: DROPS.flight[0][3] }) +
@@ -1779,16 +2110,63 @@
         tough: ui.slider(panel, { label: T('toughness'), min: 1, max: 16, step: 0.5, value: mat.tough, fmt: function (v) { return v.toFixed(1) + ' N·s'; }, onInput: function (v) { mat.tough = v; } }),
         stiff: ui.slider(panel, { label: T('stiffness'), min: 60, max: 400, step: 10, value: mat.stiff, fmt: function (v) { return v + ' N/m'; }, onInput: function (v) { mat.stiff = v; } })
       };
-      ui.button(panel, { label: T('drop again'), kind: 'go', onClick: function () { var m = st.sc.model; letGo(m === 'flight' || m === 'moment' ? 0 : run.k + (m === 'solid' || m === 'elastic' ? 1 : 0)); } });
+      var btnDrop = ui.button(panel, { label: T('drop again'), kind: 'go', onClick: function () { var m = st.sc.model; letGo(m === 'flight' || m === 'moment' ? 0 : run.k + (m === 'solid' || m === 'elastic' ? 1 : 0)); } });
+      // flight: the ball starts again by itself in the bowl, and a button does one valid pull by script (so a stage with nobody at the ring still runs)
+      var btnAuto = FIG ? ui.button(panel, { label: T('launch for me'), kind: 'go', onClick: function () { startAuto(); } }) : null;
+      function startAuto() {
+        if (!(FIG && st.sc.model === 'flight')) return false;
+        letGo(0); SL.auto = { t: 0, D: autoPull().slice() }; SL.touched = true; return true;
+      }
       // on the lab page there is no deck to carry the mute: the module has its own switch (KnotTalk.muted, as in the deck)
       var sndT = env.embed ? null : ui.toggle(panel, { label: 'sound', value: !KT.muted, onChange: function (on) { KT.muted = !on; if (on) SFX.wake(); } });
       function dimRows() {
         var m = st.sc.model, use = { e: m === 'solid' || m === 'brittle' || m === 'moment', tough: m === 'brittle', stiff: m === 'elastic' || (m === 'flight' && !FIG) }, k;
         for (k in sl) sl[k].el.style.opacity = use[k] ? 1 : 0.35;
+        btnDrop.textContent = FIG && m === 'flight' ? T('start again') : T('drop again');
+        if (btnAuto) btnAuto.style.display = m === 'flight' ? '' : 'none';
       }
 
       /* ---------- camera ---------- */
-      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.2, maxRadius: 34, target: [-X0, 0.2, 0], radius: 8 });
+      /* flight: the handle on the ball. The shared gesture layer gives a first pointer to `pickHandle` (true = the ring is taken: the camera
+         does not turn, the page does not scroll), asks `overHandle` before a touch scrolls anything, and calls `dropHandle` when a second
+         finger lands (then the ring goes back: two fingers are a camera gesture). The drag moves the ring on a vertical plane through the
+         rest point that faces the camera; the pointer only sets a target, which the next sub-step takes (so the release always
+         launches from the last position drawn, the one the prediction was made for). */
+      var ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), dplane = new THREE.Plane(), dpt = new THREE.Vector3(), ddir = new THREE.Vector3(), dtmp = new THREE.Vector3();
+      function planeHit(e) {
+        var r = R.canvas.getBoundingClientRect();
+        ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)); ray.setFromCamera(ndc, cam);
+        cam.getWorldDirection(ddir); ddir.y = 0; if (ddir.lengthSq() < 1e-6) return null; ddir.normalize();
+        dplane.setFromNormalAndCoplanarPoint(ddir, dtmp.set(SL.r0[0], SL.r0[1], SL.r0[2]));
+        return ray.ray.intersectPlane(dplane, dpt) ? dpt : null;
+      }
+      function overHandle(x, y) {
+        if (!(FIG && st.sc.model === 'flight' && fl.phase === 'ready' && !SL.auto)) return false;
+        var r = R.canvas.getBoundingClientRect(), p = G.project(cam, ball.p[0], ball.p[1], ball.p[2], r.width, r.height);
+        return !!p && Math.hypot(x - (r.left + p[0]), y - (r.top + p[1])) <= KT.HIT + 6;
+      }
+      function pickHandle(e) {
+        if (!overHandle(e.clientX, e.clientY)) return false;
+        var h = planeHit(e); if (!h) return false;
+        SL.id = e.pointerId; SL.off = [h.x - ball.p[0], h.y - ball.p[1], h.z - ball.p[2]]; SL.grab = true; SL.touched = true; SL.tgt = SL.D.slice();
+        try { R.canvas.setPointerCapture(e.pointerId); } catch (x) {}
+        R.canvas.style.cursor = 'grabbing';
+        return true;
+      }
+      function dropHandle() {
+        if (SL.id < 0) return;
+        SL.id = -1; SL.grab = false; SL.tgt = null; SL.rel = false; SL.D = [0, 0, 0];
+        if (fl.phase === 'pull') { fl.phase = 'ready'; ball.p = SL.r0.slice(); ball.v = [0, 0, 0]; }
+        R.canvas.style.cursor = '';
+      }
+      R.canvas.addEventListener('pointermove', function (e) {
+        if (SL.id < 0) { if (e.pointerType === 'mouse') R.canvas.style.cursor = overHandle(e.clientX, e.clientY) ? 'grab' : ''; return; }
+        if (e.pointerId !== SL.id) return;
+        var h = planeHit(e); if (h) SL.tgt = [h.x - SL.off[0] - SL.r0[0], h.y - SL.off[1] - SL.r0[1], h.z - SL.off[2] - SL.r0[2]];
+      });
+      function endHandle(e) { if (e.pointerId === SL.id) { SL.id = -1; SL.rel = true; R.canvas.style.cursor = ''; } }
+      R.canvas.addEventListener('pointerup', endHandle); R.canvas.addEventListener('pointercancel', endHandle);
+      var orbit = G.orbit(cam, R.canvas, { embed: env.embed, minRadius: 1.2, maxRadius: 34, target: [-X0, 0.2, 0], radius: 8, pick: pickHandle, hit: overHandle, release: dropHandle });
       function fit(k) { return KT.clamp((k || 1.15) / (size.w / size.h), 1, 2.4); }     // a narrow stage stands further back
       function view() {
         var m = model(), f = fit(), x = st.sc.side * X0;
@@ -1802,9 +2180,16 @@
         if (m === 'brittle') return { tx: x, ty: -0.1, tz: 0, r: 8.6 * f, th: 0.45, ph: 1.0 };
         if (m === 'elastic') return { tx: x, ty: 0.6, tz: 0, r: 7.6 * f, th: 0.5, ph: 1.0 };
         if (FIG) {                                                // the finale with the cast: both figures, the owl, the flight, the rabbit, the bowl
-          var bx = ball.p[0], lo = size.w / size.h < 1.1 ? 0.45 : 0;   // a narrow stage (a phone) has the numbers over its lower third: the cast stands higher
-          if (!ball.on) return { tx: 3.3, ty: 1.45 - lo, tz: 0, r: 10.4 * f, th: 0.06, ph: 1.36 };
-          if (fl.phase === 'drop') return { tx: OWL_AT[0] - 0.8, ty: 1.0 - lo, tz: 0, r: 7.6 * f, th: 0.1, ph: 1.34 };
+          var bx = ball.p[0], nar = size.w / size.h < 1.1, lo = nar ? 0.45 : 0;   // a narrow stage (a phone) has the numbers over its lower third: the cast stands higher
+          /* the stage framed on a box: x from cx - W / 2 to cx + W / 2, y over Hh, the picture lifted by up (a share of the stage's height) */
+          var frame = function (cx, cy, W, Hh, up, th, ph) {
+            var tn = 0.3249, r = Math.max(0.5 * W / (tn * size.w * size.h / (size.h * size.h)), 0.5 * Hh / tn);
+            return { tx: cx, ty: cy - up * 2 * r * tn, tz: 0, r: r, th: th, ph: ph };
+          };
+          var ph0 = fl.phase;
+          /* ready and pulling: everything the chain touches in one picture (on a phone only the bowl and the owl fit: from the launch on, the camera follows the ball) */
+          if (ph0 === 'ready' || ph0 === 'pull' || ph0 === 'throw') return nar ? frame(X0 - 0.9, 0.3, 8.4, 3.4, 0.2, 0.05, 1.36) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.36);
+          if (ph0 === 'toowl' || ph0 === 'miss') return nar ? frame(KT.clamp(bx, OWL_AT[0] - 0.6, X0 - 0.9), 0.5, 8.4, 3.4, 0.2, 0.05, 1.36) : frame(0.3, 0.55, 18.6, 4.2, 0, 0.05, 1.36);
           if (fl.phase === 'air1') return { tx: 0.5 * (bx + RAB_AT[0]), ty: 1.4 - lo, tz: 0, r: 10 * f, th: 0.05, ph: 1.34 };
           if (fl.phase === 'air2') return { tx: KT.clamp(bx, -X0 + 0.8, RAB_AT[0]), ty: Math.max(0.9, ball.p[1] * 0.7) - lo, tz: 0, r: 10.5 * fit(1.36), th: 0, ph: 1.3 };
           return { tx: -X0, ty: 0.55 - 0.6 * lo, tz: 0, r: 8.4 * f, th: -0.1, ph: 1.2 };
@@ -1838,6 +2223,7 @@
           n++;
         }
         if (n === cap) st.acc = 0;
+        if (FIG && st.sc.model === 'flight') smokeDraw();
         listen(dt);
         if (sndT && sndT.get() === !!KT.muted) sndT.set(!KT.muted);   // the switch follows KnotTalk.muted, whoever set it
         m = model(); mom = m === 'moment'; v = view();
@@ -1854,7 +2240,7 @@
         st.off = st.off == null ? off : st.off + (off - st.off) * (1 - Math.exp(-4 * dt));
         if (st.off > 0.5 && size.h > 1) cam.setViewOffset(size.w, size.h, 0, st.off, size.w, size.h);
         else { st.off = off ? st.off : 0; if (cam.view && cam.view.enabled) cam.clearViewOffset(); }
-        if (surf.broken) writeFragments(); else if (m === 'elastic' || (m === 'flight' && !FIG)) derive();
+        if (surf.broken) writeFragments(); else if (m === 'elastic' || m === 'flight') derive();
         if (FIG && m === 'flight') figDraw();
         paint(); overlays(); words(); timeline();
         fL.draw(cam, R.renderer);
@@ -1874,16 +2260,22 @@
           '.kt-sim-touch .kt-pin{position:absolute;z-index:3;left:0;top:0;pointer-events:none;white-space:nowrap;font:600 11px/1 var(--f-mono);color:var(--text);' +
           'padding:4px 6px;background:var(--panel);border:1px solid var(--line2);border-radius:5px;display:none}' +
           '.kt-sim-touch.kt-compact .kt-pin{font-size:10px}' +
+          // flight: the guidance line over the numbers box: neutral, valid (the surface colour), not valid (the error colour), scripted
+          '.kt-sim-touch .kt-tip{position:absolute;z-index:4;right:10px;bottom:90px;max-width:min(420px,calc(100% - 20px));pointer-events:none;display:none;font:600 12px/1.4 var(--f-mono);' +
+          'letter-spacing:.02em;color:var(--text);padding:6px 10px;background:var(--panel);border:1px solid var(--line2);border-radius:8px}' +
+          '.kt-sim-touch .kt-tip.ok{color:var(--surf);border-color:var(--surf)}.kt-sim-touch .kt-tip.bad{color:var(--err);border-color:var(--err)}' +
+          '.kt-sim-touch .kt-tip.auto{border-style:dashed}.kt-sim-touch .kt-tip.hint{border-color:var(--surf)}' +
+          '@media (max-width:640px){.kt-sim-touch .kt-tip{left:10px;right:10px;max-width:none;text-align:center;font-size:11px}}' +
           // the light theme: the words lie over the bowls (in `moment` the list, then the spline bowl, fill the stage), so
           // they sit on glass that hides what is behind them; a clear one takes the bowl's colour and dark text stops reading
-          ':root[data-theme="light"] .kt-sim-touch :is(.kt-side,.kt-pin){background:rgba(255,255,255,.86);border-color:transparent;' +
+          ':root[data-theme="light"] .kt-sim-touch :is(.kt-side,.kt-pin,.kt-tip){background:rgba(255,255,255,.86);border-color:transparent;' +
           'box-shadow:var(--glass-edge),0 10px 28px -18px rgba(88,56,24,.45)}' +
           ':root[data-theme="light"] .kt-sim-touch.tc-close .kt-caption{border-radius:6px;background:rgba(255,255,255,.86);' +
           'box-shadow:0 0 0 6px rgba(255,255,255,.86),0 10px 26px -16px rgba(88,56,24,.45)}' +   // its margin as a spread: the caption keeps its place and size
           '@media (max-width:640px){.kt-sim-touch .kt-side{font-size:9.5px;padding:6px 8px}}' +
           // Hebrew is neither letter-spaced nor set in capitals, and a left-to-right run inside a Hebrew sentence (a number
           // with its unit, a formula, an address) is never broken over two lines
-          ':root[lang="he"] .kt-sim-touch :is(.kt-side,.kt-side b,.kt-mo text){letter-spacing:0;text-transform:none}' +
+          ':root[lang="he"] .kt-sim-touch :is(.kt-side,.kt-side b,.kt-mo text,.kt-tip){letter-spacing:0;text-transform:none}' +
           ':root[lang="he"] .kt-sim-touch .kt-side span[dir="ltr"]{white-space:nowrap}';
         document.head.appendChild(css);
       }
@@ -1898,6 +2290,17 @@
           quiet(); au.lastN = prt.n; if (prt.n || prt.nSeen) au.first = false;
         },
         sfx: function () { return SFX.counts(); },
+        /* flight, for tests: the ring pulled to the rest point + (x, y, z), let go, the prediction for a pull (the current one by default), the scripted pull */
+        pull: function (x, y, z) {
+          if (!(FIG && st.sc.model === 'flight' && (fl.phase === 'ready' || fl.phase === 'pull'))) return false;
+          SL.auto = null; SL.grab = true; setHandle([x, y, z]); return SL.D.slice();
+        },
+        release: function () { if (fl.phase !== 'pull') return false; SL.grab = false; return releaseHandle(); },
+        predict: function (x, y, z) {
+          var D = x == null ? SL.D : clampPull([x, y, z], [0, 0, 0]), r = shotAhead(D);
+          return { valid: r.valid, reason: r.reason, rec: r.rec, speed: r.speed, angle: r.angle, len: r.len, D: D.slice(), points: r.n, dy: r.dy, dz: r.dz };
+        },
+        auto: startAuto, autoPull: function () { return autoPull().slice(); },
         stats: function () {
           return { scene: st.scene, t: run.t, drop: run.k, rule: run.rule, ph: run.ph, close: run.close, model: model(), on: ball.on, rest: ball.rest, p: ball.p.slice(), v: ball.v.slice(), speed: speed(),
                    energy: energy() / run.E0, bounces: hit.n, J: hit.J, ask: hit.ask, held: hit.held, u: cp.u, v2: cp.v, d: cp.d,
@@ -1908,7 +2311,12 @@
                    fig: FIG ? { on: st.sc.model === 'flight', loops: fl.loops, t1: fl.t1, ta: fl.ta, tb: fl.tb, miss: fl.miss, owlTh: owlTh(run.t), rab: RP.T.slice(), lists: NF,
                                 hits: fl.hit.map(function (h) { return h && { t: h.t, at: h.at, u: h.u, v: h.v, d: h.d, gap: h.gap, check: h.check, J: h.J, edge: h.edge, p: h.p, n: h.n, c: h.c, vin: h.vin, vout: h.vout, aim: h.aim }; }),
                                 drawn: { owl: fig.nO, rabbit: fig.nR, owlGrid: FO.na * FO.nb, rabbitGrid: FR.na * FR.nb }, glass: FR.glass,
-                                bal: { moved: bal.moved, inside: bal.inside, dmax: bal.dmax, dnow: bal.dnow, active: (function () { var c = 0; for (var i = 0; i < NT; i++) c += BA[i]; return c; })() },
+                                sling: { phase: fl.phase, D: SL.D.slice(), D0: SL.D0.slice(), len: Math.hypot(SL.D[0], SL.D[1], SL.D[2]), grab: SL.grab, id: SL.id, auto: !!SL.auto, touched: SL.touched, idle: SL.idle,
+                                         hint: fl.phase === 'ready' && !SL.touched && SL.idle > AUTO_IDLE, vl: fl.vl, end: fl.end, rest: SL.r0.slice(), K: K_SLING, dmax: DMAX, dmin: DMIN,
+                                         pred: SL.pred && { valid: SL.pred.valid, reason: SL.pred.reason }, pred0: SL.pred0 && { valid: SL.pred0.valid, reason: SL.pred0.reason, rec: SL.pred0.rec },
+                                         owlHead: FO.hc.slice(), tip: tip.style.display !== 'none' ? tip.textContent : '', tipClass: tip.className, ring: ring.visible, halo: halo.visible },
+                                smoke: (function () { if (sm.t0 != null) smokeCount(run.t); return { t0: sm.t0, reached: sm.nReach, started: sm.n, gone: sm.gone, live: sm.live, total: NT, front: SM_FRONT, life: SM_LIFE, tEnd: sm.tEnd, origin: sm.o.slice(),
+                                  alphaSum: (function () { var a = 0, i; for (i = 0; i < NT; i++) a += fL.alpha[i]; return a; })() }; })(),
                                 drift: function () { var m = 0, P = fL.center, i, d; for (i = 0; i < NT * 3; i += 3) { d = Math.hypot(P[i] - LH[i], P[i + 1] - LH[i + 1], P[i + 2] - LH[i + 2]); if (d > m) m = d; } return m; }(),
                                 reds: (function () { var c = 0, K = fL.color, i; for (i = 0; i < NT * 3; i += 3) if (Math.hypot(K[i] - ERR[0], K[i + 1] - ERR[1], K[i + 2] - ERR[2]) < 0.25) c++; return c; })(),
                                 visible: { figures: fF.mesh.visible, bowl: fR.mesh.visible },
