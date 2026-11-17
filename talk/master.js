@@ -306,7 +306,7 @@
     var m = cutNow(), nx = cur ? nextAfter(cur, m) : null;
     pr.meta.textContent = cur ? label(cur) : '–';
     var nt = '';
-    if (nx) { var pt = passage(nx); nt = pt ? firstSentence(pt) : label(nx); } else nt = cur ? T('the end') : '–';
+    if (nx) { var pt = passage(nx); nt = pt ? firstSentence(pt) : D.title(nx); } else nt = cur ? T('the end') : '–';
     pr.nxt.textContent = nt; pr.nxt.setAttribute('dir', script && nx && passage(nx) ? (KT.rtl ? 'rtl' : 'ltr') : 'auto');
     var vis = D.steps.filter(function (s) { return D.shown(s, m); }), i = cur ? vis.indexOf(cur) : -1;
     if (cur && i < 0) i = vis.filter(function (s) { return D.steps.indexOf(s) < D.steps.indexOf(cur); }).length - 1;   // a step the cut leaves out: after the last one before it
@@ -365,7 +365,8 @@
     $('.ktm-pmirror', panel).title = T('Mirror: flip the text, for a glass teleprompter');
     say('.ktm-psize', 'aria-label', T('Text size')); say('.ktm-psmaller', 'aria-label', T('Smaller text')); say('.ktm-plarger', 'aria-label', T('Larger text'));
     if (!script) { $$('.ktm-ptools', pr.box).forEach(function (t) { t.hidden = true; }); }
-    setTab(pr.tab, true); setPrompt();
+    if (prompter) pr.box.classList.add('ktm-fill');                  // ?prompter: the panel fills the window from the start
+    setTab(pr.tab, true); setPrompt(); showScript(null);
   }
 
   /* minutes of a part in one cut: what is on of it; a part that is off shows what it would take, struck through (CSS) */

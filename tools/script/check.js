@@ -57,7 +57,7 @@ const words = t => t.split(/\n/).filter(l => l.trim() && !/^\s*\[.*\]\s*$/.test(
       t.m40 += r.min40; t.w40 += r.w40; t.m20 += r.min20; t.w20 += r.w20;
     });
     console.log(pad('total', 46) + num(t.m40, 6) + num(t.w40, 7) + num(t.m40 ? Math.round(t.w40 / t.m40) : '–', 7) + '   ' + num(t.m20, 6) + num(t.w20, 7) + num(t.m20 ? Math.round(t.w20 / t.m20) : '–', 7));
-    console.log('(words per minute: Hebrew speech runs about 110-140 for a talk; stage directions are not counted)');
+    console.log('(stage directions are not counted as words)');
   }
   console.log(errors ? '\n' + errors + ' error(s)' : '\nno errors');
   process.exit(errors ? 1 : 0);
