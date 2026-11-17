@@ -4,8 +4,14 @@
    Standalone: talk/sims/basis.html. Depends on talk/nurbs.js, talk/kit.js and talk/ink.js. */
 (function () {
   'use strict';
-  var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color;
+  var KT = window.KnotTalk, NB = KT.nurbs, C = KT.color, LIGHT = KT.theme === 'light';
   var NS = 'http://www.w3.org/2000/svg';
+  /* the colour t of the way from h1 to h2, as #rrggbb (the same function in flatland.js: the hand-off's colours agree) */
+  function hexMix(h1, h2, t) {
+    var p = parseInt(h1.slice(1), 16), q = parseInt(h2.slice(1), 16), s, c, o = '#';
+    for (s = 16; s >= 0; s -= 8) { c = Math.round(((p >> s) & 255) * (1 - t) + ((q >> s) & 255) * t); o += (c < 16 ? '0' : '') + c.toString(16); }
+    return o;
+  }
 
   /* world box is x in [0,2], y in [0,1] (y up) */
 
@@ -34,9 +40,15 @@
      w = clamp(0.02 s, 2.5, 6) px (s = handoffScale); round caps and joins. Under the core a soft glow of nine strokes
      in the surface colour, 8 / 7 / 6 / 5.1 / 4.3 / 3.6 / 3 / 2.4 / 1.9 w wide at alpha .018 / .022 / .028 / .034 /
      .042 / .052 / .064 / .08 / .11 (HO_GLOW: plain strokes, no blur filter, so Canvas and SVG draw it alike);
-     over the core a highlight 0.4 w wide in #dcf6ff at alpha .9. */
-  var HO_W = 0.76, HO_H = 0.40, HO_HI = '#dcf6ff';
+     over the core a highlight 0.4 w wide in #dcf6ff at alpha .9.
+     On a light page (KnotTalk.theme, the talk) the tube lies on paper instead: a glow of the surface colour would only
+     tint the paper into a pale band, so the same nine strokes become a soft shadow under the curve, in the text colour
+     at HO_SHADE times their alpha, moved down HO_DROP w; the highlight is the surface colour taken HO_TINT of the way
+     to the card colour (bg), at alpha HO_HA, moved up HO_LIFT w (lit from above). */
+  var HO_W = 0.76, HO_H = 0.40;
   var HO_GLOW = [[8, 0.018], [7, 0.022], [6, 0.028], [5.1, 0.034], [4.3, 0.042], [3.6, 0.052], [3, 0.064], [2.4, 0.08], [1.9, 0.11]];
+  var HO_SHADE = 0.45, HO_DROP = 0.8, HO_TINT = 0.45, HO_LIFT = 0.18;
+  var HO_HI = LIGHT ? hexMix(C.surf, C.bg, HO_TINT) : '#dcf6ff', HO_HA = LIGHT ? 0.35 : 0.9;
   var HX = HANDOFF.P[HANDOFF.P.length - 1][0] - HANDOFF.P[0][0];     // 2.8: the curve's x range (from end point to end point)
   function handoffScale(W, H) { return Math.min(HO_W * W / HX, HO_H * H / (HANDOFF.y1 - HANDOFF.y0)); }
   /* `ducks` first shows the strip alone, exactly as chapter 01 left it; then the draughtsman's marks arrive
@@ -426,11 +438,14 @@
       function tube(d, v, dim) {
         var w = KT.lerp(3.2, KT.clamp(0.02 * handoffScale(W, H), 2.5, 6), v), id = uid + 's', h;
         h = '<defs><path id="' + id + '" d="' + d + '"/></defs><g fill="none" stroke-linecap="round" stroke-linejoin="round">';
+        if (LIGHT) h += '<g transform="translate(0 ' + (HO_DROP * w).toFixed(3) + ')">';      // light: the glow as a soft shadow
         HO_GLOW.forEach(function (g) {
-          h += '<use href="#' + id + '" stroke="' + C.surf + '" stroke-opacity="' + (g[1] * v * dim).toFixed(4) + '" stroke-width="' + (w * g[0]).toFixed(2) + '"/>';
+          h += '<use href="#' + id + '" stroke="' + (LIGHT ? C.text : C.surf) + '" stroke-opacity="' + (g[1] * (LIGHT ? HO_SHADE : 1) * v * dim).toFixed(4) + '" stroke-width="' + (w * g[0]).toFixed(2) + '"/>';
         });
+        if (LIGHT) h += '</g>';
         return h + '<use href="#' + id + '" stroke="' + C.surf + '" stroke-opacity="' + dim + '" stroke-width="' + w.toFixed(2) + '"/>' +
-               '<use href="#' + id + '" stroke="' + HO_HI + '" stroke-opacity="' + (0.9 * v * dim).toFixed(4) + '" stroke-width="' + (0.4 * w).toFixed(2) + '"/></g>';
+               '<use href="#' + id + '" stroke="' + HO_HI + '" stroke-opacity="' + (HO_HA * v * dim).toFixed(4) + '" stroke-width="' + (0.4 * w).toFixed(2) + '"' +
+               (LIGHT ? ' transform="translate(0 ' + (-HO_LIFT * w).toFixed(3) + ')"' : '') + '/></g>';
       }
       /* how far weight i of the strip has arrived (the intro of `ducks`) */
       function weightIn(i) { return st.sc.strip ? KT.ease((st.intro - INTRO.hold - INTRO.stagger * i) / INTRO.weight) : 1; }
@@ -492,16 +507,20 @@
         }
 
         // the strip's weights (scenes without a basis plot): lit amber beads with a soft amber halo, set down one by one
-        // during the intro of `ducks`
+        // during the intro of `ducks`. On a light page an amber halo only stains the paper: there the bead is lit from
+        // above like the strip, and rests on the paper with a soft shadow under it (the text colour, fading out)
         var beads = !sc.basis;
         if (beads) {
-          h += '<defs><radialGradient id="' + uid + 'w" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="#ffe3bd"/>' +
-               '<stop offset=".45" stop-color="#ffbe5c"/><stop offset="1" stop-color="' + C.ctrl + '"/></radialGradient></defs>';
+          h += '<defs><radialGradient id="' + uid + 'w" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="' + (LIGHT ? hexMix(C.ctrl, C.bg, 0.72) : '#ffe3bd') + '"/>' +
+               '<stop offset=".45" stop-color="' + (LIGHT ? hexMix(C.ctrl, C.bg, 0.36) : '#ffbe5c') + '"/><stop offset="1" stop-color="' + C.ctrl + '"/></radialGradient>' +
+               (LIGHT ? '<radialGradient id="' + uid + 'd"><stop offset="0" stop-color="' + C.text + '" stop-opacity=".2"/><stop offset=".55" stop-color="' + C.text + '" stop-opacity=".09"/>' +
+                        '<stop offset="1" stop-color="' + C.text + '" stop-opacity="0"/></radialGradient>' : '') + '</defs>';
           for (i = 0; i < m; i++) {
             a = weightIn(i); if (a <= 0) continue;
             // a bead settles from a little larger; smaller on small stages (a finger's reach is set in reach())
             q = px(st.P[i]); var rb = rad[i] = KT.clamp(0.033 * L.s, 5, 7.5) * (1.45 - 0.45 * a);
-            h += '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb * 1.8) + '" fill="' + C.ctrl + '" opacity="' + (0.2 * a).toFixed(3) + '"/>' +
+            h += (LIGHT ? '<circle cx="' + f(q[0]) + '" cy="' + f(q[1] + rb * 0.45) + '" r="' + f(rb * 1.6) + '" fill="url(#' + uid + 'd)" opacity="' + a.toFixed(3) + '"/>'
+                        : '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb * 1.8) + '" fill="' + C.ctrl + '" opacity="' + (0.2 * a).toFixed(3) + '"/>') +
                  '<circle cx="' + f(q[0]) + '" cy="' + f(q[1]) + '" r="' + f(rb) + '" fill="url(#' + uid + 'w)" stroke="' + C.bg + '" stroke-width="2" opacity="' + a.toFixed(3) + '"/>';
           }
         }

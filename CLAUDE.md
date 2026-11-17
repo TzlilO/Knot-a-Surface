@@ -79,7 +79,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Modules: `flatland` (2D differentiable-splatting toy, free vs surface-bound; its last scene `handoff`, SCRIPTED,
   fades everything but the bound spline and eases it onto the toy's true curve written as a 14-point cubic B-spline,
   and `basis` uses those same 14 control points (a literal copy) in every single-curve scene, so chapter 01 ends on
-  chapter 02's first picture; both share one layout rule and the bright cyan / amber look), `basis` (SVG curve
+  chapter 02's first picture; both share one layout rule and one look: a glowing cyan / amber tube on a dark page, a
+  blue tube with a soft shadow on the light talk, where flatland's 1-D photos are drawn over a light backdrop by
+  coverage while training stays on black), `basis` (SVG curve
   playground; its `letters` / `script` scenes draw "Shalom Rafael" as one spline per letter and as
   three handwritten strokes, from the control polygons in `PRINT` / `HAND`; `morph` blends letters →
   handwriting → the `MISSILE` outline: `morphSets()` cuts and refines all three into twelve cubics with

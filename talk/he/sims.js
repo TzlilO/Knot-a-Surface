@@ -211,8 +211,16 @@
           var p = st.p, v = f(p[0], p[1]), px = X(p[0]), py = Y(p[1]);
           g.setLineDash([5, 6]); g.lineWidth = 1.6; g.strokeStyle = INK; g.beginPath(); g.arc(px, py, Math.max(2, Math.abs(v) * S), 0, TAU); g.stroke(); g.setLineDash([]);
           g.fillStyle = '#fff'; g.beginPath(); g.arc(px, py, 9, 0, TAU); g.fill(); g.fillStyle = v < 0 ? '#ff5c8a' : PURPLE; g.beginPath(); g.arc(px, py, 6, 0, TAU); g.fill();
-          bub.style.display = ''; bub.style.transform = 'translate(' + (px + 16) + 'px,' + (py - 46) + 'px)';
           bub.innerHTML = '<span class="ltr">f = ' + (v < 0 ? '−' : '+') + Math.abs(v).toFixed(2) + '</span><i style="background:' + (v < 0 ? '#ff5c8a' : PURPLE) + '"></i>' + (v < 0 ? L('בפנים', 'inside') : L('בחוץ', 'outside'));
+          // above the probe and to its right, but always inside the card: near an edge it slides along it (a phone's card
+          // is narrow); with no room above, or where it would cover the read-out in the corner (top left, or top right
+          // on an RTL page), it goes under the probe. The same box in either direction
+          bub.style.display = '';
+          var bw = bub.offsetWidth, bh = bub.offsetHeight, m = 12, bx = KT.clamp(px + 16, m, W - bw - m), by = py - 46;
+          var rd = root.querySelector('.he-read'), over = rd && rd.offsetWidth && bx < rd.offsetLeft + rd.offsetWidth + 6 && bx + bw > rd.offsetLeft - 6 &&
+                   by < rd.offsetTop + rd.offsetHeight + 6 && by + bh > rd.offsetTop - 6;
+          if (by < m || over) by = py + 18;
+          bub.style.transform = 'translate(' + bx + 'px,' + KT.clamp(by, m, H - bh - m) + 'px)';
           out(L('שאלה אחת', 'One question'), L('תשובה אחת', 'one answer'));
         } else {
           bub.style.display = 'none';
