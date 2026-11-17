@@ -406,6 +406,13 @@
       <p>About two thirds of the Gaussians end up in its view, which covers 14–32 % of the surface as it flies. There a cell is 1.4–1.9 % of the patch’s width across, against 2.6–3.0 % on an even lattice: an even lattice would need about 2,500–3,200 Gaussians for that spacing everywhere.</p>
       <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 07 spreads one budget over whole scenes the same way.</p>
     </article>
+    <article class="step nav" data-scene="window">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>The whole budget <em class="c-splat">inside the view</em></h2>
+      <p>Now the net gets a window instead of the whole square: the convex hull of what the camera sees, widened by a margin. The net’s border sits on the window, so all 1,024 Gaussians lie inside it.</p>
+      <p>79–89 % of them land in the view itself, against about two thirds for the springs. There a cell is 1.3–1.8 % of the patch’s width across, against 1.4–1.9 % for the springs and 2.6–3.0 % on an even lattice: an even lattice would need about 2,700–3,800 Gaussians for that spacing everywhere.</p>
+      <p class="aside">The price: 62–78 % of the surface carries no Gaussian at all, so this suits one known camera. The margin keeps the window’s edge out of the picture while the camera moves. The hull is wider than the view where the view’s outline bends inwards.</p>
+    </article>
     <article class="step nav" data-scene="features" data-depth="deep">
       <div class="lvl l3"><i><b></b></i>Math</div>
       <h2>Appearance rides the <em>same basis</em></h2>
@@ -730,8 +737,8 @@
     <article class="step nav" data-scene="flight" data-replay data-audio="touch" data-audio-len="30" data-sfx>
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2><em>Out of bounds</em></h2>
-      <p>A hard bounce throws the ball out of the spline bowl and into the list. There every Gaussian is on its own, and the bowl comes apart.</p>
-      <p class="aside">Only the direction of the launch is chosen, so that the ball lands in the other bowl. The bounce, the flight and the scatter are simulated. How hard overlapping Gaussians push each other apart is an invented constant: a list defines no such force.</p>
+      <p>The ball comes down on the owl, a spline reconstruction of a real scan. The owl heads it to the glass rabbit, which jumps and heads it on into the bowl. There the same two objects stand as lists of Gaussians. Nothing in a list pushes back: its Gaussians drift aside and the ball falls through.</p>
+      <p class="aside">Computed: where and when the ball meets each spline figure, from the closest point on its chart. Scripted: the two headers and the jump, both the movement and where the ball is sent. The lists in the bowl are emulated from the same charts, not trained. The balloon drift is an invented rule: a list defines no force.</p>
     </article>
   </div>
 </section>
