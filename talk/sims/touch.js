@@ -446,12 +446,12 @@
       var GHOST = env.embed ? ['pass', 'close'] : ['pass', 'close', 'loose'];
       var mat = { e: 0.75, tough: 5, stiff: 160 };
       ['e', 'tough', 'stiff'].forEach(function (k) { if (env.opts[k] != null && isFinite(+env.opts[k])) mat[k] = +env.opts[k]; });
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
-      var tag = ui.el('div', 'kt-side'); root.appendChild(tag);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
+      var tag = ui.el('div', 'kt-box kt-side'); root.appendChild(tag);
       var tlm = ui.el('div', 'kt-mo'), tagT = ui.el('div'); tag.appendChild(tlm); tag.appendChild(tagT);   // moment's timeline, then the words
       if (RTL) tagT.setAttribute('dir', 'rtl');                  // the words run right to left on a right-to-left page; the timeline and the stage do not
-      var pin = ui.el('div', 'kt-pin'); root.appendChild(pin);
-      var tip = ui.el('div', 'kt-tip'); root.appendChild(tip);      // flight: the one line that says whether the pull is valid, and what to change
+      var pin = ui.el('div', 'kt-box kt-pin'); root.appendChild(pin);
+      var tip = ui.el('div', 'kt-box kt-tip'); root.appendChild(tip);      // flight: the one line that says whether the pull is valid, and what to change
       if (RTL) tip.setAttribute('dir', 'rtl');
       SFX.arm();
 
@@ -1993,7 +1993,7 @@
         } else if (ph === 'miss') { txt = T('missed the owl · starting again in a moment'); cls = 'bad'; }
         if (!txt) tip.style.display = 'none';
         else {
-          setText(tip, txt); tip.className = 'kt-tip' + (cls ? ' ' + cls : ''); tip.style.display = 'block';
+          setText(tip, txt); tip.className = 'kt-box kt-tip' + (cls ? ' ' + cls : ''); tip.style.display = 'block';
           tip.style.bottom = (tag.offsetHeight + 20) + 'px';
         }
       }

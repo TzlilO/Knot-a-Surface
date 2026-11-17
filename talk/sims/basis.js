@@ -170,8 +170,8 @@
       var svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('class', 'kt-canvas');
       root.appendChild(svg);
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
-      var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
+      var hint = ui.el('div', 'kt-box kt-hint'); root.appendChild(hint);
 
       var st = { P: [], w: [], U: [], p: 3, sel: 3, u: 0.37, scene: null, sc: SCENES.ducks,
                  bh: 0, ghost: null, userU: false, touched: false, t: 0, cycleT: 0, circle: false, intro: 0,

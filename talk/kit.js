@@ -42,7 +42,7 @@
     /* floating control group; pos: 'tl' | 'tr' | 'bl' | 'br' | 'bottom' */
     panel: function (root, o) {
       o = o || {};
-      var p = el('div', 'kt-panel kt-' + (o.pos || 'br'));
+      var p = el('div', 'kt-box kt-panel kt-' + (o.pos || 'br'));
       if (o.title) p.appendChild(el('div', 'kt-panel-title', o.title));
       root.appendChild(p);
       return p;
@@ -274,7 +274,7 @@
     var api = def.create(env) || {};
 
     // small embedded stages: fold the control panels behind one button so they don't cover the figure
-    var gear = el('button', 'kt-gear', KT.t('controls')); gear.type = 'button';
+    var gear = el('button', 'kt-box kt-gear', KT.t('controls')); gear.type = 'button';
     gear.addEventListener('click', function () { root.classList.toggle('kt-open'); });
     root.appendChild(gear);
     function hasPanel() {

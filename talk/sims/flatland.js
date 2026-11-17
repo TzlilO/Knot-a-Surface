@@ -835,8 +835,8 @@
 
       /* ---------- DOM ---------- */
       var cvs = ui.canvas(rootEl), ctx = cvs.ctx;
-      var cap = ui.el('div', 'kt-caption fl-cap'); rootEl.appendChild(cap);
-      var met = ui.el('div', 'fl-metrics'); rootEl.appendChild(met);
+      var cap = ui.el('div', 'kt-box kt-caption fl-cap'); rootEl.appendChild(cap);
+      var met = ui.el('div', 'kt-box fl-metrics'); rootEl.appendChild(met);
       var table = ui.el('div', 'fl-table'); met.appendChild(table);
       // the column heads, each with its unit: one template apiece
       var HEAD = [T('train <small>dB</small>'), T('held-out <small>dB</small>'), T('geom err <small>cm</small>'),

@@ -35,9 +35,9 @@
       var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
       var cam = new THREE.PerspectiveCamera(36, 1, 0.1, 160), R = G.renderer(root, cam), scene = new THREE.Scene();
       var st = { scene: 'bag', sc: SCENES.bag, t: 0, probe: -1, auto: 0, autoT: 9, hover: false }, size = { w: 2, h: 2 }, need = true;
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
-      var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
-      var tagL = ui.el('div', 'kt-side'), tagR = ui.el('div', 'kt-side'), bar = ui.el('div', 'kt-divide');
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
+      var hint = ui.el('div', 'kt-box kt-hint'); root.appendChild(hint);
+      var tagL = ui.el('div', 'kt-box kt-side'), tagR = ui.el('div', 'kt-box kt-side'), bar = ui.el('div', 'kt-divide');
       if (KT.rtl) tagL.dir = tagR.dir = 'rtl';        // two lines of running text each: in a right-to-left language they are set from the right
       root.appendChild(tagL); root.appendChild(tagR); root.appendChild(bar);
 

@@ -44,7 +44,7 @@
       var ui = env.ui, root = env.root;
       var st = { n: 1e6, m: 1e5, sc: SCENES.gaussian, t: 0, touched: false };
       var wrap = ui.el('div', 'lg-wrap'); root.appendChild(wrap);
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
 
       function record(cls, title, sub, groups, total, note) {
         var r = ui.el('div', 'lg-rec ' + cls);

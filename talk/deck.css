@@ -43,6 +43,11 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 .hud .subs .sl{transition:opacity .2s}
 .hud .subs[aria-pressed="true"]{color:var(--bg);background:var(--text);border-color:var(--text)}
 .hud .subs[aria-pressed="true"] .sl{opacity:.3}
+.hud .info{display:inline-flex;align-items:center;justify-content:center}
+.hud .info svg{display:block;width:1.4em;height:1.1em;margin:-.05em 0;fill:none;stroke:currentColor;stroke-linecap:round}
+.hud .info .sl{opacity:0;transition:opacity .2s}
+.hud .info[aria-pressed="true"]{color:var(--bg);background:var(--text);border-color:var(--text)}
+.hud .info[aria-pressed="true"] .sl{opacity:1}
 .hud .clock b{color:var(--text);font-weight:600}
 .hud .clock.late b{color:var(--ctrl)}.hud .clock.ok b{color:var(--ok)}
 .keys{position:fixed;z-index:70;inset-inline-start:3.3rem;bottom:3.2rem;display:none;padding:1rem 1.2rem;border-radius:10px;background:var(--bg3);
@@ -383,6 +388,17 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
   /* a full-width step that is only a headline still holds the reading line (62 % down the screen) when it is landed */
   :root.kt-titles .wide .step{min-height:60svh;justify-content:center}
 }
+
+/* =====================================================================================================================
+   Info boxes off (html.kt-bare, deck.js "info boxes"; talk.html's head sets it before the first paint, and only this page
+   ever does, so the lab pages, index.html and talk-he.html are untouched). Every DOM box over a simulation stage that
+   carries text, numbers or controls wears `kt-box` (the kit's panel and gear, the captions and hints, each module's own
+   boards, tags, labels, plots; the hand-written 3D-step panel and count in talk.html). They are hidden with
+   `visibility`, never `display`: a module that fits its views around its boxes (pipeline, manifold, flatland, touch)
+   measures the same boxes and lays out exactly as with them on. What stays: canvases and SVG with whatever they draw
+   inside, and the picture insets (planoid's chart and face-on plane, manifold's atlas tiles, pipeline's magnifier frame).
+   ===================================================================================================================== */
+:root.kt-bare :is(.kt-sim,.stage-frame) .kt-box{visibility:hidden!important;pointer-events:none!important}
 
 /* =====================================================================================================================
    Right to left (Hebrew: talk/i18n.js sets <html dir="rtl">). The rules above name sides as inline-start / inline-end,

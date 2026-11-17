@@ -94,6 +94,24 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   the first paint: kept over a language reload, else `?subs=on|off` (saved; a toggle drops it from the address), else
   localStorage `kt-subs` (default on). Switched by S, the HUD button, the slide master's switch and the presenter view
   (bus message `subs`); `KnotTalk.deck.subs()` / `setSubs(on)`, event `kt-subs` {subs}.
+  INFO BOXES OFF (`html.kt-bare`, same plumbing: `?info=on|off`, localStorage `kt-info`, kept over a language reload, key I,
+  HUD button `.hud .info`, a switch in the slide master and the presenter view (bus message `info`), `KnotTalk.deck.info()` /
+  `setInfo(on)`, event `kt-info` {info}) hides every DOM box over a simulation stage that carries text, numbers or controls:
+  the kit's panel / gear (`ui.panel`), captions and hints, each module's own boards, tags, labels, plots, and talk.html's 3D-step
+  count and slider, all marked `kt-box` where they are created (a new box over a stage must wear it). One rule at the end of
+  deck.css hides them with `visibility`, not `display`, so a module that fits its views around its boxes lays out as before;
+  canvases, SVG and the picture insets (planoid's charts, manifold's atlas tiles, pipeline's magnifier frame) stay, and so does
+  whatever a module draws inside a canvas or SVG. The rule is scoped to `:root.kt-bare` and only talk.html sets it.
+  TELEPROMPTER: the presenter view's notes column has two tabs, Notes and Script (localStorage `kt-prompt` {tab, size, line, mirror};
+  default Script when the language has a script). The script is `talk/script/<lang>.js` (`KnotTalk.script.<lang>` = { step key:
+  "paragraph\n\nparagraph", … }, plain text, hand-written, never generated; a line wholly in [brackets] is a stage direction), keyed by
+  `KnotTalk.deck.key(step)` (the English key of the slide master, in every language), loaded by a tag in talk.html's head only in a
+  presenter window and only for a language that has one, so the talk window makes no extra request. The panel shows the active
+  step's passage large, the next shown step's first sentence under it (deep steps skipped in the short cut, parts that are off
+  skipped), a reading line, a mirror, its own A− / A+, and full screen (F: the panel alone, by the Fullscreen API or the `ktm-fill`
+  class); Up / Down scroll it, ← → PageUp PageDown space still step. `talk.html?prompter` = the same view as that panel alone, filling
+  the window, for a tablet or second screen (deck.js treats it as `?master`). `node tools/script/check.js` (README there) checks a
+  script against the steps and prints words per section against the minutes.
 - Link preview: talk.html's head carries Open Graph / Twitter tags (absolute URLs) pointing at `talk/share.jpg`,
   1200 x 630: two owls cut into slanted bands, the scan (stone | normals) and its copy (stone | glass | jelly).
   `node tools/share/render.js` redraws it: `tools/share/page.html` mounts one `manifold` instance per band (scene

@@ -564,21 +564,21 @@
 
       // floating labels
       function tag(html, tone, color) {
-        var e = ui.el('div', 'kt-tag kt-tag-' + tone, html); if (color) e.style.color = color;
+        var e = ui.el('div', 'kt-box kt-tag kt-tag-' + tone, html); if (color) e.style.color = color;
         root.appendChild(e); return e;
       }
       var tMu = tag('μ', 'text'), tU = tag('', 'vec', COL_U), tV = tag('', 'vec', COL_V), tN = tag('n', 'vec', INK);
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
-      var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
+      var hint = ui.el('div', 'kt-box kt-hint'); root.appendChild(hint);
 
       // (u,v) chart, the tangent plane seen face-on, and the 4 / 8 switch above them
       var uvBox = ui.el('div', 'kt-uv'); root.appendChild(uvBox);
-      var uvLabHtml = T('(u, v) chart'), uvLab = ui.el('span', 'kt-uv-lab', uvLabHtml); uvBox.appendChild(uvLab);
+      var uvLabHtml = T('(u, v) chart'), uvLab = ui.el('span', 'kt-box kt-uv-lab', uvLabHtml); uvBox.appendChild(uvLab);
       var uvc = ui.canvas(uvBox, 'kt-uv-cv');
       var fcBox = ui.el('div', 'kt-uv kt-face'); root.appendChild(fcBox);
-      fcBox.appendChild(ui.el('span', 'kt-uv-lab', T('tangent plane<span class="kt-wide"> · face-on</span>')));
+      fcBox.appendChild(ui.el('span', 'kt-box kt-uv-lab', T('tangent plane<span class="kt-wide"> · face-on</span>')));
       var fc = ui.canvas(fcBox, 'kt-uv-cv'); fc.cv.style.cursor = 'default';
-      var nbBar = ui.el('div', 'kt-nbsw'); root.appendChild(nbBar);
+      var nbBar = ui.el('div', 'kt-box kt-nbsw'); root.appendChild(nbBar);
 
       /* ---------- controls ---------- */
       var st = { scene: 'net', sc: SCENES.net, show: {}, n: 14, gain: 0.75, u: 0.5, v: 0.5, t: 0, nb: 4, ci: 0, cj: 0,
@@ -646,7 +646,7 @@
       [rdWin, rdWs, rdSpr].forEach(function (r) { panel.insertBefore(r.el, rdUni.el); });
       panel.insertBefore(rdBare.el, rdP.el);
       // the numbers that must stay readable when the panel is folded away (a phone, the deck): under the caption
-      var hud = ui.el('div', 'kt-pl-hud'); root.appendChild(hud);
+      var hud = ui.el('div', 'kt-box kt-pl-hud'); root.appendChild(hud);
       if (KT.rtl) hud.classList.add('kt-text');   // a few lines of running text: on a right-to-left page they take its direction (kit.css)
       var hudDirty = true, hudHtml = '';
       var segNb = ui.seg(nbBar, { label: T('size from'), value: st.nb,

@@ -90,7 +90,7 @@
     create: function (env) {
       var THREE = window.THREE, G = KT.gl, root = env.root, ui = env.ui;
       var cam = new THREE.PerspectiveCamera(36, 1, 0.02, 400), R = G.renderer(root, cam, env.opts.clear), scene = new THREE.Scene();
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
       addCss();
       var D = KT.dtuPipeline && KT.dtuPipeline[SCAN];
       if (!D) {                                   // nothing to show without the data file: say which one
@@ -563,7 +563,7 @@
         list = [4, 1, 7, 2, 6, 0, 8, 3, 5].map(function (k) { return list[k]; }).filter(function (k) { return k != null; });   // jump around the owl
         return { lines: lines, ring: ring, pts: pts, list: list, i: 0, t: 0, show: function (v) { lines.obj.visible = ring.visible = pts.visible = v; } };
       })();
-      var inset = ui.el('div', 'pl-inset'), insetLab = prose(ui.el('span')), mark = ui.el('div', 'pl-mark');
+      var inset = ui.el('div', 'pl-inset'), insetLab = prose(ui.el('span', 'kt-box')), mark = ui.el('div', 'pl-mark');
       inset.appendChild(insetLab); root.appendChild(inset); root.appendChild(mark);
       function probeAim() {                        // put the magnifier's camera on the probe, looking the way the main camera looks
         var I = initGauss(), p = probe.list[probe.i], s = I.sig[p], P = SF.P, e = cam.matrixWorld.elements;
@@ -594,11 +594,11 @@
       /* ================= chrome ================= */
       var parts = [];
       function only(el, ids) { parts.push({ el: el, on: ids.split(' ') }); return el; }
-      var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
-      var what = only(prose(ui.el('div', 'pl-what')), 'levels'); root.appendChild(what);
-      var pend = prose(ui.el('div', 'pl-pend')); root.appendChild(pend);
-      var note = prose(ui.el('div', 'pl-note')); root.appendChild(note);
-      var tagL = prose(ui.el('div', 'pl-side')), tagR = prose(ui.el('div', 'pl-side')), bar = ui.el('div', 'pl-divide');
+      var hint = ui.el('div', 'kt-box kt-hint'); root.appendChild(hint);
+      var what = only(prose(ui.el('div', 'kt-box pl-what')), 'levels'); root.appendChild(what);
+      var pend = prose(ui.el('div', 'kt-box pl-pend')); root.appendChild(pend);
+      var note = prose(ui.el('div', 'kt-box pl-note')); root.appendChild(note);
+      var tagL = prose(ui.el('div', 'kt-box pl-side')), tagR = prose(ui.el('div', 'kt-box pl-side')), bar = ui.el('div', 'pl-divide');
       root.appendChild(tagL); root.appendChild(tagR); root.appendChild(bar);
       var panel = ui.panel(root, { pos: 'tr', title: T('scan 122 · from photographs to charts') });
       function row(label, ids, tone, more) { var r = ui.readout(panel, { label: label, tone: tone }); only(r.el, ids); if (more) r.el.classList.add('pl-more'); return r; }
@@ -647,7 +647,7 @@
       }
 
       /* a small plot, bottom left: new points per camera (sfm), errors per level (levels), the run's log (train) */
-      var plot = ui.el('div', 'pl-plot'), plotT = ui.el('div', 'pl-plot-t'), plotB = ui.el('div', 'pl-plot-box');
+      var plot = ui.el('div', 'kt-box pl-plot'), plotT = ui.el('div', 'pl-plot-t'), plotB = ui.el('div', 'pl-plot-box');
       plot.appendChild(plotT); plot.appendChild(plotB); root.appendChild(plot); only(plot, 'sfm levels train');
       var pcv = ui.canvas(plotB), plotDirty = true;
 

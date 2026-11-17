@@ -97,9 +97,9 @@
       var field = G.splats(CAP, { alpha: true }); scene.add(field.mesh);     // alpha: a chart may carry an opacity per control point (c.alpha)
 
       /* ---------- chrome ---------- */
-      var cap = ui.el('div', 'kt-caption'); root.appendChild(cap);
-      var hint = ui.el('div', 'kt-hint'); root.appendChild(hint);
-      var badge = ui.el('div', 'kt-ab'); root.appendChild(badge);
+      var cap = ui.el('div', 'kt-box kt-caption'); root.appendChild(cap);
+      var hint = ui.el('div', 'kt-box kt-hint'); root.appendChild(hint);
+      var badge = ui.el('div', 'kt-box kt-ab'); root.appendChild(badge);
       var panel = ui.panel(root, { pos: 'tr', title: T('scene · budget') });
       /* the picker offers the scanned objects; only a page without their data offers the hand-modelled scenes */
       var pick = Object.keys(KT.scenes).filter(function (k) { return !KT.scenes[k].hidden; }), real = pick.filter(function (k) { return KT.scenes[k].photo; });
@@ -142,7 +142,7 @@
       var atlas = ui.el('div', 'kt-atlas'); root.appendChild(atlas);
       /* split screen: one divider and one label per band, laid over the canvas and moved every frame */
       var split = ui.el('div', 'kt-split'), bands = MODES.concat(MODES[0]).map(function (m) {      // six: the most bands a split shows
-        var b = { a: ui.el('i'), b: ui.el('i'), lab: ui.el('span', '', m.name) };   // a divider can wrap: two copies
+        var b = { a: ui.el('i'), b: ui.el('i'), lab: ui.el('span', 'kt-box', m.name) };   // a divider can wrap: two copies
         split.appendChild(b.a); split.appendChild(b.b); split.appendChild(b.lab);
         return b;
       });
@@ -238,11 +238,11 @@
         atlas.style.gridTemplateColumns = 'repeat(' + Math.min(charts.length, small ? 4 : 8) + ',minmax(0,76px))';
         charts.forEach(function (c) {
           var tile = ui.el('div', 'kt-tile'); tile.style.setProperty('--c', c.hex);
-          tile.appendChild(ui.el('div', 'kt-tile-name', c.label));        // what a viewer reads for the chart's name (talk/scenes.js); the name itself is an id
+          tile.appendChild(ui.el('div', 'kt-box kt-tile-name', c.label));        // what a viewer reads for the chart's name (talk/scenes.js); the name itself is an id
           var box = ui.el('div', 'kt-tile-box'); tile.appendChild(box);
           c.cv = ui.canvas(box, 'kt-tile-cv');
-          c.lab = ui.el('div', 'kt-tile-n'); tile.appendChild(c.lab);
-          tile.appendChild(ui.el('div', 'kt-tile-s', T('{n} ctrl', { n: c.patch.nu + '×' + c.patch.nv })));
+          c.lab = ui.el('div', 'kt-box kt-tile-n'); tile.appendChild(c.lab);
+          tile.appendChild(ui.el('div', 'kt-box kt-tile-s', T('{n} ctrl', { n: c.patch.nu + '×' + c.patch.nv })));
           atlas.appendChild(tile); c.w = null; c.vis = null;
         });
         charts.forEach(coarse); updateNets(); showNets();
@@ -474,10 +474,10 @@
       var KINDS = TS ? ['lattice', 'list', 'tsdf'] : ['lattice', 'list'];
       var KNAME = { lattice: T('ours · the lattice'), list: T('a list · emulated'), tsdf: T('TSDF fusion') };            // over a viewport (text)
       var KHEAD = { lattice: T('the lattice <i>ours</i>'), list: T('a list <i>emulated</i>'), tsdf: T('TSDF fusion') };  // a column of the board (HTML)
-      var board = ui.el('div', 'mf-board'); root.appendChild(board);
+      var board = ui.el('div', 'kt-box mf-board'); root.appendChild(board);
       /* compare view: a title and a status line over each viewport, a rule between two */
       var tags = KINDS.map(function (k) {
-        var e = ui.el('div', 'mf-vp mf-vp-' + k); e.appendChild(ui.el('b', '', KNAME[k])); e.appendChild(ui.el('span')); root.appendChild(e); return e;
+        var e = ui.el('div', 'kt-box mf-vp mf-vp-' + k); e.appendChild(ui.el('b', '', KNAME[k])); e.appendChild(ui.el('span')); root.appendChild(e); return e;
       });
       var bars = KINDS.slice(1).map(function () { var e = ui.el('i', 'mf-bar'); root.appendChild(e); return e; });
       rdG.el.classList.add('mf-one'); rdP.el.classList.add('mf-deck1'); segV.el.classList.add('mf-deck1');   // rows the compare view has no use for

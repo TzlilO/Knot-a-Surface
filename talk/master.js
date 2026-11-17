@@ -21,7 +21,11 @@
    Titles only (deck.js "subtitles", KnotTalk.deck.subs / setSubs): a switch under the cuts, here and in the presenter
    view, which flips the talk window as the cut does. The presenter view always shows the active step's subtitles as
    speaker notes, read from its own copy of the page (the same talk.html, in the same language) by the step's key:
-   nothing but the key crosses between windows. A− / A+ set their size (localStorage 'kt-notes'). */
+   nothing but the key crosses between windows. A− / A+ set their size (localStorage 'kt-notes').
+   Script tab / teleprompter (presenter view): beside "Notes", the script of the active step (talk/script/<lang>.js, loaded
+   by talk.html in the presenter view only, for the page's language), large, with the next step's first sentence under it,
+   a reading line, a mirror, its own size, and full screen (F; the panel alone). talk.html?prompter = the presenter view
+   as that panel alone, filling the window. Up / Down scroll it; ← → PageUp PageDown space step, as always. */
 (function () {
   'use strict';
   var KT = window.KnotTalk || {}, D = KT.deck;
@@ -38,6 +42,7 @@
 
   var STORE = 'kt-parts', TAG = 'knot-talk-master';
   var presenter = !!D.presenter;                     // talk.html?master or #master: deck.js decides it, before its first frame
+  var prompter = presenter && (/(?:^|&)prompter(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#prompter');   // talk.html?prompter: the presenter view as a teleprompter, full window
 
   /* ---------- saved choices: only the overrides of the page's defaults ---------- */
   function parse(v) { try { var o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch (e) { return {}; } }
@@ -95,9 +100,10 @@
   })();
 
   /* ---------- what the panel shows: this deck, or (presenter view) what the talk window last said ---------- */
-  var view = { cut: D.cut(), cur: null, t0: 0, plan: 0, linked: false, subs: D.subs() };
+  var view = { cut: D.cut(), cur: null, t0: 0, plan: 0, linked: false, subs: D.subs(), info: D.info() };
   function cutNow() { return presenter ? view.cut : D.cut(); }
   function subsNow() { return presenter ? view.subs : D.subs(); }
+  function infoNow() { return presenter ? view.info : D.info(); }
   function curNow() { return presenter ? (view.cur && D.byKey(view.cur)) : D.current(); }
   function label(n) { var s = D.section(n); return (s.dataset.rail || '') + ' · ' + D.title(n); }
   function nextAfter(n, m) {
@@ -106,7 +112,7 @@
   }
 
   /* ---------- the panel ---------- */
-  var panel = el('div', 'ktm' + (presenter ? ' ktm-page' : ''));
+  var panel = el('div', 'ktm' + (presenter ? ' ktm-page' : '') + (prompter ? ' ktm-prompter' : ''));
   panel.innerHTML = (presenter ? '<div class="ktm-side">' : '') +
     '<header class="ktm-head">' +
       '<div class="ktm-top"><div><div class="ktm-kick">' + (presenter ? T('Knot‑a‑Surface · presenter view') : T('Knot‑a‑Surface · the talk')) + '</div>' +
@@ -121,6 +127,8 @@
         '<button type="button" data-cut="20"><span>' + T('short cut') + '</span><b></b></button></div>' +
       '<label class="ktm-subs"><input type="checkbox" class="ktm-tog"><span><b>' + T('Titles only') + '</b> <kbd>S</kbd>' +
         '<small>' + T('Hide the subtitles on the slides; the presenter view keeps them as speaker notes.') + '</small></span></label>' +
+      '<label class="ktm-subs ktm-infosw"><input type="checkbox" class="ktm-tog"><span><b>' + T('Info boxes off') + '</b> <kbd>I</kbd>' +
+        '<small>' + T('Hide the captions, readouts, panels and labels over the simulations: the picture alone.') + '</small></span></label>' +
       '<div class="ktm-acts"><button type="button" class="ktm-all">' + T('Show all') + '</button>' +
         '<button type="button" class="ktm-reset">' + T('Reset to defaults') + '<i></i></button></div>' +
     '</header>' +
@@ -135,9 +143,24 @@
         '<div class="ktm-clock"><button type="button" class="ktm-clk">' + T('start clock') + '</button><span class="ktm-time"></span></div>' +
         '<p class="ktm-link"><span class="ktm-st" role="status"></span> <button type="button" class="ktm-open">' + T('Open the talk ↗') + '</button></p>' +
       '</section>' +
-      '<section class="ktm-notes"><div class="ktm-nhead"><span class="ktm-nlab">' + T('Speaker notes') + '</span>' +
-        '<span class="ktm-size" role="group"><button type="button" class="ktm-smaller">A−</button><button type="button" class="ktm-larger">A+</button></span></div>' +
-        '<div class="ktm-ntext" tabindex="0"></div></section></div>' : '');
+      '<section class="ktm-notes" data-tab="notes"><div class="ktm-nhead"><span class="ktm-tabs" role="tablist">' +
+          '<button type="button" role="tab" data-tab="notes">' + T('Notes') + '</button>' +
+          '<button type="button" role="tab" data-tab="script">' + T('Script') + '</button></span>' +
+        '<span class="ktm-size ktm-nsize" role="group"><button type="button" class="ktm-smaller">A−</button><button type="button" class="ktm-larger">A+</button></span></div>' +
+        '<div class="ktm-ntext" tabindex="0"></div>' +
+        /* the teleprompter: the script of the active step (talk/script/<lang>.js), large; its own toolbar so that it
+           goes full screen with it */
+        '<div class="ktm-prompt"><div class="ktm-ptools">' +
+          '<button type="button" class="ktm-pprev">' + T('← prev') + '</button><button type="button" class="ktm-pnext">' + T('next →') + '</button>' +
+          '<span class="ktm-size ktm-psize" role="group"><button type="button" class="ktm-psmaller">A−</button><button type="button" class="ktm-plarger">A+</button></span>' +
+          '<label class="ktm-psw ktm-pline"><input type="checkbox" class="ktm-tog"><span>' + T('reading line') + '</span></label>' +
+          '<label class="ktm-psw ktm-pmirror"><input type="checkbox" class="ktm-tog"><span>' + T('mirror') + '</span></label>' +
+          '<button type="button" class="ktm-pfull"></button></div>' +
+          '<div class="ktm-pbox"><div class="ktm-pmeta"></div>' +
+            '<div class="ktm-pbody"><div class="ktm-pband" aria-hidden="true"></div><div class="ktm-ptext" tabindex="0"></div></div>' +
+            '<div class="ktm-pnextl"><span class="ktm-pnl">' + T('next') + '</span><span class="ktm-pnt"></span></div>' +
+            '<div class="ktm-pcorner"><i class="ktm-pdot"></i><span class="ktm-pcount"></span><button type="button" class="ktm-pclk"><span class="ktm-ptime"></span></button></div></div>' +
+        '</div></section></div>' : '');
   /* what is said in an attribute is set here, not written into the markup above: a translation may hold a quote */
   function say(sel, name, text) { var e = $(sel, panel); if (e) e.setAttribute(name, text); }
   say('.ktm-pop', 'title', T('The same list in a second window, synced with this one'));
@@ -146,6 +169,7 @@
   say('.ktm-live', 'aria-label', T('The talk window'));
   say('.ktm-prev', 'aria-label', T('Previous step')); say('.ktm-next', 'aria-label', T('Next step'));
   say('.ktm-subs .ktm-tog', 'aria-label', T('Titles only: hide the subtitles of the slides (S)'));
+  say('.ktm-infosw .ktm-tog', 'aria-label', T('Info boxes off: hide the boxes over the simulations (I)'));
   say('.ktm-notes', 'aria-label', T('Speaker notes')); say('.ktm-size', 'aria-label', T('Text size'));
   say('.ktm-smaller', 'aria-label', T('Smaller text')); say('.ktm-larger', 'aria-label', T('Larger text'));
   /* "in use" on the cut that is on is written by the stylesheet (master.css): hand it the words of another language */
@@ -208,7 +232,7 @@
     cur: $('.ktm-cur', panel), nxt: $('.ktm-nxt', panel), clk: $('.ktm-clk', panel), time: $('.ktm-time', panel),
     link: $('.ktm-link', panel), st: $('.ktm-st', panel), open: $('.ktm-open', panel), was: null
   } : null;
-  var subsTog = $('.ktm-subs .ktm-tog', panel);
+  var subsTog = $('.ktm-subs:not(.ktm-infosw) .ktm-tog', panel), infoTog = $('.ktm-infosw .ktm-tog', panel);
 
   /* ---------- speaker notes (presenter view): the subtitles of the active step, from this page's own copy ---------- */
   var notes = presenter ? { box: $('.ktm-ntext', panel), size: 1 } : null;
@@ -231,6 +255,117 @@
     });
     if (!subs.length) box.appendChild(el('p', 'ktm-none', n ? T('No notes for this step.') : '–'));
     box.scrollTop = 0;
+  }
+
+  /* ---------- the teleprompter (presenter view): the script of the active step, from talk/script/<lang>.js ----------
+     KnotTalk.script[lang] = { "<step key>": "paragraph.\n\nparagraph.", … }, hand-written, keyed by the English step key
+     (KnotTalk.deck.key); a line wholly inside square brackets is a stage direction. Only the page's own language is shown.
+     Saved in localStorage 'kt-prompt' {tab, size, line, mirror}; every access guarded. */
+  var script = (function () { var all = KT.script, o = all && all[KT.lang]; return o && typeof o === 'object' ? o : null; })();
+  var pr = null;
+  if (presenter) {
+    pr = { tab: '', size: 1, line: false, mirror: false, box: $('.ktm-prompt', panel), notes: $('.ktm-notes', panel), text: $('.ktm-ptext', panel),
+           meta: $('.ktm-pmeta', panel), nxt: $('.ktm-pnt', panel), count: $('.ktm-pcount', panel), time: $('.ktm-ptime', panel),
+           full: $('.ktm-pfull', panel), dot: $('.ktm-pdot', panel), shown: null };
+    var sv = {}; try { sv = parse(localStorage.getItem('kt-prompt')); } catch (e) {}
+    pr.tab = sv.tab === 'notes' || sv.tab === 'script' ? sv.tab : script ? 'script' : 'notes';
+    if (prompter) pr.tab = 'script';
+    pr.size = Math.max(0.6, Math.min(2.6, +sv.size || 1)); pr.line = sv.line === true; pr.mirror = sv.mirror === true;
+  }
+  function savePrompt() {
+    if (!pr) return;
+    try { localStorage.setItem('kt-prompt', JSON.stringify({ tab: prompter ? (parse(localStorage.getItem('kt-prompt')).tab || '') : pr.tab, size: pr.size, line: pr.line, mirror: pr.mirror })); } catch (e) { /* lasts as long as the page */ }
+  }
+  function isDir(l) { return /^\s*\[.*\]\s*$/.test(l); }
+  function passage(n) { var v = script && n ? script[D.key(n)] : null; return typeof v === 'string' && v.trim() ? v : null; }
+  /* the first sentence of a passage, for the hand-over; stage directions do not count */
+  function firstSentence(txt) {
+    var lines = txt.split(/\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l && !isDir(l); }), t = lines.join(' ');
+    var m = /^[\s\S]*?[.!?…:](?=\s|$)/.exec(t), r = m ? m[0] : t;
+    return r.length > 170 ? r.slice(0, 167).replace(/\s+\S*$/, '') + '…' : r;
+  }
+  function showScript(n) {
+    if (!pr) return;
+    var box = pr.text; box.textContent = '';
+    box.setAttribute('dir', KT.rtl ? 'rtl' : 'ltr'); box.setAttribute('lang', KT.lang || 'en');
+    var txt = passage(n), msg = !script ? T('No script for this language.') : !n ? '–' : !txt ? T('No script for this step.') : null;
+    if (msg) { var q = el('p', 'ktm-none'); q.textContent = msg; box.appendChild(q); }
+    else txt.replace(/\r/g, '').split(/\n[ \t]*\n+/).forEach(function (para) {
+      var run = [];
+      function flush() { if (run.length) { var p = el('p', 'ktm-pp'); p.textContent = run.join('\n'); box.appendChild(p); run = []; } }
+      para.split('\n').forEach(function (l) {
+        if (!l.trim()) return;
+        if (isDir(l)) { flush(); var d = el('div', 'ktm-dir'); d.textContent = l.trim(); box.appendChild(d); } else run.push(l.trim());
+      });
+      flush();
+    });
+    box.scrollTop = 0;
+  }
+  function paintPrompt(cur) {
+    if (!pr) return;
+    var m = cutNow(), nx = cur ? nextAfter(cur, m) : null;
+    pr.meta.textContent = cur ? label(cur) : '–';
+    var nt = '';
+    if (nx) { var pt = passage(nx); nt = pt ? firstSentence(pt) : label(nx); } else nt = cur ? T('the end') : '–';
+    pr.nxt.textContent = nt; pr.nxt.setAttribute('dir', script && nx && passage(nx) ? (KT.rtl ? 'rtl' : 'ltr') : 'auto');
+    var vis = D.steps.filter(function (s) { return D.shown(s, m); }), i = cur ? vis.indexOf(cur) : -1;
+    if (cur && i < 0) i = vis.filter(function (s) { return D.steps.indexOf(s) < D.steps.indexOf(cur); }).length - 1;   // a step the cut leaves out: after the last one before it
+    pr.count.textContent = cur ? T('step {n} / {total}', { n: Math.max(1, i + 1), total: vis.length }) : '';
+    pr.dot.className = 'ktm-pdot' + (view.linked ? ' on' : '');
+    pr.dot.title = view.linked ? T('Linked to the talk window.') : T('Waiting for the talk window: open talk.html in this browser and this page follows it.');
+  }
+  function setTab(t, keep) {
+    if (!pr) return;
+    pr.tab = t; pr.notes.setAttribute('data-tab', t);
+    $$('.ktm-tabs button', pr.notes).forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.tab === t)); });
+    if (!keep) savePrompt();
+  }
+  function setPrompt() {
+    if (!pr) return;
+    pr.box.style.setProperty('--ktm-pz', pr.size);
+    pr.box.classList.toggle('is-line', pr.line); pr.box.classList.toggle('is-mirror', pr.mirror);
+    $('.ktm-pline .ktm-tog', pr.box).checked = pr.line; $('.ktm-pmirror .ktm-tog', pr.box).checked = pr.mirror;
+    var f = !!(document.fullscreenElement || document.webkitFullscreenElement) || (!prompter && pr.box.classList.contains('ktm-fill'));
+    pr.full.textContent = f ? T('exit full screen') : T('full screen');
+    pr.full.title = f ? T('Exit full screen · F') : T('Full screen · F');
+  }
+  function promptSize(k) { pr.size = Math.max(0.6, Math.min(2.6, Math.round(pr.size * (k > 0 ? 1.12 : 1 / 1.12) * 100) / 100)); setPrompt(); savePrompt(); }
+  /* full screen: the Fullscreen API on the panel; if the browser refuses, a class that fills the window (always on in ?prompter) */
+  function inFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function toggleFull() {
+    if (!pr || !script) return;
+    var b = pr.box, on = prompter ? !inFull() : !(inFull() || b.classList.contains('ktm-fill'));
+    if (on) {
+      setTab('script', true);
+      if (!prompter) b.classList.add('ktm-fill');
+      var rq = b.requestFullscreen || b.webkitRequestFullscreen;
+      if (rq) { try { var r = rq.call(b); if (r && r.catch) r.catch(function () {}); } catch (e) {} }
+    } else {
+      if (inFull()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
+      if (!prompter) b.classList.remove('ktm-fill');
+    }
+    setPrompt();
+  }
+  if (pr) {
+    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (t) {
+      document.addEventListener(t, function () { if (!inFull() && !prompter) pr.box.classList.remove('ktm-fill'); setPrompt(); });
+    });
+    $$('.ktm-tabs button', pr.notes).forEach(function (b) { b.addEventListener('click', function () { setTab(b.dataset.tab); }); });
+    $('.ktm-pprev', pr.box).addEventListener('click', function () { bus.post({ type: 'step', d: -1 }); });
+    $('.ktm-pnext', pr.box).addEventListener('click', function () { bus.post({ type: 'step', d: 1 }); });
+    $('.ktm-psmaller', pr.box).addEventListener('click', function () { promptSize(-1); });
+    $('.ktm-plarger', pr.box).addEventListener('click', function () { promptSize(1); });
+    $('.ktm-pline .ktm-tog', pr.box).addEventListener('change', function (e) { pr.line = e.target.checked; setPrompt(); savePrompt(); });
+    $('.ktm-pmirror .ktm-tog', pr.box).addEventListener('change', function (e) { pr.mirror = e.target.checked; setPrompt(); savePrompt(); });
+    pr.full.addEventListener('click', toggleFull);
+    $('.ktm-pclk', pr.box).addEventListener('click', function () { bus.post({ type: 'clock' }); });
+    say('.ktm-tabs', 'aria-label', T('Speaker notes or script'));
+    $('.ktm-tabs [data-tab="script"]', panel).title = T('Teleprompter: the script of this step');
+    $('.ktm-pline', panel).title = T('Reading line: a soft band a third of the way down');
+    $('.ktm-pmirror', panel).title = T('Mirror: flip the text, for a glass teleprompter');
+    say('.ktm-psize', 'aria-label', T('Text size')); say('.ktm-psmaller', 'aria-label', T('Smaller text')); say('.ktm-plarger', 'aria-label', T('Larger text'));
+    if (!script) { $$('.ktm-ptools', pr.box).forEach(function (t) { t.hidden = true; }); }
+    setTab(pr.tab, true); setPrompt();
   }
 
   /* minutes of a part in one cut: what is on of it; a part that is off shows what it would take, struck through (CSS) */
@@ -299,17 +434,21 @@
       }
       paintClock();
     }
-    subsTog.checked = !subsNow();
-    if (cur !== lastCur) { lastCur = cur; follow(); showNotes(cur); }
+    subsTog.checked = !subsNow(); infoTog.checked = !infoNow();
+    if (cur !== lastCur) { lastCur = cur; follow(); showNotes(cur); showScript(cur); }
+    paintPrompt(cur);
   }
   function paintClock() {
     if (!live) return;
     var t0 = view.t0, p = view.plan, tot = mmss(D.total(cutNow()) * 60);
     live.clk.textContent = t0 ? T('reset clock') : T('start clock');
-    if (!t0) { live.time.className = 'ktm-time'; live.time.innerHTML = T('plan <b>{p}</b> / {tot}', { p: mmss(p), tot: tot }); return; }
-    var e = (Date.now() - t0) / 1000;
-    live.time.className = 'ktm-time ' + (e > p + 45 ? 'late' : 'ok');
-    live.time.innerHTML = T('<b>{e}</b> · plan {p} / {tot}', { e: mmss(e), p: mmss(p), tot: tot });
+    if (!t0) { live.time.className = 'ktm-time'; live.time.innerHTML = T('plan <b>{p}</b> / {tot}', { p: mmss(p), tot: tot }); }
+    else {
+      var e = (Date.now() - t0) / 1000;
+      live.time.className = 'ktm-time ' + (e > p + 45 ? 'late' : 'ok');
+      live.time.innerHTML = T('<b>{e}</b> · plan {p} / {tot}', { e: mmss(e), p: mmss(p), tot: tot });
+    }
+    if (pr) { pr.time.innerHTML = live.time.innerHTML; pr.time.className = 'ktm-ptime ' + live.time.className.replace('ktm-time', '').trim(); }
   }
   if (presenter) setInterval(paintClock, 1000);
   /* keep the active step's row in sight (the drawer only while it is open) */
@@ -352,6 +491,10 @@
   subsTog.addEventListener('change', function () {
     var on = !subsTog.checked;                            // checked = titles only
     if (presenter) { view.subs = on; paint(); bus.post({ type: 'subs', subs: on }); } else D.setSubs(on);
+  });
+  infoTog.addEventListener('change', function () {
+    var on = !infoTog.checked;                            // checked = boxes off
+    if (presenter) { view.info = on; paint(); bus.post({ type: 'info', info: on }); } else D.setInfo(on);
   });
   cutBtns.forEach(function (b) {
     b.addEventListener('click', function () {
@@ -429,6 +572,7 @@
         if (k === 'Escape' || (k === 'd' && !e.repeat)) { e.preventDefault(); close(); }
         else if (k === 'l' && !e.repeat && I18N) { e.preventDefault(); I18N.toggle(); }
         else if (k === 's' && !e.repeat) { e.preventDefault(); D.setSubs(!D.subs()); }
+        else if (k === 'i' && !e.repeat) { e.preventDefault(); D.setInfo(!D.info()); }
         else if (rove(e, true)) e.preventDefault();
       }
       e.stopPropagation();                                  // the deck behind does not see keys while the drawer is open
@@ -464,8 +608,16 @@
       if (fwd || bwd) { e.preventDefault(); bus.post({ type: 'step', d: fwd ? 1 : -1 }); }
       else if (k === 't' && !e.repeat) bus.post({ type: 'clock' });
       else if (k === 's' && !e.repeat) { view.subs = !view.subs; paint(); bus.post({ type: 'subs', subs: view.subs }); }
+      else if (k === 'i' && !e.repeat) { view.info = !view.info; paint(); bus.post({ type: 'info', info: view.info }); }
       else if (k === 'l' && !e.repeat && I18N) I18N.toggle();
+      else if (k === 'f' && !e.repeat && script) { e.preventDefault(); toggleFull(); }
+      else if (k === 'Escape' && pr.box.classList.contains('ktm-fill') && !prompter) toggleFull();
       else if (rove(e, false)) e.preventDefault();
+      else if ((k === 'ArrowDown' || k === 'ArrowUp') && pr.tab === 'script' && script) {   // the teleprompter scrolls; Page Up / Down and ← → step
+        e.preventDefault();
+        var bx = pr.text, lh = parseFloat(getComputedStyle(bx).lineHeight) || 40;
+        bx.scrollBy(0, (k === 'ArrowDown' ? 1 : -1) * lh * 2);
+      }
       e.stopPropagation();
     }, true);
     if (window.opener) bus.peer(window.opener);
@@ -477,7 +629,7 @@
   function sendState() {
     if (presenter) return;
     var c = D.current();
-    bus.post({ type: 'state', over: D.overrides(), cut: D.cut(), cur: c ? D.key(c) : null, t0: D.clock(), plan: D.plan(), subs: D.subs() });
+    bus.post({ type: 'state', over: D.overrides(), cut: D.cut(), cur: c ? D.key(c) : null, t0: D.clock(), plan: D.plan(), subs: D.subs(), info: D.info() });
   }
   /* ---------- language ----------
      A switch reloads the window it is made in (talk/i18n.js, its `kt-lang` event comes first). That window says so on
@@ -499,7 +651,7 @@
     if (presenter) {
       if (d.type === 'state') {
         view.linked = true; view.cut = d.cut === 20 ? 20 : 40; view.cur = d.cur || null; view.t0 = +d.t0 || 0; view.plan = +d.plan || 0;
-        view.subs = d.subs !== false;
+        view.subs = d.subs !== false; view.info = d.info !== false;
         var o = d.over && typeof d.over === 'object' ? d.over : {};
         // the talk window's word on what is on (setOverrides repaints through kt-parts)
         if (!same(o, D.overrides())) fromAfar(function () { D.setOverrides(o); }); else paint();
@@ -518,6 +670,7 @@
     else if (d.type === 'step') D.step(d.d < 0 ? -1 : 1);
     else if (d.type === 'cut') D.setCut(d.m === 20 ? 20 : 40);
     else if (d.type === 'subs') D.setSubs(d.subs !== false);
+    else if (d.type === 'info') D.setInfo(d.info !== false);
     else if (d.type === 'clock') D.toggleClock();
   });
   /* another window of this browser saved a change: apply what changed (twice is harmless) */
@@ -530,7 +683,7 @@
       if (changed) D.refresh();
     });
   });
-  ['kt-parts', 'kt-cut', 'kt-clock', 'kt-step', 'kt-subs'].forEach(function (t) {
+  ['kt-parts', 'kt-cut', 'kt-clock', 'kt-step', 'kt-subs', 'kt-info'].forEach(function (t) {
     document.addEventListener(t, function () {
       if (t === 'kt-parts' && !afar) save();
       paint(); sendState();

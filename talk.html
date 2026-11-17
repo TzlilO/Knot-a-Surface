@@ -6,6 +6,11 @@
 <title>Knot-a-Surface — the talk</title>
 <script src="talk/i18n.js"></script>
 <script src="talk/i18n/he.js"></script>
+<!-- the teleprompter's script (talk/script/<lang>.js, master.js "Script"): only the presenter view (?master, ?prompter) asks for it, and only in a language that has one; the talk window makes no request -->
+<script>(function () {
+  var p = /(?:^|&)(?:master|prompter)(?:[=&]|$)/.test(location.search.slice(1)) || location.hash === '#master' || location.hash === '#prompter';
+  if (p && window.KnotTalk && KnotTalk.lang === 'he') document.write('<script src="talk/script/he.js"><\/script>');
+})();</script>
 <!-- titles only (talk/deck.js "subtitles"): decided here, before the first paint, so no subtitle flashes. What a change
      of language carried over its reload, else ?subs=on|off in the address (saved), else the saved choice (kt-subs) -->
 <script>(function () {
@@ -13,6 +18,13 @@
   try { v = localStorage.getItem('kt-subs'); if (q) localStorage.setItem('kt-subs', v = q[1]); } catch (e) { if (q) v = q[1]; }
   if (k && typeof k.subs === 'boolean') v = k.subs ? 'on' : 'off';
   if (v === 'off') document.documentElement.classList.add('kt-titles');
+})();</script>
+<!-- info boxes (talk/deck.js "info boxes"): the same way, ?info=on|off and localStorage 'kt-info'; off = html.kt-bare -->
+<script>(function () {
+  var k = window.KnotTalk && KnotTalk.i18n && KnotTalk.i18n.kept && KnotTalk.i18n.kept.deck, q = /[?&]info=(on|off)(?:&|$)/.exec(location.search), v = null;
+  try { v = localStorage.getItem('kt-info'); if (q) localStorage.setItem('kt-info', v = q[1]); } catch (e) { if (q) v = q[1]; }
+  if (k && typeof k.info === 'boolean') v = k.info ? 'on' : 'off';
+  if (v === 'off') document.documentElement.classList.add('kt-bare');
 })();</script>
 <meta name="description" content="Knot-a-Surface: surfaces first, Gaussians second. A scroll-driven thesis talk with eight live simulations, from a single spline to a manifold of spline charts.">
 <!-- what a shared link shows: the owl in split screen, as scanned and with two material edits (talk/share.jpg, made by tools/share/render.js) -->
@@ -58,7 +70,9 @@
   <div><kbd>1</kbd>–<kbd>9</kbd>jump to a chapter · <kbd>0</kbd>the talk’s cover · <kbd>Home</kbd>the opening</div>
   <div><kbd>T</kbd>start / reset the pace clock · <kbd>M</kbd>mute the sound</div>
   <div><kbd>D</kbd>slide master: show / hide parts · talk.html?master = the same in a second window</div>
+  <div>talk.html?prompter = the script as a teleprompter, full window, for a tablet or a second screen</div>
   <div><kbd>S</kbd>titles only: hide / show the subtitles · the presenter view keeps them as notes</div>
+  <div><kbd>I</kbd>info boxes off / on: only the pictures over the simulations stay</div>
   <div><kbd>L</kbd>language: English / <span lang="he">עברית</span></div>
   <div>the short cut hides the deep‑dive steps · the long one shows everything</div>
 </div>
@@ -140,8 +154,8 @@
 <section class="chapter k-blob p-3d" data-sim="manifold" data-scene="hero" data-mount='{"bare":true,"clear":"transparent","scn":"breakfast","budget":60000,"cap":180000}' data-rail="d" data-title="Gaussians: in real time" data-min40="0.75" data-min20="0.5">
   <div class="stage"><div class="stage-frame">
     <div class="sim-mount"></div>
-    <div class="p-read"></div>
-    <div class="kt-panel kt-bottom" style="--tint:var(--blob)"><label class="kt-row kt-slider"><span class="kt-lab">Gaussians</span>
+    <div class="kt-box p-read"></div>
+    <div class="kt-box kt-panel kt-bottom" style="--tint:var(--blob)"><label class="kt-row kt-slider"><span class="kt-lab">Gaussians</span>
       <input type="range" min="8000" max="160000" step="2000" value="60000" aria-label="Number of Gaussians"></label></div>
   </div></div>
   <div class="steps">
