@@ -260,7 +260,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   colour), with a target circle on the owl's head and, after 12 s untouched (`AUTO_IDLE`, `SL.idle`), a pulsing halo on the
   ring (it never launches by itself). The button "launch for me" (`startAuto`, `autoPull`: a valid pull found with the
   prediction itself, drawn back in `AUTO_PULL` s and let go) is labelled SCRIPTED while it runs. A miss flies on (the
-  bowl is elastic if it falls back into it), and a pause after it leaves the frame or rests, as after the chain, the
+  bowl is elastic once the ball has come back down into it, `inBowl`, which the prediction also stops at and calls too short; a ball that only brushes the rim on its way out is let through), and a pause after it leaves the frame or rests, as after the chain, the
   scene starts again (`letGo`; the step has `data-replay`, deck.js calls `setScene` again on a replay, which resets
   everything). A valid launch runs the chain: the owl (scan 122's object chart) and the
   rabbit (scan 55, in `MATS.glass`, which scenes.js exposes as `KnotTalk.materials`) stand as spline figures, their
