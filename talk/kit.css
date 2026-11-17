@@ -197,5 +197,8 @@ body.kt-labpage{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:
 :root[dir="rtl"][data-lang] .kt-val{unicode-bidi:plaintext;margin-left:0;margin-right:auto}
 :root[dir="rtl"][data-lang] .kt-slider .kt-val{margin-right:0;text-align:right}        /* beside its slider, not at the panel's far edge */
 :root[dir="rtl"][data-lang] .kt-slider input{direction:ltr}
+/* a segmented row in a panel: a two-word Hebrew label stays on one line (its button takes the width it needs, the
+   row's other buttons give it up), so the row keeps the height of the others */
+:root[dir="rtl"][data-lang] .kt-panel .kt-seg .kt-seg-btn{white-space:nowrap}
 /* no capitals in Hebrew, and no tracking: the small label styles are set plainly */
 :root[dir="rtl"][data-lang] :is(.kt-panel-title,.kt-hint,.kt-gear){letter-spacing:0;text-transform:none}
