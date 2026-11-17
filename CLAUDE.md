@@ -70,6 +70,10 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   postMessage to a window opened from the drawer, and the storage event; deck.js mounts nothing there
   (`body.kt-presenter`). `KnotTalk.deck` is the deck's handle (steps, sections, go / step, set / refresh /
   setOverrides, totals; events on document: `kt-step`, `kt-cut`, `kt-clock`, `kt-parts`).
+- Link preview: talk.html's head carries Open Graph / Twitter tags (absolute URLs) pointing at `talk/share.jpg`,
+  1200 x 630: the owl in the teaser's split screen (Gaussians | the picture | normals). `node tools/share/render.js`
+  redraws it from `tools/share/page.html` at a fixed moment and camera; run it again when the owl's look changes.
+  Previews are cached by the apps that show them: a changed picture may need their refresh tools or a `?v=N`.
 - `talk/kit.js` = `KnotTalk.register(name, {title, blurb, tool, scenes, create(env)})` registry,
   lifecycle (`env.loop` pauses offscreen), UI helpers, and the standalone lab shell
   (`KnotTalk.standalone(name)`, used by every `talk/sims/<name>.html`).
