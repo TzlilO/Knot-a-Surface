@@ -124,3 +124,4 @@ body.lightroom .rail,body.lightroom .hud,body.lightroom .keys{--bg:#f6f1ea;--bg2
 :root[dir="rtl"] .kt-sim-he-fit.kt-compact .he-read{left:auto;right:1.4rem;text-align:right}
 :root[dir="rtl"] .prelude .p-hero h1{letter-spacing:-.03em}
 :root[dir="rtl"] .prelude :is(.p-next,.p-hero .fine){letter-spacing:0}
+:root[dir="rtl"] .prelude .p-hero .fine{word-spacing:-.28em}                /* the mono font's wide space between Heebo's letters */

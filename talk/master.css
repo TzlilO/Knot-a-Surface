@@ -184,7 +184,7 @@ body.kt-presenter>:not(.ktm){display:none!important}
 :root[dir="rtl"] .ktm-dialog[open]{animation-name:ktm-in-rtl}
 @keyframes ktm-in-rtl{from{transform:translateX(-28px);opacity:0}}
 :root[dir="rtl"] .ktm-tog,:root[dir="rtl"] .hud .master svg{transform:scaleX(-1)}
-:root[dir="rtl"] .ktm :is(.ktm-kick,.ktm-cuts span,.ktm-acts button,.ktm-tools button,.ktm-live button,.ktm-cols,.ktm-grp,.ktm-tag,.ktm-where span){letter-spacing:0;text-transform:none}
+:root[dir="rtl"] .ktm :is(.ktm-kick,.ktm-cuts span,.ktm-acts button,.ktm-tools button,.ktm-live button,.ktm-cols,.ktm-grp,.ktm-tag,.ktm-where span){letter-spacing:0;text-transform:none;word-spacing:-.28em}   /* the mono font's space is a wide one */
 :root[dir="rtl"] .ktm :is(.ktm-kick,.ktm-cuts span,.ktm-cols,.ktm-grp,.ktm-where span){font-size:.64rem}
 :root[dir="rtl"] .ktm .ktm-tag{font-size:.58rem}
 :root[dir="rtl"] .ktm :is(.ktm-acts button,.ktm-tools button:not(.ktm-x),.ktm-clock button,.ktm-link button){font-size:.68rem}

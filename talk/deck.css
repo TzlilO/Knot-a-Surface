@@ -358,6 +358,8 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 /* type: no tracking on the small labels; headlines a little less tight and a little more open than the Latin ones, as
    the Hebrew deck sets them (talk/he/he.css); Hebrew is never slanted, so emphasis in running text is a heavier word */
 :root[dir="rtl"] :is(.hud,.rail a span,.stage-tools a,.stage-tools button,.flip div b){letter-spacing:0}
+/* where the mono font is asked for, Hebrew letters come from Heebo but the space is still the mono font's, a wide one */
+:root[dir="rtl"] :is(.hud,.keys,.rail a span,.exhibit svg){word-spacing:-.28em}
 :root[dir="rtl"] .step h2{letter-spacing:-.02em;line-height:1.14}
 :root[dir="rtl"] .opener h2{line-height:1.06}
 :root[dir="rtl"] .step .thesis{letter-spacing:-.025em;line-height:1.14}
