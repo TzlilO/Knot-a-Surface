@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- The stage tools/share/render.js photographs for the talk's link preview (talk/share.jpg): the scanned owl in the
+     `manifold` module's teaser, whose split screen shows three readings in slanted bands, on the talk's light page.
+     1200 x 630, no chrome. Not a page of the site. -->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../talk/kit.css">
+<link rel="stylesheet" href="../../talk/deck.css">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden}
+  *{animation-play-state:paused!important}
+  #stage{position:fixed;left:0;top:0;width:1200px;height:630px}
+  #stage .kt-sim{background:transparent}
+</style>
+</head>
+<body>
+<div class="room" aria-hidden="true"><div><i></i><i></i><i></i><i></i></div></div>
+<div id="stage"></div>
+<script src="../../talk/vendor/three.min.js"></script>
+<script src="../../talk/nurbs.js"></script>
+<script src="../../talk/kit.js"></script>
+<script src="../../talk/gl.js"></script>
+<script src="../../talk/dtu-data.js"></script>
+<script src="../../talk/dtu/owlmask122.js"></script>
+<script src="../../talk/scenes.js"></script>
+<script src="../../talk/sims/manifold.js"></script>
+<script>
+  window.sim = KnotTalk.mount('manifold', document.getElementById('stage'),
+    { bare: true, scene: 'teaser', clear: 'transparent', budget: +(new URLSearchParams(location.search).get('budget') || 300000) });
+</script>
+</body>
+</html>
