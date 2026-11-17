@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="light" class="kt-bare">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>One take — Knot-a-Surface</title>
+<!-- One take: the thesis told on one object in one continuous shot, as a museum exhibit. A variant of talk.html, which
+     it does not touch: the copy lives in talk/onetake/onetake.js (the beats table, in English, through KnotTalk.t), the
+     Hebrew in talk/onetake/he.js, which extends talk/i18n/he.js. html.kt-bare = the modules' info boxes hidden. -->
+<script src="talk/i18n.js"></script>
+<script src="talk/i18n/he.js"></script>
+<script src="talk/onetake/he.js"></script>
+<meta name="description" content="Knot-a-Surface in one take: one scanned owl, peeled from picture to Gaussians to the spline surface under them.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="talk/kit.css">
+<link rel="stylesheet" href="talk/onetake/onetake.css">
+</head>
+<body class="ot">
+<div class="ot-room" aria-hidden="true"></div>
+<main class="ot-stage" aria-label="The exhibit"></main>
+<svg class="ot-wire" aria-hidden="true"><line></line><circle r="3"></circle></svg>
+<div class="ot-loupe" aria-hidden="true"><div class="ot-loupe-sim"></div></div>
+<aside class="ot-placard" aria-live="polite">
+  <div class="ot-no" data-i18n="off"></div>
+  <h1 class="ot-title" data-i18n="off"></h1>
+  <p class="ot-text" data-i18n="off"></p>
+  <div class="ot-facts" data-i18n="off"></div>
+  <p class="ot-prov" data-i18n="off"></p>
+  <div class="ot-act" data-i18n="off"></div>
+</aside>
+<div class="ot-progress" aria-hidden="true"><i></i></div>
+<div class="ot-hint" data-i18n="off"></div>
+<div class="ot-clock" data-i18n="off" aria-hidden="true"></div>
+<div class="ot-msg" data-i18n="off" role="status"></div>
+
+<script>if (window.KnotTalk && KnotTalk.i18n) KnotTalk.i18n.apply();</script>
+<script src="talk/vendor/three.min.js"></script>
+<script src="talk/nurbs.js"></script>
+<script src="talk/kit.js"></script>
+<script src="talk/gl.js"></script>
+<script src="talk/dtu-data.js"></script>
+<script src="talk/dtu/scan55.js"></script>
+<script src="talk/dtu/owlmask122.js"></script>
+<script src="talk/scenes.js"></script>
+<script src="talk/meshlist.js"></script>
+<script src="talk/terrain.js"></script>
+<script src="talk/sims/flatland.js"></script>
+<script src="talk/sims/planoid.js"></script>
+<script src="talk/sims/manifold.js"></script>
+<script src="talk/sims/touch.js"></script>
+<script src="talk/onetake/onetake.js"></script>
+</body>
+</html>
