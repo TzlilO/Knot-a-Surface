@@ -195,10 +195,17 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - `tools/train/` is for the user's own GPU machine (nothing is trained here): `README.md` (setup, pinned versions),
   `train3dgs.py` (runs graphdeco-inria/gaussian-splatting at 54c035f on DTU scan 122 from Hugging Face `Y1ue/DTU`;
   trains on RGB copies of the RGBA photographs, saves PLY snapshots at 0, 100, 300, 1000, 3000, 7000, 15000, 30000
-  and a loss / PSNR log on 8 held-out views) and `export.py` (`python3 -I`, numpy only) -> `talk/dtu/train122.js`
-  = `KnotTalk.dtuTrain[122]` {note, unit, log {iter, loss, psnr}, snaps [{iter, ntotal, n, p, s, q, c, a}]}, in
-  the owl's frame recovered from `talk/dtu/pipeline122.js`'s cameras; it writes nothing unless all 21,760 SfM
-  points land on that file's copies. Never put synthetic test output in `talk/dtu/`.
+  and a loss / PSNR log on 8 held-out views; it judges the run as it goes, inside graphdeco's training_report:
+  iteration cap, wall clock (`--max-minutes`, 120), NaN / Inf (loss every iteration, parameters every 100),
+  Gaussian and GPU-memory caps, a stall watchdog (faulthandler as the last resort), SIGINT / SIGTERM, and the
+  judgement rules `--no-early-stop` turns off: a loss blow-up that ignores the windows after graphdeco's opacity
+  resets, a held-out PSNR plateau only after densification ends, and "not learning" at 1,000; the best state is
+  kept and written as a snapshot; `run.json` records `stop` {reason, iteration, minutes, best_psnr,
+  best_iteration, detail} and every threshold used; "When it stops" in the README) and `export.py` (`python3 -I`,
+  numpy only) -> `talk/dtu/train122.js` = `KnotTalk.dtuTrain[122]` {note, unit, optional stop {reason, iter,
+  best_psnr, best_iter}, log {iter, loss, psnr}, snaps [{iter, ntotal, n, p, s, q, c, a}]} (final and best
+  snapshots included), in the owl's frame recovered from `talk/dtu/pipeline122.js`'s cameras; it writes nothing
+  unless all 21,760 SfM points land on that file's copies. Never put synthetic test output in `talk/dtu/`.
   Rule for every long optimisation job in this repo (GPU or not): it must judge itself and stop. A wall-clock
   budget and an iteration cap; divergence detection (NaN / Inf at once, without saving the bad state; a sustained
   loss blow-up, ignoring spikes the method causes on purpose); convergence detection on a held-out measure (a

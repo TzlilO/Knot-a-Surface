@@ -77,13 +77,15 @@ def opacity_resets(o, n):
 def schedule(gs, gargs):
     """graphdeco's densification schedule under these arguments, read with its own parser (arguments/ imports only the
     standard library); its defaults when that cannot be read."""
+    path = list(sys.path); sys.path.insert(0, gs)
     try:
-        if gs not in sys.path: sys.path.insert(0, gs)
         from arguments import ModelParams, OptimizationParams
         p = argparse.ArgumentParser(); ModelParams(p); OptimizationParams(p); ns = p.parse_known_args(gargs)[0]
         return {k: getattr(ns, k) for k in SCHEDULE}, True
     except Exception:
         return dict(SCHEDULE), False
+    finally:
+        sys.path[:] = path                                 # the package check of --dry-run must not see the checkout's folders
 
 def photographs(d):
     return sorted(f for f in os.listdir(d) if f.lower().endswith(('.png', '.jpg', '.jpeg'))) if os.path.isdir(d) else []
