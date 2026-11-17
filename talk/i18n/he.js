@@ -189,7 +189,7 @@
   "Lightweight by construction": "קל משקל מעצם הבנייה",
   "The parameter ledger": "מאזן הפרמטרים",
   "≈ 3 min": "≈ 3 דקות",
-  "Position, scale, rotation, opacity, and 48 spherical‑harmonic coefficients for view‑dependent colour. Every Gaussian carries its own copy, and every one is optimised.": "מיקום, גודל, סיבוב, אטימות, ו‑48 מקדמים של הרמוניות ספריות לצבע תלוי־מבט. כל גאוסיאן נושא עותק משלו, וכל אחד מהם עובר אופטימיזציה.",
+  "A free Gaussian is 59 numbers: position, scale, rotation, opacity, and 48 spherical‑harmonic coefficients for view‑dependent colour. Every Gaussian carries its own copy, and every one is optimised.": "גאוסיאן חופשי הוא 59 מספרים: מיקום, גודל, סיבוב, אטימות, ו‑48 מקדמים של הרמוניות ספריות לצבע תלוי־מבט. כל גאוסיאן נושא עותק משלו, וכל אחד מהם עובר אופטימיזציה.",
   "Ours: 16 per control point. <em class=\"c-splat\">Zero per Gaussian.</em>": "שלנו: 16&nbsp;לכל&nbsp;control&nbsp;point. <em class=\"c-splat\">אפס לכל גאוסיאן.</em>",
   "Geometry is carried by the surface, so position, rotation and scale cost nothing. The bet: with the geometry right, colour no longer has to paper over geometric error, so low order may be enough — SH degree 1 instead of 3. Sharp highlights would still need more.": "את הגאומטריה נושא המשטח, ולכן מיקום, סיבוב וגודל לא עולים דבר. ההימור: כשהגאומטריה נכונה, הצבע כבר לא צריך לחפות על שגיאה גאומטרית, ולכן ייתכן שסדר נמוך יספיק – SH ממעלה 1 במקום 3. החזרי אור חדים עדיין ידרשו יותר.",
   "At the scale of a scene": "בקנה מידה של סצנה",
