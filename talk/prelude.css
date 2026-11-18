@@ -59,6 +59,11 @@
   align-items:center;padding:5rem 0;padding-inline:5.5rem 3rem}
 .prelude .p-hero .p-text{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
 .prelude .p-hero h1{margin:0;font:800 clamp(2.8rem,6vw,5.8rem)/1.02 var(--f-ui);letter-spacing:-.035em;text-wrap:balance}
+/* the cover's title is one unbreakable word: its size also follows its own column (12.8cqi = the column over the word's
+   7.4 em, with a margin), so it can never run under the card beside it, whatever the window, zoom or font; and the text
+   column paints above the card */
+.prelude .cover .p-text{container-type:inline-size;position:relative;z-index:1}
+.prelude .cover h1{font-size:clamp(1.5rem,min(6vw,12.8cqi),5.8rem);white-space:nowrap}
 .prelude .p-hero h1 span{background:linear-gradient(100deg,var(--blob),var(--pink) 55%,var(--implicit));-webkit-background-clip:text;background-clip:text;color:transparent}
 .prelude .kas h1 span{background-image:linear-gradient(100deg,var(--explicit),var(--implicit) 72%)}  /* explicit, and smooth */
 .prelude .p-hero .lede{margin:1.6rem 0 0;max-width:20em;font-size:1.3rem;line-height:1.45;color:var(--dim)}
@@ -103,7 +108,7 @@ body.lightroom .rail,body.lightroom .hud,body.lightroom .keys{--bg:#f6f1ea;--bg2
   .prelude .p-hero{grid-template-columns:minmax(0,1fr);gap:1.4rem;padding:3.6rem 1.2rem 5rem;align-content:center}
   .prelude .p-hero .hero{order:-1;aspect-ratio:auto;height:40svh;max-height:none}
   .prelude .kas .hero{aspect-ratio:auto}
-  .prelude .p-hero h1{font-size:2.6rem}.prelude .p-hero .lede{font-size:1.08rem;margin-top:1rem}.prelude .p-hero .meta{margin-top:1.2rem}
+  .prelude .p-hero h1{font-size:2.6rem}.prelude .cover h1{font-size:min(2.6rem,12.8cqi)}.prelude .p-hero .lede{font-size:1.08rem;margin-top:1rem}.prelude .p-hero .meta{margin-top:1.2rem}
   .prelude .stage{padding:.7rem .7rem .3rem;background:var(--bg)}
   .prelude .step h2{font-size:1.85rem}.prelude .step p{font-size:1.04rem}
   .prelude .wide .step{padding:3.6rem 1.2rem}
