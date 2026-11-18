@@ -120,6 +120,20 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   class); Up / Down scroll it, ← → PageUp PageDown space still step. `talk.html?prompter` = the same view as that panel alone, filling
   the window, for a tablet or second screen (deck.js treats it as `?master`). `node tools/script/check.js` (README there) checks a
   script against the steps and prints words per section against the minutes.
+- THE CORE CUT (`talk.html?cut=core`, `talk/core.js`, loaded last): about 20 minutes, the steps that carry the talk's one sentence,
+  marked `data-core="<minutes>"` in talk.html (31 steps incl. the cover; the sum is computed, not typed: the HUD's "◆ 20′" link in
+  the `.cut` group shows it). Without `cut=core` nothing changes (same steps, 45′ / 23′ totals; the link is the only trace). With it,
+  core.js hands the set to `KnotTalk.deck.sample({ has, cost, labels })` (the knob design's sampler: `data-depth` is ignored, a
+  `data-off` step with `data-core` is shown, the slide master's overrides still win, `labels` keeps the 20′ / 40′ buttons on their own
+  totals), sets `html.kt-core`, and applies `data-core-scene="<scene>"` as `step._scene` (deck.js `activate` reads it before
+  `data-scene`) only if the module's `scenes` list has it (so the refine step "Layer A — insert a knot" shows `hinge` once the module
+  has it, else `insert`). In the cut the link is lit and the 20′ / 40′ buttons leave it (same page without `cut=core`, on the same
+  step, the cut saved in `kt-cut`). `?design=knob` wins over it. The address keeps `cut=core` over a language switch (i18n.js only
+  rewrites `lang`) and master.js `pageUrl` passes it to the presenter view / prompter it opens, so now / next and the clock total agree.
+  The cut's own step is the chapter 09 step "What is measured, and what is not yet" (key `09 · What is measured, and what is not yet`),
+  `data-off` and alone in a `data-cont` section with 0 minutes: a part that is off takes its share of its section's minutes with it,
+  so inside the evidence section it would have changed the other cuts' totals. When a step is added or its minutes change, keep the
+  sum near 20 and write its passage in `talk/script/he.js`.
 - Link preview: talk.html's head carries Open Graph / Twitter tags (absolute URLs) pointing at `talk/share.jpg`,
   1200 x 630: two owls cut into slanted bands, the scan (stone | normals) and its copy (stone | glass | jelly).
   `node tools/share/render.js` redraws it: `tools/share/page.html` mounts one `manifold` instance per band (scene
