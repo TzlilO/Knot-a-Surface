@@ -14,6 +14,9 @@ python3 -I tools/recon/sfm_spline.py --self-test [-o DIR]                       
 python3 -I tools/recon/from_pipeline_js.py talk/dtu/pipeline122.js /tmp/owl/model --truth /tmp/owl/truth
 python3 -I tools/recon/sfm_spline.py /tmp/owl/model -o /tmp/owl/out --unit-mm 80 --track-len /tmp/owl/model/track_length.npy
 python3 -I tools/recon/compare_dtu.py /tmp/owl/out/charts.json /tmp/owl/truth/transform.json --model /tmp/owl/model --pictures /tmp/owl/pics
+# objects from per-view labels (section "One chart per object" below)
+python3 -I tools/recon/label_points.py MODEL_DIR -o LAB --masks MASKS_DIR [--features FEAT_DIR] [--ground-plane]
+python3 -I tools/recon/label_points.py --self-test                                       # ~45 s
 ```
 
 | file | what |
@@ -23,7 +26,11 @@ python3 -I tools/recon/compare_dtu.py /tmp/owl/out/charts.json /tmp/owl/truth/tr
 | `bspline.py` | cubic bases with derivatives, Boehm insertion, periodic direction, sparse design matrix (the maths of `talk/nurbs.js`, vectorised) |
 | `selftest.py` | `--self-test`: synthetic COLMAP models with known spline surfaces |
 | `from_pipeline_js.py` | `talk/dtu/pipeline<N>.js` -> COLMAP text model (+ `track_length.npy`), in a random similarity frame |
-| `compare_dtu.py` | YARDSTICK ONLY: distances to the shipped depth-fitted chart and to `pipeline.py`'s 12 x 16 sketch, plus pictures |
+| `compare_dtu.py` | YARDSTICK ONLY: distances to the shipped depth-fitted chart and to `pipeline.py`'s 12 x 16 sketch, plus pictures (`--chart a,b` pools several charts) |
+| `label_points.py` | point labels from per-view masks and / or feature maps -> `labels.npy` for `--labels` (below) |
+| `selftest_labels.py` | `label_points.py --self-test` |
+| `standin_dtu.py` | STAND-IN masks for scan 122 rendered from the repo's depth-fitted charts (not SAM), and optional synthetic visibility |
+| `gpu/` | `run_sam.py`, `run_dino.py`: masks and features on a GPU machine. **NOT RUN** (see `gpu/README.md`) |
 
 ## Inputs
 
@@ -87,6 +94,8 @@ python3 -I tools/recon/compare_dtu.py /tmp/owl/out/charts.json /tmp/owl/truth/tr
      (2 s). Hits closer to edge-on than cos 0.1 are not judged and are counted separately.
    - **Reported.** The share at 1, 2, 4, 8 and 16 s; an 8 x 8 map over each chart's (u, v); and the share that falls on
      the unsupported part of each chart.
+   - **Trimmed (`--trim`).** Measured a second time with each chart cut to its trim mask (step 6): trimmed-away
+     surface hides nothing.
    - **As a penalty.** `--freespace W` adds rows that pull the hiding surface point back along its ray to the point's
      depth. Off by default; see the results below.
 6. **Output.**
@@ -97,6 +106,10 @@ python3 -I tools/recon/compare_dtu.py /tmp/owl/out/charts.json /tmp/owl/truth/tr
      history, residuals (train / inliers / held-out: median, p95, rms, share within s; model units and mm), control
      points without support (support < 1), unsupported area share and regions (top edge, foot, side edges, interior),
      free space, and `stop`.
+   - `--trim` (off by default): each chart gains `trim_mask_48x48_v_rows` (1 = kept) and `trimmed_domain` (its (u, v)
+     box). The kept part = the supported cells of the 48 x 48 bridge grid, closed by `--trim-close` 2 cells, enclosed
+     holes filled, pieces under `--trim-min-piece` 1 % of the area dropped. The net is not changed; the trim only says
+     where the chart holds. `report.json` gives per chart the kept area share and the unsupported share of the kept part.
 
 **Long-job rules.** These are the repo's rules.
 
@@ -248,6 +261,7 @@ default stays with what the stated criterion picks.
   the reprojection filter acts on the stored per-point error only.
 
 ### Development disclosure (what was looked at while building this)
+(for the single-sheet tool; the labelled pipeline has its own disclosure at the end of the next section)
 
 - **The truth frame.** The tool first found no plane on scan 122. I used the truth transform to count table points
   per cleaning step, and found that the density test removed them. That led to "plane before the density test".
@@ -261,3 +275,169 @@ default stays with what the stated criterion picks.
 - **Never tuned.** The k-NN, Tukey, smoothness, min-support and layout-gap thresholds were not tuned to the yardstick.
 - **Not run.** A real COLMAP model with full tracks, scan 55, labelled (SAM / DINO) inputs on real data, and any
   Chamfer evaluation against DTU's reference (`tools/eval`).
+
+## One chart per object, from per-view labels (`label_points.py`)
+
+The owner's design: a point is labelled in the views that OBSERVED it (its track), the per-view labels are associated
+across views, and every resulting cluster gets its own chart in `sfm_spline.py --labels`.
+
+### Method (all thresholds are flags; `labels.json` records them)
+
+1. **Observations.** Each point is read only in the views of its own track, at the 2-D position the track stores.
+   Nothing is reprojected into views that did not observe it. Masks: integer images `NAME.npy` / `NAME.png`
+   (H x W, or H x W x K for K levels of a hierarchy; 0 = no mask; ids mean nothing across views; any resolution; a
+   view may be missing). Features: `NAME.npy`, H' x W' x D, read bilinearly between cell centres.
+2. **Candidate pairs** (sparse, O(points x k)): 3-D kNN (`--knn` 12, links < `--link` 3 x the median 12th-neighbour
+   distance) and, per view, the `--img-knn` 8 nearest co-observed points in the image within `--img-radius` 2 % of the
+   diagonal (these can be far apart in depth, which is where "different" votes come from).
+3. **Votes.** In every (view, level) where both points of a pair are observed and both lie in a mask, the pair votes
+   same / different. With c votes and s "same", a pair with c >= `--min-covis` (2) gets w = s - tau c (`--tau` 0.5).
+4. **Clustering** = correlation clustering (minimum-cost multicut) by greedy agglomeration: contract touching clusters
+   while their summed weight is positive. Two orders: summed weight (GAEC, Keuper et al. 2015) and weight per vote
+   (average linkage, as in GASP, Bailoni et al. 2019); `--linkage best` (default) runs both and keeps the partition with
+   the higher objective (summed weight inside clusters). Deterministic.
+5. **Spatial sanity.** A cluster that is not connected in the 3-D kNN graph is split into its pieces.
+6. **Features** (optional): per point the normalised mean of its normalised samples. They merge touching clusters whose
+   mean features have cosine >= `--feat-merge` 0.9 where the masks are undecided (agreement >= tau - `--tie-band` 0.15,
+   or no votes); they decide where a small cluster goes; without masks they are the only signal (agglomeration with
+   CENTROID linkage while the cosine of the cluster means is > `--feat-tau` 0.8: comparing means keeps a blend at a
+   boundary from chaining two objects). `labels.json` says which signal formed each cluster and lists every merge.
+7. **Small clusters** (< `--min-size` 30 or `--min-share` 0.5 % of the points) join the touching cluster with the best
+   evidence unless the masks say they differ; otherwise -1.
+8. **`--ground-plane`** (prior): `sfm_spline.py`'s support plane; points within `--ground-tol` 1.5 s of it are label 0
+   before anything else.
+
+Output: `labels.npy` (index = POINT3D_ID, -1 = none), `labels_confidence.npy` (share of the point's votes that agree
+with its label, -1 = no votes), `labels.json` (thresholds, clusters with size / signal / confidence, merges, splits,
+per-view mask statistics, stop). `--max-seconds` and SIGINT / SIGTERM stop the agglomeration; the partition reached is
+valid and is written with its stop reason.
+
+### Self-test (`--self-test`, 44 s, passes)
+
+Scene B of `selftest.py` (tall open sheet, low mound, ground plane; 20 cameras on 150 degrees; 0.5 px noise, 4 %
+outliers) with masks rendered by a z-buffer of the true surfaces at a quarter of the image size and ids shuffled per
+view. Scored on the non-outlier points, leaving out the 1,551 that lie within 1 % H of TWO true surfaces (the mound's
+apron is tangent to the plane, so their label is undefined; with them in, every ARI is about 0.04 lower).
+Degraded = 20 % of views missing, 30 % over-segmented (each part cut by a random image line), 10 % under-segmented
+(both objects in one mask), boundary jitter 1 mask px (4 image px), 5 % salt noise.
+
+| variant | ARI | purity | completeness | unlabelled | objects back |
+| --- | --- | --- | --- | --- | --- |
+| clean masks | 0.999 | 1.000 | 0.999 | 0 % | yes |
+| degraded | 0.996 | 0.999 | 0.999 | 0 % | yes |
+| degraded + a second level cutting every part in two | 0.993 | 0.998 | 0.998 | 0 % | yes |
+| tall object cut at a fixed height in 60 % of views, masks alone | 0.759 | 1.000 | 0.872 | 0 % | no (4 clusters) |
+| same + synthetic features | 0.999 | 1.000 | 0.999 | 0 % | yes (1 feature merge) |
+| synthetic features alone | 0.982 | 0.998 | 0.993 | 0 % | yes (+1 small boundary cluster) |
+| degraded, tracks cut to their 2 lowest-index views | 0.111 | 0.563 | 0.858 | 1.5 % | no |
+| the file entry (.npy, .png, a 2-level view) | 0.994 | | | | ARI 0.996 vs in memory |
+
+Noise sweep on top of "degraded" (salt = share of mask pixels set to a random id of the view, or 0), 2 seeds each:
+
+| salt | 0 | 20 % | 40 % | 50 % | 60 % |
+| --- | --- | --- | --- | --- | --- |
+| ARI mean | 0.996 | 0.992 | 0.942 | 0.845 | 0.356 |
+| failure rate (ARI < 0.9 or objects not back) | 0 / 2 | 0 / 2 | 0 / 2 | 2 / 2 | 2 / 2 |
+
+"Objects back" = every true object has a cluster holding >= 90 % of it at >= 95 % purity. Synthetic features are
+one random 16-D vector per object plus noise; they say nothing about real DINO features.
+
+### Scan 122 with STAND-IN masks (not SAM)
+
+No photographs are in the repository, so SAM cannot run. `standin_dtu.py` RENDERS masks from the repo's own
+depth-fitted charts (`talk/dtu-data.js`: object chart + table; `talk/dtu/owlmask122.js`: owl vs books) into the 64
+cameras: classes owl / books / table, ids shuffled per view, 389 x 291. A degraded copy has 20 % of the views missing,
+50 % over-segmented, 10 % under-segmented (owl and books in one mask), 1 px (4 image px) jitter and 2 % salt. These
+masks come from the yardstick itself: the runs below test the plumbing and what per-object charts buy, and are no
+evidence that SAM would produce such masks.
+
+**Tracks.** `pipeline122.js` keeps two observations per point. `standin_dtu.py --synthetic-visibility` writes a copy of
+the model whose tracks are extended by SYNTHETIC visibility (a view is added when the point projects inside it and lies
+at most 2 mm behind the stand-in surfaces' z-buffer), cut to each point's TRUE track length (median 4; uncut, median
+44 views). 6.9 % of the stored observations lie more than 2 mm behind that z-buffer (points off the surfaces). Only
+the labelling uses these tracks; every fit below runs on the original two-observation model, so free space is
+measured on the same pairs as the single sheet.
+
+```bash
+python3 -I tools/recon/standin_dtu.py OUT/standin --model OUT/model --synthetic-visibility OUT/model_synvis
+python3 -I tools/recon/label_points.py OUT/model_synvis -o OUT/lab --masks OUT/standin/masks_clean --ground-plane
+python3 -I tools/recon/sfm_spline.py OUT/model -o OUT/fit --unit-mm 80 --track-len OUT/model/track_length.npy --labels OUT/lab/labels.npy --trim
+python3 -I tools/recon/compare_dtu.py OUT/fit/charts.json OUT/truth/transform.json --chart label1,label2
+```
+
+**Labels** against the stand-in classes (each SfM point takes the class of the nearest stand-in surface sample within
+3 mm; 3,763 of 21,760 points are farther and not scored; owl 8,557, books 8,813, table 627):
+
+| tracks, masks | ground prior | ARI | owl / books / table recovered |
+| --- | --- | --- | --- |
+| 2 per point, clean (`--min-covis 1`) | no | 0.878 | owl split off, 475 owl points in books; table absorbed |
+| 2 per point, degraded | yes | 0.111 | owl and books MERGED |
+| synthetic (cut to true length), clean | no | 0.977 | owl, books yes; table in pieces / absorbed into books |
+| synthetic (cut), clean | yes | 0.991 | yes (objects back) |
+| synthetic (cut), degraded | yes | 0.987 | yes |
+| synthetic (uncut, 44 views), degraded | yes | 0.991 | yes |
+
+Without the ground prior the sparse table (627 points) never forms its own cluster. Every run also returns two small
+clusters (about 300 and 400 points) that lie mostly more than 3 mm from the stand-in surfaces (scene clutter / strays);
+they get charts of their own and are left out of the comparison below.
+
+**Charts** (`sfm_spline.py --labels ... --trim`, default flags otherwise; label 0 = table, 1 = owl, 2 = books in all
+three labelled runs). Held-out residuals per chart (mm): owl median 0.24 / p95 1.48, books 0.21 / 2.98 (clean labels);
+single sheet 0.21 / 1.68. Layouts: owl `cyl`, two-layer 1.0 %, empty cells 8.2 % (single sheet: 3.4 %, 17.9 %); books
+`cyl`, 3.9 % / 18.0 % with an 18 % empty-cell warning, open over 190 degrees. No object's criterion picked a height
+field (the table's did).
+
+Yardstick (`compare_dtu.py`, owl + books charts pooled, sampled by area; mean / median / p95 in mm):
+
+| | single sheet | per object, clean | per object, degraded | per object, 2-view labels |
+| --- | --- | --- | --- | --- |
+| ours -> shipped, all | 5.24 / 0.58 / 29.2 | 3.15 / 0.50 / 20.1 | 3.10 / 0.50 / 18.7 | 3.45 / 0.52 / 20.0 |
+| ours -> shipped, on points | 2.45 / 0.42 / 16.9 | 1.70 / 0.37 / 10.1 | 1.63 / 0.37 / 9.5 | 1.86 / 0.37 / 12.4 |
+| shipped (seen) -> ours | 1.05 / 0.41 / 4.2 | 1.22 / 0.44 / 4.7 | 1.34 / 0.43 / 5.7 | 1.30 / 0.42 / 5.3 |
+| beyond the shipped border | 20.5 % | 10.6 % | 9.7 % | 11.7 % |
+| unsupported area | 34.5 % | 39.8 % | 41.3 % | 45.0 % |
+| top edge v > 0.95, median | 12.7 | 0.82 | 0.73 | 2.67 |
+| side edges, median | 27.8 | 12.9 | 12.0 | 13.3 |
+| back (az >= 120), share / median | 26 % / 10.2 | 14 % / 9.2 | 13 % / 9.5 | 14 % / 12.0 |
+| ledges (normal within 30 deg of up), median / p95 | 0.35 / 32.3 | 0.31 / 28.8 | 0.28 / 28.6 | 0.26 / 30.8 |
+| foot y < 40 mm, p95 | 33.3 | 6.2 | 5.4 | 9.0 |
+
+Free space (share of observation pairs with fitted surface in front of the point; same pairs in every column):
+
+| charts | 0.6 mm | 1.3 mm | 2.6 mm | 5.2 mm | 10.4 mm |
+| --- | --- | --- | --- | --- | --- |
+| single object sheet | 13.2 % | 7.4 % | 4.2 % | 2.3 % | 1.1 % |
+| owl + books, clean labels | 15.5 % | 9.2 % | 5.3 % | 2.8 % | 1.3 % |
+| owl + books, degraded labels | 17.2 % | 11.1 % | 6.7 % | 3.6 % | 1.3 % |
+| single sheet, trimmed | 12.3 % | 6.9 % | 3.9 % | 1.9 % | 0.8 % |
+| owl + books, clean, trimmed | 14.6 % | 8.6 % | 4.9 % | 2.4 % | 1.0 % |
+
+**Trim.** Single sheet: keeps 75 % of the area, unsupported 34 % -> 12 % of what is kept. Owl: 80 %, 32 % -> 15 %.
+Books: 64 %, 46 % -> 16 %. Table: 38-41 %, 82 % -> 56-60 % (the table is too sparse for the 3 x spacing rule). On
+the yardstick the trimmed part is about as good as the "on points" part (pooled owl + books 1.95 / 0.42 / 11.1 against
+1.70 / 0.37 / 10.1): filled holes and the closing keep some bridging, notably at the back (trimmed back median 2.7 mm).
+It lowers free-space violations a little (above).
+
+**Does one chart per object fix the ledges and the unsupported back? Partly, and not the back.**
+- Fixed: the top edge (median 12.7 -> 0.8 mm: the owl's sheet ends at the top of the head instead of bridging the
+  books' ledge), the foot (p95 33 -> 6 mm), the overall tail (p95 29 -> 20 mm all, 17 -> 10 mm on points), and half of
+  the area beyond the shipped border. The owl's layout is much cleaner (two-layer 1 %, empty 8 %).
+- Not fixed: the back (median still about 9 mm; the cameras do not see it, and each object sheet still bridges it); the
+  ledges' tail (p95 about 29 mm; their median was already good); the side edges (12-13 mm median).
+- Worse: unsupported area (34.5 -> 40-45 %: the books' open 190-degree sheet is 46-51 % unsupported), shipped -> ours
+  (p95 4.2 -> 4.7 mm), and free space (7.4 -> 9.2 % at 1.3 mm with clean labels, 11.1 % degraded): two sheets meet in
+  the crease where the owl stands on the books, and each one's border runs on in front of the other's points.
+- Two observations per point are not enough for the association: clean masks still split owl from books (ARI 0.88),
+  but with 10 % under-segmented views owl and books merge (ARI 0.11). The self-test shows the same (ARI 0.11).
+
+### Development disclosure (label_points / stand-in runs)
+
+- `--linkage best` and the self-test's "ambiguous band" were decided on the SELF-TEST: plain GAEC (sum) merged the mound
+  with the plane in 2 of 3 seeds at 0 % salt; average linkage over-split in others; keeping the higher objective was
+  right in all 6 cases I looked at. `--tau` stayed 0.5 (0.6 and 0.7 were tried on the self-test, with sum linkage, and were worse at high
+  noise). The centroid linkage for features alone replaced a pairwise rule that chained mound and plane in the self-test.
+- On the owl, the stand-in classes were used to SCORE labels, and the ground prior was turned on after the run
+  without it left the table in pieces. No threshold of label_points.py or sfm_spline.py was changed after looking at
+  the yardstick. `--trim-close` 2 and `--trim-min-piece` 1 % were set once and not tuned.
+- Not run: SAM / DINO on real photographs (`gpu/`, NOT RUN), real full COLMAP tracks, scan 55, and a book-top height
+  field (the layout criterion never picked one for an object, and I did not force it).

@@ -492,7 +492,7 @@ def chart_lattice(ch, s, cap=360):
     return S, N, step, U, V
 
 
-def freespace(charts, cams, oc, op, X, s, a, want_pairs=False):
+def freespace(charts, cams, oc, op, X, s, a, want_pairs=False, use_trim=False):
     """For every (camera, point) observation: is there fitted surface in front of the point along that camera's ray,
     by more than --fs-tol x s? A z-buffer of the charts' lattices (index of the nearest sample per pixel) is drawn per
     camera, at a pixel size that keeps the lattice's projected edges below one pixel. The pair is then judged on the
@@ -500,9 +500,13 @@ def freespace(charts, cams, oc, op, X, s, a, want_pairs=False):
     footprint (else the pixel only grazed a silhouette), and must be nearer than the point by more than tol. Pairs whose
     ray meets that surface within --fs-min-cos of edge-on are not judged (counted as grazing)."""
     tol = a.fs_tol * s; lat = []
+    alive = []
     for ci, ch in enumerate(charts):
         S, N, step, U, V = chart_lattice(ch, s)
         lat.append((S.reshape(-1, 3), N.reshape(-1, 3), step.ravel(), np.c_[U.ravel(), V.ravel()], np.full(S.shape[0] * S.shape[1], ci), S.shape[:2]))
+        tm = getattr(ch, 'trim', None) if use_trim else None; g = tm.shape[0] if tm is not None else 1
+        alive.append(np.ones(S.shape[0] * S.shape[1], bool) if tm is None else tm[np.minimum((V.ravel() * g).astype(int), g - 1), np.minimum((U.ravel() * g).astype(int), g - 1)] == 1)
+    alive = np.concatenate(alive)
     P = np.concatenate([l[0] for l in lat]); NR = np.concatenate([l[1] for l in lat]); ST = np.concatenate([l[2] for l in lat])
     UV = np.concatenate([l[3] for l in lat]); CI = np.concatenate([l[4] for l in lat])
     edges = []; off = 0
@@ -513,7 +517,7 @@ def freespace(charts, cams, oc, op, X, s, a, want_pairs=False):
     for k, c in enumerate(cams):
         sel = np.nonzero(oc == k)[0]
         if not len(sel): continue
-        q = (P - c['C']) @ c['R'].T; front = q[:, 2] > 1e-9
+        q = (P - c['C']) @ c['R'].T; front = (q[:, 2] > 1e-9) & alive                # a trimmed-away sample hides nothing
         x = c['fx'] * q[:, 0] / np.where(front, q[:, 2], 1) + c['cx']; y = c['fy'] * q[:, 1] / np.where(front, q[:, 2], 1) + c['cy']
         e = edges[front[edges[:, 0]] & front[edges[:, 1]]]
         el = np.hypot(x[e[:, 0]] - x[e[:, 1]], y[e[:, 0]] - y[e[:, 1]]); inimg = (x[e[:, 0]] >= 0) & (x[e[:, 0]] < c['W']) & (y[e[:, 0]] >= 0) & (y[e[:, 0]] < c['H'])
@@ -602,7 +606,24 @@ def bridges(ch, X, inl_uv, s, a):
         regs.append(dict(area_share=round(sh, 4), u=[round(float(ii.min()) / g, 3), round(float(ii.max() + 1) / g, 3)], v=[round(float(jj.min()) / g, 3), round(float(jj.max() + 1) / g, 3)],
                          centre=[round(float(uc), 3), round(float(vc), 3)], where=', '.join(where)))
     regs.sort(key=lambda r: -r['area_share'])
-    return dict(unsupported_area_share=float(A[~near].sum() / A.sum()), grid=g, rule='no point within %.2f x the chart\'s own point spacing (%.4g) of the lattice in that cell' % (a.bridge_dist, sc), chart_spacing=sc, regions=regs[:8], mask=(~near).astype(int))
+    return dict(unsupported_area_share=float(A[~near].sum() / A.sum()), grid=g, rule='no point within %.2f x the chart\'s own point spacing (%.4g) of the lattice in that cell' % (a.bridge_dist, sc), chart_spacing=sc, regions=regs[:8], mask=(~near).astype(int), area=A)
+
+
+def trim_mask(br, periodic_u, a):
+    """The part of the chart's domain its points support: the supported cells of the 48 x 48 bridge grid, closed by
+    --trim-close cells, enclosed holes filled (interpolation between supported parts is kept), pieces smaller than
+    --trim-min-piece of the area dropped. 1 = kept. The chart's net is not changed: the trim only says where it holds."""
+    sup = br['mask'] == 0; A = br['area']; g = sup.shape[0]
+    if periodic_u: sup3 = np.concatenate([sup, sup, sup], 1)                  # wrap round in u
+    else: sup3 = sup
+    k = ndimage.binary_closing(np.pad(sup3, a.trim_close, mode='edge'), iterations=a.trim_close)[a.trim_close:-a.trim_close, a.trim_close:-a.trim_close] if a.trim_close else sup3
+    k = ndimage.binary_fill_holes(k) | sup3
+    if periodic_u: k = k[:, g:2 * g]
+    lab, nl = ndimage.label(k); keep = np.zeros_like(k)
+    for i in range(1, nl + 1):
+        m = lab == i
+        if A[m].sum() >= a.trim_min_piece * A.sum(): keep |= m
+    return keep.astype(int)
 
 
 # ====================================================================== main
@@ -679,11 +700,18 @@ def run(a):
                    residuals=dict(train_all=summary(d_all[tr], tol, um), train_inliers=summary(d_all[tr][f['w'] > 0], tol, um), held_out=summary(d_all[ho], tol, um),
                                   note='distance from each point to the chart (dense lattice + tangent plane), on the best level\'s net'),
                    control_points_without_support=int((sup < a.unsupported_below).sum()), unsupported_rule='summed basis weight of the inlier points < %.2g' % a.unsupported_below,
-                   bridges={k: v for k, v in br.items() if k != 'mask'}, levels=f['levels'], stop=f['stop'])
+                   bridges={k: v for k, v in br.items() if k not in ('mask', 'area')}, levels=f['levels'], stop=f['stop'])
         log('   %s: net %d x %d, held-out %s; control points without support %d of %d; unsupported area %.1f %%'
             % (ch.name, ch.au.n, ch.av.n, fmt(rep['residuals']['held_out'], um), rep['control_points_without_support'], ch.au.n * ch.av.n, 100 * br['unsupported_area_share']))
         for r in br['regions'][:4]: log('      unsupported region: %.1f %% of the area, u %s, v %s, %s' % (100 * r['area_share'], r['u'], r['v'], r['where']))
-        R['charts'].append(rep); cj = ch.to_json(sup, um); cj['bridge_mask_48x48_v_rows'] = br['mask'].tolist(); out_charts.append(cj)
+        cj = ch.to_json(sup, um); cj['bridge_mask_48x48_v_rows'] = br['mask'].tolist()
+        if a.trim:
+            tm = trim_mask(br, ch.au.periodic, a); ch.trim = tm; A = br['area']; kept = tm == 1; jj, ii = np.nonzero(kept); g = tm.shape[0]
+            cj['trim_mask_48x48_v_rows'] = tm.tolist(); cj['trimmed_domain'] = dict(u=[float(ii.min()) / g, float(ii.max() + 1) / g], v=[float(jj.min()) / g, float(jj.max() + 1) / g], rule='1 = kept: the chart holds only there (cells of the 48 x 48 grid of (u, v), row j = v)') if kept.any() else None
+            rep['trim'] = dict(kept_area_share=float(A[kept].sum() / A.sum()), unsupported_share_before=float(br['unsupported_area_share']),
+                               unsupported_share_of_kept=float(A[kept & (br['mask'] == 1)].sum() / max(A[kept].sum(), 1e-18)), close_cells=a.trim_close, min_piece=a.trim_min_piece)
+            log('      trim: keeps %.1f %% of the area; unsupported share %.1f %% -> %.1f %% of what is kept' % (100 * rep['trim']['kept_area_share'], 100 * br['unsupported_area_share'], 100 * rep['trim']['unsupported_share_of_kept']))
+        R['charts'].append(rep); out_charts.append(cj)
     if charts:
         fs = freespace(charts, D['cams'], oc, op, X, s, a, want_pairs=True); pdx = fs.pop('pairs_data')
         for ci, (p, cj) in enumerate(zip(fs['per_chart'], out_charts)):
@@ -696,12 +724,16 @@ def run(a):
         log('      share by tolerance: ' + ', '.join('%g s%s: %.2f %%' % (b['tol_s'], ' (%.1f mm)' % (b['tol'] * um) if um else '', 100 * b['share']) for b in fs['by_tolerance']))
         for p in fs['per_chart']:
             if p['count']: log('      hidden by %s: %d, of which %.0f %% by its unsupported part (%.0f %% of its area); by chart region (v rows top = 1, u cols):' % (p['chart'], p['count'], 100 * p['share_on_unsupported_part'], 100 * p['unsupported_area_share_of_chart'])); [log('        ' + ' '.join('%5d' % x for x in row)) for row in p['where_v_rows_u_cols_8x8'][::-1]]
+        if a.trim:
+            ft = freespace(charts, D['cams'], oc, op, X, s, a, use_trim=True)
+            log('      with the charts trimmed: %d (%.2f %%) by more than %.3g; by tolerance: %s' % (ft['count'], 100 * ft['share'], ft['tol'], ', '.join('%g s: %.2f %%' % (b['tol_s'], 100 * b['share']) for b in ft['by_tolerance'])))
+            fs['trimmed'] = dict(share=ft['share'], count=ft['count'], by_tolerance=ft['by_tolerance'], per_chart=[dict(chart=p['chart'], count=p['count']) for p in ft['per_chart']])
         R['freespace'] = dict(fs, rule='a camera that observed a point saw it unoccluded: z-buffer of every chart per camera picks the nearest lattice sample in the point\'s pixel; violation = the point\'s ray meets that sample\'s tangent plane inside its footprint and nearer than the point by more than tol',
                               penalty_weight=a.freespace, note='observations are those in the model\'s tracks' + (' (incomplete tracks: see --track-len)' if a.track_len else ''))
     R['stop'] = dict(stop, iterations=budget.it, seconds=round(time.time() - budget.t0, 2))
     R['thresholds'] = dict(spacing_s=s, unit_mm=um, **{k: getattr(a, k) for k in ('min_track', 'max_reproj', 'knn', 'knn_sigma', 'plane_tol', 'plane_iters', 'plane_side', 'plane_min_points', 'plane_min_share', 'above', 'graph_k', 'link', 'plane_local',
                            'layouts', 'shoulder', 'axis', 'axis_grid', 'layout_tie', 'warn_two_layer', 'warn_empty', 'az_bins', 'gap_cover', 'cover_rows', 'min_gap_deg', 'row_bins', 'edge_q', 'layer_gap', 'layout_cell_points', 'envelope_cells', 'start_net', 'smooth', 'irls', 'tukey_min', 'reparam_steps',
-                           'min_support', 'refine_ratio', 'refine_floor', 'max_net', 'max_levels', 'holdout', 'min_gain', 'patience', 'tol', 'fs_tol', 'fs_edge_q', 'fs_min_cos', 'freespace', 'fs_push', 'bridge_dist', 'unsupported_below', 'max_seconds', 'max_iters', 'seed')},
+                           'min_support', 'refine_ratio', 'refine_floor', 'max_net', 'max_levels', 'holdout', 'min_gain', 'patience', 'tol', 'fs_tol', 'fs_edge_q', 'fs_min_cos', 'freespace', 'fs_push', 'bridge_dist', 'unsupported_below', 'trim', 'trim_close', 'trim_min_piece', 'max_seconds', 'max_iters', 'seed')},
                          note='lengths given as multiples of s are in model units = multiple x s')
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, 'charts.json'), 'w') as fh:
@@ -770,6 +802,8 @@ def parser():
     g.add_argument('--freespace', type=float, default=0.0, help='weight of the free-space penalty rows (0 = diagnostic only)')
     g.add_argument('--fs-push', type=float, default=0.0, help='penalty target: the point\'s depth along the ray plus this x --fs-tol')
     g = ap.add_argument_group('report'); g.add_argument('--bridge-dist', type=float, default=3.0); g.add_argument('--unsupported-below', type=float, default=1.0)
+    g.add_argument('--trim', action='store_true', help='write a trim mask per chart: the part of its domain its points support (closed, holes filled); free space is also measured on the trimmed charts')
+    g.add_argument('--trim-close', type=int, default=2, help='trim: morphological closing of the supported cells, in cells of the 48 x 48 grid'); g.add_argument('--trim-min-piece', type=float, default=0.01, help='trim: drop kept pieces smaller than this share of the chart\'s area')
     g = ap.add_argument_group('job'); g.add_argument('--max-seconds', type=float, default=900.0); g.add_argument('--max-iters', type=int, default=400, help='least-squares solves, all charts')
     g.add_argument('--seed', type=int, default=0)
     return ap
