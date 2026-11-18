@@ -2288,7 +2288,7 @@
         var h = st.hg, show = !!(h && st.scene === 'hinge' && !st.manual && L && L.v3 && !st.versus);
         if (show !== hgShown) { hgShown = show; hgBox.style.display = show ? 'block' : 'none'; if (!show) { hgKey = ''; hgH = 0; } }
         if (!show) return;
-        var bw = tiny ? 156 : big ? 310 : 248, cw = bw - (tiny ? 16 : 24), ch = tiny ? 34 : big ? 84 : 66;
+        var bw = tiny ? 156 : big ? 320 : 264, cw = bw - (tiny ? 16 : 24), ch = tiny ? 34 : big ? 84 : 66;
         var inK = h.k > h.rec && !(st.op && st.op.type === 'ins' && st.op.phase === 0);
         var key = [bw, h.k, h.rec, inK ? 1 : 0, pctA(ms.rmse), h.k > h.rec ? ms.rmse.toPrecision(3) : '', m.nu * m.nv].join('|');
         if (key !== hgKey) {
