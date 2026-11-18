@@ -432,3 +432,6 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 :root[dir="rtl"] .step p.qa{letter-spacing:-.03em;line-height:1}
 :root[dir="rtl"] em{font-style:normal}
 :root[dir="rtl"] :is(p,li,td):not(.thesis,.qa) em:not([class]){font-weight:600;color:var(--text)}
+
+/* the core cut (talk/core.js): a step outside the cut leaves the flow, as in the knob design */
+:root.kt-core .nav.kt-unsampled{display:none!important}
