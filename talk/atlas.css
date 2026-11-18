@@ -1,0 +1,184 @@
+/* Knot-a-Surface talk — design variant B, "the talk is its own method" (talk/atlas.js). Every rule here is scoped to
+   html.kt-knob, which only talk.html?design=knob sets: without it this file changes nothing. Colours are the talk's
+   semantic tokens: claims = control points (--ctrl), sampled steps = Gaussians (--splat), the story line = the surface
+   (--surf). */
+
+/* ---------- the deck: what the knob leaves out leaves the flow, as a part switched off does ---------- */
+:root.kt-knob .nav.kt-unsampled{display:none!important}
+:root.kt-knob .hud .cut{display:none}
+
+/* the claim line: at the knob's floor, above the headline of each claim step */
+.kt-claimline{display:none}
+:root.kt-knob.kt-floor .kt-claimline{display:flex;align-items:baseline;gap:.7rem;margin:0 0 .9rem;max-width:40rem;
+  font:500 .95rem/1.4 var(--f-ui);color:var(--text)}
+:root.kt-knob.kt-floor .kt-claimline .kt-cl-n{flex:none;padding:.22rem .5rem;border-radius:999px;font:700 .72rem/1 var(--f-mono);
+  letter-spacing:.04em;color:#fff;background:var(--ctrl);font-variant-numeric:tabular-nums}
+:root.kt-knob.kt-floor .kt-claimline .kt-cl-t{border-inline-start:2px solid rgba(var(--ctrl-rgb),.5);padding-inline-start:.7rem}
+
+/* ---------- the HUD knob ---------- */
+.kt-knobhud{display:flex;align-items:center;gap:.45rem;padding:.22rem .3rem .22rem .6rem;border:1px solid var(--line2);border-radius:8px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.kt-knobhud .kt-kh-l{display:flex;flex-direction:column;gap:.18rem;cursor:pointer}
+.kt-knobhud small{font:600 .5rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute);white-space:nowrap}
+.kt-knobhud input,.kta-knob input{--kt-fill:50%;-webkit-appearance:none;appearance:none;width:9rem;height:14px;margin:0;background:none;cursor:pointer}
+.kt-knobhud input::-webkit-slider-runnable-track,.kta-knob input::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+  background:linear-gradient(to right,var(--splat) var(--kt-fill),var(--line2) var(--kt-fill))}
+:root[dir="rtl"] .kt-knobhud input::-webkit-slider-runnable-track,:root[dir="rtl"] .kta-knob input::-webkit-slider-runnable-track{
+  background:linear-gradient(to left,var(--splat) var(--kt-fill),var(--line2) var(--kt-fill))}
+.kt-knobhud input::-moz-range-track,.kta-knob input::-moz-range-track{height:4px;border-radius:2px;background:var(--line2)}
+.kt-knobhud input::-moz-range-progress,.kta-knob input::-moz-range-progress{height:4px;border-radius:2px;background:var(--splat)}
+.kt-knobhud input::-webkit-slider-thumb,.kta-knob input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5px;
+  border-radius:50%;background:var(--bg3);border:2px solid var(--splat);box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.kt-knobhud input::-moz-range-thumb,.kta-knob input::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--bg3);border:2px solid var(--splat)}
+.kt-knobhud output{font:600 .62rem/1.2 var(--f-mono);color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums;min-width:9.5rem}
+.kt-knobhud.is-floor output{color:var(--ctrl)}
+.hud .kt-atlasbtn{display:inline-flex;align-items:center;justify-content:center;padding:.36rem .45rem}
+.hud .kt-atlasbtn svg{display:block;width:1.4em;height:1.1em;stroke:var(--surf);fill:var(--ctrl)}
+.keys .kt-keyA kbd{margin-inline-end:.5rem}
+:root[dir="rtl"] .keys .kt-keyA kbd{margin-right:0;margin-left:.5rem}
+@media (max-width:900px){
+  .kt-knobhud{gap:.25rem;padding:.15rem .2rem .15rem .35rem}
+  .kt-knobhud input{width:4.2rem}
+  .kt-knobhud output{min-width:0;font-size:.5rem;max-width:4.4rem;white-space:normal;line-height:1.15}
+  .hud .kt-atlasbtn{padding:.3rem .35rem}
+  .kt-knobhud small{display:none}
+}
+
+/* ---------- the atlas ---------- */
+:root.kt-atlas-open,:root.kt-atlas-open body{overflow:hidden}
+.kta{--kta-tw:62px;--kta-gut:30px;position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;color:var(--text);
+  font-family:var(--f-ui);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(26px) saturate(1.15);
+  -webkit-backdrop-filter:blur(26px) saturate(1.15)}
+.kta[hidden]{display:none}
+.kta button{font:inherit;color:inherit}
+.kta-top{flex:none;display:flex;align-items:center;gap:1.4rem;padding:.6rem 1.4rem .35rem}
+.kta-uv{flex:none;width:44px;height:44px;stroke:var(--dim);fill:var(--dim);font:500 12px/1 var(--f-mono)}
+.kta-uv text{stroke:none;font-style:italic}
+.kta-ttl{min-width:0}
+.kta-kick{font:600 .6rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.kta-kick span{text-transform:none;letter-spacing:.04em}
+.kta-ttl h2{margin:.3rem 0 .35rem;font:700 1.55rem/1.05 var(--f-ui);letter-spacing:-.02em}
+.kta-legend{display:flex;flex-wrap:wrap;gap:.25rem .9rem;margin:0;font:500 .8rem/1.2 var(--f-ui);color:var(--dim)}
+.kta-legend span{display:inline-flex;align-items:center;gap:.4rem}
+.kta-legend span+span::before{content:'·';margin-inline-end:.5rem;color:var(--mute)}
+.kta-legend i{display:inline-block;width:.6rem;height:.6rem}
+.kta-lg-c i{background:var(--ctrl);border-radius:2px;transform:rotate(45deg)}
+.kta-lg-s i{background:var(--splat);border-radius:50%}
+.kta-lg-b i{width:1.1rem;height:.3rem;border-radius:2px;background:linear-gradient(to right,var(--splat) 60%,var(--line2) 60%)}
+:root[dir="rtl"] .kta-lg-b i{background:linear-gradient(to left,var(--splat) 60%,var(--line2) 60%)}
+.kta-knob{margin-inline-start:auto;display:grid;grid-template-columns:auto auto;align-items:center;gap:.25rem 1rem;padding:.6rem 1rem;
+  border-radius:16px;background:color-mix(in srgb,var(--bg3) 72%,transparent);box-shadow:var(--glass-edge),var(--glass-drop)}
+.kta-knob label{display:flex;flex-direction:column;gap:.4rem;cursor:pointer}
+.kta-knob label span{font:600 .58rem/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.kta-knob input{width:min(22rem,34vw);height:22px}
+.kta-knob input::-webkit-slider-runnable-track{height:6px;border-radius:3px}
+.kta-knob input::-webkit-slider-thumb{width:22px;height:22px;margin-top:-8px;border-width:3px}
+.kta-kr{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem}
+.kta-knob output{font:700 1.05rem/1.1 var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kta-reset{padding:.28rem .6rem;border:1px solid var(--line2);border-radius:999px;background:transparent;cursor:pointer;
+  font:600 .62rem/1 var(--f-mono)!important;letter-spacing:.06em;color:var(--dim)!important}
+.kta-reset:disabled{opacity:.4;cursor:default}
+.kta-note{grid-column:1 / -1;font:500 .7rem/1.2 var(--f-ui);color:var(--ctrl)}
+.kta-note:empty{display:none}
+.kta-x{flex:none;width:2.4rem;height:2.4rem;border:1px solid var(--line2);border-radius:50%;background:color-mix(in srgb,var(--bg3) 70%,transparent);
+  font-size:1.3rem!important;line-height:1;cursor:pointer;color:var(--dim)!important}
+.kta-x:hover{color:var(--text)!important}
+
+.kta-scroll{flex:1;min-height:0;overflow:auto;padding:0 1.4rem;overscroll-behavior:contain}
+.kta-board{position:relative;min-width:100%;padding-bottom:22px}
+.kta-svg{position:absolute;inset:0 auto auto 0;pointer-events:none;overflow:visible}
+.kta-grid{position:relative;display:grid;grid-template-rows:auto var(--kta-band,250px) auto auto;column-gap:0}
+.kta-rowlab{display:flex;align-items:flex-start;justify-content:center;padding-top:.5rem}
+.kta-rowlab span{writing-mode:vertical-rl;transform:rotate(180deg);font:700 .58rem/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+:root[dir="rtl"] .kta-rowlab span{transform:none;letter-spacing:0}
+.kta-rl1 span{color:var(--ctrl)}.kta-rl2 span{color:var(--splat)}.kta-rl3 span{color:var(--mute)}
+.kta-rl2,.kta-rl3{border-top:1px solid var(--line)}
+.kta-head{min-width:0;padding:.35rem .4rem .45rem;border-bottom:1px solid var(--line2)}
+.kta-head.is-now{background:linear-gradient(to bottom,rgba(var(--surf-rgb),.09),transparent)}
+.kta-h1{display:flex;align-items:center;gap:.25rem;min-width:0;flex-wrap:wrap}
+.kta-h1 b{font:700 .95rem/1 var(--f-mono);letter-spacing:-.02em;white-space:nowrap}
+.kta-bar{height:3px;margin-top:.4rem;border-radius:2px;background:var(--line2);overflow:hidden}
+.kta-bar i{display:block;height:100%;width:0;background:var(--splat);border-radius:2px;transition:width .45s}
+.kta-head.is-more .kta-bar{box-shadow:0 0 0 1px rgba(var(--splat-rgb),.35)}
+.kta-pm{margin-inline-start:auto;display:inline-flex;align-items:center;gap:1px;flex:none}
+.kta-pm button{width:1.05rem;height:1.05rem;padding:0;border:1px solid var(--line2);border-radius:50%;background:color-mix(in srgb,var(--bg3) 70%,transparent);
+  cursor:pointer;font:600 .75rem/1 var(--f-mono)!important;color:var(--dim)!important}
+.kta-pm button:hover{color:var(--text)!important;border-color:var(--splat)}
+.kta-lvl{font:700 .55rem/1 var(--f-mono);font-style:normal;color:var(--splat);min-width:0}
+.kta-head.is-less .kta-lvl{color:var(--mute)}
+.kta-ht{margin-top:.3rem;font:600 .66rem/1.2 var(--f-ui);color:var(--dim);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;hyphens:auto}
+.kta-head.is-more .kta-ht{color:var(--splat)}
+.kta-cell{display:grid;grid-template-columns:repeat(var(--kta-sub,1),minmax(0,1fr));align-content:start;gap:8px 4px;padding:.6rem .25rem .45rem;min-width:0}
+.kta-r2{border-top:1px solid var(--line)}.kta-r3{border-top:1px solid var(--line)}
+
+/* a tile: the step's title, its minutes; lit (sampled, a Gaussian) or a ghost */
+.kta-tile{position:relative;display:block;min-width:0;padding:.32rem .35rem .28rem;border:1px solid var(--line2);border-radius:7px;text-align:start;
+  cursor:pointer;background:transparent;transition:background .45s,border-color .45s,opacity .45s,color .45s,transform .45s}
+.kta-tt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:500 .62rem/1.2 var(--f-ui);max-height:2.4em;
+  hyphens:auto;overflow-wrap:break-word}
+.kta-thin .kta-tt{display:block;max-height:1.2em;white-space:nowrap;text-overflow:ellipsis}
+.kta-min{position:absolute;top:-.62em;inset-inline-end:.3rem;padding:0 .2rem;border-radius:3px;font:600 .5rem/1.2 var(--f-mono);color:var(--mute);
+  font-variant-numeric:tabular-nums;background:color-mix(in srgb,var(--bg) 92%,var(--bg3))}
+.kta-rz{display:none;margin-top:.15rem;font:600 .5rem/1.2 var(--f-mono);color:var(--splat);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kta-tile.is-raised .kta-rz{display:block}
+.kta-tile.is-lit{background:rgba(var(--splat-rgb),.11);border-color:rgba(var(--splat-rgb),.42);box-shadow:inset 3px 0 0 var(--splat)}
+:root[dir="rtl"] .kta-tile.is-lit{box-shadow:inset -3px 0 0 var(--splat)}
+.kta-tile.is-lit .kta-min{color:var(--splat)}
+.kta-tile.is-ghost{border-style:dashed;opacity:.5}
+.kta-tile.is-ghost .kta-tt{color:var(--dim)}
+.kta-tile.is-off .kta-tt{text-decoration:line-through}
+.kta-tile:hover{opacity:1;border-color:var(--dim)}
+.kta-tile.is-now,.kta-claim.is-now{outline:2.5px solid var(--text);outline-offset:2px;opacity:1}
+.kta-tile.kta-in{animation:kta-in 1.2s ease-out}
+.kta-tile.kta-out{animation:kta-out 1.2s ease-out}
+@keyframes kta-in{0%{box-shadow:0 0 0 0 rgba(var(--splat-rgb),.55);transform:translateY(-3px)}100%{box-shadow:0 0 0 7px rgba(var(--splat-rgb),0)}}
+@keyframes kta-out{0%{opacity:1;box-shadow:0 0 0 2px rgba(var(--err-rgb),.55);transform:none}40%{transform:translateY(3px)}100%{opacity:.5;box-shadow:0 0 0 2px rgba(var(--err-rgb),0)}}
+
+/* the band of claims: the control points of the talk */
+.kta-bandcell{min-width:0}
+.kta-claims{position:absolute;inset-inline:0;pointer-events:none}
+.kta-claim{position:absolute;pointer-events:auto;display:block;padding:.5rem .65rem .5rem .6rem;
+  border:1px solid rgba(var(--ctrl-rgb),.38);border-radius:12px;text-align:start;cursor:pointer;
+  background:color-mix(in srgb,var(--bg3) 86%,transparent);box-shadow:var(--glass-edge),0 10px 30px -18px rgba(88,56,24,.35);
+  transition:transform .3s,box-shadow .3s}
+.kta-claim:hover{transform:translateY(-1px);border-color:var(--ctrl)}
+.kta-cn{float:inline-start;margin-inline-end:.45rem;margin-top:.05rem;font:800 1.95rem/.9 var(--f-ui);letter-spacing:-.03em;color:var(--ctrl);font-variant-numeric:tabular-nums}
+.kta-ct{display:block;font:600 .94rem/1.27 var(--f-ui);letter-spacing:-.01em;color:var(--text);overflow-wrap:break-word;hyphens:auto}
+.kta-cm{display:block;clear:both;margin-top:.2rem;font:500 .55rem/1.2 var(--f-mono);color:var(--mute);letter-spacing:.04em}
+.kta-cp{fill:var(--ctrl);stroke:var(--bg3);stroke-width:2}
+.kta-cp.is-now{stroke:var(--text);stroke-width:2.5}
+.kta-poly{fill:none;stroke:var(--ctrl);stroke-width:1;stroke-dasharray:3 4;opacity:.55}
+.kta-curve{fill:none;stroke:var(--surf);stroke-width:2.6;stroke-linecap:round;opacity:.9}
+.kta-lead{fill:none;stroke:var(--ctrl);stroke-width:1;opacity:.4}
+.kta-gs{fill:var(--bg3);stroke:var(--mute);stroke-width:1.2;opacity:.55;transform-box:fill-box;transform-origin:center;transform:scale(.62);
+  transition:transform .45s,fill .45s,stroke .45s,opacity .45s}
+.kta-gs.is-lit{fill:var(--splat);stroke:var(--bg3);stroke-width:1.5;opacity:.92;transform:scale(1)}
+.kta-gs.is-now{stroke:var(--text);stroke-width:2.5;opacity:1}
+.kta-seam{stroke:var(--mute);stroke-width:1;stroke-dasharray:2 5;opacity:.5}
+.kta-seamw{font:600 9px/1 var(--f-mono);letter-spacing:.12em;fill:var(--mute)}
+.kta-foot{flex:none;padding:.45rem 1.4rem .7rem;font:500 .66rem/1.2 var(--f-mono);color:var(--mute)}
+:root[dir="rtl"] .kta :is(.kta-kick,.kta-knob label span,.kta-foot,.kta-hm,.kta-rz){letter-spacing:0;text-transform:none}
+
+/* phone and narrow windows: the columns scroll sideways, the rows stay */
+@media (max-width:1100px){ .kta-board{min-width:1240px} }
+@media (max-width:900px){
+  .kta{--kta-tw:84px}
+  .kta-board{min-width:1480px}
+  .kta-top{flex-wrap:wrap;gap:.6rem .9rem;padding:.7rem .9rem .5rem}
+  .kta-uv{width:34px;height:34px}
+  .kta-ttl{flex:1}
+  .kta-ttl h2{font-size:1.2rem}
+  .kta-legend{font-size:.7rem}
+  .kta-knob{order:3;flex:1 1 100%;margin:0;grid-template-columns:1fr auto;padding:.5rem .8rem}
+  .kta-knob input{width:100%}
+  .kta-knob output{font-size:.85rem}
+  .kta-x{order:2}
+  .kta-scroll{padding:0 .9rem}
+  .kta-foot{padding:.35rem .9rem .6rem}
+}
+
+/* the slide master: the cut is the knob now; a step the knob leaves out says so ("not sampled at N min"), unlike "off" */
+:root.kt-knob .ktm-cuts{display:none}
+:root.kt-knob .ktm-cols span:last-child,:root.kt-knob .ktm-row>.ktm-m:last-child,:root.kt-knob .ktm-grp>.ktm-m:last-child{visibility:hidden}
+:root.kt-knob .ktm-tag.kt-ns{border-style:dotted;border-color:var(--splat);color:var(--splat)}
+:root.kt-knob .ktm-row.kt-ns-row .ktm-go{opacity:.6}

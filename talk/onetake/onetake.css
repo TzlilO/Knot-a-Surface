@@ -1,0 +1,135 @@
+/* One take (talk-onetake.html): one object, one shot, museum labels.
+   Loads after talk/kit.css, whose light tokens (html[data-theme="light"]) it uses: every colour is a token.
+   Layout: the stage fills the window; the placard sits bottom-left (bottom-right in Hebrew); a loupe opens top-right
+   (top-left in Hebrew) for the beats that explain on a toy; a thin progress rule at the top. On a phone the stage takes
+   the top of the screen and the placard the bottom, full width, with the loupe over the stage. */
+
+:root{
+  --ot-glass:rgba(255,255,255,.85);
+  --ot-gut:clamp(16px,2.6vw,40px);
+  --ot-shift:7vw;                        /* the owl sits a little right of centre, away from the placard */
+  --ot-shift-loupe:-9vw;                 /* and a little left of it while the loupe is open */
+  --ot-shift-wide:15vw;                  /* further right behind the wide evidence placard */
+  --ot-ease:cubic-bezier(.22,1,.36,1);
+}
+:root[dir="rtl"]{--ot-shift:-7vw;--ot-shift-loupe:9vw;--ot-shift-wide:-15vw}
+html,body{margin:0;height:100%;overflow:hidden}
+body.ot{background:var(--bg);color:var(--text);font-family:var(--f-ui);-webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;touch-action:pan-y}
+:root[lang="he"] body.ot{font-family:'Heebo',var(--f-ui)}
+
+/* the room: slow, warm light on paper (no animation: the owl is the only thing that moves) */
+.ot-room{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(60% 55% at 62% 42%,var(--bg3) 0%,var(--bg2) 46%,var(--bg) 100%)}
+:root[dir="rtl"] .ot-room{background:radial-gradient(60% 55% at 38% 42%,var(--bg3) 0%,var(--bg2) 46%,var(--bg) 100%)}
+
+/* ---------- the stage: one or two layers (a cross-fade between modules) ---------- */
+.ot-stage{position:fixed;inset:0;transform:translate(var(--ot-shift),-3vh);transition:transform 1.4s var(--ot-ease),opacity .9s var(--ot-ease)}
+.ot-loupe-on .ot-stage{transform:translate(var(--ot-shift-loupe),-3vh)}
+.ot-wide .ot-stage{transform:translate(var(--ot-shift-wide),-3vh)}
+.ot-center .ot-stage{transform:none}
+.ot-dim .ot-stage{opacity:.65}
+.ot-layer{position:absolute;inset:0;opacity:0;transition:opacity .6s linear}
+.ot-layer.on{opacity:1}
+.ot-layer .kt-sim{position:absolute;inset:0;background:transparent}
+
+/* the modules' own boxes off (the same rule as deck.css's "Info boxes off", for this page) */
+:root.kt-bare .kt-sim .kt-box{visibility:hidden!important;pointer-events:none!important}
+
+/* ---------- the loupe ---------- */
+.ot-loupe{position:fixed;z-index:6;top:calc(var(--ot-gut) + 10px);right:var(--ot-gut);width:36vw;aspect-ratio:4/3;max-height:52vh;
+  border-radius:22px;overflow:hidden;background:var(--ot-glass);
+  box-shadow:var(--glass-edge),var(--glass-drop);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+  opacity:0;transform:translateY(-8px) scale(.97);transform-origin:100% 0;pointer-events:none;visibility:hidden;
+  transition:opacity .55s var(--ot-ease),transform .7s var(--ot-ease),visibility 0s linear .7s}
+:root[dir="rtl"] .ot-loupe{right:auto;left:var(--ot-gut);transform-origin:0 0}
+.ot-loupe.on{opacity:1;transform:none;pointer-events:auto;visibility:visible;transition:opacity .55s var(--ot-ease),transform .7s var(--ot-ease),visibility 0s}
+.ot-loupe-sim{position:absolute;inset:0}
+.ot-loupe-sim>.kt-sim{position:absolute;inset:0;background:transparent;border-radius:inherit}
+.ot-loupe .ot-loupe-msg{position:absolute;inset:0;display:grid;place-items:center;padding:1.5rem;text-align:center;color:var(--dim);font-size:.95rem}
+
+/* the connector: a hairline from the loupe to the owl */
+.ot-wire{position:fixed;inset:0;width:100%;height:100%;z-index:5;pointer-events:none;opacity:0;transition:opacity .6s var(--ot-ease)}
+.ot-wire.on{opacity:1}
+.ot-wire line{stroke:var(--mute);stroke-width:1;stroke-dasharray:2 4}
+.ot-wire circle{fill:none;stroke:var(--mute);stroke-width:1}
+
+/* ---------- the placard ---------- */
+.ot-placard{position:fixed;z-index:7;left:var(--ot-gut);bottom:var(--ot-gut);width:min(34rem,calc(100vw - 2 * var(--ot-gut)));box-sizing:border-box;
+  padding:1.15rem 1.4rem 1.05rem;border-radius:18px;background:var(--ot-glass);
+  box-shadow:var(--glass-edge),var(--glass-drop);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);
+  transition:width .6s var(--ot-ease)}
+:root[dir="rtl"] .ot-placard{left:auto;right:var(--ot-gut)}
+.ot-placard.in{animation:ot-in .6s var(--ot-ease) both}
+.ot-placard.first{animation:ot-in .9s var(--ot-ease) 2.5s both}        /* the first placard waits: the owl alone first */
+@keyframes ot-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.ot-wide .ot-placard{width:min(46rem,calc(100vw - 2 * var(--ot-gut)))}
+.ot-no{font:500 .7rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:.7rem;font-variant-numeric:tabular-nums}
+:root[lang="he"] .ot-no{letter-spacing:.04em}
+.ot-title{margin:0;font:700 clamp(1.35rem,2.1vw,1.75rem)/1.18 var(--f-ui);letter-spacing:-.022em;color:var(--text);text-wrap:balance}
+:root[lang="he"] .ot-title{font-family:'Heebo',var(--f-ui);letter-spacing:0}
+.ot-text{margin:.55rem 0 0;font-size:1.02rem;line-height:1.5;color:var(--dim);text-wrap:pretty}
+.ot-text:empty,.ot-facts:empty,.ot-act:empty{display:none}
+.ot-prov{margin:.85rem 0 0;padding-top:.65rem;border-top:1px solid var(--line2);font-size:.74rem;line-height:1.45;color:var(--mute);
+  font-variant:small-caps;font-feature-settings:"c2sc","smcp";letter-spacing:.045em;font-variant-numeric:tabular-nums}
+:root[lang="he"] .ot-prov{font-variant:normal;font-feature-settings:normal;letter-spacing:0;font-size:.8rem}
+.ot-prov b{font-weight:600;color:var(--splat)}
+.ot-act{margin-top:.7rem}
+.ot-act button{font:600 .82rem/1 var(--f-ui);color:var(--surf);background:none;border:0;padding:.25rem 0;cursor:pointer;
+  border-bottom:1px solid rgba(var(--surf-rgb),.35)}
+.ot-act button:hover{border-bottom-color:var(--surf)}
+.ot-act kbd{font:500 .7rem/1 var(--f-mono);color:var(--mute);border:1px solid var(--line2);border-radius:4px;padding:.12rem .3rem;margin-inline-start:.4rem}
+
+/* the evidence placard: three facts */
+.ot-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:.9rem 0 0}
+.ot-fact>b{display:block;font:700 1.22rem/1.15 var(--f-ui);letter-spacing:-.015em;color:var(--text);font-variant-numeric:tabular-nums}
+.ot-fact>span{display:block;margin-top:.35rem;font-size:.8rem;line-height:1.4;color:var(--dim)}
+.ot-fact:first-child>b{color:var(--surf)}
+.ot-note{grid-column:1/-1;margin:0;font-size:.74rem;color:var(--mute)}
+
+/* the closing line: one title, larger */
+.ot-last .ot-title{font-size:clamp(1.5rem,2.5vw,2.1rem)}
+
+/* ---------- chrome: progress, hint, clock, message ---------- */
+.ot-progress{position:fixed;z-index:8;left:0;right:0;top:0;height:2px;background:var(--line)}
+.ot-progress i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--surf);transition:width .8s var(--ot-ease)}
+:root[dir="rtl"] .ot-progress i{left:auto;right:0}
+.ot-hint{position:fixed;z-index:8;right:var(--ot-gut);bottom:calc(var(--ot-gut) + 2px);font:500 .7rem/1 var(--f-mono);color:var(--mute);
+  letter-spacing:.04em;white-space:pre;transition:opacity 1.2s var(--ot-ease);pointer-events:none}
+:root[dir="rtl"] .ot-hint{right:auto;left:var(--ot-gut)}
+.ot-hint.gone{opacity:0}
+.ot-clock{position:fixed;z-index:8;right:var(--ot-gut);top:calc(var(--ot-gut) - 6px);font:500 .78rem/1 var(--f-mono);color:var(--dim);
+  font-variant-numeric:tabular-nums;opacity:0;transition:opacity .4s;pointer-events:none;direction:ltr}
+:root[dir="rtl"] .ot-clock{right:auto;left:var(--ot-gut)}
+.ot-clock.on{opacity:1}
+.ot-loupe-on .ot-clock{top:auto;bottom:calc(var(--ot-gut) + 22px)}
+.ot-msg{position:fixed;z-index:9;left:50%;top:42%;transform:translate(-50%,-50%);max-width:28rem;padding:1rem 1.3rem;border-radius:14px;
+  background:var(--ot-glass);box-shadow:var(--glass-edge),var(--glass-drop);color:var(--dim);text-align:center;display:none}
+.ot-msg.on{display:block}
+
+/* ---------- a phone: the stage on top, the placard under it, the loupe over the stage ---------- */
+@media (max-width:760px){
+  :root{--ot-gut:16px;--ot-shift:0px;--ot-shift-loupe:0px;--ot-shift-wide:0px}
+  :root[dir="rtl"]{--ot-shift:0px;--ot-shift-loupe:0px;--ot-shift-wide:0px}
+  .ot-stage,.ot-loupe-on .ot-stage,.ot-wide .ot-stage{transform:none}
+  .ot-stage{bottom:auto;height:64svh;height:64vh}
+  @supports (height:1svh){.ot-stage{height:64svh}}
+  .ot-placard,.ot-wide .ot-placard{left:var(--ot-gut);right:var(--ot-gut);width:auto;bottom:calc(var(--ot-gut) + env(safe-area-inset-bottom));padding:1rem 1.1rem .95rem}
+  :root[dir="rtl"] .ot-placard{left:var(--ot-gut);right:var(--ot-gut)}
+  .ot-title{font-size:1.28rem}
+  .ot-text{font-size:.95rem}
+  .ot-loupe{left:var(--ot-gut);right:var(--ot-gut);width:auto;top:calc(var(--ot-gut) + 6px);aspect-ratio:auto;height:34svh;max-height:none;transform-origin:50% 0}
+  :root[dir="rtl"] .ot-loupe{left:var(--ot-gut);right:var(--ot-gut)}
+  .ot-wire{display:none}
+  .ot-facts{grid-template-columns:1fr;gap:.5rem;margin-top:.6rem}
+  .ot-fact>b{font-size:1rem}
+  .ot-fact>span{margin-top:.1rem;font-size:.74rem;line-height:1.35}
+  .ot-note{font-size:.7rem}
+  /* the loupe takes the top: the owl moves into the band between it and the placard */
+  .ot-loupe-on .ot-stage{top:calc(34svh + 22px);height:calc(30svh - 22px)}
+  .ot-hint{display:none}
+  .ot-clock{top:auto;bottom:auto;top:10px}
+}
+@media (prefers-reduced-motion:reduce){
+  .ot-stage,.ot-placard,.ot-loupe,.ot-wire,.ot-progress i{transition-duration:.01s!important;animation-duration:.01s!important}
+}

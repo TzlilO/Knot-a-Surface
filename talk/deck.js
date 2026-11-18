@@ -264,17 +264,24 @@
     n._key = k; byKey[k] = n;
   });
   function defaultOn(n) { return !n.hasAttribute('data-off') && !n._sec.hasAttribute('data-off'); }
-  function isOn(n) { return Object.prototype.hasOwnProperty.call(over, n._key) ? over[n._key] : defaultOn(n); }
-  function inCut(n, m) { return m !== 20 || !n.matches('.step[data-depth="deep"]'); }
+  /* design "knob" (talk/atlas.js, talk.html?design=knob): a sampled set stands in for the cut, smp = { has(step), cost(step)
+     minutes }; it is transient (never saved here), the presenter's overrides still win, and data-off is the sampler's to
+     decide. null (the classic talk): nothing below changes */
+  var smp = null;
+  function isOn(n) { return Object.prototype.hasOwnProperty.call(over, n._key) ? over[n._key] : smp ? true : defaultOn(n); }
+  function inCut(n, m) { return smp ? smp.has(n) : m !== 20 || !n.matches('.step[data-depth="deep"]'); }
   function shown(n, m) { return isOn(n) && inCut(n, m || cut()); }
   function minutes(sec, m) { return +sec.dataset[m === 20 ? 'min20' : 'min40'] || 0; }
   function inCutOf(sec, m) { return navsOf(sec).filter(function (x) { return inCut(x, m); }); }
-  function share(n, m) { var c = inCutOf(n._sec, m); return inCut(n, m) && c.length ? minutes(n._sec, m) / c.length : 0; }
-  function budget(sec, m) { var c = inCutOf(sec, m); return c.length ? minutes(sec, m) * c.filter(isOn).length / c.length : 0; }
+  function share(n, m) { if (smp) return smp.cost(n); var c = inCutOf(n._sec, m); return inCut(n, m) && c.length ? minutes(n._sec, m) / c.length : 0; }
+  function budget(sec, m) {
+    if (smp) return navsOf(sec).reduce(function (t, x) { return t + (shown(x) ? smp.cost(x) : 0); }, 0);
+    var c = inCutOf(sec, m); return c.length ? minutes(sec, m) * c.filter(isOn).length / c.length : 0;
+  }
   function set(n, on) { if (!!on === defaultOn(n)) delete over[n._key]; else over[n._key] = !!on; }
   function layout() {
     var m = cut();
-    allNav.forEach(function (n) { var on = isOn(n); n.classList.toggle('kt-on', on); n.classList.toggle('kt-off', !on); });
+    allNav.forEach(function (n) { var on = isOn(n); n.classList.toggle('kt-on', on); n.classList.toggle('kt-off', !on); n.classList.toggle('kt-unsampled', !!smp && !smp.has(n)); });
     chapters.forEach(function (sec) {
       var navs = navsOf(sec), gone = !navs.some(function (n) { return shown(n, m); });
       sec.classList.toggle('kt-on', navs.some(isOn));             // a data-off section that something of is on
@@ -538,7 +545,9 @@
       for (var k in o || {}) if (byKey[k] && typeof o[k] === 'boolean') set(byKey[k], o[k]);
       refresh();
     },
-    refresh: refresh
+    refresh: refresh,
+    // design "knob" (talk/atlas.js): sample({ has, cost }) or sample(null); repaints like a change of cut (event kt-cut)
+    sample: function (s) { smp = s || null; layout(); settle(); onScroll(); tick(); emit('kt-cut', { cut: cut() }); }
   };
 
   /* ================= boot =================
