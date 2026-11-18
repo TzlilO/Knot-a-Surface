@@ -111,6 +111,8 @@
       <div class="tag">Explicit representation</div>
       <h2>Simply a <span>list</span> of points</h2>
       <p>The most direct way: store where everything is. <b>Fast to draw, easy to edit.</b></p>
+      <p>Formally: the surface is the image of a map from a parameter domain into space. Its points are given directly, and a list stores samples of them.</p>
+      <div class="eq" data-tex="\begin{gathered}\mathcal{S}=\{\,\mathbf{f}(u,v)\;:\;(u,v)\in D\,\}\\ \mathbf{f}:D\subset\mathbb{R}^2\to\mathbb{R}^3\end{gathered}"></div>
       <div class="try">Drag to turn it</div>
     </article>
     <article class="step nav" data-scene="mesh" data-w="3">
@@ -133,6 +135,8 @@
       <div class="tag">Implicit representation</div>
       <h2>Not a list. <span>A question.</span></h2>
       <p>One function answers for every point in space: how far is the surface, and which side of it am I on? <b>Smooth, continuous and compact.</b></p>
+      <p>Formally: the surface is the set of points where a function of space equals zero. The function is what is stored; the points have to be searched for.</p>
+      <div class="eq" data-tex="\begin{gathered}\mathcal{S}=\{\,\mathbf{x}\in\mathbb{R}^3\;:\;F(\mathbf{x})=0\,\}\\ F:\mathbb{R}^3\to\mathbb{R}\end{gathered}"></div>
       <div class="try">Drag the point</div>
     </article>
     <article class="step nav" data-scene="march" data-w="3">
