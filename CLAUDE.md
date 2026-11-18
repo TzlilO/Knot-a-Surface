@@ -175,7 +175,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   of the surface veiled and its share measured, `api.window()` / `windowNet()` for tests),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
   draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
-  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets. Its main
+  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets; scene `hinge`
+  (the core cut's picture of the idea) = `auto` slowed to one ~3.2 s beat per knot, 7 knots from the coarse net then a
+  rest (no loop): worst span red with the dashed coming knot, the insertion (flash, "surface unchanged"), the real CG fit
+  with its iterations spread over `PACE.hinge.fit` s (counted first on a copy: only the pacing is scripted), a rest; a
+  `kt-box` readout `.rf-hg` top right of the 3D view shows the surface RMSE large, "was", a step chart of the RMSE after
+  each converged fit (snapped values, `peek().hinge.hist`) and the knot / control-point count (6.29 % → 3.79 %). Its main
   view is the manifold in 3D (`make3D`: `gl.sheet` / `gl.lines` / `gl.hidden` / `gl.splats` / `gl.draw`, in planoid's
   frame and proportions: x = u, z = v over SPAN 3.2, relief HS = ZW x SPAN, planoid's camera, so chapter 03's patch
   and this surface are one picture): the live sheet, the terrain as a ghost of 24 x 24 neutral dots with red error
