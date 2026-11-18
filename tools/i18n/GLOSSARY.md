@@ -28,14 +28,14 @@ tensor product, convex combination(s), convex hull.
 optimiser, the thing, is English), מצלמה, מבט, קרן, עומק, תצלום, חומר, אטימות, עריכה, רשימה, כתם, גאוסיאן /
 גאוסיאנים, ענן (a cloud of Gaussians; "point cloud" is English), משולשים, ווקסלים, גשר / חור (mesh defects), לתפור /
 תפירה (to stitch), רשת (a net or a grid alone, e.g. "רשת ה‑5 × 5", "רשת הקפיצים", "רשת ווקסלים"; a control net is
-English), מפה only for an ordinary map (the error map of chapter 05, "כמו מפה", "אטלס גאוגרפי"), סריקה, צומת, מעטפת,
+English), מפה only for an ordinary map (the error map at the end of chapter 03, "כמו מפה", "אטלס גאוגרפי"), סריקה, צומת, מעטפת,
 רמה, and every wording of "What is never strengthened" below. Already Latin: 3DGS, NeRF, NURBS, COLMAP, SfM, DINOv3,
 PSNR, RMS, SH, DTU, TSDF, Poisson, Chamfer, the file formats.
 
 **Ambiguous Hebrew, decided per sentence by the English key:** "קשור" (bound) and "קשר" (connection: "אין קשר בין מקום
 ברשימה למקום במרחב") are not "knot"; "רשת" was net, grid or mesh: only "mesh" became English; "מפה" was chart, map or
 depth map; "גס / עדין" stay Hebrew as plain description ("רשת גסה", "לדגום עדין יותר"), only the method name is
-"coarse to fine"; "split" of a knot span (refine) stays "פיצול"; "prune" of knots in chapter 05 is "prune", as in 3DGS.
+"coarse to fine"; "split" of a knot span (refine) stays "פיצול"; "prune" of knots in chapter 03 is "prune", as in 3DGS.
 
 **Gender.** A borrowed term takes the masculine (ה‑chart הזה, ה‑mesh רך, ה‑control net שלו, ה‑poses המכוילים,
 ה‑snapshots שלה, זה אחר זה), except control point(s) and basis function(s), which keep the feminine of נקודה and
@@ -303,7 +303,7 @@ always מראש, never "לא מקוון".
 - **Left and right.** A stage is not mirrored, so "bottom left", "on the right" inside a figure stay as they are
   (למטה משמאל, מימין). Where the English points at the stage from the text ("the optimiser on the right"), the
   Hebrew does not name a side (ה‑optimiser שלפניכם): the page is mirrored and the stage is on the other side.
-- **"Can't touch this"** (chapter 09) stays in English: it is the song's title.
+- **"Can't touch this"** (chapter 08) stays in English: it is the song's title.
 - **Names of people** in method names stay Latin (Boehm, Cox–de Boor, Schlick, Fresnel, Gauss–Newton, Poisson).
 
 ## Typography and direction (the page is right to left)

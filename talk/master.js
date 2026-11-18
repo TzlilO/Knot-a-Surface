@@ -191,7 +191,10 @@
   }
   var grp = -1;
   D.sections.forEach(function (sec) {
-    var navs = D.navs(sec);
+    if (sec.hasAttribute('data-cont')) return;             // it is listed under the section it continues (below)
+    var parts = [sec], q = D.sections.indexOf(sec) + 1;    // a section and the data-cont sections that continue it are one chapter, one row
+    while (D.sections[q] && D.sections[q].hasAttribute('data-cont')) parts.push(D.sections[q++]);
+    var navs = [].concat.apply([], parts.map(function (s) { return D.navs(s); }));
     if (!navs.length) return;                              // nothing in it to show or hide
     var g = sec.closest('.prelude') ? 0 : 1;
     if (g !== grp) {                                       // the light opening and the cover, then the talk
@@ -200,12 +203,12 @@
       var G = { el: gl, g: g, secs: [], m40: el('span', 'ktm-m'), m20: el('span', 'ktm-m') };
       gl.appendChild(G.m40); gl.appendChild(G.m20); list.appendChild(gl); groups.push(G);
     }
-    groups[groups.length - 1].secs.push(sec);
+    groups[groups.length - 1].secs.push.apply(groups[groups.length - 1].secs, parts);
     // a part of one step (the cover, a single slide) is one row: its switch is the step's
     var single = navs.length === 1, title = sec.dataset.title || D.title(navs[0]);
     var li = el('li', 'ktm-sec'), part = (sec.dataset.rail || '') + ' · ' + title;
     var R = row('ktm-srow' + (single ? ' ktm-one' : ''), sec.dataset.rail || '', title, single ? part : T('{part}, all its steps', { part: part }));
-    R.sec = sec; R.navs = navs; li.appendChild(R.row);
+    R.sec = sec; R.parts = parts; R.navs = navs; li.appendChild(R.row);
     if (single && navs[0].matches('.step[data-depth="deep"]')) R.name.appendChild(tag(T('deep'), '', T('A deep-dive: the short cut leaves it out')));
     if (sec.hasAttribute('data-off') || (single && navs[0].hasAttribute('data-off')))
       R.name.appendChild(tag(T('off by default'), 'def', T('talk.html marks this part data-off: it stays off until you switch it on')));
@@ -215,7 +218,7 @@
       var ol = el('ol', 'ktm-steps');
       navs.forEach(function (n, k) {
         var S = row('ktm-step', String(k + 1), D.title(n), D.title(n));
-        S.n = n; S.sec = sec;
+        S.n = n; S.sec = D.section(n);
         if (n.matches('.step[data-depth="deep"]')) S.name.appendChild(tag(T('deep'), '', T('A deep-dive: the short cut leaves it out')));
         if (n.hasAttribute('data-off')) S.name.appendChild(tag(T('off by default'), 'def', T('talk.html marks this step data-off: it stays off until you switch it on')));
         S.name.appendChild(tag(T('now'), 'now'));
@@ -401,14 +404,15 @@
       R.tog.checked = all; R.tog.indeterminate = on > 0 && !all;
       R.row.classList.toggle('is-off', !on);
       R.row.classList.toggle('is-out', on > 0 && !shown);
-      R.row.classList.toggle('is-now', !!cur && (cur === R.sec || R.sec.contains(cur)));
+      R.row.classList.toggle('is-now', !!cur && R.parts.some(function (s) { return cur === s || s.contains(cur); }));
       R.go.setAttribute('aria-disabled', String(!shown));
       R.go.title = shown ? T('Go to this part') : on ? T('The short cut leaves it out') : T('Off: switch it on to go there');
       // a section's full minutes in a cut are what the cut shows of it (a section of deep steps only has none in the short one)
-      var f40 = R.navs.some(function (n) { return D.inCut(n, 40); }) ? D.minutes(R.sec, 40) : 0;
-      var f20 = R.navs.some(function (n) { return D.inCut(n, 20); }) ? D.minutes(R.sec, 20) : 0;
-      setNum(R.m40, D.budget(R.sec, 40), f40, LONG, !on);
-      setNum(R.m20, D.budget(R.sec, 20), f20, SHORT, !on);
+      var sum = function (f) { return R.parts.reduce(function (t, s) { return t + f(s); }, 0); };
+      var f40 = sum(function (s) { return D.navs(s).some(function (n) { return D.inCut(n, 40); }) ? D.minutes(s, 40) : 0; });
+      var f20 = sum(function (s) { return D.navs(s).some(function (n) { return D.inCut(n, 20); }) ? D.minutes(s, 20) : 0; });
+      setNum(R.m40, sum(function (s) { return D.budget(s, 40); }), f40, LONG, !on);
+      setNum(R.m20, sum(function (s) { return D.budget(s, 20); }), f20, SHORT, !on);
     });
     stepRows.forEach(function (S) {
       var on = D.isOn(S.n), shown = on && D.inCut(S.n, m);

@@ -340,9 +340,9 @@
       <div class="num">03</div><div class="kick">The core idea</div>
       <h2>Calculus makes the splat</h2>
       <p>Blend along <span data-tex="u"></span>, then along <span data-tex="v"></span>. A net of 36 control points sweeps out a smooth sheet — a tensor product of the curve you just met.</p>
-      <p>Here the 36 heights are fitted to a terrain by least squares: conjugate gradients pull a flat net onto it in 25 steps, from 14 % to 5.7 % RMS error of the relief. Six points a side hold the rolling ground and blur the crater, where the <b class="c-err">red</b> misses gather. Chapter 05 starts from that crater.</p>
+      <p>Here the 36 heights are fitted to a terrain by least squares: conjugate gradients pull a flat net onto it in 25 steps, from 14 % to 5.7 % RMS error of the relief. Six points a side hold the rolling ground and blur the crater, where the <b class="c-err">red</b> misses gather. The end of this chapter starts from that crater.</p>
       <div class="eq" data-tex="\mathbf{S}(u,v)=\sum_{i}\sum_{j} N_{i,p}(u)\,N_{j,q}(v)\,\mathbf{P}_{ij}"></div>
-      <div class="time">≈ 8 min</div>
+      <div class="time">≈ 13 min</div>
     </article>
     <article class="step nav" data-scene="probe" data-w="3">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -395,7 +395,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>A mesh from a <em class="c-surf">sliding window</em></h2>
       <p>The samples sit on a lattice, so each one already knows its neighbours. A 2 × 2 window slides over the 12 × 12 lattice and stitches two triangles at every stop: 121 stops, 242 triangles, nothing searched. The Gaussians it has passed are retired.</p>
-      <p class="aside">Chapter 07 runs the same window over the scanned owl.</p>
+      <p class="aside">Chapter 06 runs the same window over the scanned owl.</p>
     </article>
     <article class="step nav" data-scene="knob" data-w="1" data-claim="7">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -410,7 +410,7 @@
       <h2>A fixed budget, <em class="c-splat">spent where a camera looks</em></h2>
       <p>The samples need not be even. Keep 1,024 Gaussians and pull the lattice, like a net of springs, towards what a second camera sees, weighted by how large each piece of surface appears in its picture.</p>
       <p>About two thirds of the Gaussians end up in its view, which covers 14–32 % of the surface as it flies. There a cell is 1.4–1.9 % of the patch’s width across, against 2.6–3.0 % on an even lattice: an even lattice would need about 2,500–3,200 Gaussians for that spacing everywhere.</p>
-      <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 07 spreads one budget over whole scenes the same way.</p>
+      <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 06 spreads one budget over whole scenes the same way.</p>
     </article>
     <article class="step nav" data-scene="window" data-w="2">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
@@ -428,46 +428,15 @@
   </div>
 </section>
 
-<!-- ============================================================ 04 LEDGER -->
-<section class="chapter" data-sim="ledger" data-rail="04" data-title="The parameter ledger" data-min40="2.5" data-min20="1.25">
+<!-- ============================================================ 03 (cont.) REFINE: the end of chapter 03 -->
+<section class="chapter" data-cont data-sim="refine" data-rail="03" data-title="Two-layer density" data-min40="4.5" data-min20="2">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="gaussian" data-w="2">
-      <div class="num">04</div><div class="kick">Lightweight by construction</div>
-      <h2>The parameter ledger</h2>
-      <p>A free Gaussian is 59 numbers: position, scale, rotation, opacity, and 48 spherical‑harmonic coefficients for view‑dependent colour. Every Gaussian carries its own copy, and every one is optimised.</p>
-      <div class="time">≈ 3 min</div>
-    </article>
-    <article class="step nav" data-scene="control" data-w="1" data-claim="8">
+    <article class="step nav" data-scene="coarse" data-w="2">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>Ours: 16 per control point. <em class="c-splat">Zero per Gaussian.</em></h2>
-      <p>Geometry is carried by the surface, so position, rotation and scale cost nothing. The bet: with the geometry right, colour no longer has to paper over geometric error, so low order may be enough — SH degree 1 instead of 3. Sharp highlights would still need more.</p>
-    </article>
-    <article class="step nav" data-scene="scale" data-w="3">
-      <div class="lvl l2"><i><b></b></i>Mechanism</div>
-      <h2>At the scale of a scene</h2>
-      <p>One million Gaussians on screen, either way. One model optimises 59 million numbers; the other optimises its control net.</p>
-      <p class="aside">Exact arithmetic over the sliders, not a benchmark. The green band marks the 10–50× the paper projects. It counts numbers that are optimised and stored; at render time the Gaussians occupy the GPU either way.</p>
-      <span class="do">Move the sliders</span>
-    </article>
-    <article class="step nav" data-scene="knob" data-depth="deep" data-w="4">
-      <div class="lvl l1"><i><b></b></i>Intuition</div>
-      <h2>Want more detail on screen?</h2>
-      <p>One ledger grows with every Gaussian you add. The other does not move — the knob from the last chapter costs nothing to store.</p>
-    </article>
-  </div>
-</section>
-
-<!-- ============================================================ 05 REFINE -->
-<section class="chapter" data-sim="refine" data-rail="05" data-title="Two-layer density" data-min40="4.5" data-min20="2">
-  <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
-  <div class="steps">
-    <article class="step nav opener" data-scene="coarse" data-w="2">
-      <div class="num">05</div><div class="kick">Adaptive refinement</div>
       <h2>Two knobs, not one</h2>
-      <p>The terrain of chapter 03, now seen from above as a map. A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
+      <p>The terrain of this chapter, now seen from above as a map. A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
       <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">blue</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
-      <div class="time">≈ 5 min</div>
     </article>
     <article class="step nav" data-scene="insert" data-replay data-w="2">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -509,12 +478,42 @@
   </div>
 </section>
 
-<!-- ============================================================ 06 PIPELINE -->
-<section class="chapter" data-sim="pipeline" data-rail="06" data-title="From photographs to charts" data-min40="3" data-min20="1.5">
+<!-- ============================================================ 04 LEDGER -->
+<section class="chapter" data-sim="ledger" data-rail="04" data-title="The parameter ledger" data-min40="2.5" data-min20="1.25">
+  <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
+  <div class="steps">
+    <article class="step nav opener" data-scene="gaussian" data-w="2">
+      <div class="num">04</div><div class="kick">Lightweight by construction</div>
+      <h2>The parameter ledger</h2>
+      <p>A free Gaussian is 59 numbers: position, scale, rotation, opacity, and 48 spherical‑harmonic coefficients for view‑dependent colour. Every Gaussian carries its own copy, and every one is optimised.</p>
+      <div class="time">≈ 3 min</div>
+    </article>
+    <article class="step nav" data-scene="control" data-w="1" data-claim="8">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Ours: 16 per control point. <em class="c-splat">Zero per Gaussian.</em></h2>
+      <p>Geometry is carried by the surface, so position, rotation and scale cost nothing. The bet: with the geometry right, colour no longer has to paper over geometric error, so low order may be enough — SH degree 1 instead of 3. Sharp highlights would still need more.</p>
+    </article>
+    <article class="step nav" data-scene="scale" data-w="3">
+      <div class="lvl l2"><i><b></b></i>Mechanism</div>
+      <h2>At the scale of a scene</h2>
+      <p>One million Gaussians on screen, either way. One model optimises 59 million numbers; the other optimises its control net.</p>
+      <p class="aside">Exact arithmetic over the sliders, not a benchmark. The green band marks the 10–50× the paper projects. It counts numbers that are optimised and stored; at render time the Gaussians occupy the GPU either way.</p>
+      <span class="do">Move the sliders</span>
+    </article>
+    <article class="step nav" data-scene="knob" data-depth="deep" data-w="4">
+      <div class="lvl l1"><i><b></b></i>Intuition</div>
+      <h2>Want more detail on screen?</h2>
+      <p>One ledger grows with every Gaussian you add. The other does not move — the knob from the last chapter costs nothing to store.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ 05 PIPELINE -->
+<section class="chapter" data-sim="pipeline" data-rail="05" data-title="From photographs to charts" data-min40="3" data-min20="1.5">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="sfm" data-w="2">
-      <div class="num">06</div><div class="kick">Before the owl · the pipeline</div>
+      <div class="num">05</div><div class="kick">Before the owl · the pipeline</div>
       <h2>From photographs to charts</h2>
       <p>Find the same feature in two photographs and the two rays meet in 3D. As cameras are added, points fill in: 21,760 of them. At the median a point is observed four times and lands 0.46 px from where it was found.</p>
       <p class="aside">This is the COLMAP model that comes with the copy of the dataset used here, triangulated with the dataset’s calibrated poses. A full structure-from-motion run would also have to estimate the poses; this one did not.</p>
@@ -533,12 +532,12 @@
       <h2>We start from <em class="c-ctrl">one chart</em></h2>
       <p>Same points, another start: one cubic spline chart fitted through them by robust least squares. 12 × 16 control points, and every Gaussian is derived from the chart.</p>
       <p>It lies 1.36 mm rms from the 16,799 points it kept, and 2.64 mm from the dense measured surface, which shaped none of its control points.</p>
-      <p class="aside">Its axis and angular range are borrowed from the depth-map fit of chapter 07. Fitted to the dense points themselves, a net this coarse reaches 2.00 mm: most of the gap is the net’s resolution, not the sparse data.</p>
+      <p class="aside">Its axis and angular range are borrowed from the depth-map fit of chapter 06. Fitted to the dense points themselves, a net this coarse reaches 2.00 mm: most of the gap is the net’s resolution, not the sparse data.</p>
     </article>
     <article class="step nav" data-scene="levels" data-depth="deep" data-w="4">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Coarse to fine: <em class="c-ctrl">finer nets</em>, closer</h2>
-      <p>The owl of chapter 07 was refined level by level: 36 × 49 nodes, then 72 × 98, then 144 × 196, pulled onto an envelope first and then onto the measured points. The rms falls from 0.85 mm to 0.15 mm; the shipped net sits at 0.21 mm rms, 0.012 mm median.</p>
+      <p>The owl of chapter 06 was refined level by level: 36 × 49 nodes, then 72 × 98, then 144 × 196, pulled onto an envelope first and then onto the measured points. The rms falls from 0.85 mm to 0.15 mm; the shipped net sits at 0.21 mm rms, 0.012 mm median.</p>
       <p class="aside">A geometric fit to the dataset’s depth maps, not training: each level is a grid of points projected onto the measured surface. Level 1 is a little further off than the layout, and level 4 (numbers only) rises again to 0.22 mm: both shown as measured.</p>
     </article>
     <article class="step nav" data-scene="train" data-off data-w="5">
@@ -551,12 +550,12 @@
   </div>
 </section>
 
-<!-- ============================================================ 07 MANIFOLD -->
-<section class="chapter" data-sim="manifold" data-rail="07" data-title="A manifold of splines" data-min40="6" data-min20="3">
+<!-- ============================================================ 06 MANIFOLD -->
+<section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6" data-min20="3">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="scene" data-w="1" data-claim="10">
-      <div class="num">07</div><div class="kick">Scaling to scenes · full power</div>
+      <div class="num">06</div><div class="kick">Scaling to scenes · full power</div>
       <h2>A manifold of splines</h2>
       <p>Every Gaussian you see was computed from a spline chart a moment ago. Two charts, 121,216 control points, and nothing else is stored.</p>
       <p class="aside">A real object: scan 122 of the DTU dataset. The charts were fitted offline to the dataset’s depth maps and photographs, 0.21 mm rms from the measured points they cover. They were not trained by the method of this talk. The sheet is open at the back and on top of the head, where the scan has no data.</p>
@@ -625,12 +624,12 @@
   </div>
 </section>
 
-<!-- ============================================================ 08 STRUCTURE -->
-<section class="chapter" data-off data-sim="structure" data-rail="08" data-title="The surface is also an index" data-min40="3" data-min20="1.5">
+<!-- ============================================================ 07 STRUCTURE -->
+<section class="chapter" data-off data-sim="structure" data-rail="07" data-title="The surface is also an index" data-min40="3" data-min20="1.5">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="bag" data-w="5">
-      <div class="num">08</div><div class="kick">What structure buys</div>
+      <div class="num">07</div><div class="kick">What structure buys</div>
       <h2>The surface is also an index</h2>
       <p>Colour each Gaussian by its position in memory. In a list, neighbours in memory are strangers in space. On charts, memory order is surface order: chart by chart, row by row.</p>
       <p class="aside">The list is emulated: the same surfaces sampled at jittered places, nudged off the surface, turned, resized and shuffled. It is not a trained 3DGS model.</p>
@@ -647,7 +646,7 @@
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>A mesh, <em>for the asking</em></h2>
       <p>Join each address to the next and there are the triangles, at whatever resolution was sampled: the lattice is the tessellation. Joining a list’s nearest neighbours gives a scribble, with <b class="c-err">red</b> edges bridging separate surfaces.</p>
-      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors. Chapter 07 runs TSDF fusion on this owl, next to a proper mesh of the list and to ours.</p>
+      <p class="aside">Real pipelines do not stop at that scribble. They extract a mesh from a list with TSDF fusion or Poisson reconstruction: a separate algorithm with its own errors. Chapter 06 runs TSDF fusion on this owl, next to a proper mesh of the list and to ours.</p>
     </article>
     <article class="step nav" data-scene="segments" data-depth="deep" data-w="5">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
@@ -674,12 +673,12 @@
   </div>
 </section>
 
-<!-- ============================================================ 09 CONTACT -->
-<section class="chapter" data-sim="touch" data-rail="09" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
+<!-- ============================================================ 08 CONTACT -->
+<section class="chapter" data-sim="touch" data-rail="08" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
     <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx data-w="2">
-      <div class="num">09</div><div class="kick">A list against charts · contact</div>
+      <div class="num">08</div><div class="kick">A list against charts · contact</div>
       <h2>Can’t touch this</h2>
       <p>A list of Gaussians is a density, not a boundary. With no rule, the ball falls straight through. Then, close up and slowed down: when would it have touched at all? Each way a list can say “contact” gives a different moment.</p>
       <p class="aside">A real pipeline first picks a density threshold or extracts a mesh: a separate algorithm with its own errors. The list is emulated from the same bowl; it is not a trained 3DGS model.</p>
@@ -715,8 +714,8 @@
   </div>
 </section>
 
-<!-- ============================================================ 10 EVIDENCE -->
-<section class="wide" data-rail="10" data-title="Evidence" data-min40="3.5" data-min20="1.75">
+<!-- ============================================================ 09 EVIDENCE -->
+<section class="wide" data-rail="09" data-title="Evidence" data-min40="3.5" data-min20="1.75">
   <article class="step nav" data-w="1" data-claim="12">
     <div class="lvl">10 · Evidence</div>
     <h2 class="thesis">Does a representation this constrained still <em>reconstruct real objects</em>?</h2>
@@ -738,7 +737,7 @@
         <p class="note"><a href="surface-prior.html" target="_blank" rel="noopener">Open the Surface‑Prior bench →</a></p>
       </div>
     </div>
-    <p class="scope"><b>Scope.</b> The DTU figures are the paper’s. The proxy bench is a procedural stand‑in with emulated baselines — useful for behaviour, not a leaderboard. The simulations in this talk are illustrations whose numbers are computed live from what is on screen. The owl of sections 06 and 07 is a real DTU scan, fitted offline to the dataset’s depth maps and photographs and not reconstructed by this method. <b>Not measured yet:</b> image quality (PSNR / SSIM / LPIPS), training and rendering time, and ablations.</p>
+    <p class="scope"><b>Scope.</b> The DTU figures are the paper’s. The proxy bench is a procedural stand‑in with emulated baselines — useful for behaviour, not a leaderboard. The simulations in this talk are illustrations whose numbers are computed live from what is on screen. The owl of sections 05 and 06 is a real DTU scan, fitted offline to the dataset’s depth maps and photographs and not reconstructed by this method. <b>Not measured yet:</b> image quality (PSNR / SSIM / LPIPS), training and rendering time, and ablations.</p>
   </article>
 </section>
 

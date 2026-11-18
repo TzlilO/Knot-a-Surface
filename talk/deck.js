@@ -87,7 +87,11 @@
 
   /* ================= chapter rail ================= */
   var chapters = $$('section[data-rail]'), rail = $('.rail');
+  /* a section marked data-cont CONTINUES the one before it (the same chapter, a second simulation on its own stage): it has
+     the same data-rail, shares that chapter's rail entry (no entry, no number of its own), and its minutes add to the
+     chapter's (budget() and total() sum per section) */
   chapters.forEach(function (sec, i) {
+    if (i && sec.hasAttribute('data-cont')) { sec._rail = chapters[i - 1]._rail; sec._idx = i; return; }
     var a = el('a', '', sec.dataset.rail + '<span>' + sec.dataset.title + '</span>');
     a.href = '#'; a.addEventListener('click', function (e) { e.preventDefault(); go(firstNav(sec)); });
     rail.appendChild(a); sec._rail = a; sec._idx = i;
@@ -110,7 +114,7 @@
       if (sec._sim) sec._sim.setScene(sc);
       if (sec._link) sec._link.href = 'talk/sims/' + sec.dataset.sim + '.html#' + sc;
     }
-    chapters.forEach(function (c) { c._rail.classList.toggle('on', c === sec || c.contains(n)); });
+    chapters.forEach(function (c) { c._rail.classList.toggle('on', c === sec || c._rail === sec._rail || c.contains(n)); });
     document.body.classList.toggle('lightroom', !!n.closest('.prelude'));
     $$('.stage-frame.is-current').forEach(function (f) { f.classList.remove('is-current'); });
     var fr = $('.stage-frame', sec); if (fr) fr.classList.add('is-current'); else setFocus(false);
@@ -124,7 +128,7 @@
      <article ... data-audio="name" data-audio-len="30">: while such a step is active the first seconds of the
      track loop, faded in and out. Names are resolved in KnotTalk.tracks (talk/audio/tracks.js); a name that is
      not listed there is silent, and the mute button and the credit line (.credit) stay hidden. M mutes.
-     <article ... data-sfx>: the step's simulation makes sound effects of its own (synthesized, e.g. chapter 09, "Can’t touch this");
+     <article ... data-sfx>: the step's simulation makes sound effects of its own (synthesized, e.g. chapter 08, "Can’t touch this");
      the button shows there too, and the same mute reaches them through KnotTalk.muted.
      Browsers only start sound after a key or a click. */
   var snd = { a: null, src: '', len: 30, ok: false, want: false, mute: false, vol: 0, raf: 0, btn: $('.sound') };
@@ -285,8 +289,9 @@
     chapters.forEach(function (sec) {
       var navs = navsOf(sec), gone = !navs.some(function (n) { return shown(n, m); });
       sec.classList.toggle('kt-on', navs.some(isOn));             // a data-off section that something of is on
-      sec.classList.toggle('kt-gone', gone); sec._rail.classList.toggle('kt-gone', gone);
+      sec.classList.toggle('kt-gone', gone); sec._gone = gone;
     });
+    chapters.forEach(function (sec) { sec._rail.classList.toggle('kt-gone', chapters.every(function (c) { return c._rail !== sec._rail || c._gone; })); });   // a rail entry goes with ALL its sections
     if (prelude) prelude.classList.toggle('kt-gone', !$$('section[data-rail]', prelude).some(function (s) { return !s.classList.contains('kt-gone'); }));
     cutBtns.forEach(function (b) { b.textContent = Math.round(total(+b.dataset.cut)) + '′'; });
   }
