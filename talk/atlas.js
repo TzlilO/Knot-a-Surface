@@ -7,7 +7,7 @@
    spent where the viewer looks. Here the talk does that to itself.
    - CONTROL NET: twelve claims, data-claim="1".."12" on their anchor steps in talk.html (CLAIMS below, their sentences).
    - SAMPLES: every other step, with a weight data-w: 1 a claim, 2 what the story needs next (openers, set-ups and
-     pay-offs of a claim), 3 other main steps, 4 deep steps, 5 parts that ship off (data-off, chapter 08).
+     pay-offs of a claim), 3 other main steps, 4 deep steps, 5 parts that ship off (data-off, chapter 07).
    - COST: a step's minutes = its section's data-min40, split over the section's steps by their word counts (the English
      of the page, so both languages sample the same set).
    - THE KNOB: minutes, from 5 to the full length. The sampler takes every claim (the floor: always, whatever they cost),
@@ -115,7 +115,9 @@
       if (!navs.length) return;
       var opening = !!sec.closest('.prelude') && !sec.matches('.cover');
       var last = cols[cols.length - 1];
-      if (opening && last && last.opening) { last.secs.push(sec); last.navs = last.navs.concat(navs); }
+      if ((opening && last && last.opening) || (last && sec.hasAttribute('data-cont'))) {   // a data-cont section joins the column of the one it continues
+        last.secs.push(sec); last.navs = last.navs.concat(navs);
+      }
       else cols.push({ secs: [sec], navs: navs.slice(), opening: opening, i: cols.length });
     });
     cols.forEach(function (c) {

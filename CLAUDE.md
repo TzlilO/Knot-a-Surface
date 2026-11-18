@@ -42,6 +42,14 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   most 40 / 20, the opening comes on top, and the cut buttons and the clock show the computed totals.
   A section's `data-mount='{…}'` (JSON) is merged into the options its simulation is mounted with (`bare`,
   `clear`, `scn`, `budget`, `cap`), and the section receives a `kt-stats` event with the module's stats.
+  CONTINUATION: a section marked `data-cont` continues the one before it (same `data-rail`, its own stage, `data-sim`
+  and minutes; deck.js gives it no rail entry, a rail entry stays on and goes only with all its sections, the slide master
+  and the knob design's atlas list its steps under that chapter, one row / column, keys and `kt-parts` use the shared rail).
+  Chapter 03 "Calculus makes the splat" is two sections: `planoid`, then (`data-cont`) `refine`'s knot insertion on the same
+  terrain ("Two knobs, not one" .. "Balance the two, or waste one", 8 + 4.5 min long cut, 4.25 + 2 short; the opener's
+  "≈ 13 min" is their sum). The chapters: 01 flatland, 02 basis, 03 planoid + refine, 04 ledger, 05 pipeline, 06 manifold (the
+  owl), 07 structure (off), 08 touch, 09 evidence (rails ◦ a-e K i before, Q after); `kt-parts` keys of chapters renumbered
+  from the old 05-10 simply stopped matching.
 - The opening (`<div class="prelude">`, first in talk.html): the English version of talk-he.html, "How does a
   computer see in 3D?" (explicit, implicit, Gaussians, the 3D breakfast scene, "Which one?"), then the talk's
   cover, in the Hebrew deck's light "liquid glass" look, which the WHOLE talk shares: talk.html is `<html
@@ -76,7 +84,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   `data-rail` section and its steps, each with a switch, its minutes in both cuts and the totals of what is on. A
   part that is off leaves the deck the way a deep step does in the short cut (`kt-off` / `kt-gone` in deck.css; an
   emptied section goes with its stage and rail entry); the clock and the cut buttons count only what is on.
-  `data-off` on a section or step = off until the presenter turns it on (chapter 08, `structure`, ships off). A chapter's opener step (`.opener`) carries its first picture and first claim (number, kicker, title, the first step's text, time): there is no separate title-only step before it. Chapter 03's `tangents` and `normal` steps are one step (scene `normal`), chapter 07's `budget` and `lod` are one (scene `lod`). Shipped deep (long cut only): chapter 03 `adaptive`, chapter 05 `versus`; shipped off: chapter 06 `train` (its run is still pending) and chapter 07 `stitch` (also deep), chapter 08 as a whole; all reversible in the slide master. localStorage
+  `data-off` on a section or step = off until the presenter turns it on (chapter 07, `structure`, ships off). A chapter's opener step (`.opener`) carries its first picture and first claim (number, kicker, title, the first step's text, time): there is no separate title-only step before it. Chapter 03's `tangents` and `normal` steps are one step (scene `normal`), chapter 06's `budget` and `lod` are one (scene `lod`). Shipped deep (long cut only): chapter 03 `adaptive` and `versus` (the latter in its second half); shipped off: chapter 05 `train` (its run is still pending) and chapter 06 `stitch` (also deep), chapter 07 as a whole; all reversible in the slide master. localStorage
   `kt-parts` holds only the presenter's overrides, keyed `rail · step title` (renaming a step drops its choice);
   deck.js applies them before the first frame; "Reset to defaults" and "Show all". `talk.html?master` (or `#master`)
   = presenter view in a second window: prev / next, now / next step, clock, cut; synced by BroadcastChannel,
@@ -143,7 +151,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   sheet, solid depth-tested vectors via `gl.vector` / `gl.sheet` / `gl.hidden`, a face-on tangent-plane
   inset, and a scale stage that measures the size from the lattice cell's 4 or 8 neighbours against the
   derivative formula; its 6 x 6 net is fitted live by least squares (conjugate gradients, area-weighted) to the
-  terrain of chapter 05, `talk/terrain.js` = `KnotTalk.terrain`, shared with `refine` and loaded before both;
+  terrain of the end of chapter 03 (`refine`), `talk/terrain.js` = `KnotTalk.terrain`, shared with `refine` and loaded before both;
   `scale` / `fill` draw every Gaussian's 1σ outline and MEASURE the uncovered share of the surface, one size for
   all against each sized to its own cell; `stitch` = the 2 x 2 window over a 12 x 12 lattice; `knob` sweeps 64 to
   1,048,576 Gaussians with the frame time measured, turning back at 50 ms (or 3x a slow first frame); `adaptive` =
@@ -153,12 +161,23 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   of the surface veiled and its share measured, `api.window()` / `windowNet()` for tests),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
   draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
-  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets),
+  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets. Its main
+  view is the manifold in 3D (`make3D`: `gl.sheet` / `gl.lines` / `gl.hidden` / `gl.splats` / `gl.draw`, in planoid's
+  frame and proportions: x = u, z = v over SPAN 3.2, relief HS = ZW x SPAN, planoid's camera, so chapter 03's patch
+  and this surface are one picture): the live sheet, the terrain as a ghost of 24 x 24 neutral dots with red error
+  sticks to it (planoid's `net` idiom), the control net, and every interior knot as an orange band lying in the
+  surface along its iso-curve; a new knot flashes wide with the top view's envelope (`flashK`), with Boehm's new
+  columns of points, the span about to be split is tinted red, a removed knot fades dashed, the cut is a thin
+  rectangle; in the Gaussian scenes the derived Gaussians themselves (up to 65,536, 16,384 on a coarse pointer).
+  The top view (with its per-span error bars and the cut grip) and the side view are cards over it, bottom left and
+  bottom right (glass; their labels are `kt-box`); `balance` keeps its map large and puts the 3D view in the top view's
+  square, `versus` keeps its two maps and shows the 3D view beside them where there is room. `api.view3d()` for tests;
+  the lab page loads three.min.js and gl.js, without them the module falls back to the two flat views),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
   charts: `chart(list, name, opts, fn(s,t,i,j) -> [x,y,z,r,g,b])`; each returns views, a tour, a
-  capture rig and an `edit(k)` animation. The stand-ins are NOT offered on the manifold lab page any more: its picker and tabs show only the DTU scans; the barn remains the landing page's hero and the fallback without scan data). Sampling is `st.sampling` as three modes, `even` / `adaptive` / `window` (`mode()`; `st.adaptive` = follows the view, off = even, and `st.win` picks the view window among the view-following modes, so scenes that flip `st.adaptive` still work): `window` = "The whole budget inside the view" of chapter 03 (the whole budget by area on screen, cells inside the image widened by `st.buf`, 0 to 0.15 half-images, default 0.04, nothing outside; a tile with no cell in the window holds no lattice; "in view" then counts the image itself, the other modes the 12 % margin); it is the default ONLY on the standalone lab page (body `kt-labpage`, set by `KnotTalk.standalone`, and no `embed`), every embed keeps `adaptive` (identical Gaussians), and the mount option `sampling: 'even'|'adaptive'|'window'` (or `?sampling=` on the lab page) picks one, which also shows the three-way control and the buffer slider. The deck's chapter 07 runs on ONE subject, scene `scan`: a REAL
+  capture rig and an `edit(k)` animation. The stand-ins are NOT offered on the manifold lab page any more: its picker and tabs show only the DTU scans; the barn remains the landing page's hero and the fallback without scan data). Sampling is `st.sampling` as three modes, `even` / `adaptive` / `window` (`mode()`; `st.adaptive` = follows the view, off = even, and `st.win` picks the view window among the view-following modes, so scenes that flip `st.adaptive` still work): `window` = "The whole budget inside the view" of chapter 03 (the whole budget by area on screen, cells inside the image widened by `st.buf`, 0 to 0.15 half-images, default 0.04, nothing outside; a tile with no cell in the window holds no lattice; "in view" then counts the image itself, the other modes the 12 % margin); it is the default ONLY on the standalone lab page (body `kt-labpage`, set by `KnotTalk.standalone`, and no `embed`), every embed keeps `adaptive` (identical Gaussians), and the mount option `sampling: 'even'|'adaptive'|'window'` (or `?sampling=` on the lab page) picks one, which also shows the three-way control and the buffer slider. The deck's chapter 06 runs on ONE subject, scene `scan`: a REAL
   DTU object (scan 122, an owl) baked offline by `python3 -I tools/dtu/fit.py <data-dir> 122` into
   `talk/dtu-data.js` (`KnotTalk.dtu`, must load before `talk/scenes.js`; without it the barn stands in).
   It is an offline fit to the dataset's depth maps and photographs: never call it trained or a result of
@@ -231,13 +250,13 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   so it is still one draw call; the band labels and dividers are DOM, moved every frame). The `bust`
   head is shaped from MediaPipe's canonical face mesh (`talk/face-data.js`, Apache-2.0; `faceFit` casts a
   ray per control point; without that file it falls back to sculpted bumps).
-  `structure` (talk/sims/structure.js, chapter 08, off by default) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
+  `structure` (talk/sims/structure.js, chapter 07, off by default) = the scanned owl (the truck only on a page without the scan data) stored two ways in two viewports: a
   shuffled list (EMULATED unstructured 3DGS: jittered samples of the same surfaces, never call it trained)
   and the chart lattices; scenes `bag` (colour by memory order), `neighbours` (hash-grid kNN vs index
   ring), `mesh` (kNN graph vs lattice edges), `segments` (k-means vs chart id); all counts are measured. Its framing is
   never closer than the object's box allows; on light, operations fade the scene towards `KT.color.bg` (on dark,
   towards black); parts use the charts' own `c.hex`.
-  `touch` (talk/sims/touch.js, chapter 09 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
+  `touch` (talk/sims/touch.js, chapter 08 "Can't touch this") = a ball against one bowl stored two ways, 12 m apart:
   an EMULATED list of Gaussians and one cubic spline chart. Scenes `ghost` (the list has no boundary: the ball falls through, then,
   without a cut, the list's half of `moment` runs on the same code (`run.close`, `model()`) and hands back; the
   loose-particle rule is a third drop on the lab page only, never in the talk's `ghost`), `solid` (contact on the spline: closest point by Gauss-Newton in (u,v), n = S_u x S_v, restitution),
@@ -289,9 +308,9 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   a click per contact definition, a glass ring from the rabbit's header impulse, in `flight` a stretch creak whose pitch
   follows the pull's length (loudness: how fast it is being stretched), a release twang from the launch speed and an airy hiss
   from how many Gaussians are dissolving), read `KnotTalk.muted` at every play, and start only after a first key or click; the lab page has its
-  own sound switch, and loads dtu-data.js, dtu/scan55.js and scenes.js for `flight`'s cast. The talk's chapter 09 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
+  own sound switch, and loads dtu-data.js, dtu/scan55.js and scenes.js for `flight`'s cast. The talk's chapter 08 steps also loop an original beat, `talk/audio/beat.js` (synthesized at load,
   registered as `KnotTalk.tracks.touch`). `brittle` is on the lab page only.
-  `pipeline` (talk/sims/pipeline.js, chapter 06 "From photographs to charts", right before the owl's chapter 07) =
+  `pipeline` (talk/sims/pipeline.js, chapter 05 "From photographs to charts", right before the owl's chapter 06) =
   the road to the owl, on the real data of `talk/dtu/pipeline122.js` (`KnotTalk.dtuPipeline[122]`, written by
   `python3 -I tools/dtu/pipeline.py`; it must load before the module). Scenes: `photos` (the dataset's 64 calibrated
   cameras as frusta; the photographs are not shown: the dataset's terms could not be checked), `sfm` (the COLMAP
@@ -347,7 +366,7 @@ Independent of deck.html and of the build: plain static files, classic scripts (
 - Step music: `<article data-audio="name">` loops the first `data-audio-len` seconds of `KnotTalk.tracks[name]`
   (`talk/audio/tracks.js`, empty by default: no recording is in the repo; `talk.html?song=on`, saved as `kt-song`, points `touch` at the presenter's own file `talk/audio/local/touch.mp3`, a git-ignored folder: never commit or publish a recording) while the step is active; M mutes; the
   `.credit` line of a step shows only when a track has loaded. `data-sfx` marks a step whose simulation makes
-  its own synthesized sound effects (chapter 09); the ♪ button shows there too and `KnotTalk.muted` carries
+  its own synthesized sound effects (chapter 08); the ♪ button shows there too and `KnotTalk.muted` carries
   the mute to the module.
 - Back faces: `gl.writePlanoids(..., cull, kept)` leaves out samples of CLOSED charts whose normal faces
   away from the eye; the manifold module and the lab lay their lattices `boost` times larger so what is

@@ -8,8 +8,13 @@
                normal S_u x S_v. What they DRAW is rendered (a normalised blend of their tangent
                planes, seen from above) and measured against the target, so the two densities can be
                weighed against each other: the balance map.
-   Two views of one state: the map from above, and a side elevation cut along u.
-   Tool: Canvas 2D. Standalone: talk/sims/refine.html. Depends on talk/nurbs.js + talk/kit.js only.
+   Three views of one state: the manifold itself in 3D (the main view: the spline surface as chapter 03's patch is
+   drawn, the terrain as a ghost of dots, the error as red sticks, every knot as an orange line on the surface), and
+   two insets over it, the map from above and a side elevation cut along u. Scene `balance` keeps its measured map
+   large and the 3D view takes the top view's square; `versus` keeps its two maps and adds the 3D view beside them
+   where the stage has room.
+   Tool: Canvas 2D + WebGL (three.js, talk/gl.js). Standalone: talk/sims/refine.html. Depends on talk/nurbs.js,
+   talk/kit.js, talk/terrain.js; without THREE / talk/gl.js on the page it falls back to the two flat views.
    The maths below (PART 1) is pure and is also exported under node for tests. */
 (function (root) {
   'use strict';
@@ -795,7 +800,28 @@
       '[data-theme="light"] .kt-sim-refine .kt-toggle.rf-g.on{color:#fff;background:var(--splat)}',
       /* a right-to-left page (talk.html in Hebrew; the mark kit.css asks for): the three words of the map switch are wider
          than fit / target / error, and the panel beside the figure is no wider: a little less air around each */
-      ':root[dir="rtl"][data-lang] .kt-sim-refine .rf-wrap:not(.rf-big):not(.rf-tiny) .rf-ctrl .kt-seg-btn{padding-left:.62rem;padding-right:.62rem}'
+      ':root[dir="rtl"][data-lang] .kt-sim-refine .rf-wrap:not(.rf-big):not(.rf-tiny) .rf-ctrl .kt-seg-btn{padding-left:.62rem;padding-right:.62rem}',
+      /* the 3D view: a WebGL canvas under the 2D one; the two flat views sit on glass cards over it (the card is the
+         picture's ground and stays with the info boxes off; only the label, a kt-box, goes) */
+      '.kt-sim-refine .rf-card{position:absolute;display:none;box-sizing:border-box;pointer-events:none;border-radius:10px;' +
+        'background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}',
+      '.kt-sim-refine .rf-card.rf-frame{background:none;backdrop-filter:none;-webkit-backdrop-filter:none}',
+      '.kt-sim-refine .rf-card.rf-bare{background:none;border-color:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}',
+      '.kt-sim-refine .rf-lab{position:absolute;left:7px;top:6px;max-width:calc(100% - 14px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;' +
+        'font:600 10px/1.2 var(--f-mono);letter-spacing:.1em;color:var(--dim)}',
+      '.kt-sim-refine .rf-lab i{font-style:normal;letter-spacing:.02em;font-weight:500;margin-left:9px}',
+      '.kt-sim-refine .rf-tiny .rf-lab{font-size:9px;letter-spacing:.04em;left:5px;top:4px}',
+      '.kt-sim-refine .rf-note{position:absolute;display:none;pointer-events:none;font:500 10px/1.3 var(--f-mono);letter-spacing:.03em;' +
+        'color:var(--dim);padding:3px 7px;border-radius:6px;background:var(--panel);text-align:right;max-width:46%}',
+      '[data-theme="light"] .kt-sim-refine .rf-card{border:0;border-radius:14px;background:rgba(255,255,255,.85);' +
+        'backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);' +
+        'box-shadow:var(--glass-edge),0 12px 30px -18px rgba(88,56,24,.35)}',
+      '[data-theme="light"] .kt-sim-refine .rf-card.rf-frame{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;' +
+        'box-shadow:inset 0 0 0 1px rgba(60,45,30,.12)}',
+      '[data-theme="light"] .kt-sim-refine .rf-card.rf-bare{background:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}',
+      '[data-theme="light"] .kt-sim-refine .rf-lab{font:600 9.5px/1.2 var(--f-ui);letter-spacing:.08em}',
+      '[data-theme="light"] .kt-sim-refine .rf-note{font-family:var(--f-ui);letter-spacing:0;background:rgba(255,255,255,.85);box-shadow:var(--glass-edge)}',
+      ':root[dir="rtl"][data-lang] .kt-sim-refine :is(.rf-lab,.rf-lab i,.rf-note){letter-spacing:0}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -923,10 +949,10 @@
 
   KT.register('refine', {
     title: 'Two-layer density',
-    blurb: 'A cubic B-spline height field fitted to a terrain, live, seen from above and from the side. Layer A adds ' +
+    blurb: 'A cubic B-spline height field fitted to a terrain, live, seen in 3D, from above and from the side. Layer A adds ' +
            'control where the per-span error is worst and prunes knots that buy nothing. Layer B is how many Gaussians ' +
            'are sampled from the surface. The drawn error is measured, and it falls only when the two are balanced.',
-    tool: 'Canvas 2D · live least-squares fit',
+    tool: 'WebGL · three.js + Canvas 2D · live least-squares fit',
     scenes: SCENES,
     create: function (env) {
       injectCSS();
@@ -1102,6 +1128,15 @@
       function snap() {                    // land exactly on the least-squares optimum before a decision
         m.Z = solveDirect(m); cgInit(m); m.cg.done = true; ms = measure(m); dirty = true; zVersion++;
       }
+      /* A new knot's mark, in every view the same: it eases in (0.2 s), holds at full weight (about a second after a
+         single insertion, half that in the auto run), then settles to the weight of the other knots over the rest of
+         its life. 1 = full weight. */
+      function flashK(f) {
+        var hold = Math.min(1, 0.35 * f.life), a = f.age;
+        if (a < 0.2) return KT.ease(a / 0.2);
+        if (a < 0.2 + hold) return 1;
+        return KT.clamp(1 - (a - 0.2 - hold) / (f.life - 0.2 - hold), 0, 1);
+      }
       function setStatus(l1, l2, tone, live) { status.l1 = l1; status.l2 = l2 || ''; status.tone = tone || 'text'; status.live = live || null; }
       function netStr(mod) { return mod.nu + ' × ' + mod.nv; }
       function clearRun() { st.op = null; st.pending = null; st.mode = 'idle'; st.timer = 0; st.acc = 0; fx.length = 0; st.holdScale = false; }
@@ -1127,7 +1162,7 @@
         var w = op.w, before = ms.rmse, r = insertInto(m, w.axis, w.knot);
         if (r.dz > 1e-9 && root.console) root.console.error('refine: knot insertion moved the surface by', r.dz);
         setModel(r.model); st.inserted++; st.ceiling = null;
-        fx.push({ kind: 'new', axis: w.axis, knot: w.knot, age: 0, life: op.auto ? 1.6 : 3.2 });
+        fx.push({ kind: 'new', axis: w.axis, knot: w.knot, age: 0, life: op.auto ? 1.6 : 3.2, k: r.k, nu: m.nu, nv: m.nv });
         op.dz = r.dz; op.before = before; op.added = r.added;
         var where = w.axis + ' = ' + w.knot.toFixed(3);
         if (op.auto) {
@@ -1405,6 +1440,63 @@
         return { score: sp, versus: true, sp: sp, hs: hs, gapV: gapV, gap: gapM, head: head, foot: foot, fs: fs, pad: pad,
                  x0: Math.round((CW - (2 * sp + gapM)) / 2), y0: top + Math.round((CH - top - (head + sp + gapV + hs + foot)) / 2) + head };
       }
+      /* The 3D layouts. Every rectangle is in the stage's CSS pixels.
+           v3      the rectangle the 3D view is framed into; v3mode 'free' = the whole stage draws, the patch centred and
+                   sized in v3 (it may run on under the cards' glass), 'card' = drawn inside v3 only (a frame of its own)
+           topCard the top view's card: label row, the per-span error bars, the map (mx, my, ms) with its bars to the right
+           sideCard the side view's card: label row, the side elevation (side)
+         The status lines run along the top of the stage, over the 3D view. */
+      var CARD_P = 8, CARD_PT = 5, LAB_H = 18, LAB_HT = 14;
+      function solve3D(CW, CH, g) {
+        var pad = g.pad, cp = tiny ? CARD_PT : CARD_P, labH = tiny ? LAB_HT : LAB_H, gapI = tiny ? 6 : 12, gap = tiny ? 4 : 6;
+        var SA = CFG.ZW * ZSPAN, o = { ins: true, arr: 'ins', bars: true, gap: gap, fs: g.fs, pad: pad, labS: 0, v3mode: 'free' };
+        var top0 = pad + (g.compact ? 34 : 0), y3 = top0 + g.statusH + (tiny ? 2 : 6), avail = CH - y3 - pad;
+        var ms, bar, tw, th, sw, sh, ws, hs;
+        if (tiny) {                                           // a phone: the 3D view on top, the two cards side by side under it
+          tw = Math.floor((CW - 2 * pad - gapI) / 2); sw = CW - 2 * pad - gapI - tw; bar = 11;
+          ms = Math.min(tw - 2 * cp - gap - bar, Math.floor(avail * 0.5) - 2 * cp - labH - bar - gap);
+          ms = Math.max(56, ms); tw = 2 * cp + ms + gap + bar;
+          ws = sw - 2 * cp; hs = Math.round(SA * ws);
+        } else {
+          ms = Math.floor(KT.clamp(Math.min((CW - 2 * pad) * (CW > 1.15 * CH ? 0.29 : 0.4), avail * 0.36), 104, big ? 330 : 270));
+          bar = Math.round(KT.clamp(ms * 0.085, 12, 28));
+          tw = 2 * cp + ms + gap + bar;
+          ws = Math.min(CW - 2 * pad - gapI - tw - 2 * cp, Math.round((bar + gap + ms) / SA)); hs = Math.round(SA * ws);
+          sw = ws + 2 * cp;
+        }
+        th = 2 * cp + labH + bar + gap + ms; sh = 2 * cp + labH + hs;
+        var yb = CH - pad;
+        o.bar = bar; o.ms = ms; o.mx = pad + cp; o.my = yb - th + cp + labH + bar + gap;
+        o.topCard = { x: pad, y: yb - th, w: tw, h: th };
+        o.sideCard = { x: CW - pad - sw, y: yb - sh, w: sw, h: sh };
+        o.side = { x: o.sideCard.x + cp, y: o.sideCard.y + cp + labH, w: ws, h: hs };
+        var ib = Math.max(th, sh);
+        o.v3 = { x: pad, y: y3, w: CW - 2 * pad, h: Math.max(60, yb - ib * (tiny ? 0.92 : 0.4) - y3) };
+        o.stat = { x: pad, y: top0, w: CW - 2 * pad - (g.compact ? 80 : 0) };
+        o.score = Math.min(o.v3.w / 1.3, o.v3.h) + 0.5 * ms;
+        return o;
+      }
+      /* balance: the measured map and the side view keep their places and sizes; the 3D view takes the top view's square
+         (a frame of its own), and the top view becomes a card in that frame's lower left corner */
+      function solveBal3D(CW, CH, g) {
+        var o = solveMain(CW, CH, g), cp = tiny ? CARD_PT : CARD_P, labH = tiny ? LAB_HT : LAB_H, c = { x: o.mx, y: o.my, w: o.ms, h: o.ms };
+        var ms = Math.max(56, Math.round(o.ms * (tiny ? 0.44 : 0.42))), q = tiny ? 4 : 7;
+        o.v3 = c; o.v3mode = 'card'; o.card3 = c; o.ins = true; o.arr = 'ins'; o.bars = false;
+        o.topCard = { x: c.x + q, y: c.y + c.h - q - (2 * cp + labH + ms), w: 2 * cp + ms, h: 2 * cp + labH + ms };
+        o.mx = o.topCard.x + cp; o.my = o.topCard.y + cp + labH; o.ms = ms;
+        var lh = o.labS || 0;                               // the side view's label sits where its caption was
+        o.sideCard = { x: o.side.x - (lh ? 0 : 2), y: o.side.y - (lh || 0) - (lh ? 2 : 0), w: o.side.w + (lh ? 0 : 4), h: o.side.h + lh + 2, bare: true };
+        o.labS = 0;
+        return o;
+      }
+      /* versus: the two maps keep their size; the 3D view (the adaptive net) stands beside them when the stage has the room */
+      function solveVersus3D(CW, CH, g) {
+        var o = solveVersus(CW, CH, g), blockW = 2 * o.sp + o.gap, free = CW - 2 * o.pad - blockW - o.gap;
+        if (tiny || free < 150 || o.sp < 40) return o;
+        var w = Math.min(free, Math.round(o.sp * 1.2)), x0 = Math.round((CW - (blockW + o.gap + w)) / 2);
+        o.x0 = x0; o.card3 = { x: x0 + blockW + o.gap, y: o.y0, w: w, h: Math.min(o.sp + o.gapV + o.hs, Math.round(w * 1.1)) }; o.v3 = o.card3; o.v3mode = 'card';
+        return o;
+      }
       function layout(w, h) {
         Wc = w; Hc = h;
         tiny = w < 560 || h < 470; big = !tiny && Math.min(w, h) >= 860 && w >= 1000;
@@ -1416,7 +1508,8 @@
         var g = { fs: tiny ? 11 : big ? 14 : 12, pad: tiny ? 8 : big ? 22 : 16, f1: tiny ? 12 : big ? 18 : 14, f2: tiny ? 11 : big ? 14 : 12,
                   squat: squat, compact: rootEl.classList.contains('kt-compact'), showBal: st.bal && !st.versus };
         g.statusH = squat ? 20 : tiny ? 48 : g.f1 + 2 * g.f2 + 26;
-        var solve = st.versus ? solveVersus : solveMain, modes = tiny ? ['rf-stack'] : ['rf-side', 'rf-stack'];
+        var solve = st.versus ? (g3 ? solveVersus3D : solveVersus) : !g3 ? solveMain : g.showBal ? solveBal3D : solve3D;
+        var modes = tiny ? ['rf-stack'] : ['rf-side', 'rf-stack'];
         for (i = 0; i < modes.length; i++) {                 // try the panel beside and below the figure, keep the larger figure
           wrap.className = cls + ' ' + modes[i];
           if (modes[i] === 'rf-side' && col.scrollHeight > wrap.clientHeight + 1) wrap.className += ' rf-dense';
@@ -1430,6 +1523,7 @@
         L.W = sz.w; L.H = sz.h; L.f1 = g.f1; L.f2 = g.f2; L.squat = squat; L.statusH = g.statusH; L.mode = best.mode;
         setDispRes(pickRes(st.versus ? L.sp : L.ms, sz.dpr));
         dirty = dirtyB = true;
+        if (g3) g3.place(sz.w, sz.h);
       }
       function pickRes(px, dpr) { return px * dpr > 620 ? 384 : px * dpr > 330 ? 320 : 224; }
 
@@ -1563,6 +1657,10 @@
         }
         // labels
         var lf = font(600, L.fs), wide = s > 330;
+        if (L.ins) {                        // an inset: its label names it; the scale of the bars where there is room
+          if (!tiny && s > 190) txt(T('full bar {size}', { size: st.barScale < 0.00995 ? pctA(st.barScale) : pct(st.barScale, 1) }), x + s + gap + bar, L.topCard.y + 15, font(500, L.fs - 1), C.mute, 'right', '0.04em');
+          return;
+        }
         txt(wide ? T('ERROR MEASURED IN u') : T('ERROR IN u'), x, y - gap - bar - 7, lf, C.dim, 'left', '0.12em');
         ctx.save(); ctx.translate(x + s + gap + bar + L.fs + 1, y); ctx.rotate(Math.PI / 2);
         txt(wide ? T('ERROR MEASURED IN v') : T('ERROR IN v'), 0, 0, lf, C.dim, 'left', '0.12em'); ctx.restore();
@@ -1943,7 +2041,7 @@
         }
         // flashes: new knots glow, removed knots fade out dashed
         for (i = 0; i < fx.length; i++) {
-          f = fx[i]; k = 1 - f.age / f.life; ctx.save();
+          f = fx[i]; k = f.kind === 'new' ? flashK(f) : 1 - f.age / f.life; ctx.save();
           if (f.kind === 'new') { ctx.strokeStyle = rgba('ctrl', 0.35 + 0.65 * k); ctx.lineWidth = 1 + 2.6 * k; ctx.shadowColor = C.ctrl; ctx.shadowBlur = 16 * k; }
           else { ctx.strokeStyle = rgba('ctrl', 0.8 * k); ctx.lineWidth = 1.5; ctx.setLineDash([3, 6]); }
           ctx.beginPath();
@@ -1955,12 +2053,13 @@
 
         var tg2 = topTag();
         tag(tiny && st.gauss && st.view === 'fit' ? T('{n} GAUSSIANS', { n: thousands(st.dens * st.dens) }) : tg2[0], x + 8, y + 8, tg2[1], s - 16);
-        if (st.view === 'error' && !tiny) legend(x + 8, y + s - 8 - (L.fs + 10), st.shade === 'normal' ? ANG_SCALE : ESCALE, st.shade === 'normal');
-        if (L.bars) drawBars(dt, t); else if (!tiny) txt(T('TOP VIEW'), x, y - 8, font(600, L.fs), C.dim, 'left', '0.12em');
+        if (st.view === 'error' && !tiny && s >= 200) legend(x + 8, y + s - 8 - (L.fs + 10), st.shade === 'normal' ? ANG_SCALE : ESCALE, st.shade === 'normal');
+        if (L.bars) drawBars(dt, t); else if (!tiny && !L.ins) txt(T('TOP VIEW'), x, y - 8, font(600, L.fs), C.dim, 'left', '0.12em');
 
         // the same state from the side
         drawSide(L.side, m, sdA, { gauss: st.gauss, dimCtrl: st.gauss });
-        if (L.labS) sideCaption(L.side, st.gauss, L.side.y - 8);
+        if (L.ins) { /* the inset's own label (DOM) names it */ }
+        else if (L.labS) sideCaption(L.side, st.gauss, L.side.y - 8);
         else halo(T('SIDE · v = {v}', { v: st.cut.toFixed(2) }), L.side.x + 5, L.side.y + L.side.h - 5, font(600, 9), C.dim, 'left', '0.06em');
         if (L.arr === 'col' && !tiny) {     // the cut, carried down from the map to the side view
           ctx.strokeStyle = LIGHT ? rgba('text', 0.22) : 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath();
@@ -2073,7 +2172,7 @@
       cv.cv.addEventListener('pointermove', function (e) {
         var q = local(e);
         if (drag === e.pointerId) { moveCut(q[1]); return; }
-        if (e.pointerType === 'mouse') cv.cv.style.cursor = hitCut(q[0], q[1], false) ? 'ns-resize' : cellAt(q[0], q[1]) ? 'pointer' : '';
+        if (e.pointerType === 'mouse') cv.cv.style.cursor = hitCut(q[0], q[1], false) ? 'ns-resize' : cellAt(q[0], q[1]) ? 'pointer' : g3 && !g3.on2D(e.clientX, e.clientY) ? 'grab' : '';
       });
       function endDrag(e) { if (drag === e.pointerId) drag = null; }
       cv.cv.addEventListener('pointerup', endDrag); cv.cv.addEventListener('pointercancel', endDrag);
@@ -2106,7 +2205,444 @@
         var lab = !st.run ? 'resume' : playing() ? 'pause' : 'replay';
         if (lab !== runIs) { runIs = lab; btRun.textContent = RUN[lab]; }
         t0 = now(); draw(t, dt); perf.frame = now() - t0;
+        if (g3) { t0 = now(); g3.render(t, dt); perf.gl = now() - t0; }
       });
+
+      /* =====================================================================================
+         The manifold in 3D. The live spline surface drawn as chapter 03 draws its patch (talk/gl.js: gl.sheet, gl.lines,
+         gl.hidden, gl.splats, gl.draw), in the same frame and proportions: the map's unit square is SPAN wide (x = u,
+         z = v), the relief [0, 1] stands HB + HS h with HS = ZW x SPAN, so this terrain stands exactly where planoid's
+         fitted patch stands, seen from planoid's view. On it:
+           the target   a ghost: its height at 24 x 24 cell centres as dots in the neutral colour (planoid's `net` scene)
+           the error    a red stick from the surface to the target at each of those dots (the same idiom); maxErr and
+                        meanErr of view3d() are read from these sticks
+           the knots    every interior knot u_k (v_k) as its iso-curve S(u_k, v) (S(u, v_k)) ON the surface: a thin
+                        band lying in the surface, lifted along the normal, depth-tested, in the control colour. A new
+                        knot is the same band, wide and bright, with the top view's envelope (flashK); the span about to
+                        be split is tinted red and its knot dashed, pulsing, as on the map; a removed knot fades dashed.
+                        More than KCAP knots in one direction: every k-th is drawn, and a note says so.
+           the net      control points as orange dots at their Greville abscissae, the net as thin lines; the points a
+                        knot insertion has just made (the columns k-p+1..k of Boehm's rule) grow with the new knot
+           the cut      the side view's plane as a thin outlined rectangle, and its trace on the surface dashed
+           Layer B      the derived Gaussians themselves (gl.splats, one per (u,v) sample of the top view, sigma = SIG
+                        sample spacings, tangent axes S_u, S_v) up to CAP of them; above CAP the surface alone, and a note.
+         Geometry is rebuilt only when the surface (zVersion) or the knots change; the camera sways as planoid's does. */
+      function make3D() {
+        var SPAN = 3.2, HS = CFG.ZW * SPAN, HB = -0.45, FLOOR = -1.15, R3 = 6.4, TD = 24, M = 96, KCAP = 64, LIFT = 0.008;
+        var CAP = root.matchMedia && root.matchMedia('(pointer:coarse)').matches ? 16384 : 65536;
+        var FOVT = Math.tan(34 / 2 * Math.PI / 180);
+        function X(u) { return (u - 0.5) * SPAN; }
+        function Yh(h) { return HB + HS * h; }
+        function Zv(v) { return (v - 0.5) * SPAN; }
+        var cam = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+        var R = GL.renderer(stage, cam), scene = new THREE.Scene(), r3 = R.renderer;
+        R.canvas.classList.add('rf-gl');
+        var LDIR = new THREE.Vector3(0.35, 0.86, 0.36).normalize();
+        scene.fog = new THREE.Fog(LIGHT ? C.bg : 0x07090f, 5, 14);
+        function own(o, order) { o.frustumCulled = false; if (order != null) o.renderOrder = order; scene.add(o); return o; }
+        function pts(n) { var a = new THREE.BufferAttribute(new Float32Array(n * 3), 3), g = new THREE.BufferGeometry(); a.setUsage(THREE.DynamicDrawUsage); g.setAttribute('position', a); g.setDrawRange(0, 0); return g; }
+        var dotTex = (function () {
+          var c = document.createElement('canvas'); c.width = c.height = 32;
+          var x = c.getContext('2d'); x.fillStyle = INK; x.beginPath(); x.arc(16, 16, 14, 0, 6.2832); x.fill();
+          var im = x.getImageData(0, 0, 32, 32), d = im.data, q;
+          for (q = 0; q < d.length; q += 4) d[q] = d[q + 1] = d[q + 2] = 255;     // a mask: the material gives the colour
+          x.putImageData(im, 0, 0);
+          return new THREE.CanvasTexture(c);
+        })();
+        function dotMat(color, size, opacity, hidden) {
+          var o = { color: color, size: size, map: dotTex, transparent: true, opacity: opacity, alphaTest: 0.5 * opacity, depthWrite: !hidden };
+          if (hidden) o.depthFunc = THREE.GreaterDepth;
+          var mt = new THREE.PointsMaterial(o);
+          mt.color.set(color);                       // the dot texture is ink: only its shape counts
+          return mt;
+        }
+
+        /* ground: chapter 03's grid, the pool of the surface colour under the patch, and the sheet's shadow */
+        var grid = LIGHT ? new THREE.GridHelper(9, 18, mix(C.line, C.dim, 0.3), C.line) : new THREE.GridHelper(9, 18, 0x243652, 0x162238);
+        grid.position.y = FLOOR; scene.add(grid);
+        var glowC = LIGHT ? GL.rgb(C.surf).map(function (x) { return x.toFixed(3); }).join(', ') + ', a * a * 0.06' : '0.20, 0.33, 0.52, a * a * 0.30';
+        var glow = own(new THREE.Mesh(new THREE.CircleGeometry(5.4, 48).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false,
+          vertexShader: 'varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+          fragmentShader: 'varying vec2 vP; void main(){ float a = 1.0 - clamp(length(vP) / 5.4, 0.0, 1.0); gl_FragColor = vec4(' + glowC + '); }'
+        })), -6);
+        glow.position.y = FLOOR - 0.004;
+
+        /* the surface: a lit translucent sheet. Two tessellations: 64 quads a side while the net has at most 16 spans in
+           each direction, 128 past that (the densest net the module makes has 32: four quads a span); the finer one is
+           made the first time it is needed. The sheet's shadow on the floor follows the one in use. */
+        var i0, tN = null, tD = null, SHEETS = {}, sheet = null, shL = null;
+        var shadowMat = new THREE.MeshBasicMaterial({ color: LIGHT ? C.text : 0x000000, transparent: true, opacity: LIGHT ? 0.045 : 0.2, depthWrite: false, side: THREE.DoubleSide, fog: false });
+        var shadows = [0.93, 1.0, 1.08].map(function (k, i) {
+          var sm = own(new THREE.Mesh(new THREE.BufferGeometry(), shadowMat), -4), sx = -LDIR.x / LDIR.y, sz = -LDIR.z / LDIR.y;
+          sm.matrixAutoUpdate = false; sm.matrixWorldNeedsUpdate = true;
+          sm.matrix.set(k, sx, 0, -sx * FLOOR, 0, 1e-4, 0, FLOOR + 0.004 + 0.002 * i, 0, sz, k, -sz * FLOOR, 0, 0, 0, 1);
+          return sm;
+        });
+        function sheetLevel(n) {
+          if (!SHEETS[n]) {
+            var sh = GL.sheet(n, n), lv = { n: n, sheet: sh, sg: { pos: sh.pos, su: new Float32Array(n * n * 3), sv: new Float32Array(n * n * 3) },
+                      fu: new Float64Array(n), hz: new Float64Array(n * n), hu: new Float64Array(n * n), hv: new Float64Array(n * n), T: {} }, i;
+            for (i = 0; i < n; i++) lv.fu[i] = i / (n - 1);
+            for (i = 0; i < 9; i++) sh.gauss(i, null, null, null, null, 0);    // no Gaussian painted on the sheet
+            own(sh.mesh, 0); sh.mesh.visible = false; SHEETS[n] = lv;
+          }
+          return SHEETS[n];
+        }
+        function useSheet(n) {
+          var lv = sheetLevel(n);
+          if (shL === lv) return;
+          if (shL) shL.sheet.mesh.visible = false;
+          shL = lv; sheet = lv.sheet; sheet.mesh.visible = true;
+          shadows.forEach(function (sm) { sm.geometry = sheet.geo; });
+        }
+        /* heights (and slopes) of the live net on the grid TU x TV: the two separable passes of sampleGauss */
+        function evalHD(TU, TV, H, Hu, Hv) {
+          var na = TU.n, nb = TV.n, nu = m.nu, Z = m.Z, a, b, i, q, r, s, d, e, kv, ku, zz, o;
+          if (!tN || tN.length < nu) { tN = new Float64Array(nu); tD = new Float64Array(nu); }
+          for (b = 0; b < nb; b++) {
+            kv = TV.span[b] - P;
+            for (i = 0; i < nu; i++) {
+              s = 0; d = 0;
+              for (q = 0; q < W; q++) { zz = Z[(kv + q) * nu + i]; s += TV.N[b * W + q] * zz; d += TV.D[b * W + q] * zz; }
+              tN[i] = s; tD[i] = d;
+            }
+            for (a = 0; a < na; a++) {
+              ku = TU.span[a] - P; s = 0; d = 0; e = 0;
+              for (r = 0; r < W; r++) { s += TU.N[a * W + r] * tN[ku + r]; d += TU.D[a * W + r] * tN[ku + r]; e += TU.N[a * W + r] * tD[ku + r]; }
+              o = b * na + a; H[o] = s; if (Hu) { Hu[o] = d; Hv[o] = e; }
+            }
+          }
+        }
+        function tabs(c, xs) {                      // basis tables of the live knots at the positions xs, kept per knot vector
+          if (c.U !== m.U) { c.TU = table(m.U, m.nu, xs); c.U = m.U; }
+          if (c.V !== m.V) { c.TV = table(m.V, m.nv, xs); c.V = m.V; }
+          return c;
+        }
+        function sheetUpdate() {
+          useSheet(Math.max(m.nu, m.nv) - P > 16 ? 129 : 65);
+          var lv = shL, n = lv.n, fu = lv.fu, hz = lv.hz, hu = lv.hu, hv = lv.hv, sg = lv.sg;
+          tabs(lv.T, fu); evalHD(lv.T.TU, lv.T.TV, hz, hu, hv);
+          var P3 = sheet.pos, SU = sg.su, SV = sg.sv, a, b, o, t;
+          for (b = 0; b < n; b++) for (a = 0; a < n; a++) {
+            o = b * n + a; t = o * 3;
+            P3[t] = X(fu[a]); P3[t + 1] = Yh(hz[o]); P3[t + 2] = Zv(fu[b]);
+            SU[t] = SPAN; SU[t + 1] = HS * hu[o]; SU[t + 2] = 0; SV[t] = 0; SV[t + 1] = HS * hv[o]; SV[t + 2] = SPAN;
+          }
+          sheet.set(sg, -1);                        // S_u x S_v points down here (as on planoid's patch): light the other side
+        }
+
+        /* the target as a ghost of dots, and the error as red sticks from the surface down (or up) to it */
+        var tdc = centres(TD), tdT = new Float64Array(TD * TD), tdH = new Float64Array(TD * TD), tgtGeo = pts(TD * TD), a0, b0;
+        for (b0 = 0; b0 < TD; b0++) for (a0 = 0; a0 < TD; a0++) {
+          var o0 = b0 * TD + a0; tdT[o0] = targetAt(tg, tdc[a0], tdc[b0]);
+          tgtGeo.attributes.position.array.set([X(tdc[a0]), Yh(tdT[o0]), Zv(tdc[b0])], o0 * 3);
+        }
+        tgtGeo.setDrawRange(0, TD * TD); tgtGeo.attributes.position.needsUpdate = true;
+        var tgtDots = own(new THREE.Points(tgtGeo, dotMat(C.text, 0.048, LIGHT ? 0.5 : 0.6)), 2);
+        var tgtHid = own(new THREE.Points(tgtGeo, dotMat(C.text, 0.048, 0.2, true)), 3);
+        var sticks = GL.lines(TD * TD * 2, C.err, 0.9); own(sticks.obj, 2);
+        var sticksHid = own(new THREE.LineSegments(sticks.obj.geometry, GL.hidden(C.err, 0.28, 'line')), 3);
+        var tdTab = {}, err = { max: 0, mean: 0, n: 0 };
+        function sticksUpdate() {
+          tabs(tdTab, tdc); evalHD(tdTab.TU, tdTab.TV, tdH);
+          var A = sticks.arr, k = 0, mx = 0, s = 0, o, a, b, e, x, z;
+          for (b = 0; b < TD; b++) for (a = 0; a < TD; a++) {
+            o = b * TD + a; e = Math.abs(tdH[o] - tdT[o]); s += e; if (e > mx) mx = e;
+            if (e < 0.002) continue;
+            x = X(tdc[a]); z = Zv(tdc[b]);
+            A[k] = x; A[k + 1] = Yh(tdH[o]); A[k + 2] = z; A[k + 3] = x; A[k + 4] = Yh(tdT[o]); A[k + 5] = z; k += 6;
+          }
+          sticks.set(k / 3); err.max = mx; err.mean = s / (TD * TD); err.n = k / 6;
+        }
+
+        /* the control net: points (orange dots) at their Greville abscissae, the net as thin lines, a faint copy behind */
+        var netL = GL.lines(4 * CFG.MAX_PTS, C.ctrl, 0.5); own(netL.obj, 2);
+        var netHidM = GL.hidden(C.ctrl, 0.14, 'line'), netHid = own(new THREE.LineSegments(netL.obj.geometry, netHidM), 3);
+        var cpGeo = pts(CFG.MAX_PTS), cpMat = dotMat(C.ctrl, 0.06, 1), cpHidM = dotMat(C.ctrl, 0.06, 0.3, true);
+        var cpPts = own(new THREE.Points(cpGeo, cpMat), 4), cpHid = own(new THREE.Points(cpGeo, cpHidM), 5);
+        var hiGeo = pts(CFG.MAX_PTS), hiMat = dotMat(C.ctrl, 0.11, 1), hiPts = own(new THREE.Points(hiGeo, hiMat), 9);
+        function netUpdate() {
+          var nu = m.nu, nv = m.nv, n = nu * nv, gu = greville(m.U, nu), gv = greville(m.V, nv), A = cpGeo.attributes.position.array, L2 = netL.arr, i, j, o, k = 0;
+          for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) { o = (j * nu + i) * 3; A[o] = X(gu[i]); A[o + 1] = Yh(m.Z[j * nu + i]); A[o + 2] = Zv(gv[j]); }
+          for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {
+            o = (j * nu + i) * 3;
+            if (i < nu - 1) { L2.set(A.subarray(o, o + 3), k); L2.set(A.subarray(o + 3, o + 6), k + 3); k += 6; }
+            if (j < nv - 1) { L2.set(A.subarray(o, o + 3), k); L2.set(A.subarray(o + nu * 3, o + nu * 3 + 3), k + 3); k += 6; }
+          }
+          cpGeo.setDrawRange(0, n); cpGeo.attributes.position.needsUpdate = true; netL.set(k / 3);
+          var sz = n <= 64 ? 0.07 : n <= 256 ? 0.055 : n <= 900 ? 0.042 : 0.03;
+          cpMat.size = cpHidM.size = sz; hiMat.size = sz * 1.9;
+        }
+
+        /* bands lying in the surface: knot lines, the span about to be split, the cut's trace */
+        function band(color, opacity, cap, order, ghost) {
+          var g = pts(cap), at = g.attributes.position;
+          var mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, depthWrite: false, side: THREE.DoubleSide,
+                                                  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+          var mesh = own(new THREE.Mesh(g, mat), order), hm = ghost ? GL.hidden(color, ghost, 'flat') : null, hid = hm ? own(new THREE.Mesh(g, hm), order + 1) : null;
+          return { mesh: mesh, hid: hid, hm: hm, mat: mat, pos: at.array, cap: cap, n: 0, ghost: ghost || 0,
+            set: function (n) { g.setDrawRange(0, n); at.needsUpdate = true; this.n = n; },
+            show: function (v) { mesh.visible = !!v; if (hid) hid.visible = !!v; },
+            alpha: function (a) { mat.opacity = a; if (hm) hm.opacity = a * this.ghost; },
+            color: function (c) { mat.color.set(c); if (hm) hm.color.set(c); } };
+        }
+        var BAND = M * 6, thin = band(C.ctrl, 0.9, BAND * 2 * KCAP, 6, 0.3);
+        var pool = [0, 1, 2, 3, 4, 5].map(function () { return band(C.ctrl, 1, BAND, 8, 0.3); });
+        var SPAN_STRIPS = 40, spanB = band(C.err, 0.15, BAND * SPAN_STRIPS, 1, 0), cutB = band(INK, 0.85, BAND, 7, 0.25);
+        var smp = new Float64Array(M + 1), lh0 = new Float64Array(M + 1), lh1 = new Float64Array(M + 1), ld0 = new Float64Array(M + 1), ld1 = new Float64Array(M + 1);
+        for (i0 = 0; i0 <= M; i0++) smp[i0] = i0 / M;
+        var lc = new Float64Array(CFG.MAX_PTS + 8), N4 = new Float64Array(W), D4 = new Float64Array(W), smT = {};
+        var e0 = new Float32Array((M + 1) * 3), e1 = new Float32Array((M + 1) * 3);
+        /* the curve S(t, .) (dir 'u': u = t, along v) or S(., t) (dir 'v'): heights H and slopes D along it at the M + 1
+           samples. The net contracted with the basis at t is that curve's own control polygon (as the side view's cut). */
+        function lineAt(dir, t, H, D) {
+          var isU = dir === 'u', n = isU ? m.nu : m.nv, kn = isU ? m.U : m.V, no = isU ? m.nv : m.nu, nu = m.nu, Z = m.Z, j, q, s, ix;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          var k = NB.findSpan(n, P, t, kn);
+          NB.basisFuns(k, t, P, kn, N4, D4);
+          for (j = 0; j < no; j++) { s = 0; for (q = 0; q < W; q++) { ix = k - P + q; s += N4[q] * (isU ? Z[j * nu + ix] : Z[ix * nu + j]); } lc[j] = s; }
+          tabs(smT, smp); var Tb = isU ? smT.TV : smT.TU, sp, h, d;
+          for (s = 0; s <= M; s++) {
+            sp = Tb.span[s] - P; h = 0; d = 0;
+            for (q = 0; q < W; q++) { h += Tb.N[s * W + q] * lc[sp + q]; d += Tb.D[s * W + q] * lc[sp + q]; }
+            H[s] = h; D[s] = d;
+          }
+          return t;
+        }
+        /* a band of half-width hw (parameter units) centred on the iso-curve at t, lifted by `lift` along the normal,
+           appended to B's triangles from vertex n; dashed: every other 1/24 of its length left out */
+        function writeBand(B, n, dir, t, hw, dash, lift) {
+          if (n + BAND > B.cap) return n;
+          var t0 = lineAt(dir, t - hw, lh0, ld0), t1 = lineAt(dir, t + hw, lh1, ld1), dt = t1 - t0 || 1e-9, s, w, ga, gb, nx, ny, nz, il, A = B.pos, k = n * 3, q;
+          for (s = 0; s <= M; s++) {
+            w = smp[s]; ga = (lh1[s] - lh0[s]) / dt; gb = 0.5 * (ld0[s] + ld1[s]);
+            nx = -HS * (dir === 'u' ? ga : gb); ny = SPAN; nz = -HS * (dir === 'u' ? gb : ga); il = lift / Math.sqrt(nx * nx + ny * ny + nz * nz);
+            nx *= il; ny *= il; nz *= il; q = s * 3;
+            if (dir === 'u') { e0[q] = X(t0) + nx; e0[q + 2] = Zv(w) + nz; e1[q] = X(t1) + nx; e1[q + 2] = Zv(w) + nz; }
+            else { e0[q] = X(w) + nx; e0[q + 2] = Zv(t0) + nz; e1[q] = X(w) + nx; e1[q + 2] = Zv(t1) + nz; }
+            e0[q + 1] = Yh(lh0[s]) + ny; e1[q + 1] = Yh(lh1[s]) + ny;
+          }
+          for (s = 0; s < M; s++) {
+            if (dash && (Math.floor(s / 4) & 1)) continue;
+            q = s * 3;
+            A.set(e0.subarray(q, q + 3), k); A.set(e1.subarray(q, q + 3), k + 3); A.set(e0.subarray(q + 3, q + 6), k + 6);
+            A.set(e1.subarray(q, q + 3), k + 9); A.set(e1.subarray(q + 3, q + 6), k + 12); A.set(e0.subarray(q + 3, q + 6), k + 15);
+            k += 18;
+          }
+          return k / 3;                             // the next free vertex
+        }
+
+        /* the knots: one thin band per interior knot (every k-th past KCAP in a direction) */
+        var kst = { key: '', lines: 0, su: 1, sv: 1, cu: 0, cv: 0 };
+        function thinUpdate(hw, key) {
+          if (kst.key === key) return;
+          var cu = m.nu - W, cv = m.nv - W, su = Math.max(1, Math.ceil(cu / KCAP)), sv = Math.max(1, Math.ceil(cv / KCAP)), k = 0, i, lines = 0;
+          for (i = 0; i < cu; i += su) { k = writeBand(thin, k, 'u', m.U[W + i], hw, false, LIFT); lines++; }
+          for (i = 0; i < cv; i += sv) { k = writeBand(thin, k, 'v', m.V[W + i], hw, false, LIFT); lines++; }
+          thin.set(k); kst.key = key; kst.lines = lines; kst.su = su; kst.sv = sv; kst.cu = cu; kst.cv = cv;
+        }
+        /* what moves: the span about to be split (red) and its knot (dashed, pulsing), a knot about to go (ink, dashed,
+           blinking), new knots (wide and bright, flashK) and removed ones (dashed, fading); the new points of the net */
+        var flashN = 0;
+        function fxUpdate(t, px) {
+          var op = st.op, used = 0, i, f, k, B, pu;
+          function next() { return used < pool.length ? pool[used++] : null; }
+          if (op && op.type === 'ins' && op.phase === 0) {
+            var w = op.w; pu = 0.5 + 0.5 * Math.sin(t * 9);
+            var ns = Math.min(SPAN_STRIPS, Math.max(1, Math.ceil((w.b - w.a) / 0.015))), sw = (w.b - w.a) / ns, j, nv = 0;
+            for (j = 0; j < ns; j++) nv = writeBand(spanB, nv, w.axis, w.a + (j + 0.5) * sw, 0.5 * sw, false, LIFT * 0.5);   // narrow strips: each lies on the surface
+            spanB.set(nv); spanB.alpha(0.12 + 0.1 * pu); spanB.show(true);
+            if ((B = next())) { B.color(C.ctrl); B.set(writeBand(B, 0, w.axis, w.knot, px(1.3), true, LIFT * 1.5)); B.alpha(0.55 + 0.45 * pu); }
+          } else spanB.show(false);
+          if (op && op.type === 'rem' && (B = next())) {
+            var bl = 0.5 + 0.5 * Math.sin(t * 12);
+            B.color(INK); B.set(writeBand(B, 0, op.cand.axis, op.cand.knot, px(2.2), true, LIFT * 1.5)); B.alpha(0.55 + 0.4 * bl);
+          }
+          var hiOn = false;
+          for (i = fx.length - 1; i >= 0; i--) {
+            f = fx[i];
+            if (f.kind === 'new') {
+              k = flashK(f);
+              if ((B = next())) { B.color(C.ctrl); B.set(writeBand(B, 0, f.axis, f.knot, px(0.8 + 2.2 * k), false, LIFT * 1.5)); B.alpha(0.35 + 0.65 * k); }
+              if (!hiOn && f.nu === m.nu && f.nv === m.nv && k > 0.02) { hiOn = true; newPoints(f, k); }
+            } else if ((B = next())) {
+              B.color(C.ctrl); B.set(writeBand(B, 0, f.axis, f.knot, px(1), true, LIFT * 1.5)); B.alpha(0.8 * (1 - f.age / f.life));
+            }
+          }
+          hiPts.visible = hiOn;
+          flashN = used;
+          for (i = 0; i < pool.length; i++) pool[i].show(i < used);
+        }
+        /* Boehm's rule changes the points k-p+1 .. k of every line along the axis it inserts in: those columns (rows) are
+           the new freedom; they grow with the new knot's line and settle with it */
+        function newPoints(f, k) {
+          var nu = m.nu, nv = m.nv, A = cpGeo.attributes.position.array, H = hiGeo.attributes.position.array, c = 0, i, j, lo = f.k - P + 1, hi = f.k;
+          for (j = 0; j < nv; j++) for (i = 0; i < nu; i++) {
+            var a = f.axis === 'u' ? i : j;
+            if (a < lo || a > hi) continue;
+            H.set(A.subarray((j * nu + i) * 3, (j * nu + i) * 3 + 3), c * 3); c++;
+          }
+          hiGeo.setDrawRange(0, c); hiGeo.attributes.position.needsUpdate = true; hiMat.opacity = k; hiMat.alphaTest = 0.5 * k;
+        }
+
+        /* the cut: the side view's plane as a thin rectangle (relief ZLO .. ZLO + ZSPAN, as the side view), a faint face,
+           its trace on the surface dashed as on the map */
+        var cutGeo = pts(4), cutPos = cutGeo.attributes.position.array; cutGeo.setDrawRange(0, 4);
+        var cutLine = own(new THREE.LineLoop(cutGeo, new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.6 })), 6);
+        var cutHid = own(new THREE.LineLoop(cutGeo, GL.hidden(INK, 0.2, 'line')), 7);
+        var cutFaceGeo = new THREE.BufferGeometry(); cutFaceGeo.setAttribute('position', cutGeo.attributes.position); cutFaceGeo.setIndex([0, 1, 2, 0, 2, 3]);
+        var cutFace = own(new THREE.Mesh(cutFaceGeo, new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: LIGHT ? 0.035 : 0.05, side: THREE.DoubleSide, depthWrite: false })), 5);
+        var cutKey = '';
+        function cutUpdate(px) {
+          var key = st.cut + '|' + zVersion + '|' + px(1).toFixed(6);
+          if (key === cutKey) return;
+          cutKey = key;
+          var z = Zv(st.cut), y0 = Yh(ZLO), y1 = Yh(ZLO + ZSPAN), h = SPAN / 2;
+          cutPos.set([-h, y0, z, h, y0, z, h, y1, z, -h, y1, z]); cutGeo.attributes.position.needsUpdate = true;
+          cutB.set(writeBand(cutB, 0, 'v', st.cut, px(0.75), true, LIFT * 1.2));
+        }
+
+        /* Layer B: the derived Gaussians themselves, from the very samples the top view renders */
+        var field = GL.splats(CAP), fKey = '', fN = 0, violet = GL.rgb(C.splat);
+        field.uniforms.uRim.value = LIGHT ? 0.2 : 0.6; field.mesh.visible = false; scene.add(field.mesh);
+        function fieldUpdate() {
+          var gs = ensureGauss(), n = gs.n, N2 = n * n, key = n + '|' + zVersion;
+          if (N2 > CAP) { fN = 0; return false; }
+          if (key !== fKey) {
+            var cx = field.center, ux = field.axU, vx = field.axV, cl = field.color, a, b, o, t, f = CFG.SIG / n, su1, sv1, sv2, du;
+            for (b = 0; b < n; b++) for (a = 0; a < n; a++) {
+              o = b * n + a; t = o * 3;
+              cx[t] = X(gs.xs[a]); cx[t + 1] = Yh(gs.z[o]); cx[t + 2] = Zv(gs.xs[b]);
+              su1 = HS * gs.zu[o]; sv1 = HS * gs.zv[o];                   // S_u = (SPAN, su1, 0), S_v = (0, sv1, SPAN)
+              du = su1 * sv1 / (SPAN * SPAN + su1 * su1);               // S_v orthogonalised against S_u (gl.writePlanoids)
+              sv2 = sv1 - du * su1;
+              ux[t] = SPAN * f; ux[t + 1] = su1 * f; ux[t + 2] = 0;
+              vx[t] = -du * SPAN * f; vx[t + 1] = sv2 * f; vx[t + 2] = SPAN * f;
+              cl[t] = violet[0]; cl[t + 1] = violet[1]; cl[t + 2] = violet[2];
+            }
+            field.commit(N2); field.setCount(N2); fKey = key; fN = N2;
+          }
+          return true;
+        }
+
+        /* camera: planoid's view, swaying gently while nobody turns it; fitted into L.v3 */
+        var orbit = GL.orbit(cam, cv.cv, { embed: env.embed, theta: 0.72, phi: 1.0, radius: R3, target: [0, 0.05, 0], minRadius: 1.2, maxRadius: 20,
+          pick: function (e) { return on2D(e.clientX, e.clientY); },
+          hit: function (x, y) { var r = cv.cv.getBoundingClientRect(); return hitCut(x - r.left, y - r.top, true); } });
+        var autoR = null, userZoom = false;
+        function inR(c, x, y) { return !!c && x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h; }
+        /* a pointer over a flat view belongs to it (the cut, a cell of the balance map), never to the camera */
+        function on2D(cx, cy) {
+          var r = cv.cv.getBoundingClientRect(), x = cx - r.left, y = cy - r.top;
+          if (!L || !L.v3) return true;
+          if (inR(L.topCard, x, y) || (inR(L.sideCard, x, y))) return true;
+          return L.v3mode === 'card' ? !inR(L.v3, x, y) : false;
+        }
+
+        /* DOM: the cards (glass, no kt-box: the picture's ground) and their labels (kt-box: they go with the info boxes) */
+        function card(cls, label) {
+          var c = ui.el('div', 'rf-card' + (cls ? ' ' + cls : '')), l = ui.el('span', 'kt-box rf-lab', label || '');
+          c.appendChild(l); stage.insertBefore(c, cv.cv); return { el: c, lab: l, html: label || '' };
+        }
+        var cTop = card('', T('TOP VIEW')), cSide = card('', ''), c3 = card('rf-frame', T('THE SURFACE IN 3D'));
+        var note = ui.el('div', 'kt-box rf-note'); stage.insertBefore(note, cv.cv);
+        var noteHtml = '';
+        function box(c, r) {
+          if (!r) { c.el.style.display = 'none'; return; }
+          var s = c.el.style; s.display = 'block'; s.left = r.x + 'px'; s.top = r.y + 'px'; s.width = r.w + 'px'; s.height = r.h + 'px';
+        }
+        function place(w, h) {
+          R.resize(w, h); viewKey = '';
+          box(cTop, L.topCard); box(cSide, L.sideCard); box(c3, L.card3);
+          cSide.el.classList.toggle('rf-bare', !!(L.sideCard && L.sideCard.bare));
+          if (!L.v3) { r3.setScissorTest(false); r3.setViewport(0, 0, w, h); r3.clear(); noteHtml = ''; note.style.display = 'none'; }
+        }
+        function labels() {
+          var c = L.sideCard, html = '';
+          if (c) {
+            var wide = c.w > 430 && !tiny, legend = '';
+            if (wide) {
+              var parts = [[T('target'), LIGHT ? C.dim : C.text], [T('surface'), C.surf], [T('control'), C.ctrl]];
+              if (st.gauss) parts.push([T('Gaussians'), C.splat]);
+              parts.push([T('error'), C.err]);
+              legend = parts.map(function (p) { return '<i style="color:' + p[1] + '">' + p[0] + '</i>'; }).join('');
+            }
+            html = (c.w > 250 && !tiny ? T('SIDE VIEW · CUT AT v = {v}', { v: st.cut.toFixed(3) }) : T('SIDE · v = {v}', { v: st.cut.toFixed(2) })) + legend;
+          }
+          if (html !== cSide.html) { cSide.html = html; cSide.lab.innerHTML = html; }
+          var nt = [];
+          if (kst.su > 1 || kst.sv > 1) nt.push(T('every {k}th knot line drawn: {shown} of {n}', { k: Math.max(kst.su, kst.sv), shown: kst.lines, n: kst.cu + kst.cv }));
+          if (st.gauss && st.dens * st.dens > CAP) nt.push(T('3D: the surface alone above {n} Gaussians', { n: thousands(CAP) }));
+          var nh = nt.join('<br>');
+          if (nh !== noteHtml) { noteHtml = nh; note.innerHTML = nh; note.style.display = nh ? 'block' : 'none'; }
+          if (nh) {
+            var v = L.v3; note.style.right = Math.round(L.W - v.x - v.w + 6) + 'px'; note.style.top = Math.round(v.y + 6) + 'px';
+          }
+        }
+
+        var zKey = '', viewKey = '', flat = false;
+        function render(t, dt) {
+          if (!L || !L.v3) return;
+          var v = L.v3, card = L.v3mode === 'card';
+          /* the surface changed: re-tessellate the sheet, the sticks, the net */
+          var zk = zVersion + '|' + m.nu + 'x' + m.nv;
+          if (zk !== zKey) { zKey = zk; sheetUpdate(); sticksUpdate(); netUpdate(); }
+          /* camera: aim, sway, distance fitted to the frame (the user's zoom is kept once they zoom) */
+          var g = orbit.goal, fitR = Math.max(1, 1.32 / (v.w / v.h));
+          if (autoR != null && Math.abs(g.r - autoR) > 1e-6) userZoom = true;
+          if (!userZoom) g.r = autoR = R3 * fitR;
+          if (!orbit.touched) { g.th = 0.72 + 0.22 * Math.sin(t * 0.17); g.ph = 1.0; }
+          orbit.update(dt);
+          var vk = [v.x, v.y, v.w, v.h, L.W, L.H, card].join('|');
+          if (vk !== viewKey) {
+            viewKey = vk;
+            if (card) { cam.clearViewOffset(); cam.aspect = v.w / v.h; cam.updateProjectionMatrix(); }
+            else cam.setViewOffset(v.w, v.h, -v.x, -v.y, L.W, L.H);
+          }
+          var near = Math.max(0.2, orbit.cur.r - 1.3), far = orbit.cur.r + 5.2;
+          scene.fog.near = near; scene.fog.far = far; sheet.uniforms.uFog.value.set(near, far + 1.5);
+          /* line widths in pixels of the frame, at the distance of the patch */
+          var ppw = v.h / (2 * orbit.cur.r * FOVT);              // pixels per world unit
+          function px(p) { return p / ppw / SPAN; }
+          var hw = px(LIGHT ? 0.9 : 0.9);
+          thinUpdate(hw, zk + '|' + Math.round(Math.log(hw) * 24));
+          var gOn = st.gauss && fieldUpdate(), soft = st.gauss ? 0.55 : m.nu * m.nv > 900 ? 0.7 : 1;
+          field.mesh.visible = !!gOn; sheet.mesh.visible = !gOn;
+          thin.alpha((LIGHT ? 0.85 : 0.85) * soft);
+          var n = m.nu * m.nv, wire = n <= 100 ? 0.55 : n <= 400 ? 0.4 : n <= 1600 ? 0.25 : 0;
+          netL.mat.opacity = wire * (st.gauss ? 0.5 : 1); netL.obj.visible = netHid.visible = wire > 0;
+          cpMat.opacity = st.gauss ? 0.5 : 1; cpMat.alphaTest = 0.5 * cpMat.opacity;
+          fxUpdate(t, px); cutUpdate(px);
+          labels();
+          /* draw: the whole stage (free) or the frame alone (card) */
+          if (card) {
+            r3.setScissorTest(false); r3.setViewport(0, 0, L.W, L.H); r3.clear();
+            r3.setViewport(v.x, L.H - v.y - v.h, v.w, v.h); r3.setScissor(v.x, L.H - v.y - v.h, v.w, v.h); r3.setScissorTest(true);
+          } else { r3.setScissorTest(false); r3.setViewport(0, 0, L.W, L.H); }
+          GL.draw(R, scene, cam);
+          r3.setScissorTest(false);
+        }
+        function stats() {
+          var on = !!(L && L.v3);
+          return { knotsU: m.nu - W, knotsV: m.nv - W, linesDrawn: on ? kst.lines : 0, every: [kst.su, kst.sv], flash: flashN,
+                   maxErr: err.max, meanErr: err.mean, sticks: err.n, samples: TD * TD,
+                   cutShown: on, cut: st.cut, cutZ: cutPos[2], cutPlane: Array.prototype.slice.call(cutPos),
+                   gaussians: on && field.mesh.visible ? fN : 0, cap: CAP, capped: !!(st.gauss && st.dens * st.dens > CAP),
+                   sheet: !!sheet && sheet.mesh.visible, tess: shL ? shL.n - 1 : 0, mode: L && L.v3 ? L.v3mode : 'none', frame: L && L.v3, top: L && { x: L.mx, y: L.my, s: L.ms },
+                   status: L && L.stat && { x: L.stat.x, y: L.stat.y, w: L.stat.w, h: L.statusH }, orbit: { th: orbit.cur.th, ph: orbit.cur.ph, r: orbit.cur.r } };
+        }
+        return { render: render, place: place, on2D: on2D, stats: stats, orbit: orbit, camera: cam,
+                 destroy: function () { r3.dispose(); } };
+      }
+      var THREE = root.THREE, GL = KT.gl, g3 = THREE && GL && GL.sheet && GL.draw ? make3D() : null;
+
+      /* the stage can change size while the root does not (the panel below it gains a row when its readouts fill in):
+         lay out again, or the cards and the 3D frame keep the old stage's places */
+      if (root.ResizeObserver) new ResizeObserver(function () {
+        var r = stage.getBoundingClientRect();
+        if (L && (Math.abs(r.width - L.W) > 1 || Math.abs(r.height - L.H) > 1)) relayout();
+      }).observe(stage);
 
       var r0 = rootEl.getBoundingClientRect();
       enterCoarse(true); st.scene = 'coarse';
@@ -2115,7 +2651,13 @@
       return {
         setScene: setScene,
         resize: function (w, h) { layout(w, h); },
-        destroy: function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); },
+        destroy: function () { if (g3) g3.destroy(); if (wrap.parentNode) wrap.parentNode.removeChild(wrap); },
+        /* for tests: what the 3D view draws now. knotsU / knotsV = interior knots of the live net, linesDrawn = knot bands
+           drawn (every k-th past 64 in a direction: `every`), flash = moving bands (new, removed, pending), maxErr / meanErr
+           = the red sticks (|surface - target| at 24 x 24 cell centres, relief units), cutShown / cut / cutZ = the cut's
+           rectangle, gaussians = derived Gaussians drawn in 3D (0 when off or above `cap`), camera / orbit for tests */
+        view3d: function () { return g3 ? g3.stats() : null; },
+        orbit: g3 && g3.orbit, camera: g3 && g3.camera,
         /* for tests / the deck: a read-only peek at the live numbers */
         peek: function () {
           var d = drawnNow();

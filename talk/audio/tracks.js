@@ -7,7 +7,7 @@
 window.KnotTalk = window.KnotTalk || {};
 KnotTalk.tracks = {};
 
-/* The presenter's own recording for chapter 09, kept OUT of the repository and of every published copy:
+/* The presenter's own recording for chapter 08, kept OUT of the repository and of every published copy:
    talk/audio/local/ is in .gitignore. Put the file at talk/audio/local/touch.mp3 on the machine that presents and
    open talk.html?song=on once (remembered in localStorage `kt-song`; ?song=off goes back to the original loop).
    Off by default, so a copy of the page without the file asks for nothing. With it on and the file missing the
