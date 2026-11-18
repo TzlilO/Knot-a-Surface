@@ -835,7 +835,7 @@
       '.kt-sim-refine .rf-hg .l{fill:none;stroke:var(--err);stroke-width:2;stroke-opacity:.45;stroke-dasharray:3 3}',
       '.kt-sim-refine .rf-hg .d{fill:var(--err)}',
       '.kt-sim-refine .rf-hg .k{stroke:var(--ctrl);stroke-width:2.2;stroke-linecap:round}',
-      '.kt-sim-refine .rf-hg-cnt{margin-top:5px;font:500 11px/1.25 var(--f-mono);color:var(--dim);white-space:nowrap}',
+      '.kt-sim-refine .rf-hg-cnt{margin-top:5px;font:500 11px/1.3 var(--f-mono);color:var(--dim)}',
       '.kt-sim-refine .rf-hg-cnt b{font-weight:600;color:var(--ctrl)}',
       '.kt-sim-refine .rf-tiny .rf-hg{padding:5px 8px 5px;border-radius:8px}',
       '.kt-sim-refine .rf-tiny .rf-hg-lab{font-size:9px;letter-spacing:.04em}',
@@ -2288,7 +2288,7 @@
         var h = st.hg, show = !!(h && st.scene === 'hinge' && !st.manual && L && L.v3 && !st.versus);
         if (show !== hgShown) { hgShown = show; hgBox.style.display = show ? 'block' : 'none'; if (!show) { hgKey = ''; hgH = 0; } }
         if (!show) return;
-        var bw = tiny ? 150 : big ? 300 : 236, cw = bw - (tiny ? 16 : 24), ch = tiny ? 28 : big ? 58 : 44;
+        var bw = tiny ? 156 : big ? 310 : 248, cw = bw - (tiny ? 16 : 24), ch = tiny ? 34 : big ? 84 : 66;
         var inK = h.k > h.rec && !(st.op && st.op.type === 'ins' && st.op.phase === 0);
         var key = [bw, h.k, h.rec, inK ? 1 : 0, pctA(ms.rmse), h.k > h.rec ? ms.rmse.toPrecision(3) : '', m.nu * m.nv].join('|');
         if (key !== hgKey) {
