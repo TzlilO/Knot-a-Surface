@@ -69,7 +69,7 @@
 <div class="progress"></div>
 <nav class="rail" aria-label="Chapters"></nav>
 <div class="hud">
-  <div class="cut" role="group" aria-label="Talk length"><button type="button" data-cut="20">20′</button><button type="button" data-cut="40">40′</button></div>
+  <div class="cut" role="group" aria-label="Talk length"><button type="button" data-cut="20">20′</button><button type="button" data-cut="40">40′</button><a class="core" href="?cut=core" data-i18n="off"><i aria-hidden="true">◆</i><span><b>20</b>′</span></a></div>
   <div class="clock" title="Click or press T to start / reset the pace clock"></div>
   <button type="button" class="help" aria-label="Keyboard shortcuts">?</button>
   <button type="button" class="sound" aria-label="Mute the sound" title="M · mute" hidden>♪</button>
@@ -94,7 +94,7 @@
      talk. The whole talk shares its light look (talk/deck.css ends with the theme layer). -->
 <div class="prelude">
 
-<section class="p-hero p-open nav" data-sim="he-shapes" data-scene="hero" data-rail="◦" data-title="How a computer sees in 3D" data-min40="0.25" data-min20="0.25" data-w="1" data-claim="1">
+<section class="p-hero p-open nav" data-sim="he-shapes" data-scene="hero" data-rail="◦" data-title="How a computer sees in 3D" data-min40="0.25" data-min20="0.25" data-w="1" data-claim="1" data-core="0.25">
   <div class="p-text">
     <div class="tag k-blob">Before the talk · about five minutes</div>
     <h1>How does a computer <span>see</span> in 3D?</h1>
@@ -185,7 +185,7 @@
 </section>
 
 <section class="wide p-close" data-rail="e" data-title="Which one?" data-min40="0.75" data-min20="0.5">
-  <article class="step nav" data-w="1" data-claim="2">
+  <article class="step nav" data-w="1" data-claim="2" data-core="0.5">
     <h2>So which one?</h2>
     <div class="trio">
       <div class="glass k-explicit"><b>Explicit</b><small>points · triangles · voxels</small>
@@ -205,7 +205,7 @@
 </section>
 
 <!-- the cover of the talk, in the opening's language: the owl and the rabbit, two real scans, as derived Gaussians -->
-<section class="cover kas p-hero nav" data-sim="manifold" data-scene="cover" data-mount='{"clear":"transparent","cap":200000}' data-rail="K" data-title="Knot-a-Surface" data-min40="0.5" data-min20="0.25" data-w="2">
+<section class="cover kas p-hero nav" data-sim="manifold" data-scene="cover" data-mount='{"clear":"transparent","cap":200000}' data-rail="K" data-title="Knot-a-Surface" data-min40="0.5" data-min20="0.25" data-w="2" data-core="0.25">
   <div class="p-text">
     <div class="tag k-explicit">Thesis talk · NURBS‑grounded Gaussian splatting</div>
     <h1>Knot‑a‑<span>Surface</span></h1>
@@ -241,14 +241,14 @@
 <section class="chapter" data-sim="flatland" data-rail="01" data-title="A million free ellipsoids" data-min40="4.5" data-min20="2.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="free" data-w="2">
+    <article class="step nav opener" data-scene="free" data-w="2" data-core="0.75">
       <div class="num">01</div><div class="kick">The problem</div>
       <h2>A million free ellipsoids</h2>
       <p>Every Gaussian owns its position, shape, colour and opacity. An optimiser nudges each one, independently, until the rendered images match the photographs.</p>
       <p>This is flatland — a 2‑D slice of the idea. The cameras see 1‑D strips of pixels, and <b>the optimiser on the right is real</b>: it is running now, in your browser.</p>
       <div class="time">≈ 5 min</div>
     </article>
-    <article class="step nav" data-scene="novel" data-w="1" data-claim="3">
+    <article class="step nav" data-scene="novel" data-w="1" data-claim="3" data-core="0.75">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Now look from somewhere <em>new</em></h2>
       <p>The training strips match almost perfectly. But move to a camera the optimiser never saw and the picture breaks: many Gaussians sit off the surface entirely. These are <b class="c-err">floaters</b>.</p>
@@ -271,7 +271,7 @@
       </ul>
       <p>The first two push a free cloud to <b>resemble</b> a surface; the third ties Gaussians to a fixed, faceted mesh. None makes a smooth, re‑samplable surface the thing being optimised.</p>
     </article>
-    <article class="step nav" data-scene="bound" data-w="1" data-claim="4">
+    <article class="step nav" data-scene="bound" data-w="1" data-claim="4" data-core="0.75">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Our move: <em class="c-surf">invert the question</em></h2>
       <div class="flip">
@@ -287,7 +287,7 @@
       <p>A bound Gaussian cannot leave its surface. It can only be wrong if the whole curve is wrong, and every view constrains the curve at once.</p>
       <p class="aside">Honest footnotes: this toy’s true curve is smooth, the best case for a spline — the constraint trades variance for bias. And slide the views up: the free cloud’s extra capacity wins on photo quality again. The geometry gap stays.</p>
     </article>
-    <article class="step nav" data-scene="handoff" data-w="3">
+    <article class="step nav" data-scene="handoff" data-w="3" data-core="0.5">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Only the <em class="c-surf">curve</em> stays</h2>
       <p>Take away the cameras, the photos and the Gaussians, and one curve is left: the thing the bound model optimises. Next: what a curve like this is made of.</p>
@@ -300,7 +300,7 @@
 <section class="chapter" data-sim="basis" data-rail="02" data-title="Splines from scratch" data-min40="3.5" data-min20="1.75">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="ducks" data-w="2">
+    <article class="step nav opener" data-scene="ducks" data-w="2" data-core="0.5">
       <div class="num">02</div><div class="kick">Splines from scratch</div>
       <h2>What is a spline?</h2>
       <p>Ship draughtsmen bent a thin flexible strip and pinned it in place with lead weights. The strip settles into the smoothest curve the pins allow.</p>
@@ -319,13 +319,13 @@
       <p>At parameter <span data-tex="u"></span>, the curve is a blend of the nearest control points. The blending weights are the <b>basis functions</b> in the plot below — they always sum to one.</p>
       <div class="eq" data-tex="C(u)=\sum_{i} N_{i,p}(u)\,\mathbf{P}_i"></div>
     </article>
-    <article class="step nav" data-scene="local" data-w="3">
+    <article class="step nav" data-scene="local" data-w="3" data-core="0.5">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2><em>Local support</em>: edits stay local</h2>
       <p>Each basis function is non‑zero over only <span data-tex="p+1"></span> spans. Move one control point and only the bright part of the curve moves; the dashed ghost shows where it was.</p>
       <p>For an optimiser this is gold: a gradient step in one place cannot wreck another.</p>
     </article>
-    <article class="step nav" data-scene="knots" data-w="1" data-claim="5">
+    <article class="step nav" data-scene="knots" data-w="1" data-claim="5" data-core="0.75">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Degree and <em class="c-ctrl">knots</em>: the two dials</h2>
       <p><b>Degree</b> buys smoothness: a cubic has continuous curvature, so its normals turn smoothly, and that is what a splat needs to orient itself. <b>Knots</b> are where the polynomial pieces join. Slide one and resolution moves along the curve; crowd them and detail concentrates.</p>
@@ -340,7 +340,7 @@
 <section class="chapter" data-sim="planoid" data-rail="03" data-title="Calculus makes the splat" data-min40="8" data-min20="4.25">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="net" data-w="2">
+    <article class="step nav opener" data-scene="net" data-w="2" data-core="0.75">
       <div class="num">03</div><div class="kick">The core idea</div>
       <h2>Calculus makes the splat</h2>
       <p>Blend along <span data-tex="u"></span>, then along <span data-tex="v"></span>. A net of 36 control points sweeps out a smooth sheet — a tensor product of the curve you just met.</p>
@@ -355,7 +355,7 @@
       <div class="eq" data-tex="\boldsymbol{\mu}=\mathbf{S}(u,v)"></div>
       <span class="do">Drag the cross in the (u, v) chart</span>
     </article>
-    <article class="step nav" data-scene="normal" data-w="2">
+    <article class="step nav" data-scene="normal" data-w="2" data-core="0.75">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Differentiate</h2>
       <p>The surface is a polynomial in <span data-tex="u"></span> and <span data-tex="v"></span>, so its partial derivatives are closed‑form. They give two tangent vectors at every point — no finite differences, no neighbours, no learning.</p>
@@ -381,7 +381,7 @@
       <p class="aside">Fitting all eight neighbours gives the same area plus the shear between S<sub>u</sub> and S<sub>v</sub>, which this two‑length formula leaves out.</p>
       <span class="do">Switch 4 / 8 neighbours, then move the samples slider</span>
     </article>
-    <article class="step nav" data-scene="derive" data-w="1" data-claim="6">
+    <article class="step nav" data-scene="derive" data-w="1" data-claim="6" data-core="0.75">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Nothing here was <em class="c-splat">learned</em></h2>
       <p>Move the surface and the Gaussian is recomputed: new position, new tilt, new size. Rotation and scale are not parameters any more — they are consequences.</p>
@@ -401,7 +401,7 @@
       <p>The samples sit on a lattice, so each one already knows its neighbours. A 2 × 2 window slides over the 12 × 12 lattice and stitches two triangles at every stop: 121 stops, 242 triangles, nothing searched. The Gaussians it has passed are retired.</p>
       <p class="aside">Chapter 06 runs the same window over the scanned owl.</p>
     </article>
-    <article class="step nav" data-scene="knob" data-w="1" data-claim="7">
+    <article class="step nav" data-scene="knob" data-w="1" data-claim="7" data-core="0.75">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>The <em>resolution knob</em></h2>
       <p>From 64 Gaussians to 1,048,576, four times as many at every step. The 576 stored numbers do not move: every Gaussian is evaluated from them on demand, as densely as we ask.</p>
@@ -416,7 +416,7 @@
       <p>About two thirds of the Gaussians end up in its view, which covers 14–32 % of the surface as it flies. There a cell is 1.4–1.9 % of the patch’s width across, against 2.6–3.0 % on an even lattice: an even lattice would need about 2,500–3,200 Gaussians for that spacing everywhere.</p>
       <p class="aside">Outside the view the cells grow, to about 5 % of the width, but never vanish. Chapter 06 spreads one budget over whole scenes the same way.</p>
     </article>
-    <article class="step nav" data-scene="window" data-w="2">
+    <article class="step nav" data-scene="window" data-w="2" data-core="0.5">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>The whole budget <em class="c-splat">inside the view</em></h2>
       <p>Now the net gets a window instead of the whole square: the convex hull of what the camera sees, widened by a margin. The net’s border sits on the window, so all 1,024 Gaussians lie inside it.</p>
@@ -436,13 +436,13 @@
 <section class="chapter" data-cont data-sim="refine" data-rail="03" data-title="Two-layer density" data-min40="4.5" data-min20="2">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav" data-scene="coarse" data-w="2">
+    <article class="step nav" data-scene="coarse" data-w="2" data-core="0.5">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Two knobs, not one</h2>
       <p>The terrain of this chapter, now seen from above as a map. A 5 × 5 control net gets the rolling ground roughly right and misses the crater: 6.3 % error overall, 45 % at worst. Where is no mystery — error is measured per knot span, along <span data-tex="u"></span> on top, along <span data-tex="v"></span> on the right.</p>
       <p>Below the map is the same surface cut along the dashed line and seen from the side: grey is the terrain, <b class="c-surf">blue</b> the fit, and the <b class="c-err">red</b> between them is the error. The 5 × 5 net sails straight over the crater.</p>
     </article>
-    <article class="step nav" data-scene="insert" data-replay data-w="2">
+    <article class="step nav" data-scene="insert" data-replay data-w="2" data-core="1.25" data-core-scene="hinge">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>Layer A — <em class="c-ctrl">insert a knot</em></h2>
       <p>Add a knot in the worst span and a new row of control points appears there. At the instant of insertion <b>the surface does not change</b> — it only gains freedom. Then the optimiser spends it: one knot is a small step, 6.3 → 6.0 %. In the side view the blue curve stays where it was when the knot lands; only a new orange control point appears.</p>
@@ -472,7 +472,7 @@
       <p>Now change how many Gaussians are drawn. The surface does not move: 156 parameters, 0.92 % error. What moves is the <b>drawn</b> error, measured from the Gaussians themselves: 3.9 % with 64 of them, 0.95 % with 4,096, and from there it sits at the surface’s own 0.92 %.</p>
       <p><b>Capacity</b> lives in the knots. <b>Rendering resolution</b> lives in the samples. Two separate decisions.</p>
     </article>
-    <article class="step nav" data-scene="balance" data-w="1" data-claim="9">
+    <article class="step nav" data-scene="balance" data-w="1" data-claim="9" data-core="0.75">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Balance the two, <em>or waste one</em></h2>
       <p>Neither knob works alone. 25 control points drawn with 65,536 Gaussians: 6.3 % error, the same as with 1,024. 4,092 control points drawn with 64 Gaussians: 3.7 %, although the surface itself is within 0.006 % of the terrain. 400 control points with 16,384 Gaussians: 0.09 %.</p>
@@ -492,7 +492,7 @@
       <p>A free Gaussian is 59 numbers: position, scale, rotation, opacity, and 48 spherical‑harmonic coefficients for view‑dependent colour. Every Gaussian carries its own copy, and every one is optimised.</p>
       <div class="time">≈ 3 min</div>
     </article>
-    <article class="step nav" data-scene="control" data-w="1" data-claim="8">
+    <article class="step nav" data-scene="control" data-w="1" data-claim="8" data-core="0.5">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Ours: 16 per control point. <em class="c-splat">Zero per Gaussian.</em></h2>
       <p>Geometry is carried by the surface, so position, rotation and scale cost nothing. The bet: with the geometry right, colour no longer has to paper over geometric error, so low order may be enough — SH degree 1 instead of 3. Sharp highlights would still need more.</p>
@@ -516,7 +516,7 @@
 <section class="chapter" data-sim="pipeline" data-rail="05" data-title="From photographs to charts" data-min40="3" data-min20="1.5">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="sfm" data-w="2">
+    <article class="step nav opener" data-scene="sfm" data-w="2" data-core="0.5">
       <div class="num">05</div><div class="kick">Before the owl · the pipeline</div>
       <h2>From photographs to charts</h2>
       <p>Find the same feature in two photographs and the two rays meet in 3D. As cameras are added, points fill in: 21,760 of them. At the median a point is observed four times and lands 0.46 px from where it was found.</p>
@@ -531,7 +531,7 @@
       <p class="aside">Made here exactly as the reference implementation makes it, and drawn the way 3DGS draws: sorted and blended. Where points are sparse the blobs are wide: the fog is the 536 Gaussians wider than 1 cm, 2.5 % of them, most on the table, under it or in the background.</p>
       <span class="do">Switch off “σ above 1 cm” and the fog lifts</span>
     </article>
-    <article class="step nav" data-scene="initspline" data-w="3">
+    <article class="step nav" data-scene="initspline" data-w="3" data-core="0.5">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>We start from <em class="c-ctrl">one chart</em></h2>
       <p>Same points, another start: one cubic spline chart fitted through them by robust least squares. 12 × 16 control points, and every Gaussian is derived from the chart.</p>
@@ -558,7 +558,7 @@
 <section class="chapter" data-sim="manifold" data-rail="06" data-title="A manifold of splines" data-min40="6" data-min20="3">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="scene" data-w="1" data-claim="10">
+    <article class="step nav opener" data-scene="scene" data-w="1" data-claim="10" data-core="0.75">
       <div class="num">06</div><div class="kick">Scaling to scenes · full power</div>
       <h2>A manifold of splines</h2>
       <p>Every Gaussian you see was computed from a spline chart a moment ago. Two charts, 121,216 control points, and nothing else is stored.</p>
@@ -566,7 +566,7 @@
       <span class="do">Drag to orbit</span>
       <div class="time">≈ 6 min</div>
     </article>
-    <article class="step nav" data-scene="modes" data-w="3">
+    <article class="step nav" data-scene="modes" data-w="3" data-core="0.5">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>One scene, <em>five readings</em></h2>
       <p>The same Gaussians, split across the screen: appearance, depth, normals, the Gaussians themselves, and the chart each one belongs to. The bands roll, so every part of the scene passes through every reading.</p>
@@ -586,7 +586,7 @@
       <p>Shape and appearance both live on the orange points. The owl’s net is 288 × 392, a control point every 0.8 mm or so, because every feather is relief. The table is flat: its 104 × 80 points are spent on colour alone. Parameters are paid where there is something to describe.</p>
       <p class="aside">The nets are too dense to draw whole: every ninth line of the owl’s is shown, every third of the table’s.</p>
     </article>
-    <article class="step nav" data-scene="lod" data-w="2">
+    <article class="step nav" data-scene="lod" data-w="2" data-core="0.5">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>A fixed budget <em>follows the camera</em></h2>
       <p>The budget never changes. As the camera moves, samples flow across the (u, v) domains toward what is in view and facing the lens; a small floor keeps everything else covered. (This demo does not test occlusion.)</p>
@@ -616,7 +616,7 @@
       <p class="aside">Scripted motion, to show what an edit is; nothing here is learned or simulated. Each patch also exports directly as a spline surface or a mesh; sewing patches into one watertight solid is a separate step.</p>
       <span class="do">Turn on nets, drag an orange point</span>
     </article>
-    <article class="step nav" data-scene="paint" data-replay data-w="3">
+    <article class="step nav" data-scene="paint" data-replay data-w="3" data-core="0.75">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2>Same owl, <em class="c-ctrl">new material</em></h2>
       <p>Colour, opacity and shape all live on the same control points, so a new material is an edit of those and nothing else.</p>
@@ -681,7 +681,7 @@
 <section class="chapter" data-sim="touch" data-rail="08" data-title="Can’t touch this" data-min40="2.5" data-min20="1">
   <div class="stage"><div class="stage-frame"><div class="sim-mount"></div></div></div>
   <div class="steps">
-    <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx data-w="2">
+    <article class="step nav opener" data-scene="ghost" data-audio="touch" data-audio-len="30" data-sfx data-w="2" data-core="0.5">
       <div class="num">08</div><div class="kick">A list against charts · contact</div>
       <h2>Can’t touch this</h2>
       <p>A list of Gaussians is a density, not a boundary. With no rule, the ball falls straight through. Then, close up and slowed down: when would it have touched at all? Each way a list can say “contact” gives a different moment.</p>
@@ -697,7 +697,7 @@
       <p class="aside">Only the camera and the slow motion are scripted (time runs 20× slower from 10 cm above the surface). Each answer clicks; the spline’s is the knock. The spread is this emulated list’s, not a measured property of trained 3DGS models.</p>
       <span class="do">Press drop again</span>
     </article>
-    <article class="step nav" data-scene="solid" data-audio="touch" data-audio-len="30" data-sfx data-w="1" data-claim="11">
+    <article class="step nav" data-scene="solid" data-audio="touch" data-audio-len="30" data-sfx data-w="1" data-claim="11" data-core="0.5">
       <div class="lvl l2"><i><b></b></i>Mechanism</div>
       <h2>On a spline, contact is <em class="c-surf">a formula</em></h2>
       <p>Find the closest point <span data-tex="\mathbf{S}(u,v)"></span> to the ball, take the normal <span data-tex="\mathbf{S}_u\times\mathbf{S}_v"></span>, reflect the velocity about it. Restitution is one material constant: set it to 1 and the energy stays at 100 %, bounce after bounce.</p>
@@ -709,7 +709,7 @@
       <h2>Put the control points <em class="c-ctrl">on springs</em></h2>
       <p>The contact force goes to the sixteen control points that shape the surface at the contact point (u, v), shared out by their basis weights. The surface gives, throws the ball back, and the ripple runs through the net. The Gaussians are derived again every frame.</p>
     </article>
-    <article class="step nav" data-scene="flight" data-replay data-audio="touch" data-audio-len="30" data-sfx data-w="3">
+    <article class="step nav" data-scene="flight" data-replay data-audio="touch" data-audio-len="30" data-sfx data-w="3" data-core="1">
       <div class="lvl l1"><i><b></b></i>Intuition</div>
       <h2><em>Out of bounds</em></h2>
       <p>The ball rests in a spline bowl whose control points sit on springs. Pull the ring on the ball back and let go. While you pull, the path is drawn ahead with the same physics as the flight, and it says whether the ball will meet the owl, a spline reconstruction of a real scan. The owl heads it to the glass rabbit, which jumps and heads it on into the second bowl. There the same two objects stand as lists of Gaussians. Nothing in a list pushes back: the ball passes through and the Gaussians dissolve like smoke.</p>
@@ -720,8 +720,8 @@
 
 <!-- ============================================================ 09 EVIDENCE -->
 <section class="wide" data-rail="09" data-title="Evidence" data-min40="3.5" data-min20="1.75">
-  <article class="step nav" data-w="1" data-claim="12">
-    <div class="lvl">10 · Evidence</div>
+  <article class="step nav" data-w="1" data-claim="12" data-core="1.25">
+    <div class="lvl">09 · Evidence</div>
     <h2 class="thesis">Does a representation this constrained still <em>reconstruct real objects</em>?</h2>
     <div class="exhibits">
       <div class="exhibit" id="ex-dtu">
@@ -745,9 +745,37 @@
   </article>
 </section>
 
+<!-- the core cut's own step (talk/core.js, ?cut=core): off in every other cut. Its own section, continuing the one above, so that
+     the minutes of the long and the short cut stay as they were (a part that is off takes its share of a section's minutes with it) -->
+<section class="wide" data-cont data-rail="09" data-title="Evidence" data-min40="0" data-min20="0">
+  <article class="step nav" data-off data-core="0.75" data-w="5">
+    <div class="lvl">09 · Evidence</div>
+    <h2 class="thesis">What is measured, and <em>what is not yet</em></h2>
+    <div class="exhibits">
+      <div class="exhibit">
+        <h3>Measured</h3>
+        <ul>
+          <li>Surface accuracy on 15 DTU scans, the paper’s Table 1: close to PGSR on most scans, behind it on average, clearly behind on its worst scan.</li>
+          <li>The proxy bench: 72 mm from 96 k parameters. The emulated baselines reach ≈ 58 mm with 19–38× as many.</li>
+          <li>Every number on a simulation in this talk, computed live from what is on screen.</li>
+        </ul>
+      </div>
+      <div class="exhibit">
+        <h3>Not yet</h3>
+        <ul>
+          <li>Image quality (PSNR / SSIM / LPIPS), training time, rendering time, ablations.</li>
+          <li>The owl: a real DTU scan, fitted offline to the dataset’s depth maps. Not reconstructed by this method, and no accuracy number exists for it.</li>
+          <li>Parameters at equal quality. The 10–50× is the paper’s projection.</li>
+          <li>The lists beside the spline in chapter 08 are emulated, not a trained 3DGS model.</li>
+        </ul>
+      </div>
+    </div>
+  </article>
+</section>
+
 <!-- ============================================================ CLOSE -->
 <section class="wide" data-rail="Q" data-title="Takeaways" data-min40="1.5" data-min20="0.5">
-  <article class="step nav" data-w="2">
+  <article class="step nav" data-w="2" data-core="0.5">
     <div class="lvl">Takeaway</div>
     <p class="thesis">The surface is not reconstructed. <em class="c-surf">It is the representation.</em></p>
     <div class="props">
@@ -811,5 +839,6 @@
 <script src="talk/deck.js"></script>
 <script src="talk/master.js"></script>
 <script src="talk/atlas.js"></script>
+<script src="talk/core.js"></script>
 </body>
 </html>

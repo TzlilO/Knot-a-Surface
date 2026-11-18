@@ -108,7 +108,7 @@
     if (n === cur) return;
     if (cur) cur.classList.remove('on');
     cur = n; n.classList.add('on');
-    var sec = n.closest('section'), sc = n.dataset.scene;
+    var sec = n.closest('section'), sc = n._scene || n.dataset.scene;   // n._scene: a cut's own scene for the step (talk/core.js)
     if (sc && sec.dataset.sim && (sec._cur !== sc || n.hasAttribute('data-replay'))) {
       sec._cur = sc;
       if (sec._sim) sec._sim.setScene(sc);
@@ -268,8 +268,8 @@
     n._key = k; byKey[k] = n;
   });
   function defaultOn(n) { return !n.hasAttribute('data-off') && !n._sec.hasAttribute('data-off'); }
-  /* design "knob" (talk/atlas.js, talk.html?design=knob): a sampled set stands in for the cut, smp = { has(step), cost(step)
-     minutes }; it is transient (never saved here), the presenter's overrides still win, and data-off is the sampler's to
+  /* design "knob" (talk/atlas.js, talk.html?design=knob) and the core cut (talk/core.js, ?cut=core): a sampled set stands in for the cut, smp = { has(step), cost(step)
+     minutes, labels? }; it is transient (never saved here), the presenter's overrides still win, and data-off is the sampler's to
      decide. null (the classic talk): nothing below changes */
   var smp = null;
   function isOn(n) { return Object.prototype.hasOwnProperty.call(over, n._key) ? over[n._key] : smp ? true : defaultOn(n); }
@@ -293,7 +293,7 @@
     });
     chapters.forEach(function (sec) { sec._rail.classList.toggle('kt-gone', chapters.every(function (c) { return c._rail !== sec._rail || c._gone; })); });   // a rail entry goes with ALL its sections
     if (prelude) prelude.classList.toggle('kt-gone', !$$('section[data-rail]', prelude).some(function (s) { return !s.classList.contains('kt-gone'); }));
-    cutBtns.forEach(function (b) { b.textContent = Math.round(total(+b.dataset.cut)) + '′'; });
+    cutBtns.forEach(function (b) { b.textContent = Math.round(smp && smp.labels ? smp.labels[b.dataset.cut] : total(+b.dataset.cut)) + '′'; });   // smp.labels: a sampled cut (talk/core.js) keeps the two buttons' own totals
   }
   /* the nearest step on screen from n, looking in direction d first (1 forward, -1 back), then the other way */
   function nearest(n, d) {

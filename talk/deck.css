@@ -31,7 +31,11 @@ em{font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:0
 .hud button:hover{color:var(--text);border-color:var(--dim)}
 .hud .cut,.hud .lang{display:flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:var(--panel)}
 .hud .cut button,.hud .lang button{border:0;border-radius:0;background:transparent}
-.hud .cut button.on,.hud .lang button.on{color:var(--bg);background:var(--text)}
+.hud .cut button.on,.hud .lang button.on,.hud .cut a.core.on{color:var(--bg);background:var(--text)}
+/* the core cut (talk/core.js): a link in the cut group, its minutes computed from the steps it carries */
+.hud .cut a.core{display:inline-flex;align-items:center;gap:.25rem;padding:.42rem .55rem;color:var(--dim);text-decoration:none;border-inline-start:1px solid var(--line2);cursor:pointer}
+.hud .cut a.core:hover{color:var(--text)}.hud .cut a.core.on:hover{color:var(--bg)}
+.hud .cut a.core i{font-style:normal;font-size:.8em}.hud .cut a.core b{font-weight:inherit}
 /* the language control (talk/i18n.js builds it): a Hebrew label is set in Heebo on the English page too */
 .hud .lang button[lang="he"],.keys [lang="he"]{font-family:'Heebo',var(--f-ui)}
 .hud .clock{padding:.42rem .55rem;border:1px solid var(--line2);border-radius:6px;background:var(--panel);
@@ -207,7 +211,7 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 .rail a,.hud,.stage-tools,.keys{touch-action:manipulation}          /* one tap = one click, no double-tap zoom */
 @media (hover:none){.stage-tools{opacity:1}}                       /* no hover to reveal them: always shown */
 @media (pointer:coarse){
-  .hud button,.hud .clock{min-height:40px;min-width:40px}
+  .hud button,.hud .clock,.hud .cut a.core{min-height:40px;min-width:40px}
   .stage-tools a,.stage-tools button{min-height:40px;display:inline-flex;align-items:center}
 }
 
@@ -428,3 +432,6 @@ body.focus .rail,body.focus .hud{opacity:0;pointer-events:none}
 :root[dir="rtl"] .step p.qa{letter-spacing:-.03em;line-height:1}
 :root[dir="rtl"] em{font-style:normal}
 :root[dir="rtl"] :is(p,li,td):not(.thesis,.qa) em:not([class]){font-weight:600;color:var(--text)}
+
+/* the core cut (talk/core.js): a step outside the cut leaves the flow, as in the knob design */
+:root.kt-core .nav.kt-unsampled{display:none!important}

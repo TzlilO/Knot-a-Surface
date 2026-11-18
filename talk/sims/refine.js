@@ -821,7 +821,36 @@
       '[data-theme="light"] .kt-sim-refine .rf-card.rf-bare{background:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}',
       '[data-theme="light"] .kt-sim-refine .rf-lab{font:600 9.5px/1.2 var(--f-ui);letter-spacing:.08em}',
       '[data-theme="light"] .kt-sim-refine .rf-note{font-family:var(--f-ui);letter-spacing:0;background:rgba(255,255,255,.85);box-shadow:var(--glass-edge)}',
-      ':root[dir="rtl"][data-lang] .kt-sim-refine :is(.rf-lab,.rf-lab i,.rf-note){letter-spacing:0}'
+      ':root[dir="rtl"][data-lang] .kt-sim-refine :is(.rf-lab,.rf-lab i,.rf-note){letter-spacing:0}',
+      /* `hinge`: the one large readout over the 3D view (a kt-box: it goes with the info boxes) */
+      '.kt-sim-refine .rf-hg{position:absolute;display:none;box-sizing:border-box;pointer-events:none;z-index:3;padding:9px 12px 8px;border-radius:10px;' +
+        'background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:var(--text)}',
+      '.kt-sim-refine .rf-hg-lab{font:600 10px/1.2 var(--f-mono);letter-spacing:.1em;color:var(--dim);text-transform:uppercase}',
+      '.kt-sim-refine .rf-hg-row{display:flex;align-items:baseline;gap:10px;margin:3px 0 5px;white-space:nowrap}',
+      '.kt-sim-refine .rf-hg-big{font:600 34px/1 var(--f-display);letter-spacing:-.01em;color:var(--err);font-variant-numeric:tabular-nums}',
+      '.kt-sim-refine .rf-hg-was{font:500 12px/1.2 var(--f-mono);color:var(--dim)}',
+      '.kt-sim-refine .rf-hg svg{display:block;overflow:visible}',
+      '.kt-sim-refine .rf-hg .b{stroke:var(--line);stroke-width:1}',
+      '.kt-sim-refine .rf-hg .s{fill:none;stroke:var(--err);stroke-width:2;stroke-linejoin:round}',
+      '.kt-sim-refine .rf-hg .l{fill:none;stroke:var(--err);stroke-width:2;stroke-opacity:.45;stroke-dasharray:3 3}',
+      '.kt-sim-refine .rf-hg .d{fill:var(--err)}',
+      '.kt-sim-refine .rf-hg .k{stroke:var(--ctrl);stroke-width:2.2;stroke-linecap:round}',
+      '.kt-sim-refine .rf-hg-cnt{margin-top:5px;font:500 11px/1.3 var(--f-mono);color:var(--dim)}',
+      '.kt-sim-refine .rf-hg-cnt b{font-weight:600;color:var(--ctrl)}',
+      '.kt-sim-refine .rf-tiny .rf-hg{padding:5px 8px 5px;border-radius:8px}',
+      '.kt-sim-refine .rf-tiny .rf-hg-lab{font-size:9px;letter-spacing:.04em}',
+      '.kt-sim-refine .rf-tiny .rf-hg-row{gap:6px;margin:1px 0 3px}',
+      '.kt-sim-refine .rf-tiny .rf-hg-big{font-size:22px}',
+      '.kt-sim-refine .rf-tiny .rf-hg-was,.kt-sim-refine .rf-tiny .rf-hg-cnt{font-size:9.5px}',
+      '.kt-sim-refine .rf-tiny .rf-hg-cnt{margin-top:3px}',
+      '.kt-sim-refine .rf-big .rf-hg-big{font-size:44px}',
+      '.kt-sim-refine .rf-big .rf-hg-lab{font-size:12px}',
+      '.kt-sim-refine .rf-big .rf-hg-was,.kt-sim-refine .rf-big .rf-hg-cnt{font-size:14px}',
+      '[data-theme="light"] .kt-sim-refine .rf-hg{border:0;border-radius:14px;background:rgba(255,255,255,.86);' +
+        'backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);' +
+        'box-shadow:var(--glass-edge),0 12px 30px -18px rgba(88,56,24,.35)}',
+      '[data-theme="light"] .kt-sim-refine :is(.rf-hg-lab,.rf-hg-was,.rf-hg-cnt){font-family:var(--f-ui)}',
+      ':root[dir="rtl"][data-lang] .kt-sim-refine :is(.rf-hg-lab,.rf-hg-was,.rf-hg-cnt){letter-spacing:0;text-transform:none}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -918,7 +947,7 @@
 
   var SCENES = [
     { id: 'coarse', label: 'Coarse net' }, { id: 'insert', label: 'Insert one knot' },
-    { id: 'auto', label: 'Auto-insert' }, { id: 'remove', label: 'Remove + re-fit' },
+    { id: 'hinge', label: 'One knot at a time' }, { id: 'auto', label: 'Auto-insert' }, { id: 'remove', label: 'Remove + re-fit' },
     { id: 'versus', label: 'Adaptive vs uniform' }, { id: 'sampling', label: 'Layer B · sampling' },
     { id: 'balance', label: 'Balance the two' }, { id: 'normals', label: 'Normals' }
   ];
@@ -927,6 +956,10 @@
     button: { delay: 0, hi: 0.55, hold: 0.9, rate: 36 },
     auto: { gap: 0.8, hi: 0.26, hold: 0.12, rate: 260 },
     prune: { gap: 1.15, hi: 0.5, rate: 200 },
+    /* `hinge`: the auto-insertion slowed to one beat per knot. first = the coarse net alone before the first knot;
+       a beat = hi (worst span, coming knot dashed) + hold (inserted, surface unchanged) + fit (the real optimiser,
+       its iterations spread over these seconds, slow first: the error drops where the room can see it) + rest */
+    hinge: { first: 1.6, hi: 0.8, hold: 0.75, fit: 1.1, rest: 0.55, n: 7, life: 2.6, ease: 2.2, rate: 9 },
     tour: 5.5                             // seconds on each regime of the `balance` scene
   };
   var BUDGETS = [49, 64, 100, 144, 196, 256, 400, 576, 784, 1024, 1600, 2500, 4096];
@@ -965,6 +998,8 @@
       var wrap = ui.el('div', 'rf-wrap rf-side'), stage = ui.el('div', 'rf-stage'), col = ui.el('div', 'rf-col');
       rootEl.appendChild(wrap); wrap.appendChild(stage); wrap.appendChild(col);
       var cv = ui.canvas(stage), ctx = cv.ctx;
+      var hgBox = ui.el('div', 'kt-box rf-hg'); stage.appendChild(hgBox);
+      var hgKey = '', hgShown = false, hgH = 0;
 
       var pr = ui.panel(col, { title: T('Layer A · control density') }); pr.classList.add('rf-read');
       var LABELS = [];
@@ -1027,7 +1062,7 @@
       var st = { scene: '', run: true, view: 'fit', shade: 'height', gauss: false, dens: 24, densAuto: false, densT: 0,
                  mode: 'idle', timer: 0, rate: 12, acc: 0, op: null, pending: null, versus: false,
                  ceiling: null, blocked: null, pruned: 0, ptsFrom: 0, inserted: 0, barScale: 0, holdScale: false,
-                 budget: CFG.BUDGET, cut: 0.365, bal: false, tour: null, want: null, preset: '', batch: false, manual: false };
+                 budget: CFG.BUDGET, cut: 0.365, bal: false, tour: null, want: null, preset: '', batch: false, manual: false, hg: null };
       var m = null, ms = null, base = null, baseMs = null, bestU = null;
       var fx = [], dirty = true, dirtyB = true, zVersion = 0;
       var status = { l1: '', l2: '', tone: 'text', live: null };
@@ -1162,7 +1197,7 @@
         var w = op.w, before = ms.rmse, r = insertInto(m, w.axis, w.knot);
         if (r.dz > 1e-9 && root.console) root.console.error('refine: knot insertion moved the surface by', r.dz);
         setModel(r.model); st.inserted++; st.ceiling = null;
-        fx.push({ kind: 'new', axis: w.axis, knot: w.knot, age: 0, life: op.auto ? 1.6 : 3.2, k: r.k, nu: m.nu, nv: m.nv });
+        fx.push({ kind: 'new', axis: w.axis, knot: w.knot, age: 0, life: op.pace.life || (op.auto ? 1.6 : 3.2), k: r.k, nu: m.nu, nv: m.nv });
         op.dz = r.dz; op.before = before; op.added = r.added;
         var where = w.axis + ' = ' + w.knot.toFixed(3);
         if (op.auto) {
@@ -1239,6 +1274,35 @@
         }
       }
 
+      /* ---------- `hinge`: one knot at a time, each a beat the room can follow ----------
+         The insertions and the fit are the module's own (beginInsert / doInsert as in `insert`, conjugate gradients on
+         the live net); only the pacing is set: the next knot waits for convergence and a rest, and the CG iterations of
+         one fit are spread over PACE.hinge.fit seconds, (t / fit)^ease of them done at t, their number counted first on
+         a copy of the net. hist = the surface RMSE of the coarse net and after each converged fit (snapped to the
+         least-squares optimum, as every insertion starts from), the values the readout draws. */
+      function hingeStart() {
+        st.hg = { k: 0, rec: 0, hist: [ms.rmse], rest: 0, fitK: null, ft: 0, done: false };
+        st.mode = 'hinge';
+      }
+      function hingeFit(dt) {
+        var h = st.hg, HP = PACE.hinge, did = 0;
+        if (h.fitK == null) { h.fitK = Math.max(1, cgConverge(S.restore(S.snapOf(m)))); h.ft = 0; }
+        h.ft += dt;
+        var want = h.ft >= HP.fit ? Infinity : Math.ceil(h.fitK * Math.pow(h.ft / HP.fit, HP.ease));
+        while (m.cg.it < want && cgStep(m)) did++;
+        if (did) { ms = measure(m); dirty = true; zVersion++; }
+      }
+      function hingeTick(dt) {
+        var h = st.hg, HP = PACE.hinge;
+        if (h.k > h.rec) { snap(); h.hist.push(ms.rmse); h.rec = h.k; h.rest = 0; h.fitK = null; }
+        h.rest += dt;
+        if (h.rest < (h.k ? HP.rest : HP.first)) return;
+        if (h.k < HP.n && beginInsert(HP, false)) { h.k++; return; }
+        st.mode = 'idle'; h.done = true;
+        setStatus(T('{n} KNOTS, EACH WHERE THE ERROR WAS WORST', { n: h.k }),
+                  T('RMSE {a} → {b} · {n} control points · the surface never moved at an insertion', { a: pctA(h.hist[0]), b: pctA(ms.rmse), n: thousands(m.nu * m.nv) }), 'ok');
+      }
+
       /* ---------- user controls ---------- */
       function busy() { return !!st.op; }
       function playing() { return !!(st.op || st.pending || st.mode !== 'idle' || st.tour || st.densAuto || !m.cg.done); }
@@ -1301,7 +1365,7 @@
         var known = false, i; for (i = 0; i < SCENES.length; i++) if (SCENES[i].id === id) known = true;
         if (!known) return;
         st.batch = true;
-        st.scene = id; st.barScale = 0; st.versus = id === 'versus'; st.densAuto = false;
+        st.scene = id; st.barScale = 0; st.versus = id === 'versus'; st.densAuto = false; st.hg = null;
         st.bal = id === 'sampling' || id === 'balance'; st.tour = null; st.want = null; st.preset = ''; st.manual = false;
         st.budget = CFG.BUDGET; slBud.set(BUDGETS.indexOf(CFG.BUDGET));
         setShade(id === 'normals' ? 'normal' : 'height');
@@ -1312,6 +1376,10 @@
           enterCoarse(false); setView('fit'); setGauss(false); st.holdScale = true;
           setStatus(T('COARSE NET · {net} · RMSE {rmse}', { net: netStr(m), rmse: pct(ms.rmse) }), T('where is the error? measured per u-span and per v-span'), 'text');
           st.pending = { delay: PACE.sceneInsert.delay, fn: function () { beginInsert(PACE.sceneInsert, false); } };
+        } else if (id === 'hinge') {
+          enterCoarse(false); setView('fit'); setGauss(false); st.holdScale = true;
+          setStatus(T('COARSE NET · {net} · RMSE {rmse}', { net: netStr(m), rmse: pct(ms.rmse) }), T('too coarse for the crater · a knot goes where the error is worst, then the fit, then again'), 'text');
+          hingeStart();
         } else if (id === 'auto') {
           enterCoarse(false); setView('fit'); setGauss(false);
           setStatus(T('AUTO-INSERT · BUDGET {n} CONTROL POINTS', { n: st.budget }), T('one knot every {s} s · midpoint of the span holding the most error', { s: PACE.auto.gap }), 'ctrl');
@@ -1352,10 +1420,11 @@
         for (i = fx.length - 1; i >= 0; i--) { fx[i].age += dt; if (fx[i].age > fx[i].life) fx.splice(i, 1); }
         if (st.op) stepOp(dt);
         else {
-          if (!m.cg.done) optimize(dt);
+          if (!m.cg.done) { if (st.mode === 'hinge') hingeFit(dt); else optimize(dt); }
           if (st.pending) { st.timer += dt; if (st.timer >= st.pending.delay) { var f = st.pending.fn; st.pending = null; st.timer = 0; f(); } }
           else if (st.mode === 'auto') { if (st.timer >= autoPace().gap) autoNext(); }
           else if (st.mode === 'prune') { if (st.timer >= PACE.prune.gap) pruneNext(); }
+          else if (st.mode === 'hinge' && m.cg.done) hingeTick(dt);
         }
         if (st.mode !== 'idle' && !st.pending) st.timer += dt;      // the cadence includes the beat itself
         if (st.densAuto) {                                          // 64 -> 16 384 Gaussians and back, geometric
@@ -2195,6 +2264,45 @@
         ctx.clearRect(0, 0, L.W, L.H);
         if (st.versus) drawVersus(t); else drawMain(t, dt);
         updateReadouts();
+        drawHinge();
+      }
+
+      /* `hinge`: the surface RMSE now (large), what it was on the coarse net, and a step chart of the RMSE after each
+         insertion: one slot per planned knot, an orange tick where a knot went in, a dot per converged fit (measured,
+         data-rmse = the value itself), the fit under way dashed. Top right of the 3D view, clear of the cards. */
+      function hingeSvg(h, w, ht) {
+        var n = PACE.hinge.n, x0 = 3, x1 = w - 3, top = 3, bot = ht - 8, v0 = h.hist[0], i, d = '', dots = '', ticks = '';
+        function X(i) { return (x0 + (x1 - x0) * i / n).toFixed(1); }
+        function Y(v) { return (top + (bot - top) * (1 - KT.clamp(v / v0, 0, 1))).toFixed(1); }
+        d = 'M' + X(0) + ' ' + Y(v0);
+        for (i = 1; i <= h.rec; i++) d += 'H' + X(i) + 'V' + Y(h.hist[i]);
+        for (i = 0; i <= h.rec; i++) dots += '<circle class="d" r="2.6" cx="' + X(i) + '" cy="' + Y(h.hist[i]) + '" data-rmse="' + h.hist[i] + '"/>';
+        var inK = h.k > h.rec && !(st.op && st.op.type === 'ins' && st.op.phase === 0), nk = inK ? h.k : h.rec;
+        for (i = 1; i <= nk; i++) ticks += '<line class="k" x1="' + X(i) + '" x2="' + X(i) + '" y1="' + (bot + 2) + '" y2="' + (ht - 1) + '"/>';
+        var live = h.k > h.rec ? '<path class="l" d="M' + X(h.rec) + ' ' + Y(h.hist[h.rec]) + 'H' + X(h.k) + 'V' + Y(ms.rmse) + '"/>' : '';
+        return '<svg width="' + w + '" height="' + ht + '" viewBox="0 0 ' + w + ' ' + ht + '">' +
+               '<line class="b" x1="0" x2="' + w + '" y1="' + (bot + 0.5) + '" y2="' + (bot + 0.5) + '"/>' + live +
+               '<path class="s" d="' + d + '"/>' + dots + ticks + '</svg>';
+      }
+      function drawHinge() {
+        var h = st.hg, show = !!(h && st.scene === 'hinge' && !st.manual && L && L.v3 && !st.versus);
+        if (show !== hgShown) { hgShown = show; hgBox.style.display = show ? 'block' : 'none'; if (!show) { hgKey = ''; hgH = 0; } }
+        if (!show) return;
+        var bw = tiny ? 156 : big ? 320 : 264, cw = bw - (tiny ? 16 : 24), ch = tiny ? 34 : big ? 84 : 66;
+        var inK = h.k > h.rec && !(st.op && st.op.type === 'ins' && st.op.phase === 0);
+        var key = [bw, h.k, h.rec, inK ? 1 : 0, pctA(ms.rmse), h.k > h.rec ? ms.rmse.toPrecision(3) : '', m.nu * m.nv].join('|');
+        if (key !== hgKey) {
+          hgKey = key;
+          hgBox.style.width = bw + 'px';
+          hgBox.innerHTML = '<div class="rf-hg-lab">' + T('surface RMSE') + '</div>' +
+            '<div class="rf-hg-row"><span class="rf-hg-big">' + pctA(ms.rmse) + '</span>' +
+            (h.k ? '<span class="rf-hg-was">' + T('was {rmse}', { rmse: pctA(h.hist[0]) }) + '</span>' : '') + '</div>' +
+            hingeSvg(h, cw, ch) +
+            '<div class="rf-hg-cnt">' + T('knots inserted {k} · control points {n}', { k: '<b>' + (inK ? h.k : h.rec) + '</b>', n: thousands(m.nu * m.nv) }) + '</div>';
+        }
+        var v = L.v3, x = Math.round(v.x + v.w - bw), y = Math.round(v.y + (tiny ? 0 : 4));
+        hgBox.style.left = x + 'px'; hgBox.style.top = y + 'px';
+        hgH = hgBox.offsetHeight;
       }
       env.loop(function (t, dt) {
         if (!m || !L) return;
@@ -2577,7 +2685,7 @@
           var nh = nt.join('<br>');
           if (nh !== noteHtml) { noteHtml = nh; note.innerHTML = nh; note.style.display = nh ? 'block' : 'none'; }
           if (nh) {
-            var v = L.v3; note.style.right = Math.round(L.W - v.x - v.w + 6) + 'px'; note.style.top = Math.round(v.y + 6) + 'px';
+            var v = L.v3; note.style.right = Math.round(L.W - v.x - v.w + 6) + 'px'; note.style.top = Math.round(v.y + 6 + (hgShown ? hgH + 6 : 0)) + 'px';
           }
         }
 
@@ -2665,7 +2773,7 @@
                    busy: !!st.op, pending: !!st.pending,
                    inserted: st.inserted, pruned: st.pruned, gauss: st.gauss ? st.dens * st.dens : 0,
                    drawn: d ? d.rmse : null, sampling: d ? d.samp : null, regime: regime(), shade: st.shade, cut: st.cut,
-                   budget: st.budget, preset: st.preset, tour: !!st.tour, angle: st.shade === 'normal' ? angleNow() : null,
+                   budget: st.budget, preset: st.preset, hinge: st.hg && { k: st.hg.k, rec: st.hg.rec, hist: st.hg.hist.slice(), done: st.hg.done }, tour: !!st.tour, angle: st.shade === 'normal' ? angleNow() : null,
                    balance: { ready: B.ready, done: B.done, ms: B.ms, cols: B.cols ? B.cols.map(function (c) { return c.pts; }) : null, rows: B.rows.slice(),
                               E: B.E ? Array.prototype.slice.call(B.E) : null, nstar: B.nstar },
                    uniform: baseMs ? baseMs.rmse : null, best: bestU, status: [status.l1, status.live ? status.live() : status.l2],

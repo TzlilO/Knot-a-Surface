@@ -549,6 +549,7 @@
   /* a link to this page in another role, in this window's language (said in the address: it holds without storage) */
   function pageUrl(query) {
     var u = location.href.split('#')[0].split('?')[0] + query;
+    if (/[?&]cut=core(?:&|$)/.test(location.search)) u += (query ? '&' : '?') + 'cut=core';   // the core cut (talk/core.js) goes with the window it opens
     return I18N ? I18N.url(KT.lang, true, u) : u;
   }
   function openPresenter() {

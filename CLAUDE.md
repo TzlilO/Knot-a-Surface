@@ -120,6 +120,20 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   class); Up / Down scroll it, ← → PageUp PageDown space still step. `talk.html?prompter` = the same view as that panel alone, filling
   the window, for a tablet or second screen (deck.js treats it as `?master`). `node tools/script/check.js` (README there) checks a
   script against the steps and prints words per section against the minutes.
+- THE CORE CUT (`talk.html?cut=core`, `talk/core.js`, loaded last): about 20 minutes, the steps that carry the talk's one sentence,
+  marked `data-core="<minutes>"` in talk.html (31 steps incl. the cover; the sum is computed, not typed: the HUD's "◆ 20′" link in
+  the `.cut` group shows it). Without `cut=core` nothing changes (same steps, 45′ / 23′ totals; the link is the only trace). With it,
+  core.js hands the set to `KnotTalk.deck.sample({ has, cost, labels })` (the knob design's sampler: `data-depth` is ignored, a
+  `data-off` step with `data-core` is shown, the slide master's overrides still win, `labels` keeps the 20′ / 40′ buttons on their own
+  totals), sets `html.kt-core`, and applies `data-core-scene="<scene>"` as `step._scene` (deck.js `activate` reads it before
+  `data-scene`) only if the module's `scenes` list has it (so the refine step "Layer A — insert a knot" shows `hinge` once the module
+  has it, else `insert`). In the cut the link is lit and the 20′ / 40′ buttons leave it (same page without `cut=core`, on the same
+  step, the cut saved in `kt-cut`). `?design=knob` wins over it. The address keeps `cut=core` over a language switch (i18n.js only
+  rewrites `lang`) and master.js `pageUrl` passes it to the presenter view / prompter it opens, so now / next and the clock total agree.
+  The cut's own step is the chapter 09 step "What is measured, and what is not yet" (key `09 · What is measured, and what is not yet`),
+  `data-off` and alone in a `data-cont` section with 0 minutes: a part that is off takes its share of its section's minutes with it,
+  so inside the evidence section it would have changed the other cuts' totals. When a step is added or its minutes change, keep the
+  sum near 20 and write its passage in `talk/script/he.js`.
 - Link preview: talk.html's head carries Open Graph / Twitter tags (absolute URLs) pointing at `talk/share.jpg`,
   1200 x 630: two owls cut into slanted bands, the scan (stone | normals) and its copy (stone | glass | jelly).
   `node tools/share/render.js` redraws it: `tools/share/page.html` mounts one `manifold` instance per band (scene
@@ -161,7 +175,12 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   of the surface veiled and its share measured, `api.window()` / `windowNet()` for tests),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
   draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
-  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets. Its main
+  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets; scene `hinge`
+  (the core cut's picture of the idea) = `auto` slowed to one ~3.2 s beat per knot, 7 knots from the coarse net then a
+  rest (no loop): worst span red with the dashed coming knot, the insertion (flash, "surface unchanged"), the real CG fit
+  with its iterations spread over `PACE.hinge.fit` s (counted first on a copy: only the pacing is scripted), a rest; a
+  `kt-box` readout `.rf-hg` top right of the 3D view shows the surface RMSE large, "was", a step chart of the RMSE after
+  each converged fit (snapped values, `peek().hinge.hist`) and the knot / control-point count (6.29 % → 3.79 %). Its main
   view is the manifold in 3D (`make3D`: `gl.sheet` / `gl.lines` / `gl.hidden` / `gl.splats` / `gl.draw`, in planoid's
   frame and proportions: x = u, z = v over SPAN 3.2, relief HS = ZW x SPAN, planoid's camera, so chapter 03's patch
   and this surface are one picture): the live sheet, the terrain as a ghost of 24 x 24 neutral dots with red error
