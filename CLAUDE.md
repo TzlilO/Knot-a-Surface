@@ -161,7 +161,18 @@ Independent of deck.html and of the build: plain static files, classic scripts (
   of the surface veiled and its share measured, `api.window()` / `windowNet()` for tests),
   `ledger` (parameter arithmetic), `refine` (knot insertion/removal on a height field; a top view plus a
   draggable side cut, a normals shading, up to 4,096 control points and 256² Gaussians, and scene
-  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets),
+  `balance`: a MEASURED map of drawn error over control points × Gaussians with three regime presets. Its main
+  view is the manifold in 3D (`make3D`: `gl.sheet` / `gl.lines` / `gl.hidden` / `gl.splats` / `gl.draw`, in planoid's
+  frame and proportions: x = u, z = v over SPAN 3.2, relief HS = ZW x SPAN, planoid's camera, so chapter 03's patch
+  and this surface are one picture): the live sheet, the terrain as a ghost of 24 x 24 neutral dots with red error
+  sticks to it (planoid's `net` idiom), the control net, and every interior knot as an orange band lying in the
+  surface along its iso-curve; a new knot flashes wide with the top view's envelope (`flashK`), with Boehm's new
+  columns of points, the span about to be split is tinted red, a removed knot fades dashed, the cut is a thin
+  rectangle; in the Gaussian scenes the derived Gaussians themselves (up to 65,536, 16,384 on a coarse pointer).
+  The top view (with its per-span error bars and the cut grip) and the side view are cards over it, bottom left and
+  bottom right (glass; their labels are `kt-box`); `balance` keeps its map large and puts the 3D view in the top view's
+  square, `versus` keeps its two maps and shows the 3D view beside them where there is room. `api.view3d()` for tests;
+  the lab page loads three.min.js and gl.js, without them the module falls back to the two flat views),
   `manifold` (the full-power demo: per-tile view-adaptive sampling under a fixed Gaussian budget over
   the scenes in `talk/scenes.js` — barn, truck, bust, garden as procedural stand-ins modelled after
   TnT / DTU / Mip-NeRF 360 captures, plus the abstract `studio` still life. A scene is only B-spline
